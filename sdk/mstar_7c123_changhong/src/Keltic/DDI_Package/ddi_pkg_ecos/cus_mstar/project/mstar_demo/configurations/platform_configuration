@@ -1,0 +1,242 @@
+# Board type select
+CFG_BOARD       = BD_MST183A_D01A
+CFG_DVB_TYPE    = DVBC
+# **********************************************
+# CHIP Configuration
+# 183B Version (BGA only use MSD5XX7)
+# 183A Vession (Could be MSD5XX5/MSD5XX3/MSD5XX1) for different MCP device
+# **********************************************
+ifeq ($(CFG_BOARD),BD_MST183B_D01A_S)
+CFG_CHIP_SELECTION = MSD5XX7
+else ifeq ($(CFG_BOARD),BD_MST183B_D01A)
+CFG_CHIP_SELECTION = MSD5XX7
+else
+CFG_CHIP_SELECTION = MSD5XX5
+endif
+# **********************************************
+# Build Option
+# **********************************************
+CFG_CC_DEFS += -D'MS_C_STDLIB'
+CFG_CC_DEFS += -D'MS_BOARD_TYPE_SEL=$(CFG_BOARD)'
+CFG_CC_DEFS += -D'MS_DVB_TYPE_SEL=$(CFG_DVB_TYPE)'
+CFG_CC_DEFS += -D'ENABLE_DEBUG=1'
+CFG_CC_DEFS += -D'STB_ENABLE=1'
+CFG_CC_DEFS += -D'FBL_ENABLE=0'
+CFG_CC_DEFS += -D'MBOOT_LOGO_ENABLE=0'
+CFG_CC_DEFS += -D'CHIP_KELTIC'
+CFG_CC_DEFS += -D'CFG_CHIP_$(CFG_CHIP_SELECTION)'
+
+# **********************************************
+# End Build Option
+# **********************************************
+
+#***************************************************
+# Parasoft Check
+#   ENABLE                      = 1
+#   DISABLE                     = 0
+#   CAT_BDF = 1 Default for Auto Test
+#   Set to 0 for Local PARA unit test only,
+#   makesure set the OS type to linux
+#***************************************************
+PARA=0
+CAT_BDF=1
+
+# **********************************************
+# Build Configuration
+# **********************************************
+
+# Build Type: debug / retail
+BLT_TYPE    ?= retail
+
+# Chip: u2 / u3 / t2 / t3
+CHIP        = keltic
+
+# Project name
+PROJNAME    = MSTAR
+
+# Image name
+IMAGENAME   = $(CHIP)_$(OS_TYPE)
+
+# OS: ecos / linux / nos
+OS_TYPE     = ecos
+
+ifeq ($(OS_TYPE),ecos)
+CFG_CC_OPTS += -D'MSOS_TYPE_ECOS'
+# For Parasoft
+CFG_CC_DEFS += -D'MSOS_TYPE_ECOS'
+endif
+ifeq ($(OS_TYPE),linux)
+CFG_CC_OPTS += -D'MSOS_TYPE_LINUX'
+endif
+ifeq ($(OS_TYPE),nos)
+CFG_CC_OPTS += -D'MSOS_TYPE_NOS'
+endif
+ifeq ($(OS_TYPE),ucos)
+CFG_CC_OPTS += -D'MSOS_TYPE_UCOS'
+endif
+
+# NDS, TF, IRD, NGA, CNX, NONE
+CFG_CA      = NONE
+# NDS(SVP), NONE
+CFG_NDS_LIB = NONE
+
+# This config move to file configure_mstar_64MB and configure_mstar_32MB
+# MM bsp:  enable / disable
+# MM_BSP     = enable
+
+# MI integraion interafces: enable / disable
+MI_BSP = disable
+
+# Frontend auto test : enable /disable
+CFG_FE_AUTO_TEST = disable
+#**************************************************************
+# TV function
+#   TVfunc_Normal           =   0
+#   TVfunc_MpegSD           =   1
+#   TVfunc_H264SD           =   2
+#**************************************************************
+CFG_CC_DEFS += -D'TVfunc_Normal=0'
+CFG_CC_DEFS += -D'TVfunc_MpegSD=1'
+CFG_CC_DEFS += -D'TVfunc_H264SD=2'
+
+#**************************************************************
+# Audio lib type
+#   Audio_Normal           =   0
+#   Audio_Lite             =   1
+#**************************************************************
+CFG_CC_DEFS += -D'Audio_Normal=0'
+CFG_CC_DEFS += -D'Audio_Lite=1'
+#**************************************************************
+# Module Options
+#**************************************************************
+
+#**************************************************************
+# DDR freq (for diff MIU setting)
+#   1. 333
+#   2. 400
+#   3. 667
+#   4. 800
+#   5. 1066
+#   6. 1300
+#   7. 1600
+#
+# Memory Map
+#   1.  MMAP_32MB
+#   2.  MMAP_64MB
+#**************************************************************
+CFG_DDR_FREQ = 800
+CFG_MEMORY_MAP = MMAP_64MB
+#**************************************************************
+# TV function
+#   1. TVfunc_Normal
+#   2. TVfunc_MpegSD
+#
+# LCN Configuration
+#   1. enable
+#   2. disable
+#
+# MIPS 288
+#   1. enable
+#   2. disable
+#
+# New EPG scheme
+#   1. enable
+#   2. disable
+#
+# Mosaic program
+#   -  add this config to support mosaic program related function
+#   1.  enable
+#   2.  disable
+#
+# LOGO decode type
+#   1. LOGO_DECODE_TYPE_MPEG    (decode with MPEG)
+#   2. LOGO_DECODE_TYPE_JPEG    (decode with JPD)
+#   3. LOGO_DECODE_TYPE_H264    (decode with H264 but not implement)
+#**************************************************************
+CFG_TVfunc = TVfunc_MpegSD
+
+#**************************************************************
+# USB
+#   1. enable
+#   2. disable
+#**************************************************************
+CFG_USB_ENABLE = enable
+#**************************************************************
+# eCos Version
+#   1. Normal
+#   2. Lite
+#**************************************************************
+CFG_ECOS_VERSION = Normal
+
+#**************************************************************
+# audio lib type
+#   1. Audio_Normal
+#   2. Audio_Lite (MP3/MPEG only)
+#**************************************************************
+CFG_AUDIO_LIB_TYPE = Audio_Normal
+
+# Configuration Type: Mstar / MpegSD# / LowPower
+ifeq ($(CFG_CHIP_SELECTION),MSD5XX1)
+CFG_MEMORY_MAP = MMAP_32MB
+else ifeq ($(CFG_CHIP_SELECTION),MSD5XX9)
+CFG_MEMORY_MAP = MMAP_128MB
+else
+CFG_MEMORY_MAP = MMAP_64MB
+endif
+# **********************************************
+# Module Configuration
+# **********************************************
+ifeq ($(MI_BSP), enable)
+CFG_CUST = Mstar_MI
+endif
+
+ifeq ($(DDI_DEMO_PVR), enable)
+CFG_CC_DEFS += -D'ENABLE_PVR_PACKAGE'
+endif
+
+ifeq ($(DDI_DEMO_MM), enable)
+CFG_CC_OPTS += -D'ENABLE_MM_PACKAGE'
+ifeq ($(CFG_TVfunc),TVfunc_MpegSD)
+CFG_CC_OPTS += -D'MM_MPEG2SD_PROFILE'
+endif
+endif
+
+#**************************************************************
+# DRAM
+#**************************************************************
+# DDR freq
+CFG_CC_OPTS += -D'CFG_DDR_FREQ = $(CFG_DDR_FREQ)'
+# Memory Map
+CFG_CC_OPTS += -D'MEMORY_MAP = $(CFG_MEMORY_MAP)'
+# For Parasoft
+CFG_CC_DEFS += -D'MEMORY_MAP = $(CFG_MEMORY_MAP)'
+#**************************************************************
+# TV
+#**************************************************************
+# TV function
+CFG_CC_OPTS += -D'TVfunc = $(CFG_TVfunc)'
+#**************************************************************
+# USB
+#**************************************************************
+
+# USB
+ifeq ($(CFG_USB_ENABLE),enable)
+CFG_CC_OPTS += -D'CFG_USB_ENABLE = 1'
+else
+CFG_CC_OPTS += -D'CFG_USB_ENABLE = 0'
+endif
+
+#**************************************************************
+# Audio lib type
+#**************************************************************
+# Audio lib type
+CFG_CC_OPTS += -D'AUDIO_LIB_TYPE = $(CFG_AUDIO_LIB_TYPE)'
+#**************************************************************
+# Auto Test
+#**************************************************************
+
+# Frontend auto test
+ifeq ($(CFG_FE_AUTO_TEST),enable)
+CFG_CC_OPTS += -D'FE_AUTO_TEST'
+endif
+

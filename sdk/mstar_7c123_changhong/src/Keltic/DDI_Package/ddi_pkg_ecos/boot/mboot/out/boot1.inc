@@ -1,0 +1,4 @@
+SIZE_MBOOT = 158326
+PadingLen = 38282
+SIZE_APP = 
+App_in_SPI_Address = 196636

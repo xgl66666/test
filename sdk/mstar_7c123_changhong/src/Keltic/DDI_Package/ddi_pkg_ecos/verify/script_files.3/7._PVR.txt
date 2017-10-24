@@ -1,0 +1,128 @@
+# <- this is for comment
+
+#watchtv
+xc_init
+ve_init
+XC_SetOutputTiming 5 0 0 1280 720
+VE_SetOutputTiming 1 0 0 720 576
+goP_Init
+GOP_SetConfig
+digituner_setfreq 722000 3
+tv_tsp_setpid 6673 6674 6673 0 1
+TV_PlayAV
+XC_PlayVideo_UsingDefaultSetting
+
+#set playback type as basicplayer
+PVR_SetPlayType 0
+#set playback type as esplayer
+PVR_SetPlayType 1
+
+#set recorder type as single
+PVR_SetPlayType 0
+#set recorder type as dual
+PVR_SetPlayType 1
+
+
+#init USB Disk:FAT32
+pvr_init 2 /root sdx1 sdx2
+
+
+
+#Record command
+PVR_SetIdx 0
+PVR_RecordStart 801 802 801 0 1 tt.ts
+
+
+PVR_SetIdx 0
+PVR_RecordPause 
+PVR_RecordResume
+PVR_RecordStop
+
+
+
+
+#Playback
+#If not watching live stream first, please add below command
+xc_init
+ve_init
+pvr_init 0 /mnt/tmp
+XC_SetOutputTiming 5 0 0 1280 720
+VE_SetOutputTiming 1 0 0 720 576
+Audio_Init
+
+#Get current idx
+PVR_GetIdx
+
+#Set Current "Record" index.  Currently, the value of index is 0 or 1
+PVR_SetIdx 0  
+
+
+#Playback command
+PVR_PlaybackStart 801 802 801 0 1 28113_801_802_801_0_TEST_19921009_212744_2.ts
+PVR_PlaybackPause
+PVR_PlaybackResume
+PVR_PlaybackFF
+PVR_PlaybackFB
+PVR_PlaybackJumpToTime 0 0 10
+PVR_PlaybackStop
+
+#Playback with one frame
+PVR_StepInPlay 
+#Playback in normal speed  
+PVR_PlaybackWithNormalSpeed
+
+
+#timeshift 
+#First, run watchtv script
+
+#not freeze screen
+PVR_SetTimeshiftRecScreenFrozen 0
+#Second, timeshift record command
+PVR_TimeshiftRecordStart 801 802 801 0 1 timeshift.ts
+PVR_TimeshiftRecordStop
+
+#Third, timeshift playback command
+PVR_TimeshiftPlaybackStart 
+
+#get wrapper around start time in timeshift record
+PVR_GetTimeshiftRecStartTime
+
+#skipping from the 40nd sec to the 60nd sec when playing
+PVR_SetSkipTime 40 60
+
+#remove the skip time
+PVR_RemoveSkipTime 40 60
+
+#play from the 10nd second
+PVR_SetRetentionTime 10
+
+#jump forward and then normal play
+PVR_PlayJumpForward
+
+#jump backward and then normal play
+PVR_PlayJumpBackward
+
+
+#show current play time
+PVR_ShowTime 2 1
+
+#show current record time
+PVR_ShowTime 1 1
+
+
+
+#Stop timeshift command
+# only stop playback
+PVR_TimeshiftPlaybackStop
+# stop recording and playback 
+PVR_TimeshiftStop
+
+#exit
+pvr_exit
+
+
+#other additional command
+PVR_SpeedCheck
+
+
+% <- this is end of file symbol

@@ -1,0 +1,30 @@
+# <- this is for comment
+
+#stop audio decoder and halt video decoder
+TV_PauseAV
+
+#enable audio decoder and video decoder
+TV_PlayAV
+
+#stop both audio and video decoder
+TV_StopAV
+
+#enable audio decoder and video decoder
+TV_PlayAV
+
+#set volume
+TV_MAD_SetVol 0
+
+#set volume
+TV_MAD_SetVol 25
+
+#set volume
+TV_MAD_SetVol 50
+
+#set volume
+TV_MAD_SetVol 75
+
+#set volume
+TV_MAD_SetVol 100
+
+% <- this is end of file symbol

@@ -1,0 +1,28 @@
+# <- this is for comment
+
+xc_init
+ve_init
+
+XC_SetOutputTiming 5 0 0 1280 720
+VE_SetOutputTiming 1 0 0 720 576
+
+DigiTuner_SetLNBPower 2 // 0->0V, 2->13V(V), 3->18V(H), for DVB-S/S2 live RF
+
+#Set broadcast type to DVBS
+FE_SetBroadcastType 5
+
+DigiTuner_SetFreq 11428 27500
+DigiTuner_SetFreq 11899 21093 //  for DVBS-live RF
+DigiTuner_SetFreq 1299 21093	// 11899 - 10600 (IF)
+
+TV_TSP_SetPid 2562 2563 2561 1 1
+
+TV_PlayAV
+
+TV_MVD_GetVideoInfo
+Video_GetDecoderStatus
+
+XC_PlayVideo_UsingDefaultSetting
+
+% <- this is end of file symbol
+

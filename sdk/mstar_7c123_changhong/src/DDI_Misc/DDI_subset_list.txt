@@ -1,0 +1,13 @@
+Modules in DDI_Misc 
+
+1.Frontend (Demod/Tuner)
+  (
+   drivers in 
+   \bsp\include
+   \bsp\lib
+   \bsp\lib_dynamic
+   are still left in original projects due to chip-dependant driver 
+  ) 
+  
+2.
+ ....

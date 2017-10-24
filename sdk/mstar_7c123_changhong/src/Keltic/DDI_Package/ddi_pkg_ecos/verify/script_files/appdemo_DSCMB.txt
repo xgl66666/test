@@ -1,0 +1,33 @@
+//////////////////////////////////////////////
+///// Stream:  1p_0707_171605.10-28s.ts /////
+////////////////////////////////////////////
+xc_init 
+ve_init
+XC_SetOutputTiming 5 0 0 1280 720
+VE_SetOutputTiming 1 0 0 720 576
+
+
+FE_SetBroadcastType 1
+DigiTuner_SetFreq 394000 2 6875 
+digituner_setindex 0
+=============== Set Default CAVid===============================
+DSCMB_SetCAVID 0xF
+=============== Clear Main PID =================================
+TV_TSP_SetPid 816 818 816 0 1
+=============== Scrambled Main PID =============================
+TV_TSP_SetPid 848 850 848 0 1
+DSCMB_ConnectPID 0
+DSCMB_SetType 0 CSA
+DSCMB_CW 0 F38F39BBD4B2169C 16CD07EA469CB799
+=============== Scrmabled wiht KL Main PID =====================
+DualAV_TSP_SetPid2Main 848 850 848 0 1
+DSCMB_ConnectPID 0
+DSCMB_SetType 0 CSA
+DSCMB_KeyLadder 0 ACPU 000102030405060708090a0b0c0d0e0f b06a53e698a6641c 5d9bcf3ef93d48d9
+
+TV_PlayAV
+TV_MVD_GetVideoInfo
+XC_PlayVideo_UsingDefaultSetting
+
+=============== Disconnect PID===============================
+DSCMB_DisconnectPID 0

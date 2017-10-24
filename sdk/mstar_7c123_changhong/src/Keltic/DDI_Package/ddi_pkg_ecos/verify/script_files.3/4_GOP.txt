@@ -1,0 +1,30 @@
+#GOP
+
+#initialize GOP (Graphics output processor)
+GOP_Init
+
+#configure GOP
+GOP_SetConfig
+
+#create two GOP windows, 1280x720 for HDMI/Component and 720x480 for CVBS
+GOP_CreateWin 2 1280 720 720 480
+
+#draw a bmp on the screen
+GOP_DrawBmp
+
+#enable global alpha and ignore pixel arpha
+GOP_SetGlobalAlpha 1
+
+#enable pixel alpha
+GOP_EnablePerPixelAlpha 1
+
+#picture fade in
+GOP_SetFade 0 1 32767
+
+#picture fade out
+GOP_SetFade 1 1 8191
+
+#free GOP windows
+GOP_FreeWin
+
+% <- this is end of file symbol

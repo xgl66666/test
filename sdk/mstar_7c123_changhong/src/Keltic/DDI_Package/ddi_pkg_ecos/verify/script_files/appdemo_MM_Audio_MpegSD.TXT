@@ -1,0 +1,8 @@
+xc_init
+ve_init
+
+XC_SetOutputTiming 2 0 0 720 576
+VE_SetOutputTiming 1 0 0 720 576
+
+MM_INIT
+MM_PLAY 0 /root/sdx2/1.mp3

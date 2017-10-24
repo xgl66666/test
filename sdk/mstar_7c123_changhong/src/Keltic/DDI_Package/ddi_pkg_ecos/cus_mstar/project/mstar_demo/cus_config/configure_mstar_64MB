@@ -1,0 +1,88 @@
+#**************************************************************
+# Module Options
+#**************************************************************
+
+#**************************************************************
+# DDR freq (for diff MIU setting)
+#   1. 333
+#   2. 400
+#   3. 667
+#   4. 800
+#   5. 1066
+#   6. 1300
+#   7. 1600
+#
+# Memory Map
+#   1.  MMAP_32MB
+#   2.  MMAP_64MB
+#   3.  MMAP_128MB
+#   4.  MMAP_32MBX32MB
+#   5.  MMAP_32MBX32MB_SVD
+#   6.  MMAP_64MBX32MB
+#   7.  MMAP_64MBX64MB
+#   8.  MMAP_128MBX128MB
+#**************************************************************
+CFG_DDR_FREQ = 800
+CFG_MEMORY_MAP = MMAP_64MB
+
+
+# MM bsp:  enable / disable
+MM_BSP     = enable
+
+# PVR bsp:  enable / disable
+PVR_BSP     = enable
+PVR_CA_ENABLE = disable
+
+#**************************************************************
+# TV function
+#   1. TVfunc_Normal
+#   2. TVfunc_MpegSD
+#
+# LCN Configuration
+#   1. enable
+#   2. disable
+#
+# MIPS 288
+#   1. enable
+#   2. disable
+#
+# New EPG scheme
+#   1. enable
+#   2. disable
+#
+# Mosaic program
+#   -  add this config to support mosaic program related function
+#   1.  enable
+#   2.  disable
+#
+# LOGO decode type
+#   1. LOGO_DECODE_TYPE_MPEG    (decode with MPEG)
+#   2. LOGO_DECODE_TYPE_JPEG    (decode with JPD)
+#   3. LOGO_DECODE_TYPE_H264    (decode with H264 but not implement)
+#**************************************************************
+CFG_TVfunc = TVfunc_MpegSD
+#CFG_LCN = enable
+CFG_MIPS_288 = disable
+#CFG_NEW_EPG = enable
+#CFG_MOSAIC_PROGRAM = disable
+#CFG_LOGO_DECODE_TYPE = LOGO_DECODE_TYPE_MPEG
+
+#**************************************************************
+# USB
+#   1. enable
+#   2. disable
+#**************************************************************
+CFG_USB_ENABLE = enable
+#**************************************************************
+# eCos Version
+#   1. Normal
+#   2. Lite
+#**************************************************************
+CFG_ECOS_VERSION = Lite
+
+#**************************************************************
+# audio lib type
+#   1. Audio_Normal
+#   2. Audio_Lite (MP3/MPEG only)
+#**************************************************************
+CFG_AUDIO_LIB_TYPE = Audio_Normal

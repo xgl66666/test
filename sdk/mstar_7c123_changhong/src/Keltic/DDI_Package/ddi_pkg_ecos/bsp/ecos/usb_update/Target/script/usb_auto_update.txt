@@ -1,0 +1,16 @@
+# <- this is for comment / total file size must be less than 4KB
+
+ustar parameters.txt
+
+#application
+ustar [[application
+
+#config & bootargs
+ustar set_config
+
+usb_miu miu_setting.txt
+
+printenv
+reset
+% <- this is end of file symbol
+

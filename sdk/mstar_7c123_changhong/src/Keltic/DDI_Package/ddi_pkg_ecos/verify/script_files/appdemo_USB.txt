@@ -1,0 +1,32 @@
+# <- this is for comment
+
+
+#umount device
+usb_umount /sdx1
+usb_umount /sdx2
+usb_umount /sdx3
+usb_umount /sdx4
+
+
+#fdisk USB or Mass Storage, if need
+#divide Disk into 4 partition with 50MB/100MB/200MB/999999MB, if space is not enough, the partition will keep the remain space.
+usb_fdisk /dev/sdx/ 4 50 100 200 999999
+
+# two partition
+#usb_fdisk /dev/sdx/ 2 10000 200000
+
+
+# format partition with file system
+usb_format /dev/sdx/1 VOL_1 fatfs
+usb_format /dev/sdx/2 VOL_2 ntfs
+usb_format /dev/sdx/3 VOL_3 fatfs
+usb_format /dev/sdx/4 VOL_4 ntfs
+
+
+# mount device
+usb_mount /dev/sdx/1 /sdx1 fatfs
+usb_mount /dev/sdx/2 /sdx2 ntfs
+usb_mount /dev/sdx/3 /sdx3 fatfs
+usb_mount /dev/sdx/4 /sdx4 ntfs
+
+% <- this is end of file symbol
