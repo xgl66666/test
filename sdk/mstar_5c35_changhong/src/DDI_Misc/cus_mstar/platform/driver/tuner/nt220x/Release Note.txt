@@ -1,0 +1,5 @@
+NT220x Driver 2.4.7
+-Support 4 silicon tuners
+-Support full selection of standby mode
+-Please use minimum standby mode:tmNT220x_PowerStandbyWithLNAOnAndWithXtalOnAndSynthe
+on master tuner for master\slave applicatoin 

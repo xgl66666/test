@@ -1,0 +1,9 @@
+xc_init
+ve_init
+XC_SetOutputTiming 5 0 0 1280 720
+VE_SetOutputTiming 1 0 0 720 576
+tv_tsp_setpid_file 0x11 0x14 0x11 0 4
+TV_PlayAV
+DMX_FileIn_start fileName.ts 188
+XC_PlayVideo_UsingDefaultSetting
+DMX_FileIn_stop

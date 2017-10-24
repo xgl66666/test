@@ -1,0 +1,269 @@
+<?xml version="1.0" ?>
+<release_notes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="release.notes.xsd">
+	<project id="$Id: QalEnvRln.xml,v 1.2 2010/02/11 14:12:07 sbsuser Exp $" name="dalts_fujian_III">
+		<contact_person comment="tel +41 21 732 04 45" email="dtesen.support@nagra.com" name="DTESEN support"/>
+	</project>
+	<release version="1_0_4">
+		<components>
+			<component name="dalapivr.h"/>
+			<component name="ca_cak.h"/>
+			<component name="ca_os.h"/>
+			<component name="ca_rph.h"/>
+			<component name="ca_bdc.h"/>
+			<component name="ca_mpeg.h"/>
+			<component name="ca_defsx.h"/>
+			<component name="ca_defs.h"/>
+			<component name="ca_icc.h"/>
+			<component name="ca_dvl.h"/>
+			<component name="cakapivr.h"/>
+			<component name="ca_dmx.h"/>
+			<component name="ca_sec.h"/>
+			<component name="ca_dvb.h"/>
+			<component name="ca_vfs.h"/>
+			<component name="ca_dsc.h"/>
+		</components>
+		<compatibility>
+			<product name="cakapi" version="1.17.0"/>
+			<product name="caoapi" version="1.10.0"/>
+			<product name="dalapi" version="6.10.0"/>
+			<product name="lw_testsuite" version="3.11.3"/>
+			<product name="makefiles" version="2.7.10"/>
+			<product name="prmapi" version="1.4.0"/>
+			<toolchain name="mipsisa32-elf" version="3.4.4">
+				<compiler_flags>
+					<flag>-Os</flag>
+					<flag>-mips32</flag>
+					<flag>-EL</flag>
+					<flag>-mhard-float</flag>
+					<flag>-mfp32</flag>
+					<flag>-Wall</flag>
+					<flag>-Wpointer-arith</flag>
+					<flag>-Wstrict-prototypes</flag>
+					<flag>-Winline</flag>
+					<flag>-Wundef</flag>
+					<flag>-fno-strict-aliasing</flag>
+					<flag>-fno-optimize-sibling-calls</flag>
+					<flag>-ffunction-sections</flag>
+					<flag>-fdata-sections</flag>
+					<flag>-fno-exceptions</flag>
+					<flag>-c</flag>
+					<flag>-G0</flag>
+				</compiler_flags>
+				<compiler_defines/>
+			</toolchain>
+		</compatibility>
+		<bug_fixes/>
+		<changes/>
+		<new_features/>
+		<comments/>
+		<libraries>
+			<library name="dalts.cak7-dlk.release.mipsisa32-elf.a" version="">
+				<operators/>
+			</library>
+		</libraries>
+	</release>
+	<release version="1_0_3">
+		<components>
+			<component name="dalapivr.h"/>
+			<component name="ca_cak.h"/>
+			<component name="ca_os.h"/>
+			<component name="ca_rph.h"/>
+			<component name="ca_bdc.h"/>
+			<component name="ca_mpeg.h"/>
+			<component name="ca_defsx.h"/>
+			<component name="ca_defs.h"/>
+			<component name="ca_icc.h"/>
+			<component name="ca_dvl.h"/>
+			<component name="cakapivr.h"/>
+			<component name="ca_dmx.h"/>
+			<component name="ca_sec.h"/>
+			<component name="ca_dvb.h"/>
+			<component name="ca_vfs.h"/>
+			<component name="ca_dsc.h"/>
+		</components>
+		<compatibility>
+			<product name="cakapi" version="1.17.0"/>
+			<product name="caoapi" version="1.10.0"/>
+			<product name="dalapi" version="6.10.0"/>
+			<product name="lw_testsuite" version="3.11.1"/>
+			<product name="makefiles" version="2.7.6"/>
+			<product name="prmapi" version="1.4.0"/>
+			<toolchain name="mipsisa32-elf" version="3.4.4">
+				<compiler_flags>
+					<flag>-Os</flag>
+					<flag>-mips32</flag>
+					<flag>-EL</flag>
+					<flag>-mhard-float</flag>
+					<flag>-mfp32</flag>
+					<flag>-Wall</flag>
+					<flag>-Wpointer-arith</flag>
+					<flag>-Wstrict-prototypes</flag>
+					<flag>-Winline</flag>
+					<flag>-Wundef</flag>
+					<flag>-fno-strict-aliasing</flag>
+					<flag>-fno-optimize-sibling-calls</flag>
+					<flag>-ffunction-sections</flag>
+					<flag>-fdata-sections</flag>
+					<flag>-fno-exceptions</flag>
+					<flag>-c</flag>
+					<flag>-G0</flag>
+				</compiler_flags>
+				<compiler_defines/>
+			</toolchain>
+		</compatibility>
+		<bug_fixes/>
+		<changes/>
+		<new_features/>
+		<comments>
+			<comment>TVC 1.0.1</comment>
+		</comments>
+	</release>
+	<release version="1_0_2">
+		<components>
+			<component name="dalapivr.h"/>
+			<component name="ca_cak.h"/>
+			<component name="ca_os.h"/>
+			<component name="ca_rph.h"/>
+			<component name="ca_bdc.h"/>
+			<component name="ca_mpeg.h"/>
+			<component name="ca_defsx.h"/>
+			<component name="ca_defs.h"/>
+			<component name="ca_icc.h"/>
+			<component name="ca_dvl.h"/>
+			<component name="cakapivr.h"/>
+			<component name="ca_dmx.h"/>
+			<component name="ca_sec.h"/>
+			<component name="ca_dvb.h"/>
+			<component name="ca_vfs.h"/>
+			<component name="ca_dsc.h"/>
+		</components>
+		<compatibility>
+			<product name="cakapi" version="1.17.0"/>
+			<product name="caoapi" version="1.10.0"/>
+			<product name="dalapi" version="6.10.0"/>
+			<product name="lw_testsuite" version="3.11.1"/>
+			<product name="makefiles" version="2.7.6"/>
+			<product name="prmapi" version="1.4.0"/>
+			<toolchain name="mipsisa32-elf" version="3.4.4">
+				<compiler_flags>
+					<flag>-Os</flag>
+					<flag>-mips32</flag>
+					<flag>-EL</flag>
+					<flag>-mhard-float</flag>
+					<flag>-mfp32</flag>
+					<flag>-Wall</flag>
+					<flag>-Wpointer-arith</flag>
+					<flag>-Wstrict-prototypes</flag>
+					<flag>-Winline</flag>
+					<flag>-Wundef</flag>
+					<flag>-fno-strict-aliasing</flag>
+					<flag>-fno-optimize-sibling-calls</flag>
+					<flag>-ffunction-sections</flag>
+					<flag>-fdata-sections</flag>
+					<flag>-fno-exceptions</flag>
+					<flag>-c</flag>
+					<flag>-G0</flag>
+				</compiler_flags>
+				<compiler_defines/>
+			</toolchain>
+		</compatibility>
+		<bug_fixes/>
+		<changes/>
+		<new_features/>
+		<comments>
+			<comment>TVC 1.0.1</comment>
+		</comments>
+	</release>
+	<release version="1_0_1">
+		<components>
+			<component name="dalapivr.h"/>
+			<component name="ca_cak.h"/>
+			<component name="ca_os.h"/>
+			<component name="ca_rph.h"/>
+			<component name="ca_bdc.h"/>
+			<component name="ca_mpeg.h"/>
+			<component name="ca_defsx.h"/>
+			<component name="ca_defs.h"/>
+			<component name="ca_icc.h"/>
+			<component name="ca_dvl.h"/>
+			<component name="cakapivr.h"/>
+			<component name="ca_dmx.h"/>
+			<component name="ca_sec.h"/>
+			<component name="ca_dvb.h"/>
+			<component name="ca_vfs.h"/>
+			<component name="ca_dsc.h"/>
+		</components>
+		<compatibility>
+			<product name="cakapi" version="1.17.0"/>
+			<product name="caoapi" version="1.10.0"/>
+			<product name="dalapi" version="6.10.0"/>
+			<product name="lw_testsuite" version="3.11.1"/>
+			<product name="makefiles" version="2.7.6"/>
+			<product name="prmapi" version="1.4.0"/>
+			<toolchain name="mipsisa32-elf" version="3.4.4">
+				<compiler_flags>
+					<flag>-Os</flag>
+					<flag>-mips32</flag>
+					<flag>-EL</flag>
+					<flag>-mhard-float</flag>
+					<flag>-mfp32</flag>
+					<flag>-Wall</flag>
+					<flag>-Wpointer-arith</flag>
+					<flag>-Wstrict-prototypes</flag>
+					<flag>-Winline</flag>
+					<flag>-Wundef</flag>
+					<flag>-fno-strict-aliasing</flag>
+					<flag>-fno-optimize-sibling-calls</flag>
+					<flag>-ffunction-sections</flag>
+					<flag>-fdata-sections</flag>
+					<flag>-fno-exceptions</flag>
+					<flag>-c</flag>
+					<flag>-G0</flag>
+				</compiler_flags>
+				<compiler_defines/>
+			</toolchain>
+		</compatibility>
+		<bug_fixes/>
+		<changes/>
+		<new_features/>
+		<comments/>
+	</release>
+	<release version="1_0_0">
+		<components>
+			<component name="dalapivr.h"/>
+			<component name="ca_cak.h"/>
+			<component name="ca_os.h"/>
+			<component name="ca_rph.h"/>
+			<component name="ca_bdc.h"/>
+			<component name="ca_mpeg.h"/>
+			<component name="ca_defsx.h"/>
+			<component name="ca_defs.h"/>
+			<component name="ca_icc.h"/>
+			<component name="ca_dvl.h"/>
+			<component name="cakapivr.h"/>
+			<component name="ca_dmx.h"/>
+			<component name="ca_sec.h"/>
+			<component name="ca_dvb.h"/>
+			<component name="ca_vfs.h"/>
+			<component name="ca_dsc.h"/>
+		</components>
+		<compatibility>
+			<product name="cakapi" version="1.17.0        +"/>
+			<product name="caoapi" version="1.10.0"/>
+			<product name="dalapi" version="6.10.0        +"/>
+			<product name="lw_testsuite" version="3.11.0"/>
+			<product name="makefiles" version="2.7.0      +"/>
+			<product name="prmapi" version="1.4.0"/>
+			<toolchain name="mipsisa32-elf" version="3.4.4">
+				<compiler_flags>
+					<flag>-Os</flag>
+				</compiler_flags>
+				<compiler_defines/>
+			</toolchain>
+		</compatibility>
+		<bug_fixes/>
+		<changes/>
+		<new_features/>
+		<comments/>
+	</release>
+</release_notes>

@@ -1,0 +1,10 @@
+# <- this is for comment
+MM_INIT
+MM_FILE /usb/sda/MM_Quick_Test/Music/CHOU1_vbr.mp3
+MM_PLAY 0
+
+MM_FF
+MM_PAUSE
+# or other trick mode command
+
+% <- this is end of file symbol

@@ -1,0 +1,75 @@
+
+# **********************************************
+# Tool Chain Configuration
+# **********************************************
+
+TOOLCHAIN   = mipsisa32-elf
+
+# Endianess: EL only
+ENDIAN      = EL
+
+CFG_CC_OPTS += -D'CA_TYPE=$(CFG_CA)' -D'NDS_LIB=$(CFG_NDS_LIB)'
+CFG_CC_OPTS += -DXRPC_MODULES_SERVER -DQC_svpldi -DQC_reset -DQC_qc_tests -DQC_nskldi -DQC_nskhal -DQC_harm_tests -DQC_cahdiver -DSOCKET_GLUE_SERVER
+
+ifeq ($(TOOLCHAIN),mips-sde-elf)
+CFG_STDLIB_DIR = ../../../tools/mips-sde-elf/EL_mips32r2_mhard-float
+CFG_CC_OPTS += -$(ENDIAN) -mips32r2 -gdwarf-2 -mhard-float
+CFG_LD_OPTS += -$(ENDIAN) # -mhard-float
+CFG_LINT    = ../../../tools/lint/mips-sde-elf_include
+endif
+
+#### OBSOLETE ####
+ifeq ($(TOOLCHAIN),mipsisa32-elf)
+CFG_STDLIB_DIR = ../../../tools/mipsisa32-elf/EL_mips32r2_mhard-float
+CFG_CC_OPTS += -$(ENDIAN) -mips32 -gdwarf-2 -mhard-float
+CFG_LD_OPTS += -$(ENDIAN)
+CFG_AS_OPTS += -$(ENDIAN) -mips32 -gdwarf2
+CFG_LINT    =
+endif
+#### OBSOLETE ####
+
+ifeq ($(TOOLCHAIN),mips2_fp_le)
+TOOLCHAIN   = mips2_fp_le-
+CFG_STDLIB_DIR =
+CFG_CC_OPTS += -mips32 -fPIC
+CFG_LD_OPTS += -$(ENDIAN) -fPIC
+CFG_LINT    =
+endif
+
+ifeq ($(TOOLCHAIN),mips-linux-gnu)
+CFG_STDLIB_DIR =
+CFG_CC_OPTS += -$(ENDIAN) -mips32 -gdwarf-2 -mhard-float -fPIC
+CFG_LD_OPTS += -$(ENDIAN) -fPIC
+CFG_LINT    = ../../../tools/lint/mips-linux-gnu_include
+endif
+
+ifeq ($(TOOLCHAIN),aeon)
+CFG_STDLIB_DIR =
+CFG_CC_OPTS += -$(ENDIAN) -mredzone-size=4 -mhard-mul -mhard-div
+CFG_LD_OPTS +=
+CFG_LINT    = ../../../tools/lint/aeon_include
+endif
+
+ifeq ($(PARA),1)
+ifeq ($(CAT_BDF),1)
+CXX         = cpptestscan --cpptestscanOutputFile=DDI_MAIN_KELTIC_ECOS.bdf --cpptestscanProjectName=DDI_MAIN_KELTIC_ECOS g++
+CC          = cpptestscan --cpptestscanOutputFile=DDI_MAIN_KELTIC_ECOS.bdf --cpptestscanProjectName=DDI_MAIN_KELTIC_ECOS gcc
+LD          = cpptestscan --cpptestscanOutputFile=DDI_MAIN_KELTIC_ECOS.bdf --cpptestscanProjectName=DDI_MAIN_KELTIC_ECOS ld
+else
+CXX         = cpptestscan --cpptestscanProjectName=unittest g++
+CC          = cpptestscan --cpptestscanProjectName=unittest gcc
+LD          = cpptestscan --cpptestscanProjectName=unittest ld
+endif
+else
+CC          = $(TOOLCHAIN)-gcc
+LD          = $(TOOLCHAIN)-ld
+CXX         = $(TOOLCHAIN)-g++
+endif
+
+OBJCOPY     = $(TOOLCHAIN)-objcopy
+OBJDUMP     = $(TOOLCHAIN)-objdump
+SIZE        = $(TOOLCHAIN)-size
+NM          = $(TOOLCHAIN)-nm
+AR          = $(TOOLCHAIN)-ar
+AS          = $(TOOLCHAIN)-as
+

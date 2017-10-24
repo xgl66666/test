@@ -1,0 +1,904 @@
+#
+# For a description of the syntax of this configuration file,
+# see scripts/kbuild/config-language.txt.
+#
+
+mainmenu "SBoot Configuration"
+
+config HAVE_DOT_CONFIG
+	bool
+	default y
+
+menu "Platform Configuration"
+
+#
+# Choose the project chip
+# U4, K1, K2, K3, Kappa, Keltic
+#
+choice
+	prompt "MStar Chip Family"
+	default MSTAR_KRONUS
+
+    config MSTAR_URANUS4
+        bool "Uranus 4"
+
+    config MSTAR_KRONUS
+    	bool "Kronus"
+
+    config MSTAR_KAISERIN
+    	bool "Kaiserin"
+
+    config MSTAR_KAISER
+    	bool "Kaiser"
+
+    config MSTAR_KAPPA
+        bool "Kappa"
+
+    config MSTAR_KELTIC
+        bool "Keltic"
+endchoice
+
+#===================================================
+# MStar Chip Name (auto-select)
+#===================================================
+config MSTAR_CHIP_NAME
+        string
+        default "kronus" if MSTAR_KRONUS
+        default "kaiserin" if MSTAR_KAISERIN
+        default "kaiser" if MSTAR_KAISER
+        default "kappa" if MSTAR_KAPPA
+        default "keltic" if MSTAR_KELTIC
+#
+# Choose the project chip's CPU core
+# mips32, arm
+#
+choice
+	prompt "CPU Core Selection"
+    default MCU_MIPS32
+
+    config MCU_MIPS32
+    	bool "MIPS32"
+    	depends on (!MSTAR_KAISER)
+
+    config MCU_ARM
+    	bool "ARM"
+    	depends on (MSTAR_KAISER)
+endchoice
+
+#
+# Choose the project chip's clock
+#
+#
+choice
+	prompt "CPU Clock Selection"
+
+    default CPU_504MHZ if(MSTAR_URANUS4)
+    default CPU_552MHZ if(MSTAR_KRONUS)
+	  default CPU_792MHZ if(MSTAR_KAISERIN)
+    default CPU_900MHZ if(MSTAR_KAISER)
+    default CPU_600MHZ if(MSTAR_KAPPA)
+    default CPU_312MHZ if(MSTAR_KELTIC)	
+
+  config CPU_984MHZ
+		bool "984MHz"
+		help
+		    CPU Clock: 984MHz
+		    
+  config CPU_1008MHZ
+		bool "1008MHz"
+		help
+		    CPU Clock: 1008MHz
+		    
+  config CPU_900MHZ
+		bool "900MHz"
+		help
+		    CPU Clock: 900MHz
+
+	config CPU_840MHZ
+		bool "840MHz"
+		help
+			CPU Clock: 840MHz
+
+	config CPU_792MHZ
+		bool "792MHz"
+		help
+		    CPU Clock: 792MHz
+
+	config CPU_720MHZ
+		bool "720MHz"
+		help
+		    CPU Clock: 720MHz
+
+  config CPU_696MHZ
+	    bool "696MHz"
+		help
+		    CPU Clock: 696MHz
+
+	config CPU_600MHZ
+		bool "600MHz"
+		help
+		    CPU Clock: 600MHz
+
+	config CPU_552MHZ
+		bool "552MHz"
+		help
+		    CPU Clock: 552MHz
+
+	config CPU_504MHZ
+		bool "504MHz"
+		help
+		    CPU Clock: 504MHz
+
+	config CPU_456MHZ
+		bool "456MHZ"
+		help
+				CPU Clock: 456MHZ
+
+	config CPU_432MHZ
+		bool "432MHZ"
+		help
+				CPU Clock: 432MHZ
+
+        config CPU_396MHZ
+		bool "396MHZ"
+                help
+                                CPU Clock: 396MHZ
+	config CPU_348MHZ
+		bool "348MHZ"
+		help
+				CPU Clock: 348MHZ
+
+	config CPU_336MHZ
+		bool "336MHZ"
+		help
+				CPU Clock: 336MHZ
+
+	config CPU_324MHZ
+		bool "324MHZ"
+		help
+				CPU Clock: 324MHZ
+
+	config CPU_312MHZ
+		bool "312MHZ"
+		help
+				CPU Clock: 312MHZ
+
+	config CPU_288MHZ
+		bool "288MHZ"
+		help
+				CPU Clock: 288MHZ
+        
+	config MSTAR_MANUAL
+		bool "Manual Setting"
+		help
+		    CPU Clock: Manual Setting
+
+endchoice
+
+  config MSTAR_OTHERS
+      int "Please Input CPU Clock by Decimalism"
+      default "552"
+      depends on MSTAR_MANUAL
+      help
+          Set specific CPU clock by user
+if (MSTAR_KRONUS)
+    choice
+        prompt "CPU version Selection"
+        default KRONUS_U04
+
+        config KRONUS_U04
+            bool "Kronus_u04"
+            help
+                KRONUS version U04
+
+        config KRONUS_U03
+            bool "Kronus_u03"
+            help
+                KRONUS version U03
+    endchoice
+endif
+#
+# Choose the project chip's board
+#
+#
+choice
+	prompt "Board Selection"
+
+    default MSTAR_TITANIA_BD_MST098A_D01A_S if(MSTAR_URANUS4)
+    default MSTAR_CONFIG_MSTAR_BD_JANUS2_FPGA if(MSTAR_JANUS2)
+    default MSTAR_KRONUS_BD_MST124A_D01A_S if(MSTAR_KRONUS)
+    default MSTAR_KAISERIN_BD_MST138A_D01A_S if(MSTAR_KAISERIN)
+    default MSTAR_KAISER_BD_MST170A_D01A_S if(MSTAR_KAISER)
+    default MSTAR_KAPPA_BD_MST173A_D01A if(MSTAR_KAPPA)
+    default MSTAR_KELTIC_FPGA if(MSTAR_KELTIC)
+
+	config MSTAR_TITANIA_BD_FPGA
+		bool "BD_FPGA"
+
+    # Boards for U4 (MSTAR)
+	if (MSTAR_URANUS4)
+		config MSTAR_TITANIA_BD_MST098A_D01A_S
+			bool "BD_MST098A_D01A_S"
+
+		config MSTAR_TITANIA_BD_MST098B_D01A_S
+			bool "BD_MST098B_D01A_S"
+
+		config MSTAR_TITANIA_BD_MST098B_D01A
+			bool "BD_MST098B_D01A"
+
+		config MSTAR_TITANIA_BD_MST098B_D01B
+			bool "BD_MST098B_D01B"
+
+		config MSTAR_TITANIA_BD_MST098C_D01A_S
+			bool "BD_MST098C_D01A_S"
+
+		config MSTAR_TITANIA_BD_MST098D_D01A_S
+			bool "BD_MST098D_D01A_S"
+
+		config MSTAR_TITANIA_BD_MST098E_D01A
+			bool "BD_MST098E_D01A"
+
+		config MSTAR_TITANIA_BD_MST098E_D01B
+			bool "BD_MST098E_D01B"
+
+		config MSTAR_TITANIA_BD_MST098F_D01A
+			bool "BD_MST098F_D01A"
+
+		config MSTAR_TITANIA_BD_MST098F_D01B
+			bool "BD_MST098F_D01B"
+
+	    config MSTAR_TITANIA_BD_MST128A_D01A
+			bool "BD_MST128A_D01A"
+
+		config MSTAR_TITANIA_BD_ZDT300_V01
+			bool "BD_ZDT300_V01"
+
+		config MSTAR_TITANIA_BD_CUS75_MBQ213A
+			bool "BD_CUS75_MBQ213A"
+	endif
+
+    # Boards for K1 (MSTAR)
+	if (MSTAR_KRONUS)
+        config MSTAR_KRONUS_BD_MST124A_D01A
+            bool "BD_MST124A_D01A"
+
+        config MSTAR_KRONUS_BD_MST124A_D01A_S
+            bool "BD_MST124A_D01A_S"
+
+        config MSTAR_KRONUS_BD_MST124A_D02A_S
+            bool "BD_MST124A_D02A_S"
+
+        config MSTAR_KRONUS_BD_MST124B_D01A_S
+            bool "BD_MST124B_D01A_S"
+
+        config MSTAR_KRONUS_BD_MST124B_D02A
+            bool "BD_MST124B_D02A"
+
+        config MSTAR_KRONUS_BD_MST124B_D02A_S
+            bool "BD_MST124B_D02A_S"
+
+        config MSTAR_KRONUS_BD_MST124C_D01A_S
+            bool "BD_MST124C_D01A_S"
+
+        config MSTAR_KRONUS_BD_MST124C_D02A
+            bool "BD_MST124C_D02A"
+
+        config MSTAR_KRONUS_BD_MST124D_D01A
+            bool "BD_MST124D_D01A"
+
+        config MSTAR_KRONUS_BD_MST124D_D02A
+            bool "BD_MST124D_D02A"
+
+        config MSTAR_KRONUS_BD_MST124D_D02A_S
+            bool "BD_MST124D_D02A_S"
+
+        config MSTAR_KRONUS_BD_MST124E_D01A_S
+            bool "BD_MST124E_D01A_S"
+
+        config MSTAR_KRONUS_BD_MST124E_D01A_SZ
+            bool "BD_MST124E_D01A_SZ"
+
+        config MSTAR_KRONUS_BD_MST124SZ
+            bool "BD_MST124SZ"
+
+        config MSTAR_KRONUS_BD_MST124G_D01A
+            bool "BD_MST124G_D01A" 
+            
+        config MSTAR_KRONUS_BD_MST124G_D01A_S
+            bool "BD_MST124G_D01A_S"
+
+        config MSTAR_KRONUS_BD_MST140A_D01A
+            bool "BD_MST140A_D01A"
+
+        config MSTAR_KRONUS_BD_MST140A_D01A_S
+            bool "BD_MST140A_D01A_S"
+
+        config MSTAR_KRONUS_BD_MST163A_D01A_S
+            bool "BD_MST163A_D01A_S"
+
+        config MSTAR_KRONUS_BD_MST124F_D01A_S
+            bool "BD_MST124F_D01A_S"
+
+	    config MSTAR_KRONUS_BD_MST124F_SZ_Demo
+            bool "BD_MST124F_SZ_Demo"
+
+	config MSTAR_KRONUS_BD_MST124F_D02A
+            bool "BD_MST124F_D02A"
+            
+        config MSTAR_KRONUS_BD_SS2000_DT0A
+            bool "BD_SS2000_DT0A"
+	endif
+
+    # Boards for K2 (MSTAR)
+    if (MSTAR_KAISERIN)
+		config MSTAR_KAISERIN_BD_MST138A_D01A_S
+			bool "BD_MST138A_D01A_S"
+
+		config MSTAR_KAISERIN_BD_MST138A_D01A
+			bool "BD_MST138A_D01A"
+
+		config MSTAR_KAISERIN_BD_MST138B_D01A_S
+			bool "BD_MST138B_D01A_S"
+
+		config MSTAR_KAISERIN_BD_MST138B_D01A
+			bool "BD_MST138B_D01A or BD_MST138B_D01B"
+
+		config MSTAR_KAISERIN_BD_MST138B_D01D
+			bool "BD_MST138B_D01D"
+
+		config MSTAR_KAISERIN_BD_MST178A_D01A_S
+			bool "BD_MST178A_D01A_S"
+
+		config MSTAR_KAISERIN_BD_MST178A_D01A
+			bool "BD_MST178A_D01A"
+	endif
+
+	# Boards for KAISER (MSTAR)
+	if (MSTAR_KAISER)
+		config MSTAR_KAISER_BD_FPGA
+			bool "BD_KAISER_FPGA"
+		config MSTAR_KAISER_BD_MST170A_D01A_S
+			bool "BD_MST170A_D01A_S"
+		config MSTAR_KAISER_BD_MST170A_D01A
+			bool "BD_MST170A_D01A"
+               config MSTAR_KAISER_BD_MST170A_D01A_SZ
+                       bool "BD_MST170A_D01A_SZ"
+		config MSTAR_KAISER_BD_MST170B_D01A_S
+			bool "BD_MST170B_D01A_S"
+		config MSTAR_KAISER_BD_MST170A_D02A
+			bool "BD_MST170A_D02A"
+		config MSTAR_KAISER_BD_D3C_L4D_V01
+			bool "BD_D3C_L4D_V01"
+		config MSTAR_KAISER_BD_D3B_L2S_V01
+			bool "BD_D3B_L2S_V01"
+		config MSTAR_KAISER_BD_MP3050_SR1
+			bool "BD_MP3050_SR1"
+		config MSTAR_KAISER_BD_MP3050_SR2
+			bool "BD_MP3050_SR2"
+		config MSTAR_KAISER_BD_MST187A_D01A
+			bool "BD_MST187A_D01A"
+	endif
+
+    # Boards for KAPPA (MSTAR)
+    if (MSTAR_KAPPA)
+        config MSTAR_KAPPA_BD_FPGA
+            bool "BD_KAPPA_FPGA"
+
+        config MSTAR_KAPPA_BD_MST173A_D01A_S
+            bool "BD_MST173A_D01A_S"
+
+        config MSTAR_KAPPA_BD_MST173A_D01A
+            bool "BD_MST173A_D01A"
+
+        config MSTAR_KAPPA_BD_MST173B_D01A_S
+            bool "BD_MST173B_D01A_S"
+
+        config MSTAR_KAPPA_BD_MST173B_D01A
+            bool "BD_MST173B_D01A"
+
+        config MSTAR_KAPPA_BD_MST173C_D01A_S
+            bool "BD_MST173C_D01A_S"
+
+        config MSTAR_KAPPA_BD_MST173C_D01A
+            bool "BD_MST173C_D01A"
+    endif
+
+    # Boards for Keltic (MSTAR)
+    if (MSTAR_KELTIC)
+				config MSTAR_KELTIC_FPGA
+						bool "BD_KELTIC_FPGA"
+
+				config MSTAR_KELTIC_BD_MST183A_D01A_S
+						bool "BD_MST183A_D01A_S"
+
+				config MSTAR_KELTIC_BD_MST183A_D01A
+						bool "BD_MST183A_D01A"
+
+				config MSTAR_KELTIC_BD_MST183B_D01A_S
+						bool "BD_MST183B_D01A_S"
+
+				config MSTAR_KELTIC_BD_MST183B_D01A
+						bool "BD_MST183B_D01A"
+    endif
+endchoice
+
+if (MSTAR_KELTIC_BD_MST183A_D01A_S)||(MSTAR_KELTIC_BD_MST183A_D01A)
+    choice
+        prompt "CHIP Selection"
+        default MSD5XX5
+
+        config MSD5XX5
+            bool "MSD5XX5"
+
+        config MSD5XX3
+            bool "MSD5XX3"
+           
+        config MSD5XX1
+            bool "MSD5XX1"
+    endchoice
+endif
+
+if (MSTAR_KELTIC_BD_MST183B_D01A_S)||(MSTAR_KELTIC_BD_MST183B_D01A)
+    choice
+        prompt "CHIP Selection"
+        default MSD5XX7
+
+        config MSD5XX7
+            bool "MSD5XX7"
+
+        config MSD5XX9
+            bool "MSD5XX9"
+
+    endchoice
+endif
+
+#
+#
+#Choose the MIU  for Kappa
+#
+#
+if(MSTAR_KAPPA)
+
+choice
+    prompt "MIU DDR Selection"
+    default DDR2_INTERFACE_QFP_128_V2 
+    
+    config DDR2_INTERFACE_FPGA
+        bool "DDR2_INTERFACE_FPGA"
+        
+    config DDR2_INTERFACE_QFP_128
+        bool "DDR2_INTERFACE_QFP_128"
+        
+    config DDR2_INTERFACE_QFP_128_V2
+        bool "DDR2_INTERFACE_QFP_128_V2"
+        
+    config DDR3_INTERFACE_QFP_156
+        bool "DDR3_INTERFACE_QFP_156"
+    
+    config DDR3_INTERFACE_QFP_128
+        bool "DDR3_INTERFACE_QFP_128"    
+endchoice
+
+endif
+
+#
+# Choose the project chip's initial resolution
+#
+#
+choice
+    prompt "MStar Panel Selection"
+    default PNL_DACOUT_1080I_50
+
+if	(MSTAR_KAPPA)||(MSTAR_KAISER)||(MSTAR_KAISERIN)||(MSTAR_KRONUS)
+    config PANEL_RES_FULL_HD
+        bool "PANEL_RES_FULL_HD"
+        
+    config PNL_DACOUT_720P_50
+        bool "PNL_720P_50"
+
+    config PNL_DACOUT_1080I_50
+        bool "PNL_1080I_50"
+
+    config PNL_DACOUT_1080P_50
+        bool "PNL_1080P_50"
+
+    config PNL_DACOUT_480I
+        bool "PNL_480I"
+
+    config PNL_DACOUT_480P
+        bool "PNL_480P"
+
+    config PNL_DACOUT_720P_60
+        bool "PNL_720P_60"
+
+    config PNL_DACOUT_1080I_60
+        bool "PNL_1080I_60"
+
+    config PNL_DACOUT_1080P_60
+        bool "PNL_1080P_60"
+
+endif
+
+    config PNL_DACOUT_576I
+        bool "PNL_576I"
+
+    config PNL_DACOUT_576P
+        bool "PNL_576P"
+endchoice
+
+#
+# Choose the project chip's memory map
+#
+#
+choice
+	prompt "Memory Map Type Selection"
+
+	default MSTAR_MMAP_128MB_128MB if (MSTAR_URANUS4)
+    default MSTAR_MMAP_128MB if (MSTAR_KRONUS)
+    default MSTAR_MMAP_128MB_128MB if (MSTAR_KAISERIN)
+	default MSTAR_MMAP_128MB_128MB if (MSTAR_KAISER)
+	default MSTAR_MMAP_64MB if (MSTAR_KAPPA)
+        default MSTAR_MMAP_64MB if (MSTAR_KELTIC)
+# only provide for 2 miu project
+
+	config MSTAR_MMAP_512MB_512MB
+		bool "512MB_512MB" if(MSTAR_KAISERIN)||(MSTAR_KAISER)
+
+	config MSTAR_MMAP_256MB_256MB
+		bool "256MB_256MB" if(!MSTAR_KRONUS)&&(!MSTAR_KAPPA)&&(!MSTAR_KELTIC)
+
+	config MSTAR_MMAP_128MB_128MB
+		bool "128MB_128MB" if(!MSTAR_KRONUS)&&(!MSTAR_KAPPA)&&(!MSTAR_KELTIC)
+
+	config MSTAR_MMAP_128MB_64MB
+		bool "128MB_64MB" if(!MSTAR_KRONUS)&&(!MSTAR_KAISERIN)&&(!MSTAR_KAPPA)&&(!MSTAR_KELTIC)
+
+	config MSTAR_MMAP_64MB_64MB
+		bool "64MB_64MB" if(!MSTAR_KRONUS)&&(!MSTAR_KAISERIN)&&(!MSTAR_KAPPA)&&(!MSTAR_KELTIC)
+
+	config MSTAR_MMAP_64MB_32MB
+		bool "64MB_32MB" if(!MSTAR_KRONUS)&&(!MSTAR_KAISERIN)&&(!MSTAR_KAPPA)&&(!MSTAR_KELTIC)
+
+	config MSTAR_MMAP_32MB_32MB
+		bool "32MB_32MB" if(!MSTAR_KRONUS)&&(!MSTAR_KAISERIN)&&(!MSTAR_KAPPA)&&(!MSTAR_KELTIC)
+
+	config MSTAR_MMAP_512MB
+		bool "512MB" if(MSTAR_KAISERIN)
+
+	config MSTAR_MMAP_256MB
+		bool "256MB" if(!MSTAR_KAISER)&&(!MSTAR_KELTIC)
+
+	config MSTAR_MMAP_128MB
+		bool "128MB" if (!MSTAR_KAISERIN)&&(!MSTAR_KAISER)&&(!MSTAR_KELTIC)
+
+	config MSTAR_MMAP_64MB
+		bool "64MB" if (!MSTAR_KAISERIN)&&(!MSTAR_KAISER)&&(!MSD5XX1)
+
+	config MSTAR_MMAP_32MB
+		bool "32MB" if (!MSTAR_KAISERIN)&&(!MSTAR_KAISER)
+endchoice
+
+#
+# Choose the project chip's memory frequency
+#
+#
+choice
+	prompt "Memory Frequency Selection"
+
+	default MEM800MHz if (MSTAR_KELTIC)
+
+
+	if (MSTAR_KELTIC )
+	config MEM800MHz
+		bool "800 MHz"
+	config MEM667MHz
+		bool "667 MHz"
+        if (MSD5XX9)
+            config MEM1333MHz
+                   bool "1333 MHz (DDR3)"
+        endif
+	endif
+
+
+    config UNSUPPORT_MEM_CLOCK
+        bool "Not Support"
+
+endchoice
+
+if (MSTAR_KELTIC)
+config DRAM_MOBF
+        bool "DRAM MOBF Enable"
+        default y
+        help
+          Selecting this item will enable DRAM MOBF Feature.
+endif
+#
+# Choose the project chip's ddr3 bit mode
+#
+#
+if (MSTAR_KAISER)
+choice
+    prompt "Booting Mode"
+    default BOOTING_FROM_EXT_SPI_WITH_CPU
+
+    config BOOTING_FROM_EXT_SPI_WITH_CPU
+        bool "CPU Booting from External SPI Flash"
+endchoice
+
+
+config MIU0_BUSADDR
+    hex "MIU0 Bus Address"
+    default 0x20000000 
+    help
+      The start address of MIU0 bus
+config MIU1_BUSADDR
+    hex "MIU1 Bus Address"
+    default 0xA0000000
+    help
+      The start address of MIU1 bus
+
+choice
+    prompt "MBoot Storage"
+
+    default MBOOT_IN_SPI_FLASH
+
+    config MBOOT_IN_SPI_FLASH
+        bool "Store in SPI Flash"
+        depends on (SPI)
+
+    config MBOOT_IN_NAND_FLASH
+        bool "Store in NAND Flash"
+        depends on (NAND_FLASH)
+
+    config MBOOT_IN_MMC_FLASH
+        bool "Store in MMC Flash"
+        depends on (MMC)
+
+endchoice
+
+endif 
+config BOOTRAM_LOADADDR
+	hex "BOOTRAM Memory Address"
+	default 0x81000000
+	help
+	  The address to load ram stage bootloader (usually bootram.S)
+	  - Please note this should not overlap with decompressor or u-boot
+
+if (MCU_ARM)
+config UBOOT_LOADADDR
+	hex "UBOOT BOOTRAM Memory Address"
+	default 0x21200000
+	help
+	  The address to load u-boot before relocation
+
+config KERNEL_START_ADDRESS
+	hex "Kernel stext entry physical adress"
+	default 0x20400000
+	help
+	  SMP core of secondary boot form the address
+
+config DRAM_SIZE_MB_RELOCATE
+	int "DRAM Size for UBoot relocation (MB)"
+	default 256
+	help
+	  The dram size for Uboot relocation
+endif   #// MCU_ARM
+
+menu "Extended CPU Configuration"
+
+config MSTAR_L2_CACHE_ENABLE
+    bool "Enable MIPS L2 Cache Mechanism"
+    default n
+    depends on (MSTAR_KRONUS) || (MSTAR_KAISERIN) || (MSTAR_KAPPA)||(MSTAR_KELTIC)
+	help
+	    Enable / Disable MIPS L2 Cache Mechanism
+
+config MSTAR_FPU_ENABLE
+    bool "Enable FPU Support(Do Not Modify it!)"
+    default y
+    depends on (MSTAR_KRONUS) || (MSTAR_KAISERIN) || (MSTAR_KAPPA)||(MSTAR_KELTIC)
+	help
+	    Enable / Disable FPU Support
+
+config MSTAR_DRAM_AUTO_PHASE_ENABLE
+    bool "Enable MIU Auto Phase Function"
+    default y
+    depends on (MSTAR_KRONUS) || (MSTAR_KAISERIN) || (MSTAR_KAPPA)||(MSTAR_KELTIC)
+    help
+        Enable / Disable MIU Auto Phase
+
+endmenu
+
+endmenu
+
+menu "General Configuration"
+
+
+choice
+	prompt "Choose a Second Loader"
+	default UBOOT_AS_2ED_LOADER
+
+	config UBOOT_AS_2ED_LOADER
+	    bool "u-boot as the second loader"
+
+	config ECOS_AS_2ED_LOADER
+	    bool "eCos as the second loader"
+
+	config NO_2ED_LOADER
+	    bool "No second loader. For test only"
+endchoice
+
+if (ECOS_AS_2ED_LOADER)
+config ECOS_ELF_PATH
+    string "The path of the eCos ELF file"
+    default "k1_ecos.elf"
+endif
+
+choice
+	prompt "Compile Purpose"
+
+	default LD_GENERIC if((MSTAR_URANUS4)||(MSTAR_KRONUS)||(MSTAR_KAISERIN)||(MSTAR_KAISER)||(MSTAR_KELTIC))
+
+	config LD_GENERIC
+		bool "generic loader"
+	if ((MSTAR_KRONUS) || (MSTAR_KAISERIN) || (MSTAR_KAISER)||(MSTAR_KELTIC))
+		config LD_BOOT_FROM_OTP
+			bool "boot from otp"
+	endif
+endchoice
+
+choice
+	prompt "Choose Loader Compress Type"
+	default LDR_LZMA_COMPRESS
+
+	config LDR_LZMA_COMPRESS
+	    bool "loader LZMA compressed"
+
+	config LDR_MSCOMPRESS
+	    bool "loader MS compressed"
+endchoice
+
+if (MSTAR_MARIA10)
+config MSTAR_MARIA10_PM
+	bool "Build PM binary"
+	default n
+	help
+	  Build PM binary for sleep(saving) mode.
+endif
+
+if (MCU_MIPS32)
+config COMPRESSED_BUFFER
+        hex "Memory Address Start for Compressed App"
+        default 0x85100000 if MSTAR_MMAP_128MB
+        default 0x81100000 if MSTAR_MMAP_64MB||MSTAR_MMAP_32MB
+	default 0x85100000
+        help
+		this address defined reserved buffer for compressed file.
+		please reserved the size bigger than your compressed file.
+endif
+if (MCU_ARM)
+config COMPRESSED_BUFFER
+	hex "Memory Address Start for Compressed App"
+	default 0x25100000
+	help
+		this address defined reserved buffer for compressed file.
+		please reserved the size bigger than your compressed file.
+endif
+config COMPRESSED_LENGTH
+        hex "Memory Length for Compressed App"
+        default 0x1000000
+        help
+                The buffer length  reserved buffer for compressed file.
+if (MCU_MIPS32)
+config DECOMPRESS_POOL_ADDRESS
+	hex "Memory pool address for De-compressed process"
+	default 0x82100000 if MSTAR_MMAP_64MB
+	default 0x80100000 if MSTAR_MMAP_32MB
+	default 0x86100000 
+	help
+		The buffer length  reserved buffer for compressed file.
+endif 
+
+if (MCU_ARM)
+config DECOMPRESS_POOL_ADDRESS
+        hex "Memory pool address for De-compressed process"
+        default 0x26100000
+        help
+                The buffer length  reserved buffer for compressed file.
+endif
+
+
+config DECOMPRESS_POOL_LENGTH
+        hex "Memory pool length for De-compressed process "
+        default 0x1000000
+        help
+                The buffer length  reserved buffer for compressed file.
+
+endmenu
+
+menu 'Build Options'
+
+config CROSS_COMPILER_PREFIX
+	string "Cross Compiler prefix"
+	default "mips-linux-gnu-" if (MCU_MIPS32)
+    default "aeon-" if (MCU_AEONR2||MCU_AEON)
+	default "arm-none-eabi-" if (MCU_ARM)
+
+	help
+	  If you want to build SBoot with a cross compiler, then you
+	  will need to set this to the cross-compiler prefix, for example,
+	  "mips-linux-gnu-" or "aeon-"
+
+	  Note that CROSS_COMPILE environment variable or
+	  "make CROSS_COMPILE=xxx ..." will override this selection.
+
+	  Native builds leave this empty.
+
+config EXTRA_CFLAGS
+	string "Additional CFLAGS"
+	default "-EL" if MCU_MIPS32
+	default "-march=aeon1 -EL" if MCU_AEON
+	default "-march=aeonR2 -EL" if (MCU_AEONR2)
+	help
+	  Additional CFLAGS to pass to the compiler verbatim.
+
+config EXTRA_AFLAGS
+	string "Additional AFLAGS"
+	help
+	  Additional AFLAGS (for assembly files) to pass to
+	  the compiler verbatim.
+
+endmenu
+
+menu 'Debugging Options'
+
+config DEBUG
+	bool "Build SBoot with extra Debugging symbols"
+	default n
+	help
+	  Say Y here if you wish to examine SBoot internals while applets are
+	  running. This increases the size of the binary considerably, and
+	  should only be used when doing development. If you are doing
+	  development and want to debug SBoot, answer Y.
+
+	  Most people should answer N.
+
+config DEBUG_PESSIMIZE
+	bool "Disable compiler optimizations"
+	default n
+	depends on DEBUG
+	help
+	  The compiler's optimization of source code can eliminate and reorder
+	  code, resulting in an executable that's hard to understand when
+	  stepping through it with a debugger. This switches it off, resulting
+	  in a much bigger executable that more closely matches the source
+	  code.
+
+config WERROR
+	bool "Abort compilation on any warn message"
+	default n
+	help
+	  Selecting this will add -Werror to gcc command line.
+
+	  Most people should answer Y.
+
+endmenu
+
+menu 'Installation Options'
+
+config PREFIX
+	string "SBoot installation prefix"
+	default "./_install"
+	help
+	  Define your directory to install SBoot files/subdirs in.
+
+endmenu
+
+
+
+
+
+
+
+
+

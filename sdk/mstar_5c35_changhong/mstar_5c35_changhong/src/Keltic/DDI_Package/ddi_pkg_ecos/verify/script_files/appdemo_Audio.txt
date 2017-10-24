@@ -1,0 +1,30 @@
+# <- this is for comment
+
+#Initial Audio
+Audio_Init
+
+#Audio demo MP3
+Audio_demo 0
+
+#Volume control ; 0~99
+Audio_volume 50
+
+#Volume control ; 0~99
+Audio_volume 99
+
+#mute control
+Audio_mute 1
+
+#mute control
+Audio_mute 0
+
+#Stop audio demo
+Audio_demoStop
+
+#Audio demo WAV
+Audio_demo 1
+
+#Stop audio demo
+Audio_demoStop
+
+% <- this is end of file symbol

@@ -1,0 +1,496 @@
+#
+# For a description of the syntax of this configuration file,
+# see scripts/kbuild/config-language.txt.
+#
+
+menu 'Module Options'
+
+if (UBOOT_AS_2ED_LOADER)
+menu 'MStar Upgrade Mode'
+
+config SW_VERSION
+	bool "VERSION"
+	default n
+	help
+	  Selecting this item will enable sw_version upgrade mode.
+config WR_FLAG
+	bool "Wr_Flag"
+	default n
+	help
+	  Selecting this item will enable read&write eeprom and judge flag.
+config KEYPAD
+	bool "Keypad"
+	default n
+	help
+	  Selecting this item will enable Keypad, Header and ELF cmd.
+
+endmenu
+
+config USB
+	bool "USB"
+	default n
+	help
+	  Selecting this item will enable USB cmd.
+
+config FAT
+	bool "FAT"
+	default n
+	help
+	  Selecting this item will enable FAT cmd.
+
+if(USB)
+config USB_AUTO_UPDATE
+	bool "USB_AUTO_UPDATE"
+	default n
+	help
+	Select this item will enable USB_AUTO_UPDATE flow(upgrade mboot&app).
+endif
+
+
+choice
+  prompt "USB_UPGRADE_CHECK_LEVEL"
+    config USB_UPGRADE_CHECK_LEVEL1
+      bool "LEVEL1"
+      help
+	    Select this item will not check usb upgrade changelist  
+    config USB_UPGRADE_CHECK_LEVEL2
+      default y
+      bool "LEVEL2"
+      help
+	    Select this item will check usb upgrade changelist
+endchoice
+
+config NAND_FLASH
+	bool "NAND Flash"
+	default y
+	help
+	  Selecting this item will enable NAND flash cmd.
+
+if(NAND_FLASH)
+config BFN_WRITE_NAND
+	bool "BFN_WRITE_NAND"
+	default n
+	help
+	Enable NAND CMD to write BFN BIN files, MIU,LDR,UBOOT
+endif
+
+config FLASH
+	bool "Serial Flash"
+	default n
+	help
+	  Selecting this item will enable spi nor flash cmd.
+
+config UBI
+    bool "UBI"
+    default y
+    help
+
+config UBI_FS
+    bool "UBI File System"
+    default y
+    help
+
+config SECURITY_BOOT
+    bool "Security Boot"
+    default n
+    help
+
+config NET
+	bool "NET"
+	default y
+	help
+	  Selecting this item will enable NET cmd.
+
+config LWIP
+	bool "LWIP"
+	default n
+	help
+	  Selecting this item will enable LWIP command
+
+config USB_LAN
+	bool "USB_LAN"
+	default n
+	help
+	  Selecting this item will enable USB LAN cmd.
+
+config SPI
+	bool "SPI"
+	default n
+	help
+	  Selecting this item will enable SPI flash cmd.
+
+if(SPI)
+config BOOT_SPI_LINUX
+	bool "Boot_SPI_Linux"
+	default n
+	help
+	  Selecting this item will enable boot linux from SPI.
+
+config CFG_SPI_ENV_SIZE
+    hex "ENV Size of SPI"
+    default 0x10000
+    help
+      The length of SPI ENV
+endif
+
+if(MSTAR_KRONUS)
+config PM
+	bool "PM"
+	default y
+	help
+	  Selecting this item will enable PM in SPI.
+endif
+
+config EEPROM
+	bool "EEPROM"
+	default n
+	help
+	  Selecting this item will enable EEPROM cmd.
+
+config STANDBY
+	bool "STANDBY"
+	default n
+	help
+	  Selecting this item will enter standby mode.
+
+config JFFS2
+    bool "JFFS2"
+    default y
+    help
+
+config DISPLAY_LOGO
+	bool "DISPLAY_LOGO"
+	default n
+	help
+	  Selecting this item will enable DISPLAY_LOGO cmd.
+
+config DISPLAY_OSD
+	bool "DISPLAY_OSD"
+	default n
+	help
+	  Selecting this item will DISPLAY_OSD cmd.
+
+choice
+    prompt "Logo Storage"
+    default LOGO_STORE_NOT_SET
+
+    config LOGO_STORE_NOT_SET
+        bool "LOGO_STORE_NOT_SET"
+
+    config LOGO_STORE_IN_MBOOT
+        bool "LOGO_STORE_IN_MBOOT"
+
+    config LOGO_STORE_IN_SPI_FLASH
+        bool "LOGO_STORE_IN_SPI_FLASH"
+        depends on (SPI)
+
+    config LOGO_STORE_IN_NAND_FLASH
+        bool "LOGO_STORE_IN_NAND_FLASH"
+        depends on (NAND_FLASH) || (SPI_NAND_FLASH)
+
+    config LOGO_STORE_IN_EMMC_FLASH
+        bool "LOGO_STORE_IN_EMMC_FLASH"
+        depends on (MMC)
+endchoice
+
+config MICOM
+	bool "Micom"
+	default n
+	help
+	  Selecting this item will enable Micom cmd.
+config HUMMINGBIRD_CUSTOMER
+    bool "HummingbirdCustomer"
+    default n
+    help
+      Selecting this item will enable some hummingbird customer features
+config SWI2C
+    bool "SWI2C"
+    default n
+    help
+      Selecting this item will enable software iic
+config FRONT_END
+    bool "FrontEnd"
+    default n
+    help
+      Selecting this item will enable front-end driver.
+      
+choice
+    depends on (FRONT_END && HUMMINGBIRD_CUSTOMER)
+  prompt "TVSystem"
+    config DVB_C_SYS
+      bool "DVB_C_SYS"  
+    config DVB_T_SYS
+      bool "DVB_T_SYS"
+    config DVB_T2_SYS
+      bool "DVB_T2_SYS"
+    config ISDB_T_SYS
+      bool "ISDB_T_SYS"
+    config DVB_S_SYS
+      bool "DVB_S_SYS"
+    config DVB_S2_SYS
+      bool "DVB_S2_SYS"
+endchoice
+
+choice
+    depends on FRONT_END
+	prompt "DEMOD"
+		config MSTAR_MSB1236C_DEMOD
+			bool "MSTAR_MSB1236C_DEMOD"
+		config MSTAR_MSB123x_DEMOD
+			bool "MSTAR_MSB123x_DEMOD"
+		config MSTAR_MSB122x_DEMOD
+			bool "MSTAR_MSB122x_DEMOD"
+		config DIBCOM_DIB8096_DEMOD
+			bool "DIBCOM_DIB8096_DEMOD"
+                config LGDT3305_DEMOD
+                        bool "LGDT3305_DEMOD"
+if (HUMMINGBIRD_CUSTOMER)
+    config MSTAR_MSB1400_DEMOD
+      bool "MSTAR_MSB1400_DEMOD"
+    config MSTAR_MSB131X_DEMOD
+      bool "MSTAR_MSB131X_DEMOD"
+endif
+	if (MSTAR_URANUS4)
+		config MSTAR_URANUS4_INTERNAL_DEMOD
+			bool "MSTAR_URANUS4_INTERNAL_DEMOD"
+	endif
+	if (MSTAR_KRONUS)
+		config MSTAR_KRONUS_INTERNAL_DEMOD
+			bool "MSTAR_KRONUS_INTERNAL_DEMOD"
+	endif
+    if (MSTAR_KAISERIN)
+		config MSTAR_KAISERIN_INTERNAL_DEMOD
+			bool "MSTAR_KAISERIN_INTERNAL_DEMOD"
+	endif
+	if (MSTAR_KAPPA)
+		config MSTAR_KAPPA_INTERNAL_DEMOD
+			bool "MSTAR_KAPPA_INTERNAL_DEMOD"
+    endif
+    
+  if (MSTAR_KRITI)
+		config MSTAR_KRITI_INTERNAL_DEMOD
+			bool "MSTAR_KRITI_INTERNAL_DEMOD"
+    endif
+    
+endchoice
+
+choice
+    depends on FRONT_END
+	prompt "Tuner"
+        if (MSTAR_MSB123x_DEMOD)
+		config MSTAR_TUNER_NUTUNE_FT2125
+			bool "NUTUNE_FT2125_TUNER"
+		config MSTAR_TUNER_NUTUNE_FJ2207
+			bool "NUTUNE_FJ2207_TUNER"
+        config MSTAR_TUNER_MXL201RF
+            bool "TUNER_MXL201RF"
+	endif
+	
+	if (HUMMINGBIRD_CUSTOMER)
+	if (MSTAR_MSB131X_DEMOD)
+	    config MSTAR_TUNER_AV2012 
+      bool "TUNER_AV2012"  
+	endif
+        endif
+		
+	 if (MSTAR_MSB122x_DEMOD)
+		config MSTAR_TUNER_NXP_TD1611ALF
+			bool "NXP_TD1611ALF_TUNER"
+	endif
+	 if (MSTAR_MSB1236C_DEMOD)
+			  config MSTAR_TUNER_MXL_MXL603
+			bool "MXL_MXL603"
+	endif
+         if (LGDT3305_DEMOD)
+                config TDVG_TUNER_H252F
+                        bool "TDVG_H252F_TUNER"
+        endif
+	if (DIBCOM_DIB8096_DEMOD)
+        	config MSTAR_TUNER_DIBCOM_DIB8096
+			bool "DIBCOM_DIB8096_TUNER"
+	endif
+	if (MSTAR_URANUS4_INTERNAL_DEMOD || MSTAR_KRONUS_INTERNAL_DEMOD || MSTAR_KAISERIN_INTERNAL_DEMOD || MSTAR_KAPPA_INTERNAL_DEMOD || MSTAR_KRITI_INTERNAL_DEMOD)
+		config MSTAR_TUNER_NXP_CD1616LF
+			bool "NXP_CD1616LF_TUNER"
+	endif
+	if(MSTAR_KRONUS_INTERNAL_DEMOD || MSTAR_KAISERIN_INTERNAL_DEMOD || MSTAR_KAPPA_INTERNAL_DEMOD|| MSTAR_KRITI_INTERNAL_DEMOD)
+              config MSTAR_TUNER_MXL_MXL5007
+			bool "MXL_MXL5007"
+			if (HUMMINGBIRD_CUSTOMER)
+			config MSTAR_TUNER_THOMSON_DCT70707
+			bool "THOMSON_DCT70707"
+			endif
+		  config MSTAR_TUNER_MXL_MXL603
+			bool "MXL_MXL603"
+	endif
+	
+	if (HUMMINGBIRD_CUSTOMER)
+	config MSTAR_TUNER_RT820T
+	  bool "TUNER_RT820T"
+	endif
+	
+		config MSTAR_TUNER_ERROR
+			bool "None"
+endchoice
+
+config DEMUX
+    depends on FRONT_END
+	bool "Demux"
+	default y
+	help
+	  Selecting this item will enable demux driver.
+
+config DEMO_CODE
+	bool "DEMO_CODE"
+	default y
+	help
+	  Selecting this item will enable demo code.
+
+config WDT_ENABLE
+	bool "WDT_ENABLE"
+	default n
+	help
+
+config MSTAR_NAND
+    depends on MSTAR_URANUS4
+	bool "MstarNand"
+	default n
+	help
+	  Selecting this item will enable mstar nand driver.
+
+if (HUMMINGBIRD_CUSTOMER)
+config FRONT_PANEL
+    bool "FRONT_PANEL"
+    default n
+    help
+        selecting this item will enable FRONT_PANEL feature.
+
+if (FRONT_PANEL)
+choice
+    prompt "Selection"
+    default FD650
+    
+    config FD650
+        depends on FRONT_PANEL
+        bool "FD650"
+        help
+          Selecting thi item will enable front panel with type FD650
+    
+    config HD1650
+        depends on FRONT_PANEL
+        bool "HD1650"
+        help
+          Selecting thi item will enable front panel with type HD1650
+    
+    config PT6964
+        depends on FRONT_PANEL
+        bool "PT6964"
+        help
+          Selecting thi item will enable front panel with type PT6964        
+    
+    
+    config SM1668
+        depends on FRONT_PANEL
+        bool "SM1668"
+        help
+          Selecting thi item will enable front panel with type SM1668
+endchoice
+endif
+endif 
+config OAD
+    bool "OAD"
+    default n
+    help
+        selecting this item will enable OAD (Over the Air Download) feature.
+
+if (OAD)
+choice
+    prompt "Selection"
+    default SUPERNOVA_OAD
+
+    config OBAMA_OAD
+        depends on OAD
+               bool "Obama_OAD"
+               help
+                 Selecting this item will enable OAD base on Obama.
+
+    config SUPERNOVA_OAD
+        depends on OAD
+               bool "Supernova_OAD"
+               help
+                 Selecting this item will enable OAD base on Supernova.
+
+endchoice
+    config OAD_IN_MBOOT
+        depends on (OAD && SUPERNOVA_OAD)
+               bool "OAD_In_MBoot"
+               default n
+               help
+                 Selecting this item will enable OAD base on Supernova
+                 and download in MBoot.
+endif
+
+menu "Env config"
+choice
+    prompt "Env Config"
+    default ENV_IN_NAND if (NAND_FLASH)
+    default ENV_IN_SERIAL if (FLASH)
+
+    if (NAND_FLASH)
+    config ENV_IN_NAND
+        bool "Nand"
+	    if (UBI && UBI_FS)
+        config ENV_IN_UBI
+            bool "Nand UBI"
+        endif
+    endif
+
+    if (FLASH)
+    config ENV_IN_SERIAL
+        bool "Serial"
+    endif
+
+    config ENV_IN_ERR
+        bool "Error"
+
+endchoice
+
+config ENV_VAR_SIZE
+    hex "The size of env variable in the storage"
+    default 0x10000
+    help
+        This config is for assign the size to env variable.
+
+
+endmenu
+
+if (USB || OAD)
+choice
+    prompt "Info Exchange Config"
+    default INFO_IN_UBI_FILE if (NAND_FLASH && UBI && UBI_FS)
+    default INFO_IN_SERIAL_ENV if (ENV_IN_SERIAL)
+
+    if (NAND_FLASH)
+        if (UBI && UBI_FS)
+        config INFO_IN_UBI_FILE
+            bool "Nand UBI File"
+        endif
+
+         config INFO_IN_NAND_ENV
+            bool "Nand ENV"
+
+    endif
+
+    if (ENV_IN_SERIAL)
+    config INFO_IN_SERIAL_ENV
+        bool "Serial ENV"
+    endif
+
+    config INFO_IN_ERR
+        bool "Error"
+
+endchoice
+endif
+endif
+
+endmenu

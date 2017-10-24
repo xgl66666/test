@@ -1,0 +1,38 @@
+# Try to lock DVB-C channel
+
+# For DVB-C, command parameter is DigiTuner_SetFreq [frequency] [constellation] [symbol rate]
+#Set broadcast type to DVBC
+FE_SetBroadcastType 1
+
+DigiTuner_SetFreq 786000 2 6875
+
+DigiTuner_SetFreq 770000 2 6875
+
+
+#Try to lock DVB-T channel
+
+#Set broadcast type to DVBT
+FE_SetBroadcastType 2
+
+#DigiTuner_SetDemodType 1 => set frontend type to DVB-T
+DigiTuner_SetDemodType 1
+
+#DigiTuner_SetFreq => set and try to lock 682000khz and bandwidth 8Mhz
+DigiTuner_SetFreq 682000 3
+
+
+#Try to lock DVB-S/S2 channel
+
+#Set broadcast type to DVBS
+FE_SetBroadcastType 5
+
+#DigiTuner_SetLNBPower 2 => set LNB power to 13V
+#0->0V, 2->13V(V), 3->18V(H), for DVB-S/S2 live RF
+DigiTuner_SetLNBPower 2 
+
+#DigiTuner_SetFreq => set and try to lock 11428Mhz and symbol rate 27500 Khz
+DigiTuner_SetFreq 11428 27500
+DigiTuner_SetFreq 11899 21093 //  for DVB-S/S2-live RF
+DigiTuner_SetFreq 1299 21093	// 11899 - 10600 (IF
+
+%

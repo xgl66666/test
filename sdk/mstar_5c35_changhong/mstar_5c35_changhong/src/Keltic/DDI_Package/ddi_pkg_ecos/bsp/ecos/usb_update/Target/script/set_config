@@ -1,0 +1,7 @@
+# <- this is for comment / total file size must be less than 4KB
+
+setenv bootcmd 'usb exit;spi_rdc $(LZMA_BUF_Address) 100000 $(SIZE_APP); LzmaDec $(LZMA_BUF_Address) $(SIZE_APP) $(App_Dram_Address) $(LZMA_Dec_BUF_Address); go $(App_Reset_Vector_Dram_Address)'
+
+saveenv
+
+% <- this is end of file symbol

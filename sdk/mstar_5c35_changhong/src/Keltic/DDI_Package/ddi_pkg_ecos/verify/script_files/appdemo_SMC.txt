@@ -1,0 +1,9 @@
+# <- this is for comment
+
+# start test SM0
+smc_start 0
+
+# start test SM1
+#smc_start 1
+
+% <- this is end of file symbol

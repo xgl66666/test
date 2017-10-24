@@ -1,0 +1,7 @@
+# <- this is for comment
+
+#initial IR
+IR_Init
+
+
+% <- this is end of file symbol

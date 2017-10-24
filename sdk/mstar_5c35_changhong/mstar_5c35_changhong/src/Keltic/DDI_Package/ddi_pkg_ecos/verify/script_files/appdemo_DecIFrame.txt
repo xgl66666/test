@@ -1,0 +1,23 @@
+# <- this is for comment
+
+
+xc_init
+
+ve_init
+
+XC_SetOutputTiming 5 0 0 1280 720
+
+VE_SetOutputTiming 1 0 0 720 576
+
+TV_MVD_DecIFrame 0 0 0 0
+
+TV_MVD_GetVideoInfo
+
+Video_GetDecoderStatus
+
+
+XC_PlayVideo_UsingDefaultSetting
+
+
+
+% <- this is end of file symbol

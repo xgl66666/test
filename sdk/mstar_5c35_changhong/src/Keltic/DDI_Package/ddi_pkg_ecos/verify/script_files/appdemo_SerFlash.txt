@@ -1,0 +1,16 @@
+# <- this is for comment
+
+#initial gpio
+SerialFlash_Init
+
+#  set gpio10 to output and no invert and output = off
+SerialFlash_ReadID
+
+# get the level of gpio 10
+SerialFlash_GetInfo
+
+#  set gpio10 to output and no invert and output = on
+SerialFlash_RWTest 2097152
+
+
+% <- this is end of file symbol

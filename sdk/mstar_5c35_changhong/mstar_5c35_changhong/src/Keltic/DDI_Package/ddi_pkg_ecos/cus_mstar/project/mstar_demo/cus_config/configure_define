@@ -1,0 +1,37 @@
+#**************************************************************
+# UI Color format
+#   RGB565 	                =   0
+#   I8 		                =   1
+#   ARGB8888 	            =   2
+#   ARGB4444	            =   3
+#**************************************************************
+#CFG_CC_OPTS += -D'ColorFMT_RGB565=0'
+#CFG_CC_OPTS += -D'ColorFMT_I8=1'
+#CFG_CC_OPTS += -D'ColorFMT_ARGB8888=2'
+#CFG_CC_OPTS += -D'ColorFMT_ARGB4444=3'
+
+#**************************************************************
+# TV function
+#   TVfunc_Normal           =   0
+#   TVfunc_MpegSD           =   1
+#   TVfunc_H264SD           =   2
+#**************************************************************
+CFG_CC_OPTS += -D'TVfunc_Normal=0'
+CFG_CC_OPTS += -D'TVfunc_MpegSD=1'
+CFG_CC_OPTS += -D'TVfunc_H264SD=2'
+
+#**************************************************************
+# OSD Path
+#   OSD_Path1   (use GOP0 to display SD & HD)
+#   OSD_Path2   (use GOP0 to display HD & GOP1 to display SD)
+#**************************************************************
+#CFG_CC_OPTS += -D'OSD_Path1=1'
+#CFG_CC_OPTS += -D'OSD_Path2=2'
+
+#**************************************************************
+# Audio lib type
+#   Audio_Normal           =   0
+#   Audio_Lite             =   1
+#**************************************************************
+CFG_CC_OPTS += -D'Audio_Normal=0'
+CFG_CC_OPTS += -D'Audio_Lite=1'

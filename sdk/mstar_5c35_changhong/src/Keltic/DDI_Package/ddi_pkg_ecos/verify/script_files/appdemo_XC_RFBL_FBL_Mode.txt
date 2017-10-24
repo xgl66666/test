@@ -1,0 +1,91 @@
+# <- this is for comment
+
+xc_init
+ve_init
+
+#Set broadcast type to DVBC
+FE_SetBroadcastType 1
+
+#Lock (DVBC)
+DigiTuner_SetFreq 394000 2 6875
+
+#Set PID and A/V type
+TV_TSP_SetPid 500 502 0 1
+TV_PlayAV
+
+#Check A/V
+TV_MVD_GetVideoInfo
+Video_GetDecoderStatus
+
+#480I+NTSC
+XC_SetOutputTiming 0 0 0 720 480
+VE_SetOutputTiming 0 0 0 720 480
+XC_PlayVideo_UsingDefaultSetting
+
+#480P+NTSC
+XC_SetOutputTiming 1 0 0 720 480
+VE_SetOutputTiming 0 0 0 720 480
+XC_PlayVideo_UsingDefaultSetting
+
+#576I+PAL
+XC_SetOutputTiming 2 0 0 720 576
+VE_SetOutputTiming 1 0 0 720 576
+XC_PlayVideo_UsingDefaultSetting
+
+#576P+PAL
+XC_SetOutputTiming 3 0 0 720 576
+VE_SetOutputTiming 1 0 0 720 576
+XC_PlayVideo_UsingDefaultSetting
+
+#720P50+PAL
+XC_SetOutputTiming 4 0 0 1280 720
+VE_SetOutputTiming 1 0 0 720 576
+XC_PlayVideo_UsingDefaultSetting
+
+#720P60+NTSC
+XC_SetOutputTiming 5 0 0 1280 720
+VE_SetOutputTiming 0 0 0 720 480
+XC_PlayVideo_UsingDefaultSetting
+
+#1080I50+PAL
+XC_SetOutputTiming 6 0 0 1920 1080
+VE_SetOutputTiming 1 0 0 720 576
+XC_PlayVideo_UsingDefaultSetting
+
+#1080I60+NTSC
+XC_SetOutputTiming 7 0 0 1920 1080
+VE_SetOutputTiming 0 0 0 720 480
+XC_PlayVideo_UsingDefaultSetting
+
+#1080P24+PAL
+XC_SetOutputTiming 8 0 0 1920 1080
+VE_SetOutputTiming 1 0 0 720 576
+XC_PlayVideo_UsingDefaultSetting
+
+#1080P25+PAL
+XC_SetOutputTiming 9 0 0 1920 1080
+VE_SetOutputTiming 1 0 0 720 576
+XC_PlayVideo_UsingDefaultSetting
+
+#1080P30+NTSC
+XC_SetOutputTiming 10 0 0 1920 1080
+VE_SetOutputTiming 0 0 0 720 480
+XC_PlayVideo_UsingDefaultSetting
+
+#1080P50+PAL
+XC_SetOutputTiming 11 0 0 1920 1080
+VE_SetOutputTiming 1 0 0 720 576
+XC_PlayVideo_UsingDefaultSetting
+
+#1080P60+NTSC
+XC_SetOutputTiming 12 0 0 1920 1080
+VE_SetOutputTiming 0 0 0 720 480
+XC_PlayVideo_UsingDefaultSetting
+
+#Test XC shutdown and re-init
+XC_Exit
+XC_Init
+VE_init
+XC_PlayVideo_UsingDefaultSetting
+
+% <- this is end of file symbol

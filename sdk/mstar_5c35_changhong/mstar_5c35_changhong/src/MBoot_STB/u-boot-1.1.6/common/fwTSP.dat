@@ -1,0 +1,17 @@
+#include <common.h>
+
+#if defined(CONFIG_URANUS4)
+#include "../drivers/sys_lib/u4/fwTSP.dat"
+#elif defined(CONFIG_KRONUS)
+#include "../drivers/sys_lib/k1/fwTSP.dat"
+#elif defined(CONFIG_KAISERIN)
+#include "../drivers/sys_lib/k2/fwTSP.dat"
+#elif defined(CONFIG_KELTIC)
+#include "../drivers/sys_lib/keltic/fwTSP.dat"
+#elif defined(CONFIG_KAPPA)
+#include "../drivers/sys_lib/kappa/fwTSP.dat"
+#elif defined(CONFIG_KRITI)
+#include "../drivers/sys_lib/kriti/fwTSP.dat"
+#else
+#error "Please refine your configuration.."
+#endif

@@ -1,0 +1,25 @@
+xc_init
+ve_init
+
+XC_SetOutputTiming 12 0 0 1920 1080
+VE_SetOutputTiming 1 0 0 720 576
+
+#Set broadcast type to DVBC
+FE_SetBroadcastType 1
+
+DigiTuner_SetFreq 418000 3
+TV_TSP_SetPid 816 818 816 0 1
+TV_PlayAV
+
+Video_SD_SetCaptureMode 1
+
+Video_HD_SetDestWin 0 0 0 1920 1080
+Video_HD_SetAS 2
+
+
+Video_SD_SetDestWin 0 0 720 576
+Video_SD_SetAS 3
+
+Video_PlayVideo_UsingCusSetting 0
+
+% <- this is end of file symbol
