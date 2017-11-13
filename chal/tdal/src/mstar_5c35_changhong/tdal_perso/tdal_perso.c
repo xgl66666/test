@@ -154,20 +154,26 @@ uint8_t g_pkData[494] = {0};
 eTDAL_PERSO_ErrorCode   TDAL_PERSO_ReadTag(   tTDAL_PERSO_Tag   const   tag, uint16_t*   tag_length,  uint8_t* const tag_content)
 {
 
-    uint32_t CSCDataAddress = 0x007D0000;
-    uint32_t CSCDataSize    = 0x00000101;
+    uint32_t CSCDataAddress = 0x500000;
+    uint32_t CSCDataSize	= 0x100;
 #ifdef NASC
     uint32_t PairingDataAddress = 0x83FFF000;
 #else
 
-    uint32_t PairingDataAddress = 0x00000200;
+    uint32_t PairingDataAddress = 0x510000;
 
 #endif //NASC
+
+	TDAL_FLA_Read(0x510000,g_pkData,494);
+#if 0 /**for 0904 Version*/
+	PairingDataAddress = g_pkData;
+#endif
+//	TDAL_FLA_Read(0x210000,g_cscData,CSCDataSize);
 
 
     #ifdef CAK_MERLIN
     #ifdef NASC
-        uint32_t PairingDataSize = 600;
+        uint32_t PairingDataSize = 494;
     #else
         uint32_t PairingDataSize = 494;
     #endif
@@ -175,7 +181,6 @@ eTDAL_PERSO_ErrorCode   TDAL_PERSO_ReadTag(   tTDAL_PERSO_Tag   const   tag, uin
     #ifdef CAK_DALTS
     uint32_t PairingDataSize =     0x00000001;
     #endif
-
     uint32_t TmpData;
     uint8_t *TmpInt8Ptr = tag_content;
 
@@ -186,7 +191,11 @@ eTDAL_PERSO_ErrorCode   TDAL_PERSO_ReadTag(   tTDAL_PERSO_Tag   const   tag, uin
     switch(tag)
     {
     case PERSO_TAG_PK_ADDRESS:
+#if 1
+		TmpData = g_pkData;
+#else
         TmpData = PairingDataAddress;
+#endif
         break;
     case PERSO_TAG_PK_SIZE:
         TmpData = PairingDataSize;

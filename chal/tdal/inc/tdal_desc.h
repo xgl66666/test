@@ -29,8 +29,7 @@ extern "C" {
 #define kTDAL_DESC_ILLEGAL_PID 0x1FFF
 #define kTDAL_DESC_MAX_DESCRAMBLERS   5
 
-#define kTDAL_DESC_MAX_KEY_EVEN_ODD_SIZE 16
-
+#define kTDAL_DESC_MAX_KEY_EVEN_ODD_SIZE 8
 #define kTDAL_DESC_MAX_KEY_L1_SIZE 16
 /*******************************************************/
 /*       Macros               */
@@ -85,6 +84,13 @@ typedef enum
    TDAL_DESC_INVALID_TYPE = 0xFFFF
 }TDAL_DESC_DescType;
 
+typedef enum
+{
+   TDAL_DESC_ODD_KEY = 0,
+   TDAL_DESC_EVEN_KEY,
+   TDAL_DESC_GENERIC_KEY
+}tTDAL_DESC_KeyType;
+
 typedef struct {
    uint8_t bNbDescrambler_Max;
    bool   isDVB_CSA_Supported;
@@ -127,6 +133,14 @@ tTDAL_DESC_Error TDAL_DESC_Set_Descrambler_Type (tTDAL_DESC_descrambler descramb
 const char*      TDAL_DESC_APIRevisionGet( void );
 const char*      TDAL_DESC_PlatformRevisionGet( void );
 tTDAL_DESC_Error TDAL_DESC_GetCapability(tTDAL_DESC_Capability *pstCapability);
+
+
+#ifdef TDAL_DESC_DVB_SECURE_CHIPSET
+tTDAL_DESC_Error TDAL_DESC_SECURE_GetChipId(uint32_t *chipId);
+tTDAL_DESC_Error TDAL_DESC_SECURE_SetCurrentKey(uint8_t *currentKey);
+tTDAL_DESC_Error TDAL_DESC_SECURE_DescrambleCW(uint8_t *controlWord, uint8_t **ChipsetValue);
+#endif
+
 
 #ifdef __cplusplus
 }

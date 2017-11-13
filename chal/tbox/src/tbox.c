@@ -25,6 +25,11 @@
 #include "tbox.h"
 #include "tbox_hard_p.h"
 #include "crules.h"
+#define CAK_DLK
+
+#ifdef CAK_DLK
+#include "ca_cak.h"
+#endif
 
 #if defined TKEL_os21
 extern int _SH_posix_PollKey(long int *);
@@ -384,7 +389,7 @@ void TBOX_Trace(int line,const char *file,tTBOX_TraceId mod_id, const char *modN
      "%s [line truncated by TBOX]\n", RT_vbuffer);
      }
    }
-
+ 
    if(strlen(Buff))
    {
      TBOXi_HardLock( TBOXi_HardSema_PRINTF );
@@ -677,21 +682,41 @@ void TBOX_GetStringNonBlocking( char * string )
  * Inputs      :
  * Outputs       :
  *****************************************************************************/
+  char c_PrintStr0[1024+1];
 LOCAL void RT_Print(char *text)
 {
    uint16_t i=0;
    uint16_t len=0;
+ 
+   int	  i_len0 = 0;
+   int	  i_len1  = 0;
+   int	  i_len2 = 0;
+   
+   char* pc_pos = NULL, *pc_pos1 = NULL,*pc_pos2 = NULL;
+   
+   int	  i_templen;
+
 
    if(RTinitDone != TRUE)
-     return;
+	 return;
 
-   len = strlen(text);
-	if ((text[len-1] == '\n') && ((len == 1) || (text[len-2] != '\r')))
-	{
-		text[len-1] = '\r';
-		text[len] = '\n';
-		text[len+1] = 0;
-	}
+
+   if(text == NULL)
+   {
+	   return;
+   }
+		
+   i_len0 = strlen(text);
+   
+   if(i_len0 > 1024)
+   {
+	   printf("@@too long print \r\n");    
+	   return;
+   }
+   
+   pc_pos = text;
+   
+
 
    TBOXi_HardLock( TBOXi_HardSema_RT );
 
@@ -701,38 +726,94 @@ LOCAL void RT_Print(char *text)
    /* Trace ASYNCHRONE _ displayed by the RT Task */
    /* ------------------------------------------- */
 
-     i = RT_debugWrite++;
-     if (RT_debugWrite >= DEBUG_ROWS_MAX)
-      RT_debugWrite = 0;
-      if (RT_debugWrite == RT_debugRead)
-      {
-      RT_debugWrite = i;     /* Miss this entry! */
-      RT_debugOverrunErrors++;
-      }
-      else
-      {
-      /*debugRowBuffer[i].timestamp = time_now();*/
-      len = strlen(text);
-      if (len > DEBUG_ROW_LEN)
-      len = DEBUG_ROW_LEN;
-      if (len)
-      memcpy(debugRowBuffer[i].text, text, len);
-      debugRowBuffer[i].text [len] = (char) 0;
-      }
+	 i = RT_debugWrite++;
+	 if (RT_debugWrite >= DEBUG_ROWS_MAX)
+	  RT_debugWrite = 0;
+	  if (RT_debugWrite == RT_debugRead)
+	  {
+	  RT_debugWrite = i;	 /* Miss this entry! */
+	  RT_debugOverrunErrors++;
+	  }
+	  else
+	  {
+	  /*debugRowBuffer[i].timestamp = time_now();*/
+	  len = strlen(text);
+	  if (len > DEBUG_ROW_LEN)
+	  len = DEBUG_ROW_LEN;
+	  if (len)
+	  memcpy(debugRowBuffer[i].text, text, len);
+	  debugRowBuffer[i].text [len] = (char) 0;
+	  }
    }
    else
    {
-     /* -------------------------------------------- */
-     /* Trace SYNCHRONE _ displayed by this function */
-     /* -------------------------------------------- */
+	 /* -------------------------------------------- */
+	 /* Trace SYNCHRONE _ displayed by this function */
+	 /* -------------------------------------------- */
 
-     TBOXi_HardPrint(text);
+		do
+		{
+			pc_pos1 = strstr(pc_pos,"\r\n");
+			
+			if(pc_pos1 != NULL)
+			{
+				i_templen = pc_pos1 - pc_pos;
+				i_len2 = 2;
+			}
+			else
+			{
+				pc_pos1 = strstr(pc_pos,"\n");
+	 
+				if(pc_pos1 != NULL)
+				{
+					i_templen = pc_pos1 - pc_pos;
+					i_len2 = 1;
+				}
+				else
+				{
+					i_templen = strlen(pc_pos);
+				}
+			}
+			
+			if(i_templen > 0)
+			{
+				memset(c_PrintStr0,'\0',1024+1);
+				memcpy(c_PrintStr0,pc_pos,i_templen);
+			
+				TBOXi_HardPrint(c_PrintStr0);
+				
+				if(pc_pos1 != NULL)
+				{
+#if (NAGRA_CAK_VERSION == NVCA_DALTESTVERSION)/*豕?1?那?DAL2a那?～?㊣?*/
+					//車D那㊣D豕辰a那?豕???????那㊣?芍車D\n
+					if(memcmp(pc_pos,"Enter Selection >>",18)!=0)
+#endif
+						TBOXi_HardPrint("\r\n");
+					
+					pc_pos = pc_pos1+i_len2;
+					i_len0 -=i_len2;
+					i_len2 = 0;
+				}
+				i_len0 -= i_templen;				
+			}
+			else 
+			{
+				//string?㊣?車?a\n			
+				if(pc_pos1 == pc_pos)
+				{
+					TBOXi_HardPrint("\r\n");		
+					pc_pos = pc_pos1+1;
+					i_len0 -=1;
+				}
+			}	
+		}while(i_len0 > 0);
    }
 
    TBOXi_HardUnlock( TBOXi_HardSema_RT );
 
    return;
 }
+
 
 /******************************************************************************
  * Function Name   : RT_Task
@@ -792,6 +873,16 @@ void TBOX_GetCurrentTime( tTBOX_Time* TboxCurrentTime )
 
 {
    TBOXi_GetCurrentTime(TboxCurrentTime);
+}
+
+
+void TBOX_EnableExtern()
+{
+#ifdef CAK_DLK
+        caLogSetRole("API", "INT" );
+       //caLogSetRole("IRD_COMMAND", "DEV" );
+		//caLogSetRole("PMT","DEV");
+#endif
 }
 
 #if TBOX_DEVHOST_FILE_ACCESS

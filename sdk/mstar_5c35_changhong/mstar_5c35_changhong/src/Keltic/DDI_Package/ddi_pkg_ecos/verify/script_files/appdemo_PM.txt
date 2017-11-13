@@ -1,8 +1,0 @@
-#s is for comment
-IR_Init
-# Set Powersaving mode, 0: Normal Power Saving 1: Suspend to RAM
-PM_Powersaving 0
-#PM_Powersaving 1
-
-# Press IR Power Key to wakeup
-% <- this is end of file symbol

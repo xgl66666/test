@@ -316,7 +316,7 @@ extern "C"
 
 //--------------------------AUDIO MUTE Setting----------------------------
 #ifndef AUDIO_MUTE_GPIO
-#define AUDIO_MUTE_GPIO 19 //124A_S¡G19 124A¡G15 LOW to HIGH
+#define AUDIO_MUTE_GPIO 59 //124A_S¡G19 124A¡G15 LOW to HIGH
 #define AUDIO_MUTE_GPIO_LEVEL 0 // HIGH:0,LOW:1
 #if(AUDIO_MUTE_GPIO_LEVEL == 0)
 #define AUDIO_MUTE_SET_GPIO_UP mdrv_gpio_set_high

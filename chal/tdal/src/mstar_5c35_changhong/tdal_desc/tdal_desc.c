@@ -31,9 +31,10 @@
 #include "MsTypes.h"
 #include "drvCA.h"
 #include "drvDSCMB.h"
-#include "drvNGA.h"
-//#include "nocs1x_csd_impl.h"
-//#include "nocs1x_csd.h"
+#include "drvAESDMA.h"
+#include "nocs_csd_impl.h"
+#include "nocs_csd.h"
+
 
 /********************************************************/
 /*          Defines                         */
@@ -63,7 +64,7 @@ typedef   struct
    MS_U32   descHandle;
    TDAL_DESC_stream_type_e stream_type;
    MS_U32 Pid;
-   TDAL_DESC_DescType   desc_type;
+   TDAL_DESC_DescType   descrambler_type;
    uint8_t dataDescEven[kTDAL_DESC_KEY_SIZE];    /* Even Keys */
    uint8_t dataDescOdd[kTDAL_DESC_KEY_SIZE];     /* Odd Keys */
 }tTDAL_DESC_table_t;
@@ -108,11 +109,12 @@ LOCAL   tTDAL_DESC_table_t   TDAL_DESC_table[kTDAL_DESC_MAX_DESCRAMBLERS];
 LOCAL   tTDAL_DESC_channel_t TDAL_DESC_channels[kTDAL_DESC_MAX_CHANNELS];
 LOCAL   uint16_t   TDAL_DESC_channelforbidden[kTDAL_DESC_MAX_FORBIDDEN];
 LOCAL   bool   TDAL_DESC_isInit = FALSE;
-LOCAL   bool   TDAL_DESC_isSecureMode = FALSE;
-
 /********************************************************/
 /*          Functions   Definitions   (LOCAL/GLOBAL)   */
 /********************************************************/
+/* Local functions for converting algorithm types */
+DSCMB_Key_Type TDAL_DESCi_GetDSCMBType(TDAL_DESC_DescType   descType);
+uint16_t       TDAL_DESCi_GetEMI(TDAL_DESC_DescType   descType);
 /* Static callbacks that the demux driver may use to update the descrambler driver */
 void TDAL_DESC_DemuxPidCallback     ( tTDAL_DMX_ChannelId const, uint16_t const );
 void TDAL_DESC_DemuxChannelCallback ( tTDAL_DMX_ChannelId const, tTDAL_DMX_ChannelStream const);
@@ -135,51 +137,52 @@ void TDAL_DESC_DemuxChannelCallback ( tTDAL_DMX_ChannelId const, tTDAL_DMX_Chann
    *==================================================================*/
 tTDAL_DESC_Error   TDAL_DESC_Init(void)
 {
-    uint8_t   i;
-    MS_BOOL errorCA;
-    TCsdStatus e;
+	uint8_t   i = 0;
+    MS_BOOL errorCA = TRUE;
+    TCsdStatus e = CSD_NO_ERROR;
+
     if (TDAL_DESC_isInit == FALSE)
     {
-       TDAL_DESC_table_lock = MsOS_CreateSemaphore(1,E_MSOS_FIFO,"TDAL_DESC_table_lock");
-       TDAL_DESC_table_sync = MsOS_CreateSemaphore(1,E_MSOS_FIFO,"TDAL_DESC_table_sync");
+		TDAL_DESC_table_lock = MsOS_CreateSemaphore(1,E_MSOS_FIFO,"TDAL_DESC_table_lock");
+		TDAL_DESC_table_sync = MsOS_CreateSemaphore(1,E_MSOS_FIFO,"TDAL_DESC_table_sync");
 
-    /* Clear internals */
+		/* Clear internals */
         memset( &TDAL_DESC_table, 0, sizeof( TDAL_DESC_table ) );
         memset( &TDAL_DESC_channels, 0, sizeof( TDAL_DESC_channels ) );
         memset( &TDAL_DESC_channelforbidden, 0, sizeof( TDAL_DESC_channelforbidden ) );
 
 
-    /* Initialize descrambler table */
+		/* Initialize descrambler table */
         for (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
         {
             TDAL_DESC_table[i].used = FALSE;
             TDAL_DESC_table[i].descId = DRV_DSCMB_FLT_NULL;
         }
 
-    /* Initialize channel table */
+		/* Initialize channel table */
         for(i=0 ; i < kTDAL_DESC_MAX_CHANNELS; i++ )
         {
             TDAL_DESC_channels[i].ChannelPid = kTDAL_DESC_ILLEGAL_PID;
             TDAL_DESC_channels[i].ChannelStream = 0xFF;
         }
 
-    /* Initialize forbidden channel table */
+		/* Initialize forbidden channel table */
         for (i=0; i < kTDAL_DESC_MAX_FORBIDDEN; i++)
         {
             TDAL_DESC_channelforbidden[i] = kTDAL_DESC_FORBIDDEN_DEF_PID;
         }
 
-        errorCA=MDrv_CA_Init();
-        MDrv_DSCMB_Init(); 
+        errorCA = MDrv_CA_Init();
+        MDrv_DSCMB_Init();
         MDrv_DSCMB2_SetDefaultCAVid(0,0x02);
         MDrv_AESDMA_SetDefaultCAVid(0x02);
         /* Initialize the CSD library */
         e = csdInitialize(NULL);
         if( CSD_NO_ERROR != e )
         {
-             mTBOX_TRACE(( kTBOX_NIV_WARNING, "%s: failed disabling secure layer (%s)\n", DBG_TCsdStatus( e ) ));
+			mTBOX_TRACE(( kTBOX_NIV_CRITICAL, "[%s %d]: csdInitialize failed(%s)\n",__FUNCTION__,__LINE__,DBG_TCsdStatus(e)));
         }
-       // e = csdEnableScs();
+		// e = csdEnableScs();
 
         TDAL_DESC_isInit = TRUE;
         return  eTDAL_DESC_NO_ERROR;
@@ -205,12 +208,12 @@ tTDAL_DESC_Error   TDAL_DESC_Terminate(void)
 {
     if (TDAL_DESC_isInit == TRUE)
     {
-    MsOS_DeleteSemaphore(TDAL_DESC_table_lock);
-    MsOS_DeleteSemaphore(TDAL_DESC_table_sync);
-    TDAL_DESC_isInit = FALSE;
-    return eTDAL_DESC_NO_ERROR;
+		MsOS_DeleteSemaphore(TDAL_DESC_table_lock);
+		MsOS_DeleteSemaphore(TDAL_DESC_table_sync);
+		TDAL_DESC_isInit = FALSE;
+		return eTDAL_DESC_NO_ERROR;
     }
-    
+
     return eTDAL_DESC_NOT_DONE;
 }
 
@@ -230,35 +233,36 @@ tTDAL_DESC_Error   TDAL_DESC_Terminate(void)
    *   Or   TDAL_DESC_ILLEGAL_DESCRAMBLER   if   the   channel   can't   be   allocated.
    *
    *==================================================================*/
-tTDAL_DESC_descrambler   TDAL_DESC_Open_Descrambler(TDAL_DESC_stream_type_e   stream_type) 
+tTDAL_DESC_descrambler   TDAL_DESC_Open_Descrambler(TDAL_DESC_stream_type_e   stream_type)
 {
-    MS_BOOL errorDSCMB;
     tTDAL_DESC_descrambler     descId = kTDAL_DESC_ILLEGAL_DESCRAMBLER;
     uint8_t   i;
-    
+
     /*     not   used   */
     if (stream_type)     {};
-    
+
     if (TDAL_DESC_isInit == FALSE)
     {
        return kTDAL_DESC_ILLEGAL_DESCRAMBLER;
     }
 
     MsOS_ObtainSemaphore (TDAL_DESC_table_lock, MSOS_WAIT_FOREVER);
-    for   (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
+    for (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
     {
-        if    (TDAL_DESC_table[i].used != TRUE)
+        if (TDAL_DESC_table[i].used != TRUE)
         {
             TDAL_DESC_table[i].stream_type = stream_type;
             descId = i;
+			memset(TDAL_DESC_table[i].dataDescEven, 0, kTDAL_DESC_KEY_SIZE);
+			memset(TDAL_DESC_table[i].dataDescOdd, 0, kTDAL_DESC_KEY_SIZE);
             break;
         }
     }
-    
+
     if (descId != kTDAL_DESC_ILLEGAL_DESCRAMBLER)
     {
-       /*    Allocate   a   descrambler     */     
-       if((TDAL_DESC_table[descId].descId = MDrv_DSCMB_FltAlloc()) == DRV_DSCMB_FLT_NULL)        
+       /*    Allocate   a   descrambler     */
+       if((TDAL_DESC_table[descId].descId = MDrv_DSCMB_FltAlloc()) == DRV_DSCMB_FLT_NULL)
        {
            MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
            mTBOX_TRACE(( kTBOX_NIV_1, "MDrv_DSCMB_FltAlloc() TDAL_DESC_table[descId].descId %x failed\n",TDAL_DESC_table[descId].descId));
@@ -269,7 +273,7 @@ tTDAL_DESC_descrambler   TDAL_DESC_Open_Descrambler(TDAL_DESC_stream_type_e   st
            TDAL_DESC_table[descId].used = TRUE;
        }
     }
-    else 
+    else
     {
         MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
         return     kTDAL_DESC_ILLEGAL_DESCRAMBLER;
@@ -297,8 +301,8 @@ tTDAL_DESC_Error   TDAL_DESC_Close_Descrambler(tTDAL_DESC_descrambler   descId)
 {
     MS_BOOL errorDSCMB = TRUE;
     uint8_t   i;
-    tTDAL_DESC_descrambler tempDescId = kTDAL_DESC_ILLEGAL_DESCRAMBLER; 
-    
+    tTDAL_DESC_descrambler tempDescId = kTDAL_DESC_ILLEGAL_DESCRAMBLER;
+
     if (TDAL_DESC_isInit == FALSE)
     {
         return(eTDAL_DESC_ERROR);
@@ -306,7 +310,7 @@ tTDAL_DESC_Error   TDAL_DESC_Close_Descrambler(tTDAL_DESC_descrambler   descId)
     MsOS_ObtainSemaphore (TDAL_DESC_table_lock, MSOS_WAIT_FOREVER);
 
      /* Check if descrambler used */
-    for   (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
+    for (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
     {
         if(TDAL_DESC_table[i].descId == descId)
         {
@@ -339,7 +343,6 @@ tTDAL_DESC_Error   TDAL_DESC_Close_Descrambler(tTDAL_DESC_descrambler   descId)
 
     return(eTDAL_DESC_NO_ERROR);
 }
-
 /*===================================================================
    *
    *   TDAL_DESC_Set_Descrambler_Pid
@@ -357,36 +360,40 @@ tTDAL_DESC_Error   TDAL_DESC_Close_Descrambler(tTDAL_DESC_descrambler   descId)
    *   or   pid   is   not   valid.
    *
    *==================================================================*/
-tTDAL_DESC_Error   TDAL_DESC_Set_Descrambler_Pid(tTDAL_DESC_descrambler   descId, int16_t   pid)
+tTDAL_DESC_Error   TDAL_DESC_Set_Descrambler_Pid(tTDAL_DESC_descrambler descId, int16_t pid)
 {
-    MS_BOOL errorDSCMB = TRUE;
     uint8_t   i,k;
-    tTDAL_DESC_descrambler tempDescId = kTDAL_DESC_ILLEGAL_DESCRAMBLER; 
+    tTDAL_DESC_descrambler tempDescId = kTDAL_DESC_ILLEGAL_DESCRAMBLER;
+    DSCMB_Type descType = E_DSCMB_TYPE_CSA;
     if (TDAL_DESC_isInit == FALSE)
     {
         return(eTDAL_DESC_NOT_DONE);
     }
-    
+
     MsOS_ObtainSemaphore (TDAL_DESC_table_lock, MSOS_WAIT_FOREVER);
     /*     Check     if   descrambler    used   */
-    for   (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
+    for (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
     {
-        if    (TDAL_DESC_table[i].descId == descId)
+        if (TDAL_DESC_table[i].descId == descId)
         {
             tempDescId = descId;
             break;
         }
     }
+
     if (tempDescId == kTDAL_DESC_ILLEGAL_DESCRAMBLER)
     {
         MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
         return (eTDAL_DESC_ERROR_UNKNOW_ID);
     }
+
     if (TDAL_DESC_table[i].used != TRUE)
     {
         MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
         return (eTDAL_DESC_ERROR_UNKNOW_ID);
     }
+
+    descType = TDAL_DESCi_GetDSCMBType(TDAL_DESC_table[i].descrambler_type);
 
     /*     ---------------------------   */
     /*     Check     the   pid     authorization     */
@@ -396,7 +403,7 @@ tTDAL_DESC_Error   TDAL_DESC_Set_Descrambler_Pid(tTDAL_DESC_descrambler   descId
         if(TDAL_DESC_channelforbidden[k] == pid)
         {
             MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
-            return   eTDAL_DESC_NOT_DONE;
+            return eTDAL_DESC_NOT_DONE;
         }
     }
 
@@ -418,7 +425,7 @@ tTDAL_DESC_Error   TDAL_DESC_Set_Descrambler_Pid(tTDAL_DESC_descrambler   descId
     if(k == kTDAL_DESC_MAX_CHANNELS)
     {
         MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
-        return   eTDAL_DESC_NO_ERROR;
+        return eTDAL_DESC_NO_ERROR;
     }
 
     /*     ------------------------------   */
@@ -427,16 +434,16 @@ tTDAL_DESC_Error   TDAL_DESC_Set_Descrambler_Pid(tTDAL_DESC_descrambler   descId
 
     if(MDrv_DSCMB_FltConnectPid(tempDescId, TDAL_DESC_table[i].Pid) == FALSE)
     {
-        mTBOX_TRACE(( kTBOX_NIV_1, "MDrv_DSCMB_FltConnectPid   ERROR=%x\n",errorDSCMB));
+        mTBOX_TRACE(( kTBOX_NIV_CRITICAL, "MDrv_DSCMB_FltConnectPid ERROR:tempDescId=%d,descId=%d i=%d pid=0x%x\n",tempDescId,descId,i,TDAL_DESC_table[i].Pid));
         MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
-        return    eTDAL_DESC_ERROR;
+        return eTDAL_DESC_ERROR;
     }
 
-    if(MDrv_DSCMB_FltTypeSet(descId, E_DSCMB_TYPE_CSA) == FALSE)        
+    if(MDrv_DSCMB_FltTypeSet(tempDescId, descType) == FALSE)
     {
         MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
         return(eTDAL_DESC_ERROR);
-    } 
+    }
 
     MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
     return eTDAL_DESC_NO_ERROR;
@@ -468,65 +475,66 @@ tTDAL_DESC_Error   TDAL_DESC_Set_Descrambler_Keys(tTDAL_DESC_descrambler   descI
                    int16_t   even_key_length,
                    const   int8_t   *even_key)
 {
-    MS_BOOL errorDSCMB = TRUE;
-    uint8_t   i,k;
-    TCsdStatus csdStatus;
-    tTDAL_DESC_descrambler tempDescId = kTDAL_DESC_ILLEGAL_DESCRAMBLER; 
-    TCsdDscKeyPathHandle DscKeyPathHandle;
-    TCsdUnsignedInt16         xEmi = 0;
-    DSCMB_Info* Info;
-    DSCMB_Status * pStatus;
-    
-    if (TDAL_DESC_isInit == FALSE)
-    {
-        return(eTDAL_DESC_NOT_DONE);
-    }
-    
-    MsOS_ObtainSemaphore (TDAL_DESC_table_lock, MSOS_WAIT_FOREVER);
-    /*     Check     if   descrambler    used   */
-    for   (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
-    {
-        if    (TDAL_DESC_table[i].descId == descId)
-        {
-            tempDescId = descId;
-            break;
-        }
-    }
-    if (tempDescId == kTDAL_DESC_ILLEGAL_DESCRAMBLER)
-    {
-        MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
-        return (eTDAL_DESC_ERROR_UNKNOW_ID);
-    }
-    if (TDAL_DESC_table[i].used != TRUE)
-    {
-        MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
-        return (eTDAL_DESC_ERROR_UNKNOW_ID);
-    }
-/*
-    if(MDrv_DSCMB_FltKeySet(descId, E_DSCMB_KEY_ODD, odd_key) == FALSE)        
-    {
-        MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
-        return(eTDAL_DESC_ERROR); 
-    }
-    if(MDrv_DSCMB_FltKeySet(descId, E_DSCMB_KEY_EVEN, even_key) == FALSE)        
-    {
-        MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
-        return(eTDAL_DESC_ERROR);       
-    }*/
-    MDrv_AESDMA_Lock();
-    DscKeyPathHandle.u32DscmbId = descId;
-    csdStatus = csdSetClearTextDscHostKeys( xEmi, odd_key, odd_key_length, even_key, even_key_length, &DscKeyPathHandle );
-    if(csdStatus != CSD_NO_ERROR)    
-    {
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL,"csdSetClearTextDscHostKeys %s\n",DBG_TCsdStatus(csdStatus)));
-        MDrv_AESDMA_Unlock();
-        MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
-        return(eTDAL_DESC_ERROR);
-    }
+	uint8_t   i;
+	TCsdStatus csdStatus;
+	tTDAL_DESC_descrambler tempDescId = kTDAL_DESC_ILLEGAL_DESCRAMBLER;
+	TCsdDscKeyPathHandle DscKeyPathHandle;
+	TCsdUnsignedInt16         xEmi = 0;
 
-    MDrv_AESDMA_Unlock();
-    MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
-    return   eTDAL_DESC_NO_ERROR;
+	if (TDAL_DESC_isInit == FALSE)
+	{
+		return(eTDAL_DESC_NOT_DONE);
+	}
+
+	MsOS_ObtainSemaphore (TDAL_DESC_table_lock, MSOS_WAIT_FOREVER);
+	/*     Check     if   descrambler    used   */
+	for (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
+	{
+		if (TDAL_DESC_table[i].descId == descId)
+		{
+			tempDescId = descId;
+			break;
+		}
+	}
+	if (tempDescId == kTDAL_DESC_ILLEGAL_DESCRAMBLER)
+	{
+		MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+		return (eTDAL_DESC_ERROR_UNKNOW_ID);
+	}
+
+	if (TDAL_DESC_table[i].used != TRUE)
+	{
+		MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+		return (eTDAL_DESC_ERROR_UNKNOW_ID);
+	}
+
+	xEmi = TDAL_DESCi_GetEMI(TDAL_DESC_table[i].descrambler_type);
+
+	if(MDrv_DSCMB_FltKeySet(descId, E_DSCMB_KEY_ODD, (MS_U8 *)odd_key) == FALSE)
+	{
+		MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+		return(eTDAL_DESC_ERROR);
+	}
+	if(MDrv_DSCMB_FltKeySet(descId, E_DSCMB_KEY_EVEN, (MS_U8 *)even_key) == FALSE)
+	{
+		MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+		return(eTDAL_DESC_ERROR);
+	}
+
+	MDrv_AESDMA_Lock();
+	DscKeyPathHandle.u32DscmbId = descId;
+	csdStatus = csdSetClearTextDscHostKeys( xEmi, odd_key, odd_key_length, even_key, even_key_length, &DscKeyPathHandle );
+	if(csdStatus != CSD_NO_ERROR)
+	{
+		mTBOX_TRACE((kTBOX_NIV_CRITICAL,"[%s %d]csdSetClearTextDscHostKeys(%d) descId=%d %s\n",__FUNCTION__,__LINE__,csdStatus,descId,DBG_TCsdStatus(csdStatus)));
+		MDrv_AESDMA_Unlock();
+		MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+		return(eTDAL_DESC_ERROR);
+	}
+
+	MDrv_AESDMA_Unlock();
+	MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+	return   eTDAL_DESC_NO_ERROR;
 }
 
 /** Checking if a descrambler resource handle is currently valid for use.
@@ -542,11 +550,11 @@ tTDAL_DESC_Error   TDAL_DESC_Set_Descrambler_Keys(tTDAL_DESC_descrambler   descI
  */
 tTDAL_DESC_Error TDAL_DESC_Is_Descrambler_Open( tTDAL_DESC_descrambler descrambler )
 {
-    tTDAL_DESC_descrambler tempDescId = kTDAL_DESC_ILLEGAL_DESCRAMBLER; 
+    tTDAL_DESC_descrambler tempDescId = kTDAL_DESC_ILLEGAL_DESCRAMBLER;
     uint8_t   i;
     mTBOX_FCT_ENTER( "TDAL_DESC_Is_Descrambler_Open" );
     /* Sanitize on current state */
-    if  (TDAL_DESC_isInit == FALSE)
+    if (TDAL_DESC_isInit == FALSE)
     {
         mTBOX_RETURN( eTDAL_DESC_NOT_DONE );
     }
@@ -556,7 +564,7 @@ tTDAL_DESC_Error TDAL_DESC_Is_Descrambler_Open( tTDAL_DESC_descrambler descrambl
     /* ------------------------------------- */
     MsOS_ObtainSemaphore (TDAL_DESC_table_lock, MSOS_WAIT_FOREVER);
     /*     Check     if   descrambler    used   */
-    for   (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
+    for (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
     {
         if (TDAL_DESC_table[i].descId == descrambler)
         {
@@ -564,7 +572,7 @@ tTDAL_DESC_Error TDAL_DESC_Is_Descrambler_Open( tTDAL_DESC_descrambler descrambl
             break;
         }
     }
-    /* Check if descrambler used */     
+    /* Check if descrambler used */
     if (tempDescId == kTDAL_DESC_ILLEGAL_DESCRAMBLER)
     {
         MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
@@ -604,92 +612,128 @@ tTDAL_DESC_Error TDAL_DESC_Set_Descrambler_Keys_L1(tTDAL_DESC_descrambler descra
                             int16_t even_key_length,
                             const int8_t *even_key)
 {
-    MS_BOOL errorDSCMB = TRUE;
-    uint8_t   i,k;
-    TCsdStatus csdStatus;
-    TCsdDscCipheredProtectingKeys dsc2CipheredProtectingKeysTable;
-    tTDAL_DESC_descrambler tempDescId = kTDAL_DESC_ILLEGAL_DESCRAMBLER; 
-    TCsdDscKeyPathHandle DscKeyPathHandle;
-    TCsdDscKeyPathHandle* pDscKeyPathHandle=NULL;
-    TCsdUnsignedInt16         xEmi = 0;
-    const TCsdUnsignedInt8 L2ProtectingKey[] = {0xe4, 0x21, 0x13, 0xa7, 0x99, 0xca, 0xf4, 0xc7, 0xb8, 0x73, 0x07, 0x00, 0x7b, 0xde, 0xb2, 0xbb};
+	uint8_t   i;
+	TCsdStatus csdStatus;
+	TCsdDscCipheredProtectingKeys dsc2CipheredProtectingKeysTable;
+	tTDAL_DESC_descrambler tempDescId = kTDAL_DESC_ILLEGAL_DESCRAMBLER;
+	TCsdDscKeyPathHandle DscKeyPathHandle;
+	TCsdDscKeyPathHandle *pDscKeyPathHandle=NULL;
+	TCsdUnsignedInt16         xEmi = 0;
+	const TCsdUnsignedInt8 L2ProtectingKey[] = {0xe4, 0x21, 0x13, 0xa7, 0x99, 0xca, 0xf4, 0xc7, 0xb8, 0x73, 0x07, 0x00, 0x7b, 0xde, 0xb2, 0xbb};
+	int16_t OddKeyLen, EvenKeyLen;
+	const int8_t *OddKey, *EvenKey;
 
+	if (TDAL_DESC_isInit == FALSE)
+	{
+		return(eTDAL_DESC_NOT_DONE);
+	}
 
-    printf(">>>>>>>>>>>>>>> TDAL_DESC_Set_Descrambler_Keys_L1 ENTER <<<<<<<<<<<<<<<<<<<<<<<<\n");
+	MsOS_ObtainSemaphore (TDAL_DESC_table_lock, MSOS_WAIT_FOREVER);
+	/*     Check     if   descrambler    used   */
+	for (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
+	{
+		if (TDAL_DESC_table[i].descId == descrambler)
+		{
+			tempDescId = descrambler;
+			break;
+		}
+	}
 
-    if (TDAL_DESC_isInit == FALSE)
-    {
-        printf(">>>>>>>>>>>>>>> TDAL_DESC_isInit == FALSE <<<<<<<<<<<<<<<<<<<<<<<<\n");
-        return(eTDAL_DESC_NOT_DONE);
-    }
+	if (tempDescId == kTDAL_DESC_ILLEGAL_DESCRAMBLER)
+	{
+		MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+		return (eTDAL_DESC_ERROR_UNKNOW_ID);
+	}
 
-    MsOS_ObtainSemaphore (TDAL_DESC_table_lock, MSOS_WAIT_FOREVER);
-    /*     Check     if   descrambler    used   */
-    for (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
-    {
-        if (TDAL_DESC_table[i].descId == descrambler)
-        {
-            tempDescId = descrambler;
-            break;
-        }
-    }
-    if (tempDescId == kTDAL_DESC_ILLEGAL_DESCRAMBLER)
-    {
-        MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
-        return (eTDAL_DESC_ERROR_UNKNOW_ID);
-    }
-    if (TDAL_DESC_table[i].used != TRUE)
-    {
-        MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
-        return (eTDAL_DESC_ERROR_UNKNOW_ID);
-    }
-/*
-    if(MDrv_DSCMB_FltKeySet(descrambler, E_DSCMB_KEY_ODD, odd_key) == FALSE)        
-    {
-       MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
-       return(eTDAL_DESC_ERROR); 
-    }
-    if(MDrv_DSCMB_FltKeySet(descrambler, E_DSCMB_KEY_EVEN, even_key) == FALSE)        
-    {
-        MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
-        return(eTDAL_DESC_ERROR);       
-    }
-*/
-    if(KEY_LADDER_LEVEL == 3)
-    {
-        memcpy (&dsc2CipheredProtectingKeysTable[0], L2ProtectingKey, sizeof(L2ProtectingKey));
-    }
+	if (TDAL_DESC_table[i].used != TRUE)
+	{
+		MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+		return (eTDAL_DESC_ERROR_UNKNOW_ID);
+	}
 
-    if((L1_key != NULL) && (L1_key_length != 0))
-    {
-        memcpy (&dsc2CipheredProtectingKeysTable[KEY_LADDER_LEVEL-2], L1_key, L1_key_length);
-    }
-    else
-    {
-        memset (&dsc2CipheredProtectingKeysTable[KEY_LADDER_LEVEL-2], 0x0, kTDAL_DESC_OFFSET_LENGTH);
-    }
-    if(TDAL_DESC_table[i].Pid!=0)
-    { /*if channel is found*/
-        DscKeyPathHandle.u32DscmbId = descrambler;
-        pDscKeyPathHandle = &DscKeyPathHandle;
-    }
-    MDrv_AESDMA_Lock();
-    csdStatus = csdSetProtectedDscContentKeys(xEmi, dsc2CipheredProtectingKeysTable,odd_key, odd_key_length, even_key, even_key_length, pDscKeyPathHandle );
+	xEmi = TDAL_DESCi_GetEMI(TDAL_DESC_table[i].descrambler_type);
 
-    if(csdStatus != CSD_NO_ERROR)     
-    {
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL,"csdSetProtectedDscContentKeys %s\n",DBG_TCsdStatus(csdStatus)));
-        MDrv_AESDMA_Unlock();
-        MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
-        return(eTDAL_DESC_ERROR);
-    }
+	OddKeyLen = 0;
+	OddKey = NULL;
+	if ((odd_key != NULL) && (odd_key_length != 0))
+	{
+		if (0 != memcmp(TDAL_DESC_table[i].dataDescOdd, odd_key, odd_key_length))
+		{
+			OddKeyLen = odd_key_length;
+			OddKey = odd_key;
+			memcpy(TDAL_DESC_table[i].dataDescOdd, odd_key, odd_key_length > kTDAL_DESC_KEY_SIZE ? kTDAL_DESC_KEY_SIZE : odd_key_length);
+		}
+	}
 
-    MDrv_AESDMA_Unlock();
-    MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+	EvenKeyLen = 0;
+	EvenKey = NULL;
+	if ((even_key != NULL) && (even_key_length != 0))
+	{
+		if (0 != memcmp(TDAL_DESC_table[i].dataDescEven, even_key, even_key_length))
+		{
+			EvenKeyLen = even_key_length;
+			EvenKey = even_key;
+			memcpy(TDAL_DESC_table[i].dataDescEven, even_key, even_key_length > kTDAL_DESC_KEY_SIZE ? kTDAL_DESC_KEY_SIZE : even_key_length);
+		}
+	}
 
-    printf(">>>>>>>>>>>>>>> TDAL_DESC_Set_Descrambler_Keys_L1 EXIT <<<<<<<<<<<<<<<<<<<<<<<<\n");
+	if (OddKey != NULL)
+	{
+		if(MDrv_DSCMB_FltKeySet(descrambler, E_DSCMB_KEY_ODD, (MS_U8 *)OddKey) == FALSE)
+		{
+			MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+			return(eTDAL_DESC_ERROR);
+		}
+	}
+	if (EvenKey != NULL)
+	{
+		if(MDrv_DSCMB_FltKeySet(descrambler, E_DSCMB_KEY_EVEN, (MS_U8 *)EvenKey) == FALSE)
+		{
+			MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+			return(eTDAL_DESC_ERROR);
+		}
+	}
+	if ((OddKey == NULL) && (EvenKey == NULL))
+	{
+		MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+		return eTDAL_DESC_NO_ERROR;
+	}
+	
+	if(KEY_LADDER_LEVEL == 3)
+	{
+		memcpy (&dsc2CipheredProtectingKeysTable[0], L2ProtectingKey, sizeof(L2ProtectingKey));
+	}
 
-    return   eTDAL_DESC_NO_ERROR;
+	if((L1_key != NULL) && (L1_key_length != 0))
+	{
+		memcpy (&dsc2CipheredProtectingKeysTable[KEY_LADDER_LEVEL-2], L1_key, L1_key_length);
+	}
+	else
+	{
+		memset (&dsc2CipheredProtectingKeysTable[KEY_LADDER_LEVEL-2], 0x0, kTDAL_DESC_OFFSET_LENGTH);
+	}
+
+	if(TDAL_DESC_table[i].Pid != 0)
+	{
+		/*if channel is found*/
+		DscKeyPathHandle.u32DscmbId = descrambler;
+		pDscKeyPathHandle = &DscKeyPathHandle;
+	}
+
+	MDrv_AESDMA_Lock();
+	csdStatus = csdSetProtectedDscContentKeys(xEmi,dsc2CipheredProtectingKeysTable, OddKey, OddKeyLen, EvenKey, EvenKeyLen, pDscKeyPathHandle );
+	if(csdStatus != CSD_NO_ERROR)
+	{
+		mTBOX_TRACE((kTBOX_NIV_CRITICAL,"[%s %d]csdSetProtectedDscContentKeys(%d) descrambler=%d %s\n",__FUNCTION__,__LINE__,descrambler,csdStatus,DBG_TCsdStatus(csdStatus)));
+		MDrv_AESDMA_Unlock();
+		MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+		return(eTDAL_DESC_ERROR);
+	}
+
+	MDrv_AESDMA_Unlock();
+	MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+
+	return   eTDAL_DESC_NO_ERROR;
 }
 
 /*===================================================================
@@ -710,9 +754,42 @@ tTDAL_DESC_Error TDAL_DESC_Set_Descrambler_Keys_L1(tTDAL_DESC_descrambler descra
    *
    *
    *==================================================================*/
-tTDAL_DESC_Error   TDAL_DESC_Set_Descrambler_Type   (tTDAL_DESC_descrambler   descId,
-        TDAL_DESC_DescType   descrambler_type)
+tTDAL_DESC_Error TDAL_DESC_Set_Descrambler_Type (tTDAL_DESC_descrambler descId,
+                     TDAL_DESC_DescType descrambler_type)
 {
+    tTDAL_DESC_descrambler tempDescId = kTDAL_DESC_ILLEGAL_DESCRAMBLER;
+    uint8_t i = 0;
+    DSCMB_Type descType = 0;
+    if (TDAL_DESC_isInit == FALSE)
+    {
+        return(eTDAL_DESC_NOT_DONE);
+    }
+
+    MsOS_ObtainSemaphore (TDAL_DESC_table_lock, MSOS_WAIT_FOREVER);
+    /*     Check     if   descrambler    used   */
+    for   (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
+    {
+        if    (TDAL_DESC_table[i].descId == descId)
+        {
+            tempDescId = descId;
+            break;
+        }
+    }
+    if (tempDescId == kTDAL_DESC_ILLEGAL_DESCRAMBLER)
+    {
+        MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+        return (eTDAL_DESC_ERROR_UNKNOW_ID);
+    }
+    if (TDAL_DESC_table[i].used != TRUE)
+    {
+        MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+        return (eTDAL_DESC_ERROR_UNKNOW_ID);
+    }
+
+    TDAL_DESC_table[i].descrambler_type = descrambler_type;
+
+    MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+
     return   eTDAL_DESC_NO_ERROR;
 }
 
@@ -836,7 +913,7 @@ tTDAL_DESC_Error TDAL_DESCi_DisableSecureMode( void )
  * @param[in] channel is the identifier of the channel.
  * @param[in] pid is the new PID value configured for the channel.
  *
- */ 
+ */
 void TDAL_DESC_DemuxPidCallback( tTDAL_DMX_ChannelId const channel, uint16_t const pid )
 {
     /* Check layer status, and mirror the channel information */
@@ -864,5 +941,49 @@ void TDAL_DESC_DemuxChannelCallback( tTDAL_DMX_ChannelId const channel, tTDAL_DM
         MsOS_ObtainSemaphore(TDAL_DESC_table_sync, MSOS_WAIT_FOREVER);
         TDAL_DESC_channels[ channel ].ChannelStream = channel_stream;
         MsOS_ReleaseSemaphore( TDAL_DESC_table_sync );
+    }
+}
+/*===================================================================
+   *
+   *   TDAL_DESCi_GetEMI
+   *
+   *   Parameters:
+   *      descType : Descrabmler type
+   *
+   *   Description:
+   *   Translates TDAL Descrambler type to EMI
+   *
+   *   Returns:   EMI value
+   *
+   *==================================================================*/
+uint16_t   TDAL_DESCi_GetEMI(TDAL_DESC_DescType   descType)
+{
+    return (uint16_t)descType;
+}
+
+/*===================================================================
+   *
+   *   TDAL_DESCi_GetDSCMBType
+   *
+   *   Parameters:
+   *      descType : Descrabmler type
+   *
+   *   Description:
+   *   Translates TDAL Descrambler type to DSCMB type
+   *
+   *   Returns:   Internal SDK DSCMB type
+   *
+   *==================================================================*/
+DSCMB_Key_Type TDAL_DESCi_GetDSCMBType(TDAL_DESC_DescType   descType)
+{
+    switch (descType)
+    {
+        case TDAL_DESC_PAYLOAD_DVB_CSA2:
+        case TDAL_DESC_PAYLOAD_DVB_CSA3:
+            return E_DSCMB_TYPE_CSA;
+        case TDAL_DESC_PAYLOAD_AES_IDSA:
+            return E_DSCMB_TYPE_AES_SCTE52;
+        default:
+            return E_DSCMB_TYPE_CSA;
     }
 }

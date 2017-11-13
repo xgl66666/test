@@ -37,13 +37,15 @@ all: setup zip
 #	@rm out/$(IMAGE_ZIP)
 	@$(OBJCOPY) -O binary out/ld_unzip.elf out/$(IMAGE_ZIP)
 	@rm $(IMAGE_ZIP)
-	@sh add_header_ld.sh
+#	@sh add_header_ld.sh
 zip:
 	@echo "  [ZIP] $(IMAGE_BIN)"
 ifeq ($(UNAME),Linux)
+	@$(TOOL_ENTRY)/crc -a $(IMAGE_BIN) $(IMAGE_BIN)
 	@$(TOOL_ENTRY)/lzma e $(IMAGE_BIN) $(IMAGE_ZIP)
 else
-	@$(TOOL_ENTRY)/lzma.exe e '$(shell cygpath -w $(IMAGE_BIN))' '$(shell cygpath -w $(IMAGE_ZIP))'
+	@$(TOOL_ENTRY)/crc -a $(IMAGE_BIN) $(IMAGE_BIN)
+	@$(TOOL_ENTRY)/lzma e $(IMAGE_BIN) $(IMAGE_ZIP)	
 endif
 
 setup:

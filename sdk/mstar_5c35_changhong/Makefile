@@ -50,6 +50,7 @@ $(BUILD_FOLDER)/obj/drvDemodNull.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/drvDemodKelticDVBS.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/drvDemodKelticATSC.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/drvTuner_R840.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvTuner_R820C.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/drvTunerNull.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/MxL608_OEM_Drv.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/MxL608_TunerApi.$(OBJ_SUFFIX) \
