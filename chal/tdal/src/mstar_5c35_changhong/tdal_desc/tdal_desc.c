@@ -35,6 +35,8 @@
 #include "nocs_csd_impl.h"
 #include "nocs_csd.h"
 
+#include "drvDSCMB.h"
+#include "drvNGA.h"
 
 /********************************************************/
 /*          Defines                         */
@@ -48,6 +50,14 @@
 
 /* Define this to use the CSD library in non-secure (clear-text) mode */
 #define TDAL_DESC_USE_CSD_FOR_UNSECURE
+#define TDAL_DESC_DEBUG		(0)
+#if TDAL_DESC_DEBUG
+#define mDesc_DEBUG  printf 
+
+#else
+#define mDesc_DEBUG(...) 
+#endif
+
 
 /********************************************************/
 /*          Macros                         */
@@ -140,6 +150,7 @@ tTDAL_DESC_Error   TDAL_DESC_Init(void)
 	uint8_t   i = 0;
     MS_BOOL errorCA = TRUE;
     TCsdStatus e = CSD_NO_ERROR;
+	mDesc_DEBUG("=====[%s][%d] \n", __FUNCTION__,__LINE__);
 
     if (TDAL_DESC_isInit == FALSE)
     {
@@ -237,7 +248,7 @@ tTDAL_DESC_descrambler   TDAL_DESC_Open_Descrambler(TDAL_DESC_stream_type_e   st
 {
     tTDAL_DESC_descrambler     descId = kTDAL_DESC_ILLEGAL_DESCRAMBLER;
     uint8_t   i;
-
+	mDesc_DEBUG("=====[%s][%d] \n", __FUNCTION__,__LINE__);
     /*     not   used   */
     if (stream_type)     {};
 
@@ -302,7 +313,7 @@ tTDAL_DESC_Error   TDAL_DESC_Close_Descrambler(tTDAL_DESC_descrambler   descId)
     MS_BOOL errorDSCMB = TRUE;
     uint8_t   i;
     tTDAL_DESC_descrambler tempDescId = kTDAL_DESC_ILLEGAL_DESCRAMBLER;
-
+	mDesc_DEBUG("=====[%s][%d] \n", __FUNCTION__,__LINE__);
     if (TDAL_DESC_isInit == FALSE)
     {
         return(eTDAL_DESC_ERROR);
@@ -369,6 +380,7 @@ tTDAL_DESC_Error   TDAL_DESC_Set_Descrambler_Pid(tTDAL_DESC_descrambler descId, 
     {
         return(eTDAL_DESC_NOT_DONE);
     }
+	mDesc_DEBUG("=====[%s][%d] \n", __FUNCTION__,__LINE__);
 
     MsOS_ObtainSemaphore (TDAL_DESC_table_lock, MSOS_WAIT_FOREVER);
     /*     Check     if   descrambler    used   */
@@ -449,6 +461,48 @@ tTDAL_DESC_Error   TDAL_DESC_Set_Descrambler_Pid(tTDAL_DESC_descrambler descId, 
     return eTDAL_DESC_NO_ERROR;
 
 }
+static MS_BOOL _SetDscFilterType(MS_U32 u32DscID, MS_U16 u16EMI, MS_BOOL bEncrypt)
+{
+    DSCMB_Eng_Type eEngType;
+    DSCMB_Algo_Cfg AlgCfg;
+    
+    if(u16EMI == EMI_PAYLOAD_AES_IDSA)
+    {
+        if(bEncrypt)
+        {
+            eEngType = E_DSCMB_ENG_LSAD;
+            MDrv_DSCMB2_EngSetSwitch(0, u32DscID, 0, E_DSCMB_ENG_LSAD);
+        }
+        else
+        {
+            eEngType = E_DSCMB_ENG_ESA;
+            MDrv_DSCMB2_EngSetSwitch(0, u32DscID, 0, E_DSCMB_ENG_ESA);
+        }
+
+        AlgCfg.eMainAlgo = E_DSCMB_MAIN_ALGO_AES;
+        AlgCfg.eSubAlgo = E_DSCMB_SUB_ALGO_CBC;
+        AlgCfg.eResAlgo = E_DSCMB_RESSB_ALGO_SCTE52;
+        AlgCfg.eSBAlgo	= E_DSCMB_RESSB_ALGO_SCTE52;
+		
+        AlgCfg.bDecrypt = TRUE;
+        if(FALSE == MDrv_DSCMB2_EngSetAlgo(0, u32DscID, eEngType, AlgCfg))
+        {
+            mDesc_DEBUG("Fail to call MDrv_DSCMB2_EngSetAlgo(%ld)\n", u32DscID);   
+            return FALSE; 
+        }
+    }  
+    else if(u16EMI == EMI_PAYLOAD_DVB_CSA2)
+    {
+        MDrv_DSCMB_FltTypeSet(u32DscID,E_DSCMB_TYPE_CSA);
+    }
+    else
+    {
+        mDesc_DEBUG("%s %d unsupport EMI:%u\n",__FUNCTION__, __LINE__, u16EMI);
+        return FALSE;
+    }
+
+    return TRUE;
+}
 
 /*===================================================================
    *
@@ -480,7 +534,7 @@ tTDAL_DESC_Error   TDAL_DESC_Set_Descrambler_Keys(tTDAL_DESC_descrambler   descI
 	tTDAL_DESC_descrambler tempDescId = kTDAL_DESC_ILLEGAL_DESCRAMBLER;
 	TCsdDscKeyPathHandle DscKeyPathHandle;
 	TCsdUnsignedInt16         xEmi = 0;
-
+	mDesc_DEBUG("=====[%s][%d] \n", __FUNCTION__,__LINE__);
 	if (TDAL_DESC_isInit == FALSE)
 	{
 		return(eTDAL_DESC_NOT_DONE);
@@ -523,6 +577,8 @@ tTDAL_DESC_Error   TDAL_DESC_Set_Descrambler_Keys(tTDAL_DESC_descrambler   descI
 
 	MDrv_AESDMA_Lock();
 	DscKeyPathHandle.u32DscmbId = descId;
+	
+    _SetDscFilterType(descId, xEmi, FALSE);
 	csdStatus = csdSetClearTextDscHostKeys( xEmi, odd_key, odd_key_length, even_key, even_key_length, &DscKeyPathHandle );
 	if(csdStatus != CSD_NO_ERROR)
 	{
@@ -588,6 +644,7 @@ tTDAL_DESC_Error TDAL_DESC_Is_Descrambler_Open( tTDAL_DESC_descrambler descrambl
     return   eTDAL_DESC_NO_ERROR;
 }
 
+
 /** Assigning deciphering keys to a secure descrambler resource.
  *
  * @param[in] descrambler is a handle returned by TDAL_DESC_Open_Descrambler.
@@ -622,6 +679,7 @@ tTDAL_DESC_Error TDAL_DESC_Set_Descrambler_Keys_L1(tTDAL_DESC_descrambler descra
 	const TCsdUnsignedInt8 L2ProtectingKey[] = {0xe4, 0x21, 0x13, 0xa7, 0x99, 0xca, 0xf4, 0xc7, 0xb8, 0x73, 0x07, 0x00, 0x7b, 0xde, 0xb2, 0xbb};
 	int16_t OddKeyLen, EvenKeyLen;
 	const int8_t *OddKey, *EvenKey;
+	mDesc_DEBUG("=====[%s][%d] \n", __FUNCTION__,__LINE__);
 
 	if (TDAL_DESC_isInit == FALSE)
 	{
@@ -719,6 +777,7 @@ tTDAL_DESC_Error TDAL_DESC_Set_Descrambler_Keys_L1(tTDAL_DESC_descrambler descra
 		DscKeyPathHandle.u32DscmbId = descrambler;
 		pDscKeyPathHandle = &DscKeyPathHandle;
 	}
+    _SetDscFilterType(descrambler, xEmi, TRUE);
 
 	MDrv_AESDMA_Lock();
 	csdStatus = csdSetProtectedDscContentKeys(xEmi,dsc2CipheredProtectingKeysTable, OddKey, OddKeyLen, EvenKey, EvenKeyLen, pDscKeyPathHandle );
@@ -735,6 +794,7 @@ tTDAL_DESC_Error TDAL_DESC_Set_Descrambler_Keys_L1(tTDAL_DESC_descrambler descra
 
 	return   eTDAL_DESC_NO_ERROR;
 }
+
 
 /*===================================================================
    *
@@ -764,7 +824,7 @@ tTDAL_DESC_Error TDAL_DESC_Set_Descrambler_Type (tTDAL_DESC_descrambler descId,
     {
         return(eTDAL_DESC_NOT_DONE);
     }
-
+	mDesc_DEBUG("%s %d  [%d]=============\n",__FUNCTION__,__LINE__,descrambler_type);
     MsOS_ObtainSemaphore (TDAL_DESC_table_lock, MSOS_WAIT_FOREVER);
     /*     Check     if   descrambler    used   */
     for   (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
@@ -863,6 +923,8 @@ const   char   *TDAL_DESC_PlatformRevisionGet(void)
    **========================================================================**/
 tTDAL_DESC_Error   TDAL_DESC_GetCapability(tTDAL_DESC_Capability   *pstCapability)
 {
+	mDesc_DEBUG("=====[%s][%d] \n", __FUNCTION__,__LINE__);
+
    return(eTDAL_DESC_NO_ERROR);
 }
 
@@ -879,7 +941,7 @@ tTDAL_DESC_Error   TDAL_DESC_GetCapability(tTDAL_DESC_Capability   *pstCapabilit
  */
 tTDAL_DESC_Error TDAL_DESCi_EnableSecureMode( void )
 {
-
+	mDesc_DEBUG("=====[%s][%d] \n", __FUNCTION__,__LINE__);
     return( eTDAL_DESC_NO_ERROR );
 
 }
@@ -902,6 +964,7 @@ tTDAL_DESC_Error TDAL_DESCi_EnableSecureMode( void )
  */
 tTDAL_DESC_Error TDAL_DESCi_DisableSecureMode( void )
 {
+	mDesc_DEBUG("=====[%s][%d] \n", __FUNCTION__,__LINE__);
 
      return( eTDAL_DESC_NO_ERROR );
 
@@ -976,6 +1039,7 @@ uint16_t   TDAL_DESCi_GetEMI(TDAL_DESC_DescType   descType)
    *==================================================================*/
 DSCMB_Key_Type TDAL_DESCi_GetDSCMBType(TDAL_DESC_DescType   descType)
 {
+	mDesc_DEBUG("%s %d  [%d]=============\n",__FUNCTION__,__LINE__,descType);
     switch (descType)
     {
         case TDAL_DESC_PAYLOAD_DVB_CSA2:

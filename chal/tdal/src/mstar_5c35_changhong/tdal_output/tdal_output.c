@@ -702,9 +702,9 @@ tTDAL_OUTPUT_Error p_TDAL_OUTPUTi_AnaAudio_Init(void)
     TDAL_AudioAnaMainCapability.IsLFEPresenceSupported      = FALSE;
     TDAL_AudioAnaMainCapability.IsRearRLPresenceSupported      = FALSE;
     TDAL_AudioAnaMainCapability.IsRearCenterPresenceSupported   = FALSE;
-    TDAL_AudioAnaMainCapability.IsFrontRLAttenuationSupported   = FALSE;
+    TDAL_AudioAnaMainCapability.IsFrontRLAttenuationSupported   = TRUE;
     TDAL_AudioAnaMainCapability.IsFrontCenterAttenuationSupported= TRUE;
-    TDAL_AudioAnaMainCapability.IsSourroundRLAttenuationSupported= FALSE;
+    TDAL_AudioAnaMainCapability.IsSourroundRLAttenuationSupported= TRUE;
     TDAL_AudioAnaMainCapability.IsLFEAttenuationSupported      = FALSE;
     TDAL_AudioAnaMainCapability.IsRearRLAttenuationSupported   = FALSE;
     TDAL_AudioAnaMainCapability.IsRearCenterAttenuationSupported = FALSE;

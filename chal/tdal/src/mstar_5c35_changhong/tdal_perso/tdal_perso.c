@@ -177,9 +177,8 @@ eTDAL_PERSO_ErrorCode   TDAL_PERSO_ReadTag(   tTDAL_PERSO_Tag   const   tag, uin
     #else
         uint32_t PairingDataSize = 494;
     #endif
-    #endif
-    #ifdef CAK_DALTS
-    uint32_t PairingDataSize =     0x00000001;
+    #else 
+    uint32_t PairingDataSize =     494;
     #endif
     uint32_t TmpData;
     uint8_t *TmpInt8Ptr = tag_content;
