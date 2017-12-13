@@ -32,12 +32,20 @@ DIR_INCLUDE = \
 LIBOBJS = 	tdal_kbd.$(OBJ_SUFFIX) \
             tdal_kbd_mstar_ir.$(OBJ_SUFFIX)
 
+ifeq "$(MULTI_RCUS)" "1"
+LIBOBJS += tdal_kbd_cfg.$(OBJ_SUFFIX)
+CFLAGS += -DTDAL_MULTI_RCUS
+endif
+
 # ****************************************
 # List of dependencies
 # ****************************************
 tdal_kbd.$(OBJ_SUFFIX): $(TDAL_KBD_INCLUDE)/tdal_kbd.h tdal_kbd.c makefile
 tdal_kbd_mstar_ir.$(OBJ_SUFFIX): $(TDAL_KBD_INCLUDE)/tdal_kbd.h tdal_kbd_mstar_ir.c makefile
 
+ifeq ($(MULTI_RCUS), 1)
+tdal_kbd_cfg.$(OBJ_SUFFIX): $(TDAL_KBD_INCLUDE)/tdal_kbd.h tdal_kbd_cfg.c tdal_kbd_module_priv.h makefile
+endif
 
 # ****************************************
 # Always include crules.mak
