@@ -116,8 +116,10 @@ eTDAL_PERSO_ErrorCode   TDAL_PERSO_GetTagLength(   tTDAL_PERSO_Tag   const   tag
     {
     case PERSO_TAG_PK_ADDRESS:
     case PERSO_TAG_PK_SIZE:
+	case PERSO_TAG_PK_LOCATION:
     case PERSO_TAG_CSCD_ADDRESS:
     case PERSO_TAG_CSCD_SIZE:
+	case PERSO_TAG_CSCD_LOCATION:
         *tag_length = 4;
         break;
     case PERSO_TAG_SDTV_SN:
@@ -154,8 +156,10 @@ uint8_t g_pkData[494] = {0};
 eTDAL_PERSO_ErrorCode   TDAL_PERSO_ReadTag(   tTDAL_PERSO_Tag   const   tag, uint16_t*   tag_length,  uint8_t* const tag_content)
 {
 
-    uint32_t CSCDataAddress = 0x500000;
-    uint32_t CSCDataSize	= 0x100;
+    uint32_t CSCDataAddress  = 0x7D0000;
+    uint32_t CSCDataSize	 = 0x100;
+	uint32_t CSCDataLocation = PERSO_LOCATION_FLASH;
+	
 #ifdef NASC
     uint32_t PairingDataAddress = 0x83FFF000;
 #else
@@ -170,6 +174,7 @@ eTDAL_PERSO_ErrorCode   TDAL_PERSO_ReadTag(   tTDAL_PERSO_Tag   const   tag, uin
 #endif
 //	TDAL_FLA_Read(0x210000,g_cscData,CSCDataSize);
 
+	uint32_t PairingDataLocation = PERSO_LOCATION_MEMORY;
 
     #ifdef CAK_MERLIN
     #ifdef NASC
@@ -205,7 +210,12 @@ eTDAL_PERSO_ErrorCode   TDAL_PERSO_ReadTag(   tTDAL_PERSO_Tag   const   tag, uin
     case PERSO_TAG_CSCD_SIZE:
         TmpData = CSCDataSize;
         break;
-
+    case PERSO_TAG_CSCD_LOCATION:
+        TmpData = CSCDataLocation;
+        break;
+    case PERSO_TAG_PK_LOCATION:
+        TmpData = PairingDataLocation;
+        break;
     case PERSO_TAG_SDTV_SN:
         memcpy(tag_content,SerialAdress,*tag_length  );
         
