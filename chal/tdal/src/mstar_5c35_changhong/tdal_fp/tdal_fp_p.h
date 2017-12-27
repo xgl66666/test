@@ -40,6 +40,19 @@ extern   "C"   {
 /*******************************************************/
 tTDAL_FP_ErrorCode   TDAL_FP_key_Init(void);
 tTDAL_FP_ErrorCode   TDAL_FP_key_Terminate(void);
+typedef enum
+{
+	CHDRV_FP_LED_RED,				///< 红色指示灯
+	CHDRV_FP_LED_YELLOW,			///< 黄色指示灯
+	CHDRV_FP_LED_GREEN,				///< 绿色指示灯
+}CHDRV_FP_LAMP_TYPE_e;
+///@brief LED灯状态定义
+typedef enum
+{
+	CHDRV_FP_LAMP_ON,			///< 开
+	CHDRV_FP_LAMP_OFF,			///< 关
+	CHDRV_FP_LAMP_STATE_MAX		///< 错误判断
+}CHDRV_FP_LAMP_STATE_e;
 
 
 #ifdef   __cplusplus

@@ -273,10 +273,15 @@ void cyg_exception_handler_fn(
     cyg_addrword_t info
 )
 {
+    int i;
 	HAL_SavedRegisters * pRegisters = (HAL_SavedRegisters *) info;
 
-	printf("Program crash: PC = %x, exception number = %d, info = %x\n",
-				pRegisters->pc, exception_number, info);
+    printf("Program crash: PC = 0x%x, exception number = %d, info = 0x%x\n",pRegisters->pc, exception_number, info);
+    for (i=0; i<32; i++)
+    {
+        printf("r%d 0x%x\n", i, pRegisters->d[i]);
+    }
+    printf("badva 0x%x\n", pRegisters->badvr);
 
 	WatchdogAllowFeed = FALSE;
 }
