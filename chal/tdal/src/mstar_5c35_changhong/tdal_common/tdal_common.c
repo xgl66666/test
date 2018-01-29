@@ -87,7 +87,7 @@
 #define HARDWARE_DEVICE_NAME_ID    0xCA80   //1125
 
 #define HARDWARE_MANUFACTURER      "CHANGHONG"
-#define HARDWARE_MANUFACTURER_ID   1149
+#define HARDWARE_MANUFACTURER_ID   0x1449
 
 #define   kTDAL_MEMORY_SIZE   0x140000
 
@@ -274,16 +274,16 @@ void cyg_exception_handler_fn(
 )
 {
     int i;
-	HAL_SavedRegisters * pRegisters = (HAL_SavedRegisters *) info;
-
+    HAL_SavedRegisters * pRegisters = (HAL_SavedRegisters *) info;
+ 
     printf("Program crash: PC = 0x%x, exception number = %d, info = 0x%x\n",pRegisters->pc, exception_number, info);
     for (i=0; i<32; i++)
     {
         printf("r%d 0x%x\n", i, pRegisters->d[i]);
     }
     printf("badva 0x%x\n", pRegisters->badvr);
-
-	WatchdogAllowFeed = FALSE;
+ 
+    WatchdogAllowFeed = FALSE;
 }
 
 /***********************************************************************
@@ -2183,6 +2183,8 @@ GLOBAL tTDAL_OTA_ErrorCode TDAL_Diag_GetInfo(tTDAL_Diag_InfoType diagInfoType, t
         strcpy(pHardwareInfo->cHardwareManufacturer,(unsigned char*)HARDWARE_MANUFACTURER);
         pHardwareInfo->uiHardwareManufacturerId = HARDWARE_MANUFACTURER_ID;
 
+        strcpy(pHardwareInfo->cOUI,(unsigned char*)HARDWARE_MANUFACTURER);
+        pHardwareInfo->uiOUIId = HARDWARE_MANUFACTURER_ID;
 
         /*read the stb serial number info from flash 0x80070*/
 //        ret = MDrv_SERFLASH_Read(HWCONFIG_FALG_PARTITION_ADDR+HWCONFIG_AREA_STB_SERIAL_NUMBER,4,SerialNumber);
