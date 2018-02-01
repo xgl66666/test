@@ -2172,10 +2172,10 @@ GLOBAL tTDAL_OTA_ErrorCode TDAL_Diag_GetInfo(tTDAL_Diag_InfoType diagInfoType, t
         pHardwareInfo = (tTDAL_Diag_HWInfo *)pProperStructure;
 
         sprintf(pHardwareInfo->cHardwareVersion,"%x",(unsigned char*)rpstru_LoaderInfo.ui_Hardware);
-        pHardwareInfo->uiHardwareVersionId = rpstru_LoaderInfo.ui_Hardware;
+        pHardwareInfo->uiHardwareVersionId = (uint16_t)rpstru_LoaderInfo.ui_Hardware;
 
         strcpy(pHardwareInfo->cHardwareModel,(unsigned char*)HARDWARE_MODEL);
-        pHardwareInfo->uiHardwareModelId = HARDWARE_MODEL_ID;
+        pHardwareInfo->uiHardwareModelId = (uint16_t)HARDWARE_MODEL_ID;
 
         strcpy(pHardwareInfo->cHardwareDeviceName,(unsigned char*)HARDWARE_DEVICE_NAME);
         pHardwareInfo->uiHardwareDeviceNameId = HARDWARE_DEVICE_NAME_ID;

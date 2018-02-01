@@ -159,13 +159,13 @@ typedef struct stTDAL_Diag_HWInfo
     char      cOUI[16];                    /* OUI */
     uint32_t  uiOUIId;                     /* OUI Id */
     char      cHardwareVersion[16];        /* HardwareVersion */
-    uint32_t  uiHardwareVersionId;         /* HardwareVersion Id */
+    uint16_t  uiHardwareVersionId;         /* HardwareVersion Id */
     char      cHardwareModel[16];          /* HardwareModel */
-    uint32_t  uiHardwareModelId;           /* HardwareModel Id */
+    uint16_t  uiHardwareModelId;           /* HardwareModel Id */
     char      cProductVersion[16];         /* ProductVersion */
-    uint32_t  uiProductVersionId;          /* ProductVersion Id*/
+    uint16_t  uiProductVersionId;          /* ProductVersion Id*/
     char      cProductModel[16];           /* ProductModel */
-    uint32_t  uiProductModelId;            /* ProductModel Id*/
+    uint16_t  uiProductModelId;            /* ProductModel Id*/
     char      cHardwareDeviceName[16];     /* DeviceName */
     uint32_t  uiHardwareDeviceNameId;      /* DeviceName Id */
     char      cHardwareManufacturer[16];   /* Manufacturer */   
