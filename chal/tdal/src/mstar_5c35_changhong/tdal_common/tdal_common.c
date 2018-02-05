@@ -77,11 +77,11 @@
 #define LAUNCHER_VERSION           "1.0.4"  //No use
 #define LAUNCHER_VERSION_ID        0x10004  //No use
 
-#define HARDWARE_VERSION           "61001"  //61001
-#define HARDWARE_VERSION_ID        61001
+#define HARDWARE_VERSION           "2208"  //61001
+#define HARDWARE_VERSION_ID        0x2208
 
-#define HARDWARE_MODEL             "C4700"
-#define HARDWARE_MODEL_ID          0xC4700
+#define HARDWARE_MODEL             "8108"
+#define HARDWARE_MODEL_ID          0x8108
 
 #define HARDWARE_DEVICE_NAME       "CA80"   //CA90
 #define HARDWARE_DEVICE_NAME_ID    0xCA80   //1125
@@ -2172,7 +2172,7 @@ GLOBAL tTDAL_OTA_ErrorCode TDAL_Diag_GetInfo(tTDAL_Diag_InfoType diagInfoType, t
         pHardwareInfo = (tTDAL_Diag_HWInfo *)pProperStructure;
 
         sprintf(pHardwareInfo->cHardwareVersion,"%x",(unsigned char*)rpstru_LoaderInfo.ui_Hardware);
-        pHardwareInfo->uiHardwareVersionId = (uint16_t)rpstru_LoaderInfo.ui_Hardware;
+        pHardwareInfo->uiHardwareVersionId = (uint16_t)HARDWARE_VERSION_ID;
 
         strcpy(pHardwareInfo->cHardwareModel,(unsigned char*)HARDWARE_MODEL);
         pHardwareInfo->uiHardwareModelId = (uint16_t)HARDWARE_MODEL_ID;
@@ -2183,8 +2183,10 @@ GLOBAL tTDAL_OTA_ErrorCode TDAL_Diag_GetInfo(tTDAL_Diag_InfoType diagInfoType, t
         strcpy(pHardwareInfo->cHardwareManufacturer,(unsigned char*)HARDWARE_MANUFACTURER);
         pHardwareInfo->uiHardwareManufacturerId = HARDWARE_MANUFACTURER_ID;
 
+		
         strcpy(pHardwareInfo->cOUI,(unsigned char*)HARDWARE_MANUFACTURER);
         pHardwareInfo->uiOUIId = HARDWARE_MANUFACTURER_ID;
+
 
         /*read the stb serial number info from flash 0x80070*/
 //        ret = MDrv_SERFLASH_Read(HWCONFIG_FALG_PARTITION_ADDR+HWCONFIG_AREA_STB_SERIAL_NUMBER,4,SerialNumber);
