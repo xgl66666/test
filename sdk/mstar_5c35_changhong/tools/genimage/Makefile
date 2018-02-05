@@ -34,14 +34,14 @@ ifeq ($(KRONUS_U04),enable)
 CFLAGS += -D'ENABLE_KRONUS_U04'
 endif
 
-all: zip
-#	@$(CC) -P -E '-DUNZIP_RAM_BASE=$(UNZIP_RAM_BASE)' -o out/app_link.ld app_link.ld.S
-#	@$(CC) $(CFLAGS) -Wl,-Map,$(IMAGE_OUT).map -T out/app_link.ld -o $(IMAGE_OUT).out $(SRC)
+all: setup zip
+	@$(CC) -P -E '-DUNZIP_RAM_BASE=$(UNZIP_RAM_BASE)' -o out/app_link.ld app_link.ld.S
+	@$(CC) $(CFLAGS) -Wl,-Map,$(IMAGE_OUT).map -T out/app_link.ld -o $(IMAGE_OUT).out $(SRC)
 #	@$(OBJDUMP) -S $(IMAGE_OUT).out > $(IMAGE_OUT).dis
 #	@rm out/$(IMAGE_ZIP)
-#	@$(OBJCOPY) -O binary $(IMAGE_OUT).out $(IMAGE_OUT).bin
-#	@rm $(IMAGE_ZIP)
-#	@sh add_header_app.sh $(IMAGE_OUT).bin
+	@$(OBJCOPY) -O binary $(IMAGE_OUT).out $(IMAGE_OUT).bin
+	@rm $(IMAGE_ZIP)
+	@sh add_header_app.sh $(IMAGE_OUT).bin
 	dd if=$(IMAGE_OUT).bin.signed.bin ibs=$(IMAGE_BIN_SIZE) count=1 of=$(IMAGE_OUT)_padding.bin conv=sync
 	cat $(IMAGE_OUT)_padding.bin > $(IMAGE_OUT_OTA).bin
 	cat $(IMAGE_RES) >> $(IMAGE_OUT_OTA).bin
@@ -49,11 +49,9 @@ all: zip
 zip:
 	@echo "  [ZIP] $(IMAGE_BIN)"
 ifeq ($(UNAME),Linux)
-	@$(TOOL_ENTRY)/crc -a $(IMAGE_BIN) $(IMAGE_BIN)
-	@$(TOOL_ENTRY)/lzma e $(IMAGE_BIN) $(IMAGE_OUT).bin
-else
-	@$(TOOL_ENTRY)/crc -a $(IMAGE_BIN) $(IMAGE_BIN)
 	@$(TOOL_ENTRY)/lzma e $(IMAGE_BIN) $(IMAGE_ZIP)
+else
+	@$(TOOL_ENTRY)/lzma.exe e '$(shell cygpath -w $(IMAGE_BIN))' '$(shell cygpath -w $(IMAGE_ZIP))'
 endif
 
 setup:
