@@ -11,7 +11,7 @@ export PRODUCT_APPLICATION_PLAN = plan_resources_maestro_gtpl_nx2_cab_sd.xml
 export PLATFORM_CHIP_VENDOR=mstar
 export PLATFORM_CHIP_MODEL=5c35
 export PLATFORM_BOARD_VENDOR=changhong
-export PLATFORM_BOARD_MODEL=BD_MST183A_D01A
+export PLATFORM_BOARD_MODEL=BD_MST183A_D01A_S
 
 # ------ HAL settings -----------
 export PRODUCT_PREBUILT_SDK=NO
