@@ -117,6 +117,20 @@ static MS_S32  WatchdogTimer = -1;
 #ifdef NEVER /* should be removed */
 static MS_U8 UartBuf[64];
 #endif
+typedef enum	
+{
+	CHMID_TUNER_QAM_AUTO,   						///< 自动，未定义,不使用	
+	CHMID_TUNER_QAM_QAM4,    						///<  QAM 4
+	CHMID_TUNER_QAM_QAM8,     					///<  QAM 8
+	CHMID_TUNER_QAM_QAM16,    					///<  QAM 16
+	CHMID_TUNER_QAM_QAM32,    					///<  QAM 32
+	CHMID_TUNER_QAM_QAM64,    					///<  QAM 64
+	CHMID_TUNER_QAM_QAM128,    					///<  QAM 128
+	CHMID_TUNER_QAM_QAM256,    					///<  QAM 256
+	CHMID_TUNER_QAM_QAM512,    					///<  QAM 512
+	CHMID_TUNER_QAM_QAM1024,    					///<  QAM 1024
+	CHMID_TUNER_QAM_MAX		   					///< 非法判断
+}CHMID_TUNER_QAM_MODE_e;
 
 MS_U8 UartMatch[] = {'0','0','1','1','2','2','3','3'};
 
@@ -2067,7 +2081,8 @@ GLOBAL tTDAL_OTA_ErrorCode TDAL_OTA_SetParameters(tTDAL_OTA_ControlParameters *o
 	gsstru_OTAUpdateInfo.uc_UpdaeFlag			= 0x47;
 	gsstru_OTAUpdateInfo.un_FreqInfo.stru_CableFreqInfo.ui_FreqKHZ	= otaParam->uiFreqKHz;
 	gsstru_OTAUpdateInfo.un_FreqInfo.stru_CableFreqInfo.ui_SymbKbps	= otaParam->uiSymbRateK;
-	gsstru_OTAUpdateInfo.un_FreqInfo.stru_CableFreqInfo.uc_QAMMode	= otaParam->ucQAMMode;
+	
+	gsstru_OTAUpdateInfo.un_FreqInfo.stru_CableFreqInfo.uc_QAMMode	= otaParam->ucQAMMode -  CHMID_TUNER_QAM_QAM8;
 	gsstru_OTAUpdateInfo.us_DataPid			= otaParam->uiPID;
 	gsstru_OTAUpdateInfo.us_DataGid			= 0x2;
 	rpstru_LoaderInfo.ui_TimeCode			= !otaParam->bInStandBy;
