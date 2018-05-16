@@ -2314,3 +2314,64 @@ tTDAL_OTAStandbyState TDAL_OTA_GetStandbyState(void)
     mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_OTA_GetStandbyState NOT IMPLEMENTED\n"));
     mTBOX_RETURN eTDAL_STANDBY_OFF;
 }
+
+/* this table array is created with the mpeg-2 polynome :
+   x^32+x^26+x^23+x^22+x^16+x^12+x^11+x^10+x^8+x^7+x^5+x^4+x^2+x+1 */
+#define TDAL_CRC32_MAX_COEFFICIENTS 256
+#define TDAL_CRC32_POLYNOMIAL       0x04C11DB7
+static uint32_t TDAL_CRC_Table[TDAL_CRC32_MAX_COEFFICIENTS];
+
+void TDALm_CRC32_Init()
+{
+    uint32_t uiCntCoef;
+    uint32_t uiCntBit;
+    uint32_t uiCoef32;
+
+    for (uiCntCoef = 0; uiCntCoef < TDAL_CRC32_MAX_COEFFICIENTS; uiCntCoef++)
+    {
+        uiCoef32 = uiCntCoef << 24;
+        for (uiCntBit=0; uiCntBit<8; uiCntBit++)
+        {
+            if (uiCoef32 & 0x80000000)
+                uiCoef32 = ((uiCoef32 << 1) ^ TDAL_CRC32_POLYNOMIAL);
+            else
+                uiCoef32 <<= 1;
+        }
+        TDAL_CRC_Table[uiCntCoef] = uiCoef32;
+    }
+}
+
+uint32_t TDALm_CRC32_Calculate(uint8_t *pcBuffer, uint32_t uiSize)
+{
+    uint32_t    uiCRC32 = 0xFFFFFFFF;
+    uint32_t    uiCnt;
+    uint8_t     uOrByte = 0;
+
+    mTBOX_FCT_ENTER("TDALm_CRC32_Calculate");
+
+    for (uiCnt = 0; uiCnt < uiSize; uiCnt++)
+    {
+        uOrByte |= *pcBuffer;
+        uiCRC32 = (uiCRC32 << 8 ) ^ TDAL_CRC_Table[((uiCRC32 >> 24) ^ *pcBuffer) & 0xFF];
+        pcBuffer++;
+    }
+
+    mTBOX_RETURN(uiCRC32);
+}
+
+bool TDALm_CRC32_Check(uint8_t *pcBuffer, uint32_t uiSize, uint32_t uiCRC32Saved)
+{
+    uint32_t uiCRC32Calculated;
+
+    mTBOX_FCT_ENTER("TDALm_CRC32_Check");
+
+    uiCRC32Calculated = TDALm_CRC32_Calculate(pcBuffer, uiSize);
+
+    if (uiCRC32Calculated != uiCRC32Saved)
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "extract crc [0x%08X] / calculate crc [0x%08X]\r\n", uiCRC32Saved, uiCRC32Calculated));
+        mTBOX_RETURN(false);
+    }
+
+    mTBOX_RETURN(true);
+}

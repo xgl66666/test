@@ -71,7 +71,8 @@ uint32_t g_flash_map_src[CH_FLASH_MAP_NUM][2] = {{0x780000,0x78ffff},{0x7A0000,0
 uint32_t g_flash_map_dst[CH_FLASH_MAP_NUM] = {0x7E0000,0x7F0000  };
 
 TDAL_FLA_AddressMap(uint32_t   * rp_Address)
-{
+{
+
 	int i = 0;
 	uint32_t fla_address = *rp_Address;
 	for(i = 0; i < CH_FLASH_MAP_NUM;i++)
@@ -250,8 +251,12 @@ tTDAL_FLA_ErrorCode   TDAL_FLA_SetPartition   (   uint8_t   nbPartition   ,
 	}
 
 	memcpy(TDAL_FLA_Partitions, partition, nbPartition * sizeof(tTDAL_FLA_Partition));
+	/* For backup NVM-in-flash strategy */
+	TDAL_FLA_Partitions[nbPartition].Rights = TDAL_FLA_READ_ENABLE | TDAL_FLA_WRITE_ENABLE;
+	TDAL_FLA_Partitions[nbPartition].StartAddress = 0x510000;
+	TDAL_FLA_Partitions[nbPartition].EndAddress = 0x520000;
 
-	TDAL_FLA_NbPartition = nbPartition;
+	TDAL_FLA_NbPartition = nbPartition + 1;
 	TDAL_FLA_isPartitionSet = 1;
 
 	mTBOX_RETURN(eTDAL_FLA_NO_ERROR);
