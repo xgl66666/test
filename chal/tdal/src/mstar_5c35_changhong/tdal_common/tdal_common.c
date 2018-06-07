@@ -33,6 +33,7 @@
 #include"tbox.h"
 #include"flash_cfg.h"
 #include"tdal_common_priv.h"
+#include "tdal_ssu_priv.h"
 
 #include "MsCommon.h"
 #include "MsOS.h"
@@ -68,26 +69,6 @@
 /********************************************************
 *        Global   Variables   (GLOBAL/IMPORT)        *
 ********************************************************/
-#define CHAL_VERSION               "00.01"
-#define CHAL_VERSION_ID            0x0001
-
-#define LOADER_VERSION             "1.0.0"  //No use
-#define LOADER_VERSION_ID          0x10000  //No use
-
-#define LAUNCHER_VERSION           "1.0.4"  //No use
-#define LAUNCHER_VERSION_ID        0x10004  //No use
-
-#define HARDWARE_VERSION           "2208"  //61001
-#define HARDWARE_VERSION_ID        0x2208
-
-#define HARDWARE_MODEL             "8108"
-#define HARDWARE_MODEL_ID          0x8108
-
-#define HARDWARE_DEVICE_NAME       "CA80"   //CA90
-#define HARDWARE_DEVICE_NAME_ID    0xCA80   //1125
-
-#define HARDWARE_MANUFACTURER      "CHANGHONG"
-#define HARDWARE_MANUFACTURER_ID   0x1449
 
 #define   kTDAL_MEMORY_SIZE   0x140000
 
@@ -117,20 +98,6 @@ static MS_S32  WatchdogTimer = -1;
 #ifdef NEVER /* should be removed */
 static MS_U8 UartBuf[64];
 #endif
-typedef enum	
-{
-	CHMID_TUNER_QAM_AUTO,   						///< 自动，未定义,不使用	
-	CHMID_TUNER_QAM_QAM4,    						///<  QAM 4
-	CHMID_TUNER_QAM_QAM8,     					///<  QAM 8
-	CHMID_TUNER_QAM_QAM16,    					///<  QAM 16
-	CHMID_TUNER_QAM_QAM32,    					///<  QAM 32
-	CHMID_TUNER_QAM_QAM64,    					///<  QAM 64
-	CHMID_TUNER_QAM_QAM128,    					///<  QAM 128
-	CHMID_TUNER_QAM_QAM256,    					///<  QAM 256
-	CHMID_TUNER_QAM_QAM512,    					///<  QAM 512
-	CHMID_TUNER_QAM_QAM1024,    					///<  QAM 1024
-	CHMID_TUNER_QAM_MAX		   					///< 非法判断
-}CHMID_TUNER_QAM_MODE_e;
 
 MS_U8 UartMatch[] = {'0','0','1','1','2','2','3','3'};
 
@@ -1122,119 +1089,180 @@ LOCAL void TDALi_StartWatchdog(void)
         WatchdogStarted = TRUE;
     }
 }
-/**===============================The below is for CH OTA PART===========================================================================================*/
 
-typedef unsigned int U32;
-typedef unsigned short U16;
-typedef unsigned char U8;
-typedef signed int S32;
-typedef signed short S16;
-typedef signed char S8;
-
-/**@brief 解调类型定义*/
-typedef enum
+GLOBAL tTDAL_OTA_ErrorCode TDAL_Diag_GetInfo(tTDAL_Diag_InfoType diagInfoType, tTDAL_Diag_Handle pProperStructure)
 {
-	CH_DEMOD_DVB_S = 0, 				///< DVB-S
-	CH_DEMOD_DVB_C,						///< DVB-C
-	CH_DEMOD_DVB_T,						///< DVB-T
-	CH_DEMOD_DMB_TH,					///< 国标地面波
-	CH_DEMOD_DVB_S2 , 					///< DVB-S2
-	CH_DEMOD_DVB_C2,					///< DVB-C2
-	CH_DEMOD_DVB_T2,					///< DVB-T2
-	CH_DEMOD_MAX						///< 错误判断
-}CH_DEMOD_TYPE_e; 
+    tTDAL_Diag_HWInfo *pHardwareInfo = NULL;
+    tTDAL_Diag_SWInfo *pSoftwareInfo = NULL;
+    unsigned int stbSerialNumber = 0;
+    unsigned char SerialNumber[4] = {0};
+    int ret = 0;
+	CH_LoaderInfo_t rpstru_LoaderInfo={0};
+	tTDAL_OTA_ErrorCode	enm_ChComRet;
+	CH_SystemInfo_t gstru_SystemInfo={0};
 
-/**@brief PLP通道数据结构*/
-typedef struct 
-{
-	U32 ui_PLPId;                                   ///< ID
-	U32 enm_Type;                ///< 类型
-	U32 enm_PayloadType;      ///< 输入流格式
-	U32 ui_Reserved;                                ///< 保留值
-} CHCOMMON_TUNER_PLP_t;
+    printf("[%s %d]enter diagInfoType=%d \n",__FUNCTION__,__LINE__,diagInfoType);
 
+    if ((diagInfoType < eTDAL_DIAG_HW_INFO) || (diagInfoType > eTDAL_DIAG_SW_INFO))
+    {
+        return eTDAL_OTA_STATUS_ERROR;
+    }
 
-typedef struct
-{
-	S8	uc_name[12];			 		///< magic = "Update Info"
-	S32 i_length;    					///< 信息大小*/
-	CH_DEMOD_TYPE_e enm_AntType;		///< 解调器类型 0 C   1 T   2 S   3 S2
-	union
+    if (pProperStructure == NULL)
+    {
+        return eTDAL_OTA_STATUS_ERROR;
+    }
+	enm_ChComRet = CH_COM_GetLoaderInfo(&rpstru_LoaderInfo);
+	enm_ChComRet |= CH_COM_GetSystemInfo( &gstru_SystemInfo );
+	if(enm_ChComRet != eTDAL_OTA_STATUS_NO_ERROR)
 	{
-		struct
-		{
-			U32 ui_FreqKHZ;				///< 频率
-			U32 ui_SymbKbps;			///< 符号率
-			U8	uc_QAMMode;				///< 调制方式，1:QAM4,2:QAM8….7:QAM256
-		}stru_CableFreqInfo;
-		struct
-		{
-			U32 ui_FreqKHZ;				///< 频率
-			U32 ui_BandWithKHz;			///< 带宽
-			CHCOMMON_TUNER_PLP_t	str_PLP;
-		}stru_TerrestrialFreqInfo;
-		struct
-		{
-			U32	ui_LNBHighFreKhz;		///< 本振高频率
-			U32	ui_LNBLowFreKhz;		///< 本振低频率
-			U8	uc_LNBPower;			///< 天线供电，0：OFF，1：13V, 2:18V
-			U8	uc_Polarization;		///< 极化方向：0：垂直；1：水平
-			U8	uc_22KType;		  		///< 22k开关，0 Auto 1：开，2：关
-			U8	uc_DiseqcVer;			///< DISEQC版本。0:1.0, 1:1.1, 2:1.2, 3:1.3
-			U8	uc_DieseqcPort;		  	///< DISEQ1.0端口。0:A; 1:B; 2:C; 3:D
-			U8	uc_DieseqcPos;		  	///< DISEQ1.2 位置
-			S32	i_SatelliteLongitude;	///< 卫星经度：-1800~1800负数表示西经
-			S32	i_LocalLongitude;		///< 本地经度
-			S32	i_LocalLatitude;		///< 本地纬度:-900~900 负数表示南纬
-			U32	ui_FreqKHz;			  	///< 频率
-			U32	ui_SymbKbps;		  	///< 符号率
-			U8	uc_QPSKMode;			///< QPSK解调模式：0:BPSK; 1:QPSK; 2:8PSK
-			U8	uc_FEC;					///< FEC系数
-		}stru_SatelliteFreqInfo;
-	}un_FreqInfo;						///< 频点信息
-	U16 us_DataPid;						///< 数据PID，由loader确定
-	U16	us_DataGid; 					///< 数据table ID，由loader确定
-	U8	uc_UpdaeFlag;					///< 升级标记位
-	U32 ui_crc;                      	///< CRC信息，不包含uc_name及i_length
-}CH_UpdateInfo_t;
+		U8 TempBuf[20] = {"0"};
 
-/**@brief 存储设备类型*/
-typedef enum
-{
-    CH_COM_SAVEDEVICE_FLASH,		///< 由flash 存储信息
-    CH_COM_SAVEDEVICE_E2P,			///< 由E2prom 存储信息
-    CH_COM_SAVEDEVICE_MAX
-}CH_COM_SAVEDEVICE_e;
+		memset(&gstru_SystemInfo,0,sizeof(gstru_SystemInfo));
 
-#define UPDATE_INFO_MAGIC	"Update Info"
-/**@brief 存储信息类型*/
-typedef enum
-{
-    CH_COM_INFOTYPE_LOADER,			///< loader信息，包括厂商、软硬件版本号等等
-    CH_COM_INFOTYPE_UPDATE,			///< 升级信息，包括升级频点信息等等
-    CH_COM_INFOTYPE_SYSTEM,			///< 系统信息，包括序号、MAC等等
-    CH_COM_INFOTYPE_FACTBOOT,		///< 工厂调试完毕后设置的启动标志信息
-    CH_COM_INFOTYPE_EXTARL,			///< 扩展信息
-    CH_COM_INFOTYPE_MAX
-}CH_COM_INFOTYPE_e;
-typedef struct
-{
-    CH_COM_SAVEDEVICE_e enm_Device;		///< 存放区域类型
-    S32 i_DeviceId;						///< 存储设备号
-    U8* puc_MtdName;					///< Linux平台下Flash分区名称，配置成NULL 表示无效
-    U32 ui_OffsetAddress;				///< 偏移地址
-    U32 ui_Length;						///< 存取区域长度
-}CH_COM_Address_t;
+		strcpy((char*)gstru_SystemInfo.uc_name,"System Info");
+		gstru_SystemInfo.i_length = sizeof(gstru_SystemInfo) - 16;
 
-/**@brief 信息存储结构体定义*/
-typedef struct
+
+		memcpy(gstru_SystemInfo.uc_STBSN,TempBuf,15 );
+		printf("\n ================CH_COM_GetSystemInfo fail\n");
+
+		//CH_COM_SetSystemInfo(&gstru_SystemInfo);
+	}
+	gstru_SystemInfo.uc_STBSN[16] = 0;
+
+    if (diagInfoType == eTDAL_DIAG_HW_INFO)
+    {
+        pHardwareInfo = (tTDAL_Diag_HWInfo *)pProperStructure;
+
+        sprintf(pHardwareInfo->cHardwareVersion,"%x",(unsigned char*)rpstru_LoaderInfo.ui_Hardware);
+        pHardwareInfo->uiHardwareVersionId = (uint16_t)HARDWARE_VERSION_ID;
+
+        strcpy(pHardwareInfo->cHardwareModel,(unsigned char*)HARDWARE_MODEL);
+        pHardwareInfo->uiHardwareModelId = (uint16_t)HARDWARE_MODEL_ID;
+
+        strcpy(pHardwareInfo->cHardwareDeviceName,(unsigned char*)HARDWARE_DEVICE_NAME);
+        pHardwareInfo->uiHardwareDeviceNameId = HARDWARE_DEVICE_NAME_ID;
+
+        strcpy(pHardwareInfo->cHardwareManufacturer,(unsigned char*)HARDWARE_MANUFACTURER);
+        pHardwareInfo->uiHardwareManufacturerId = HARDWARE_MANUFACTURER_ID;
+
+        strcpy(pHardwareInfo->cOUI,(unsigned char*)HARDWARE_MANUFACTURER);
+        pHardwareInfo->uiOUIId = HARDWARE_MANUFACTURER_ID;
+
+        /*read the stb serial number info from flash 0x80070*/
+//        ret = MDrv_SERFLASH_Read(HWCONFIG_FALG_PARTITION_ADDR+HWCONFIG_AREA_STB_SERIAL_NUMBER,4,SerialNumber);
+//        if ( ret != TRUE)
+//        {
+//            return eTDAL_OTA_STATUS_ERROR;
+//        }
+
+        stbSerialNumber = 76667;//(SerialNumber[0]|(SerialNumber[1]<<8)|(SerialNumber[2]<<16)|(SerialNumber[3]<<24));
+        sprintf(pHardwareInfo->cHardwareSTBSerialNumber,"%s",gstru_SystemInfo.uc_STBSN);//020236150000400
+        printf("[%s %d]stb sn=[%s][%s] \n",__FUNCTION__,__LINE__,pHardwareInfo->cHardwareSTBSerialNumber,pHardwareInfo->cHardwareVersion);
+
+        return eTDAL_OTA_STATUS_NO_ERROR;
+
+    }
+    else //eTDAL_DIAG_SW_INFO
+    {
+        pSoftwareInfo = (tTDAL_Diag_SWInfo *)pProperStructure;
+        sprintf(pSoftwareInfo->cDriverVersion,"%02d.%02d.%02d.%02d",(rpstru_LoaderInfo.ui_Software & 0xff000000) >>24,
+		((rpstru_LoaderInfo.ui_Software & 0x00ff0000) >>16),
+		((rpstru_LoaderInfo.ui_Software & 0x0000ff00) >>8),
+		(rpstru_LoaderInfo.ui_Software & 0x000000ff)
+		);
+        pSoftwareInfo->uiDriverVersionId = rpstru_LoaderInfo.ui_Software;
+
+        strcpy(pSoftwareInfo->cLoaderVersion,(unsigned char*)LOADER_VERSION);
+        pSoftwareInfo->uiLoaderVersionId = LOADER_VERSION_ID;
+
+        strcpy(pSoftwareInfo->cLauncherVersion,(unsigned char*)LAUNCHER_VERSION);
+        pSoftwareInfo->uiLauncherVersionId = LAUNCHER_VERSION_ID;
+        printf("[%s %d]stb sn=[%s] \n",__FUNCTION__,__LINE__,pSoftwareInfo->cDriverVersion);
+
+        return eTDAL_OTA_STATUS_NO_ERROR;
+    }
+}
+
+GLOBAL tTDAL_OTA_ErrorCode TDAL_OTA_GetParameters(tTDAL_OTA_StatusParameters *otaParam)
 {
-    CH_COM_INFOTYPE_e enm_InfoType;		///< 存储信息类型，指示当前需要配置的信息
-    bool b_Used;						///< 是否配置，指示该配置信息是否有效
-    CH_COM_Address_t stru_MainInfo;		///< 主信息保存地址
-    bool b_BackUpUsed;				///< 是否使用备份配置，指示该配置信息是否有效
-    CH_COM_Address_t stru_BackUpInfo;	///< 备份信息地址
-}CH_COM_Params_t;
+	CH_LoaderInfo_t rpstru_LoaderInfo={0};
+	tTDAL_OTA_ErrorCode	enm_ChComRet;
+    if (otaParam == NULL)
+    {
+        return eTDAL_OTA_STATUS_ERROR;
+    }
+	enm_ChComRet = CH_COM_GetLoaderInfo(&rpstru_LoaderInfo);
+
+	if(enm_ChComRet != eTDAL_OTA_STATUS_NO_ERROR)
+	{
+		printf("\n ============CH_COM_GetLoaderInfo fail\n");
+	}
+	otaParam->bInStandBy  = !rpstru_LoaderInfo.ui_TimeCode;
+	if(rpstru_LoaderInfo.ui_DateCode == 0 )
+	{
+		otaParam->eErrorStatus = eTDAL_OTA_STATUS_NO_ERROR;
+	}
+	else
+	{
+		otaParam->eErrorStatus = eTDAL_OTA_STATUS_ERROR;
+	}
+	return eTDAL_OTA_STATUS_NO_ERROR;
+}
+
+/*
+* \depricated function is going to be removed from the API, as it belongs to older API version.
+*/
+tTDAL_OTA_ErrorCode TDAL_GetHWParameters(tTDAL_HWDataType hwDataType, tTDAL_HW_Handle pProperStructure)
+{
+    mTBOX_FCT_ENTER("TDAL_GetHWParameters");
+    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_OTA_GetDiagnosticStatus NOT IMPLEMENTED\n"));
+    mTBOX_RETURN eTDAL_OTA_STATUS_NO_ERROR;
+}
+
+/*
+* \depricated function is going to be removed from the API, as it belongs to older API version.
+*/
+GLOBAL tTDAL_OTA_ErrorCode TDAL_OTA_Initiate(tTDAL_OTAType otaType, tTDAL_OTAStandbyState otaStandbyState)
+{
+    mTBOX_FCT_ENTER("TDAL_OTA_Initiate");
+    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_OTA_GetDiagnosticStatus NOT IMPLEMENTED\n"));
+    mTBOX_RETURN eTDAL_OTA_STATUS_NO_ERROR;
+}
+
+/*
+* \depricated function is going to be removed from the API, as it belongs to older API version.
+*/
+void TDAL_GetLoadVersion(unsigned char *pcLoadVersion)
+{
+    mTBOX_FCT_ENTER("TDAL_GetLoadVersion");
+    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_GetLoadVersion NOT IMPLEMENTED\n"));
+    mTBOX_RETURN;
+}
+
+/*
+* \depricated function is going to be removed from the API, as it belongs to older API version.
+*/
+
+tTDAL_OTA_ErrorCode TDAL_OTA_GetDiagnosticStatus(tTDAL_DiagnosticOTAStatus *pOTAStatus)
+{
+    mTBOX_FCT_ENTER("TDAL_OTA_GetDiagnosticStatus");
+    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_OTA_GetDiagnosticStatus NOT IMPLEMENTED\n"));
+    mTBOX_RETURN eTDAL_OTA_STATUS_NO_ERROR;
+}
+
+/*
+* \depricated function is going to be removed from the API, as it belongs to older API version.
+*/
+tTDAL_OTAStandbyState TDAL_OTA_GetStandbyState(void)
+{
+    mTBOX_FCT_ENTER("TDAL_OTA_GetStandbyState");
+    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_OTA_GetStandbyState NOT IMPLEMENTED\n"));
+    mTBOX_RETURN eTDAL_STANDBY_OFF;
+}
+/*************************globle variable define*************************/
+#ifdef USE_TDAL_OTA
 
 const CH_COM_Params_t gstru_fact_SaveParams[CH_COM_INFOTYPE_MAX] =
 {
@@ -1323,11 +1351,6 @@ const CH_COM_Params_t gstru_fact_SaveParams[CH_COM_INFOTYPE_MAX] =
 
 };
 
-/******************************struct define******************************/
-
-
-/*************************globle variable define*************************/
-
 unsigned long ulTable_MPEG32[256] =
 {
    0x00000000L, 0x04C11DB7L, 0x09823B6EL, 0x0D4326D9L,
@@ -1396,44 +1419,12 @@ unsigned long ulTable_MPEG32[256] =
    0xBCB4666DL, 0xB8757BDAL, 0xB5365D03L, 0xB1F740B4L
 };
 
-
-/**@brief 系统信息*/
-typedef struct
+U32   CHDRV_FLASH_DirectWrite(U32 Address, U8* Buffer, U32 NumberToWrite)
 {
-	S8 	uc_name[12];				///< magic = "System Info"
-	S32 i_length;    				///< 信息大小*/
-	U8 	uc_STBSN[20]; 				///< 机顶盒序列号（字符串格式）
-	U8 	uc_MacAddress[8]; 			///< MAC地址,前6位有效
-	U8	uc_HDCPKey[256];			///< HDCP选项数据
-	U32	ui_CRC;						///< 校验字
-}CH_SystemInfo_t;
+	U32 enm_FlashResult = 0;
 
+	enm_FlashResult = TDAL_FLA_Write_OTA(Address, Buffer, NumberToWrite);
 
-/**@brief Loader信息*/
-typedef struct
-{
-	S8 	uc_name[12];			///< magic = "Loader Info"
-	S32 i_length;				///< 信息大小
-	U32	ui_OperatorNumber;		///< 运营商ID
-	U32 ui_LoaderType;			///< loader类型，具体由loader组分配
-	U32 ui_Manufacturer;		///< 厂商代码
-	U32 ui_Hardware;			///< 硬件版本号
-	U32 ui_Software;			///< 软件版本号
-	U32 ui_DateCode;			///< 软件日期
-	U32 ui_TimeCode;			///< 软件时间
-	S32	i_CaSpecailDataOffset;	///< CA私有数据存放地址
-	U32 ui_crc;					///< CRC信息
-}CH_LoaderInfo_t;
-#define SYSTEM_INFO_MAGIC	"System Info"
-
-#define LOADER_INFO_MAGIC	"Loader Info"
-uint32_t   CHDRV_FLASH_DirectWrite(   uint32_t   Address   ,
-		uint8_t*   Buffer   ,
-		uint32_t   NumberToWrite   )
-{
-	int enm_FlashResult = 0;
-
-	enm_FlashResult = TDAL_FLA_Write_OTA(Address ,Buffer,NumberToWrite);
 	return enm_FlashResult;
 }
 
@@ -1463,7 +1454,6 @@ U32 CRC_MPEG32_(U8 * pvStartAddress, U32 ulSize_in_bytes)
 }  /* CRC_MPEG32 */
 
 tTDAL_OTA_ErrorCode CH_COM_SetOTAInfo(CH_UpdateInfo_t *rpstru_OTAInfo)
-
 {
 		tTDAL_OTA_ErrorCode enm_Result = eTDAL_OTA_STATUS_NO_ERROR;
 #if 1 	/*<!-- gongwenqing 2013/12/13 13:59:46 --!>*/
@@ -2136,184 +2126,7 @@ bool   TDAL_DIAG_LogEventRegister(tDIAG_TDAL_LogEventFct   LogEventFct,tDIAG_TDA
 }
 #endif
 
-GLOBAL tTDAL_OTA_ErrorCode TDAL_Diag_GetInfo(tTDAL_Diag_InfoType diagInfoType, tTDAL_Diag_Handle pProperStructure)
-{
-    tTDAL_Diag_HWInfo *pHardwareInfo = NULL;
-    tTDAL_Diag_SWInfo *pSoftwareInfo = NULL;
-    unsigned char hwconfigData[1024+4] = {0};
-    unsigned int stbSerialNumber = 0;
-    unsigned char SerialNumber[4] = {0};
-    int ret = 0;
-	CH_LoaderInfo_t rpstru_LoaderInfo={0};
-	tTDAL_OTA_ErrorCode	enm_ChComRet;
-	CH_SystemInfo_t gstru_SystemInfo={0};
-	
-    printf("[%s %d]enter diagInfoType=%d \n",__FUNCTION__,__LINE__,diagInfoType);
-
-    if ((diagInfoType < eTDAL_DIAG_HW_INFO) || (diagInfoType > eTDAL_DIAG_SW_INFO))
-    {
-        return eTDAL_OTA_STATUS_ERROR;
-    }
-
-    if (pProperStructure == NULL)
-    {
-        return eTDAL_OTA_STATUS_ERROR;
-    }
-	enm_ChComRet = CH_COM_GetLoaderInfo(&rpstru_LoaderInfo);
-	enm_ChComRet |= CH_COM_GetSystemInfo( &gstru_SystemInfo );
-	if(enm_ChComRet != eTDAL_OTA_STATUS_NO_ERROR)
-	{
-		U8 TempBuf[20] = {"0"};
-		
-		memset(&gstru_SystemInfo,0,sizeof(gstru_SystemInfo));
-		
-		strcpy((char*)gstru_SystemInfo.uc_name,"System Info");
-		gstru_SystemInfo.i_length = sizeof(gstru_SystemInfo) - 16;
-		
-		
-		memcpy(gstru_SystemInfo.uc_STBSN,TempBuf,15 );
-		printf("\n ================CH_COM_GetSystemInfo fail\n");
-
-		//CH_COM_SetSystemInfo(&gstru_SystemInfo);
-	}
-	gstru_SystemInfo.uc_STBSN[16] = 0;
-
-    memset(&hwconfigData,0,sizeof(hwconfigData));
-    memset(hwconfigData,0,sizeof(hwconfigData));
-    memset(SerialNumber,0,sizeof(SerialNumber));
-
-    if (diagInfoType == eTDAL_DIAG_HW_INFO)
-    {
-        pHardwareInfo = (tTDAL_Diag_HWInfo *)pProperStructure;
-
-        sprintf(pHardwareInfo->cHardwareVersion,"%x",(unsigned char*)rpstru_LoaderInfo.ui_Hardware);
-        pHardwareInfo->uiHardwareVersionId = (uint16_t)HARDWARE_VERSION_ID;
-
-        strcpy(pHardwareInfo->cHardwareModel,(unsigned char*)HARDWARE_MODEL);
-        pHardwareInfo->uiHardwareModelId = (uint16_t)HARDWARE_MODEL_ID;
-
-        strcpy(pHardwareInfo->cHardwareDeviceName,(unsigned char*)HARDWARE_DEVICE_NAME);
-        pHardwareInfo->uiHardwareDeviceNameId = HARDWARE_DEVICE_NAME_ID;
-
-        strcpy(pHardwareInfo->cHardwareManufacturer,(unsigned char*)HARDWARE_MANUFACTURER);
-        pHardwareInfo->uiHardwareManufacturerId = HARDWARE_MANUFACTURER_ID;
-
-		
-        strcpy(pHardwareInfo->cOUI,(unsigned char*)HARDWARE_MANUFACTURER);
-        pHardwareInfo->uiOUIId = HARDWARE_MANUFACTURER_ID;
-
-
-        /*read the stb serial number info from flash 0x80070*/
-//        ret = MDrv_SERFLASH_Read(HWCONFIG_FALG_PARTITION_ADDR+HWCONFIG_AREA_STB_SERIAL_NUMBER,4,SerialNumber);
-//        if ( ret != TRUE)
-//        {
-//            return eTDAL_OTA_STATUS_ERROR;
-//        }
-
-        stbSerialNumber = 76667;//(SerialNumber[0]|(SerialNumber[1]<<8)|(SerialNumber[2]<<16)|(SerialNumber[3]<<24));
-        sprintf(pHardwareInfo->cHardwareSTBSerialNumber,"%s",gstru_SystemInfo.uc_STBSN);//020236150000400
-        printf("[%s %d]stb sn=[%s][%s] \n",__FUNCTION__,__LINE__,pHardwareInfo->cHardwareSTBSerialNumber,pHardwareInfo->cHardwareVersion);
-
-        return eTDAL_OTA_STATUS_NO_ERROR;
-
-    }
-    else //eTDAL_DIAG_SW_INFO
-    {
-        pSoftwareInfo = (tTDAL_Diag_SWInfo *)pProperStructure;
-        sprintf(pSoftwareInfo->cDriverVersion,"%02d.%02d.%02d.%02d",(rpstru_LoaderInfo.ui_Software & 0xff000000) >>24,
-		((rpstru_LoaderInfo.ui_Software & 0x00ff0000) >>16),
-		((rpstru_LoaderInfo.ui_Software & 0x0000ff00) >>8),
-		(rpstru_LoaderInfo.ui_Software & 0x000000ff) 
-		);
-        pSoftwareInfo->uiDriverVersionId = rpstru_LoaderInfo.ui_Software;
-
-        strcpy(pSoftwareInfo->cLoaderVersion,(unsigned char*)LOADER_VERSION);
-        pSoftwareInfo->uiLoaderVersionId = LOADER_VERSION_ID;
-
-        strcpy(pSoftwareInfo->cLauncherVersion,(unsigned char*)LAUNCHER_VERSION);
-        pSoftwareInfo->uiLauncherVersionId = LAUNCHER_VERSION_ID;
-        printf("[%s %d]stb sn=[%s] \n",__FUNCTION__,__LINE__,pSoftwareInfo->cDriverVersion);
-
-        return eTDAL_OTA_STATUS_NO_ERROR;
-    }
-}
-
-GLOBAL tTDAL_OTA_ErrorCode TDAL_OTA_GetParameters(tTDAL_OTA_StatusParameters *otaParam)
-{
-	CH_LoaderInfo_t rpstru_LoaderInfo={0};
-	tTDAL_OTA_ErrorCode	enm_ChComRet;
-    if (otaParam == NULL)
-    {
-        return eTDAL_OTA_STATUS_ERROR;
-    }
-	enm_ChComRet = CH_COM_GetLoaderInfo(&rpstru_LoaderInfo);
-	
-	if(enm_ChComRet != eTDAL_OTA_STATUS_NO_ERROR)
-	{
-		printf("\n ============CH_COM_GetLoaderInfo fail\n");
-	}
-	otaParam->bInStandBy  = !rpstru_LoaderInfo.ui_TimeCode;
-	if(rpstru_LoaderInfo.ui_DateCode == 0 )
-	{
-		otaParam->eErrorStatus = eTDAL_OTA_STATUS_NO_ERROR;
-	}
-	else
-	{
-		otaParam->eErrorStatus = eTDAL_OTA_STATUS_ERROR;
-	}
-	return eTDAL_OTA_STATUS_NO_ERROR;
-}
-
-/*
-* \depricated function is going to be removed from the API, as it belongs to older API version.
-*/
-tTDAL_OTA_ErrorCode TDAL_GetHWParameters(tTDAL_HWDataType hwDataType, tTDAL_HW_Handle pProperStructure)
-{
-    mTBOX_FCT_ENTER("TDAL_GetHWParameters");
-    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_OTA_GetDiagnosticStatus NOT IMPLEMENTED\n"));
-    mTBOX_RETURN eTDAL_OTA_STATUS_NO_ERROR;
-}
-
-/*
-* \depricated function is going to be removed from the API, as it belongs to older API version.
-*/
-GLOBAL tTDAL_OTA_ErrorCode TDAL_OTA_Initiate(tTDAL_OTAType otaType, tTDAL_OTAStandbyState otaStandbyState)
-{
-    mTBOX_FCT_ENTER("TDAL_OTA_Initiate");
-    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_OTA_GetDiagnosticStatus NOT IMPLEMENTED\n"));
-    mTBOX_RETURN eTDAL_OTA_STATUS_NO_ERROR;
-}
-
-/*
-* \depricated function is going to be removed from the API, as it belongs to older API version.
-*/
-void TDAL_GetLoadVersion(unsigned char *pcLoadVersion)
-{
-    mTBOX_FCT_ENTER("TDAL_GetLoadVersion");
-    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_GetLoadVersion NOT IMPLEMENTED\n"));
-    mTBOX_RETURN;
-}
-
-/*
-* \depricated function is going to be removed from the API, as it belongs to older API version.
-*/
-
-tTDAL_OTA_ErrorCode TDAL_OTA_GetDiagnosticStatus(tTDAL_DiagnosticOTAStatus *pOTAStatus)
-{
-    mTBOX_FCT_ENTER("TDAL_OTA_GetDiagnosticStatus");
-    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_OTA_GetDiagnosticStatus NOT IMPLEMENTED\n"));
-    mTBOX_RETURN eTDAL_OTA_STATUS_NO_ERROR;
-}
-
-/*
-* \depricated function is going to be removed from the API, as it belongs to older API version.
-*/
-tTDAL_OTAStandbyState TDAL_OTA_GetStandbyState(void)
-{
-    mTBOX_FCT_ENTER("TDAL_OTA_GetStandbyState");
-    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_OTA_GetStandbyState NOT IMPLEMENTED\n"));
-    mTBOX_RETURN eTDAL_STANDBY_OFF;
-}
+#endif /* USE_TDAL_OTA */
 
 /* this table array is created with the mpeg-2 polynome :
    x^32+x^26+x^23+x^22+x^16+x^12+x^11+x^10+x^8+x^7+x^5+x^4+x^2+x+1 */
