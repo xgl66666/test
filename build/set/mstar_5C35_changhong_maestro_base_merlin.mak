@@ -3,9 +3,9 @@
 # --------------------------------------
 
 # ------ Application settings -----------
-export PRODUCT_APPLICATION_PATH = $(APP_ROOT)/maestro-base-nx2-cab-sd
-export PRODUCT_FLASH_MAP = map_base_maestro_mstar5c35_changhong_cak_dlk.xml
-export PRODUCT_APPLICATION_PLAN = plan_resources_maestro_base_nx2_cab_sd.xml
+export PRODUCT_APPLICATION_PATH = $(APP_ROOT)/maestro-gtpl-nx2-cab-sd
+export PRODUCT_FLASH_MAP = map_gtpl_maestro_mstar5c35_changhong_cak_dlk.xml
+export PRODUCT_APPLICATION_PLAN = plan_resources_maestro_gtpl_nx2_cab_sd.xml
 
 # ------ Platform settings -----------
 export PLATFORM_CHIP_VENDOR=mstar
@@ -30,6 +30,7 @@ export PRODUCT_APP=MAESTRO
 export PRODUCT_PROPRIETARY_BOOTLOADER=CHANGHONG
 export PRODUCT_CUSTOMER_HEADEND=GTPL
 export PRODUCT_USE_OTA=NO
+export USE_TDAL_OTA=YES
 export IMCL=YES
 export COMEDIA_RESOURCES_IN_RAM=NO
 export PRODUCT_KBD=GTPL_DTV
@@ -45,6 +46,7 @@ export PLATFORM_COMPACT=YES
 export UNZIP_RAM_BASE=0x82F70044
 #6 MB Maestro TKEL pool 
 export TKEL_MEMORY_SIZE=_6Mb
+export PRODUCT_USE_SSU=TDAL_SSU
 
 # ------ Configure the CA stack -----------
 export PRODUCT_USE_CA=YES

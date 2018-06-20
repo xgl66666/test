@@ -587,6 +587,9 @@ endif
 ifeq "$(PRODUCT_USE_OTA)" "YES"
     CFLAGS += -DUSE_OTA
 endif
+ifeq "$(USE_TDAL_OTA)" "YES"
+    CFLAGS += -DUSE_TDAL_OTA
+endif
 # ****************************************
 
 

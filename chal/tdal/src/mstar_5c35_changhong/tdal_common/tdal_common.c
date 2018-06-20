@@ -1094,6 +1094,7 @@ GLOBAL tTDAL_OTA_ErrorCode TDAL_Diag_GetInfo(tTDAL_Diag_InfoType diagInfoType, t
 {
     tTDAL_Diag_HWInfo *pHardwareInfo = NULL;
     tTDAL_Diag_SWInfo *pSoftwareInfo = NULL;
+    unsigned char hwconfigData[1024+4] = {0};
     unsigned int stbSerialNumber = 0;
     unsigned char SerialNumber[4] = {0};
     int ret = 0;
@@ -1130,6 +1131,10 @@ GLOBAL tTDAL_OTA_ErrorCode TDAL_Diag_GetInfo(tTDAL_Diag_InfoType diagInfoType, t
 		//CH_COM_SetSystemInfo(&gstru_SystemInfo);
 	}
 	gstru_SystemInfo.uc_STBSN[16] = 0;
+
+    memset(&hwconfigData,0,sizeof(hwconfigData));
+    memset(hwconfigData,0,sizeof(hwconfigData));
+    memset(SerialNumber,0,sizeof(SerialNumber));
 
     if (diagInfoType == eTDAL_DIAG_HW_INFO)
     {
@@ -1184,11 +1189,13 @@ GLOBAL tTDAL_OTA_ErrorCode TDAL_Diag_GetInfo(tTDAL_Diag_InfoType diagInfoType, t
         return eTDAL_OTA_STATUS_NO_ERROR;
     }
 }
-
 GLOBAL tTDAL_OTA_ErrorCode TDAL_OTA_GetParameters(tTDAL_OTA_StatusParameters *otaParam)
 {
 	CH_LoaderInfo_t rpstru_LoaderInfo={0};
 	tTDAL_OTA_ErrorCode	enm_ChComRet;
+	
+    char                    cStatus[10]={0};   /* Success, Failed, Suspended */
+    char                    cErrorCode[5] = {0}; /* Error code format: EXXX */
     if (otaParam == NULL)
     {
         return eTDAL_OTA_STATUS_ERROR;
@@ -1200,13 +1207,21 @@ GLOBAL tTDAL_OTA_ErrorCode TDAL_OTA_GetParameters(tTDAL_OTA_StatusParameters *ot
 		printf("\n ============CH_COM_GetLoaderInfo fail\n");
 	}
 	otaParam->bInStandBy  = !rpstru_LoaderInfo.ui_TimeCode;
+	if(rpstru_LoaderInfo.ui_DateCode > 0xFFF)
+	{
+		rpstru_LoaderInfo.ui_DateCode = rpstru_LoaderInfo.ui_DateCode%0xfff;
+	}
 	if(rpstru_LoaderInfo.ui_DateCode == 0 )
 	{
 		otaParam->eErrorStatus = eTDAL_OTA_STATUS_NO_ERROR;
+		sprintf(otaParam->cStatus,"%s","Success");
+		sprintf(otaParam->cErrorCode,"%d",0);
 	}
 	else
 	{
 		otaParam->eErrorStatus = eTDAL_OTA_STATUS_ERROR;
+		sprintf(otaParam->cStatus,"%s","Failed");
+		sprintf(otaParam->cErrorCode,"E%03X",rpstru_LoaderInfo.ui_DateCode);
 	}
 	return eTDAL_OTA_STATUS_NO_ERROR;
 }
@@ -1263,7 +1278,6 @@ tTDAL_OTAStandbyState TDAL_OTA_GetStandbyState(void)
 }
 /*************************globle variable define*************************/
 #ifdef USE_TDAL_OTA
-
 const CH_COM_Params_t gstru_fact_SaveParams[CH_COM_INFOTYPE_MAX] =
 {
 	/*0:CH_COM_INFOTYPE_LOADER*/

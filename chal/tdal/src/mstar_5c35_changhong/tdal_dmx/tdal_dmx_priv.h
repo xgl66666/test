@@ -53,7 +53,7 @@ extern   "C"   {
    #define   kTDAL_DMX_SECTIONS_MEM_SIZE      ((size_t)1024*1024)
 #else
 #ifdef EIT_FULL_CACHING_ON
-#define kTDAL_DMX_SECTIONS_MEM_SIZE         ((size_t)128*1024)
+#define kTDAL_DMX_SECTIONS_MEM_SIZE         ((size_t)512*1024)
 #else
 #define   kTDAL_DMX_SECTIONS_MEM_SIZE      ((size_t)8*1024*5)
 #endif
