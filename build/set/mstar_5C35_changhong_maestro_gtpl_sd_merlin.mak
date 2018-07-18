@@ -47,6 +47,7 @@ export PRODUCT_MAESTRO_RCU_FINE_TUNING=YES
 export PRODUCT_USE_USB = YES
 export USE_MSTAR_SEC=NO
 export UNZIP_RAM_BASE=0x82F70044
+export IMAGE_BIN_SIZE=3387392
 
 # ------ Configure the CA stack -----------
 export PRODUCT_USE_CA=YES
