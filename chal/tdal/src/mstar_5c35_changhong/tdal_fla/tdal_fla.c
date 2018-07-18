@@ -254,10 +254,21 @@ tTDAL_FLA_ErrorCode   TDAL_FLA_SetPartition   (   uint8_t   nbPartition   ,
 	/* For backup NVM-in-flash strategy */
 	TDAL_FLA_Partitions[nbPartition].Rights = TDAL_FLA_READ_ENABLE | TDAL_FLA_WRITE_ENABLE;
 	TDAL_FLA_Partitions[nbPartition].StartAddress = 0x510000;
-	TDAL_FLA_Partitions[nbPartition].EndAddress = 0x520000;
+	TDAL_FLA_Partitions[nbPartition].EndAddress = 0x520000 - 1;
 
 	TDAL_FLA_NbPartition = nbPartition + 1;
 	TDAL_FLA_isPartitionSet = 1;
+    /* Write protection should be removed earlier for NVM backup mechanism*/
+	if (FALSE==MDrv_SERFLASH_WriteProtect(FALSE))
+	{
+		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "a: MDrv_SERFLASH_WriteProtect: FALSE\n"));
+		mTBOX_RETURN eTDAL_FLA_ERROR;
+	}
+	else
+	{
+		mTBOX_TRACE((kTBOX_NIV_1, "a: MDrv_SERFLASH_WriteProtect: TRUE\n"));
+		TDAL_FLA_Opened=TRUE;
+	}
 
 	mTBOX_RETURN(eTDAL_FLA_NO_ERROR);
 }
