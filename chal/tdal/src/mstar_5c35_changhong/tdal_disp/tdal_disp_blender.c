@@ -614,6 +614,16 @@ bool TDAL_DISPm_GetOutputWindow(tTDAL_DISP_BlenderId   Id, tTDAL_DISP_BlenderWin
    mTBOX_RETURN(error);
 }
 
+static int  _DISP_DAC_Init(MS_BOOL HalfOutput)
+{
+    //Set SD DAC Cfg
+    MApi_DAC_SetOutputSource(E_DAC_TO_VE, FALSE);
+    MApi_DAC_SetOutputSwapSel((E_DAC_SWAP_SEL)E_DAC_R_G_B, FALSE);
+    MApi_DAC_SetOutputLevel((E_DAC_MAX_OUTPUT_LEVEL)E_DAC_OUTPUT_LEVEL_HIGH, FALSE);
+    MApi_DAC_OnOffSD((E_DAC_SD_ENABLE_CTRL)E_DAC_SD_XYC);
+    MApi_DAC_SetIHalfOutput( HalfOutput , FALSE);
+    return 0;
+}
 void TDAL_DISPm_XCInit()
 {
     if (isXCInitialized)
@@ -652,4 +662,8 @@ void TDAL_DISPm_XCInit()
 
     //Set DTV path to Scaler
     msAPI_XC_SetConnect(INPUT_SOURCE_DTV);
+
+ //init DAC 
+ 	_DISP_DAC_Init(TRUE);
+ 	printf("[gwq]:Set DAC init parameters!HalfOutput is true.\n");
 }
