@@ -52,6 +52,10 @@ bool TDALm_WorkerThreadsSendRequest(tTDALm_WorkerThreadsFunc funcToCall, tTDALm_
 
 #define TDAL_QUEUE_MSG_MAX_NO 10
 
+void        TDALm_CRC32_Init();
+uint32_t    TDALm_CRC32_Calculate(uint8_t *pcBuffer, uint32_t uiSize);
+bool        TDALm_CRC32_Check(uint8_t *pcBuffer, uint32_t uiSize, uint32_t uiCRC32Saved);
+
 #ifdef __cplusplus
 }
 #endif

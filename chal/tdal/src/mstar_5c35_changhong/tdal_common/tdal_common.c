@@ -307,6 +307,8 @@ GLOBAL   void   TDAL_Init(void)
 	TDALi_StartWatchdog();
 #endif
 
+	TDALm_CRC32_Init();
+
     return;
 }
 
