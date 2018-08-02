@@ -35,8 +35,6 @@ DIR_INCLUDE = \
 LIBOBJS = 	tdal_fp.$(OBJ_SUFFIX) \
             tdal_fp_key.$(OBJ_SUFFIX)
             
-#LIBOBJS += $(MSD_CUST_DEMO)/obj/drvFrontPnl.$(OBJ_SUFFIX)
-
 # ****************************************
 # List of dependencies
 # ****************************************

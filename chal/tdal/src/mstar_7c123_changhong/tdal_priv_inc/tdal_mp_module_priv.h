@@ -32,6 +32,8 @@ extern   "C"   {
 
 IMPORT bool TDAL_MPi_GetDecoderStatus(void);
 IMPORT void TDAL_MPm_UsbRemoved(void);
+IMPORT uint32_t TDAL_MPm_GetPhotoPitch(void);
+IMPORT uint16_t TDAL_MPm_GetPhotoFormat(void);
 
 #ifdef   __cplusplus
 }

@@ -559,7 +559,6 @@ TDAL_FLA_Erase(uint32_t   ulAddress,
    mTBOX_TRACE((kTBOX_NIV_1,"[TDAL_FLA_Erase]   Adress = 0x%x   for   %d   bytes\n",   ulAddress,   ulNumberToErase));
 
 #if   1   /*   For   debug   purpose   */
-   printf("[TDAL_FLA_Erase]   Adress = 0x%x\n",   ulAddress);
 #endif
 
    /*   check   right   access   */
@@ -923,23 +922,13 @@ tTDAL_FLA_ErrorCode   TDAL_FLA_ChangePartitionRight(uint32_t   ulAddress,   uint
    
    mTBOX_FCT_ENTER("TDAL_FLA_ChangePartitionRight");
 
-   printf("TDAL_FLA_ChangePartitionRight(%#x,   %#x,   %#x)   TDAL_FLAi_pstPartitions=%#x,   TDAL_FLAi_ucNbPartition=%d\n",
-      ulAddress,   ulSize,   uRights,
-      TDAL_FLAi_pstPartitions,   TDAL_FLAi_ucNbPartition);
-
    if   (TDAL_FLAi_pstPartitions   !=   NULL)
    for   (index = 0;index<TDAL_FLAi_ucNbPartition;index++)
    {
-      printf("TDAL_FLA_ChangePartitionRight   index=%d,   Saddr=%#x   Eaddr=%#x\n",
-      index,
-      TDAL_FLAi_pstPartitions[index].StartAddress,
-      TDAL_FLAi_pstPartitions[index].EndAddress);
       if   (ulAddress == TDAL_FLAi_pstPartitions[index].StartAddress)
       {
-      printf("TDAL_FLA_ChangePartitionRight   StartAddress   matches   ...   size   %#x\n",   ulSize);
       if   ((ulAddress+ulSize-1) == TDAL_FLAi_pstPartitions[index].EndAddress)   
       {
-        printf("TDAL_FLA_ChangePartitionRight   StartAddress & size   match\n");
         TDAL_FLAi_pstPartitions[index].Rights = uRights;
         return   eTDAL_FLA_NO_ERROR;
       }

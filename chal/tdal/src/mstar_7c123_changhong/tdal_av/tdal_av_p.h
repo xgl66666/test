@@ -47,6 +47,8 @@ typedef struct
    //void*               pData;
 }tTDAL_AV_EvtMsg;
 
+typedef void (*tTDAL_AV_DataMissingOnPidCallback) (int decStat);
+
 IMPORT bool              TDAL_AV_AlreadyInitialized;
 IMPORT TDAL_queue_id			 TDAL_AV_EvtQueue_p;
 IMPORT TDAL_mutex_id     TDAL_AVi_Mutex;

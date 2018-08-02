@@ -24,10 +24,21 @@
 #include "tdal_disp.h"
 #include "tdal_output.h"
 #include "tdal_output_module_priv.h"
+#include "tdal_disp_module_priv.h"
+#include "tdal_av.h"
 
 #include "MsCommon.h"
 #include "MsMemory.h"
 
+#include "apiHDMITx.h"
+#include "drvMVOP.h"
+#include "apiVDEC.h"
+#include "apiVDEC_EX.h"
+#include "apiXC.h"
+#include "xc/msAPI_XC.h"
+#include "apiAUDIO.h"
+#include "drvAUDIO_if.h"
+#include "drvAUDIO.h"
 //Api
 #include "drvTVEncoder.h"
 #include "apiVDEC.h"
@@ -70,9 +81,11 @@ tTDAL_OUTPUTi_HDMIDescriptor        TDAL_OUTPUTi_HDMIDescriptor[kTDAL_OUTPUTi_NB
 tTDAL_OUTPUTi_RFModDescriptor       TDAL_OUTPUTi_RFModDescriptor[kTDAL_OUTPUTi_NB_RFMOD];
 
 bool                                TDAL_OUTPUT_AlreadyInitialized = FALSE;
-
+#ifdef HD_ENABLE
 tTDAL_OUTPUT_VideoHDStandard        TDAL_OUTPUT_CurrentVideoHDStandard = eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_I_50;
-
+#else
+tTDAL_OUTPUT_VideoHDStandard        TDAL_OUTPUT_CurrentVideoHDStandard = eTDAL_OUTPUT_VIDEO_HD_STD_720_576_I_50;
+#endif
 bool                                TDAL_OUTPUTi_isRGBActivated = FALSE;
 bool                                TDAL_OUTPUTi_isOutputDISABLING_GFX_ID_1 = FALSE;
 bool                                TDAL_GlobalResolutionChangeOnGoing = FALSE;
@@ -85,6 +98,8 @@ LOCAL tTDAL_OUTPUT_AudioAnaCapability           TDAL_AudioAnaMainCapability;
 
 LOCAL tTDAL_OUTPUT_AudioAnaSpeakerParams        TDAL_AudioAnaMainSpeakerParams;
 LOCAL tTDAL_OUTPUT_AudioAnaSpeakerAttenuation   TDAL_AudioAnaMainSpeakerAttenuation;
+
+MODULE tTDAL_OUTPUTi_HDMIDescriptor             TDAL_OUTPUT_HDMIDescriptor;
 
 LOCAL TDAL_mutex_id                             TDAL_OUTPUT_Mutex = NULL;
 LOCAL tTDAL_OUTPUT_AudioDigitalMode             TDAL_OUTPUT_CurrentAudioMode = 0xFFFFFFFF;
@@ -151,7 +166,6 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_Init(void)
     TDAL_OUTPUTi_DescriptorTable[i].pstRFModDesc = NULL;
     i++;
 
-#if 0
     TDAL_OUTPUTi_DescriptorTable[i].Id           = eTDAL_OUTPUT_AUDIO_SPDIF_ID_0;
     TDAL_OUTPUTi_DescriptorTable[i].IsEnable      = FALSE;
     TDAL_OUTPUTi_DescriptorTable[i].pstVideoDencDesc   = NULL;
@@ -160,7 +174,6 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_Init(void)
     TDAL_OUTPUTi_DescriptorTable[i].pstHDMIDesc       = NULL;
     TDAL_OUTPUTi_DescriptorTable[i].pstRFModDesc = NULL;
     i++;
-#endif
 
     TDAL_OUTPUTi_DescriptorTable[i].Id           = eTDAL_OUTPUT_VIDEO_DENC_ID_0;
     TDAL_OUTPUTi_DescriptorTable[i].IsEnable      = FALSE;
@@ -173,12 +186,28 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_Init(void)
     TDAL_OUTPUTi_DescriptorTable[i].pstVideoDencDesc->IsMacrovisionActive = false;
     i++;
 
+    TDAL_OUTPUTi_DescriptorTable[i].Id           = eTDAL_OUTPUT_HDMI_ID_0;
+    TDAL_OUTPUTi_DescriptorTable[i].IsEnable      = FALSE;
+    TDAL_OUTPUTi_DescriptorTable[i].pstVideoDencDesc   = NULL;
+    TDAL_OUTPUTi_DescriptorTable[i].pstAudioAnaDesc   = NULL;
+    TDAL_OUTPUTi_DescriptorTable[i].pstAudioSPDIFDesc   = NULL;
+    TDAL_OUTPUTi_DescriptorTable[i].pstHDMIDesc       = &TDAL_OUTPUT_HDMIDescriptor;
+    TDAL_OUTPUTi_DescriptorTable[i].pstRFModDesc = NULL;
+    i++;
+
+    TDAL_OUTPUT_HDMIDescriptor.videoMode        = eTDAL_OUTPUT_VIDEO_HD_STD_NONE;
+    TDAL_OUTPUT_HDMIDescriptor.audioMode        = 0xFFFFFFFF;
+    TDAL_OUTPUT_HDMIDescriptor.uiAudioFrequency = 0;
+    TDAL_OUTPUT_HDMIDescriptor.uiAudioDelay     = 0;
+    TDAL_OUTPUT_HDMIDescriptor.uiAudioAdjust    = 0;
+
+
     // XC Init
     TDAL_DISPm_XCInit();
-    
+
     //VE Init
     TDAL_OUTPUTm_VEInit();
-    
+
     //GFX Init
     TDAL_GFXm_Init();
 
@@ -222,7 +251,7 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_Term(void)
     tTDAL_OUTPUT_Error  Error = eTDAL_OUTPUT_NO_ERROR;
 
     mTBOX_FCT_ENTER("TDAL_OUTPUT_Terminate");
-    
+
     /* check if not initialized */
     if (TDAL_OUTPUT_AlreadyInitialized == FALSE)
     {
@@ -234,7 +263,7 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_Term(void)
     {
         if (TDAL_OUTPUTi_DescriptorTable[i].Id == eTDAL_OUTPUT_VIDEO_DENC_ID_0)
         {
-            break;            
+            break;
         }
     }
 
@@ -256,10 +285,10 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_Term(void)
             /* TBD */
         }
     }
-    
+
     TDAL_DeleteMutex(TDAL_OUTPUT_Mutex);
     TDAL_OUTPUT_AlreadyInitialized = FALSE;
-    
+
     mTBOX_RETURN(Error);
 }
 
@@ -276,7 +305,7 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_Term(void)
 GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_CapabilityGet(tTDAL_OUTPUT_Capability *pstCapability)
 {
     mTBOX_FCT_ENTER("TDAL_OUTPUT_CapabilityGet");
-    
+
     /* check if not initialized */
     if (TDAL_OUTPUT_AlreadyInitialized == FALSE)
     {
@@ -284,14 +313,14 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_CapabilityGet(tTDAL_OUTPUT_Capability *pst
     }
 
    /* set the capabilities */
-    
+
     pstCapability->nbAudioAna   = kTDAL_OUTPUTi_NB_AUDIO_ANA;
     pstCapability->nbAudioSPDIF = kTDAL_OUTPUTi_NB_AUDIO_SPDIF;
     pstCapability->nbVideoDenc  = kTDAL_OUTPUTi_NB_VIDEO_DENC;
     pstCapability->nbRFMod      = kTDAL_OUTPUTi_NB_RFMOD;
     pstCapability->nbVideoHDDAC = kTDAL_OUTPUTi_NB_VIDEO_HD_DAC;
     pstCapability->nbHDMI       = kTDAL_OUTPUTi_NB_HDMI;
-    
+
     mTBOX_RETURN(eTDAL_OUTPUT_NO_ERROR);
 }
 
@@ -308,8 +337,92 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_CapabilityGet(tTDAL_OUTPUT_Capability *pst
 GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_HDMICapabilityGet(tTDAL_OUTPUT_OutputId Id, tTDAL_OUTPUT_HDMICapability *pstCapability)
 {
    tTDAL_OUTPUT_Error    OUTPUT_Error = eTDAL_OUTPUT_NO_ERROR;
+   pstCapability->StandardSupportedMask = 0xFFFFFFFF;
    return (OUTPUT_Error);
+}
+/********************************************************/
+/* Functions Definitions (LOCAL) */
+/********************************************************/
+/***********************************************************************
+* Function Name : TDAL_OUTPUTi_HdmiConvertVideoStandardToMsTimings
+*
+* Description :
+*
+* Side effects :
+*
+* Comment :
+*
+**********************************************************************/
+LOCAL bool TDAL_OUTPUTi_HdmiConvertVideoStandardToMsTimings(tTDAL_OUTPUT_VideoHDStandard videoStandard, E_MSAPI_XC_OUTPUT_TIMING_TYPE *pMSTiming)
+{
+    bool bResult = TRUE;
+    mTBOX_FCT_ENTER("TDAL_OUTPUTi_HdmiConvertVideoStandardToMsTimings");
+    switch (videoStandard)
+    {
+        case eTDAL_OUTPUT_VIDEO_HD_STD_640_480_P_60:
+            *pMSTiming = E_MSAPI_XC_RES_640x480P_60Hz;
+            break;
+        case eTDAL_OUTPUT_VIDEO_HD_STD_720_480_P_5994:
+        case eTDAL_OUTPUT_VIDEO_HD_STD_720_480_P_60:
+            *pMSTiming = E_MSAPI_XC_RES_720x480P_60Hz;
+            break;
+        case eTDAL_OUTPUT_VIDEO_HD_STD_720_480_I_5994:
+        case eTDAL_OUTPUT_VIDEO_HD_STD_720_480_I_60:
+            *pMSTiming = E_MSAPI_XC_RES_720x480I_60Hz;
+            break;
+        case eTDAL_OUTPUT_VIDEO_HD_STD_720_576_P_50:
+            *pMSTiming = E_MSAPI_XC_RES_720x576P_50Hz;
+            break;
+        case eTDAL_OUTPUT_VIDEO_HD_STD_720_576_I_50:
+            *pMSTiming = E_MSAPI_XC_RES_720x576I_50Hz;
+            break;
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1280_720_P_50:
+            *pMSTiming = E_MSAPI_XC_RES_1280x720P_50Hz;
+            break;
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1280_720_P_5994:
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1280_720_P_60:
+            *pMSTiming = E_MSAPI_XC_RES_1280x720P_60Hz;
+            break;
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_P_2398:
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_P_24:
+            *pMSTiming = E_MSAPI_XC_RES_1920x1080P_24Hz;
+            break;
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_P_25:
+            *pMSTiming = E_MSAPI_XC_RES_1920x1080P_25Hz;
+            break;
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_P_2997:
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_P_30:
+            *pMSTiming = E_MSAPI_XC_RES_1920x1080P_30Hz;
+            break;
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_P_50:
+            *pMSTiming = E_MSAPI_XC_RES_1920x1080P_50Hz;
+            break;
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_P_5994:
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_P_60:
+            *pMSTiming = E_MSAPI_XC_RES_1920x1080P_60Hz;
+            break;
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_I_50:
+            *pMSTiming = E_MSAPI_XC_RES_1920x1080I_50Hz;
+            break;
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_I_5994:
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_I_60:
+            *pMSTiming = E_MSAPI_XC_RES_1920x1080I_60Hz;
+            break;
 
+        case eTDAL_OUTPUT_VIDEO_HD_STD_NONE:
+        case eTDAL_OUTPUT_VIDEO_HD_STD_720_483_P_5994:
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1280_720_P_2398:
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1280_720_P_24:
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1280_720_P_25:
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1280_720_P_2997:
+        case eTDAL_OUTPUT_VIDEO_HD_STD_1280_720_P_30:
+        default:
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL,"Unsupported video mode %d\n", videoStandard));
+            bResult = FALSE;
+            break;
+
+    }
+    mTBOX_RETURN(bResult);
 }
 
 /***********************************************************************
@@ -324,8 +437,206 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_HDMICapabilityGet(tTDAL_OUTPUT_OutputId Id
 **********************************************************************/
 GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_HDMIParamsSet(tTDAL_OUTPUT_OutputId Id, tTDAL_OUTPUT_HDMIParams *pstParams)
 {
-   tTDAL_OUTPUT_Error    OUTPUT_Error = eTDAL_OUTPUT_NO_ERROR;
-   return (OUTPUT_Error);
+    tTDAL_OUTPUT_Error    outError = eTDAL_OUTPUT_NO_ERROR;
+    uint8_t               outCnt;
+    bool                  outFound = FALSE;
+    MS_BOOL               bMSResult;
+    E_MSAPI_XC_RESULT     eXCResult;
+
+    mTBOX_FCT_ENTER("TDAL_OUTPUT_HDMIParamsSet");
+
+    if(TDAL_OUTPUT_AlreadyInitialized == FALSE)
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL,"TDAL_OUTPUT_HDMIParamsSet: Already initialized\n"));
+        mTBOX_RETURN(eTDAL_OUTPUT_NOT_INIT_ERROR);
+    }
+
+    if(Id != eTDAL_OUTPUT_HDMI_ID_0)
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL,"TDAL_OUTPUT_HDMIParamsSet: Invalid Id given\n"));
+        mTBOX_RETURN(eTDAL_OUTPUT_BAD_PARAMETER_ERROR);
+    }
+
+    if(pstParams == NULL)
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL,"TDAL_OUTPUT_HDMIParamsSet: Invalid pstParams given\n"));
+        mTBOX_RETURN(eTDAL_OUTPUT_BAD_PARAMETER_ERROR);
+    }
+
+    TDAL_LockMutex(TDAL_OUTPUT_Mutex);
+
+    if(outError == eTDAL_OUTPUT_NO_ERROR)
+    {
+        for(outCnt = 0; ((outCnt < kTDAL_OUTPUTi_NB_OUTPUT) && (outFound == FALSE)); outCnt++)
+        {
+            if(TDAL_OUTPUTi_DescriptorTable[outCnt].Id == Id)
+            {
+                mTBOX_TRACE((kTBOX_NIV_CRITICAL,"TDAL_OUTPUT_HDMIParamsSet: outCnt[%d]\n", outCnt));
+                outFound = TRUE;
+                break;
+            }
+        }
+
+        if(outFound == FALSE)
+        {
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL,"TDAL_OUTPUT_HDMIParamsSet: Invalid arg given\n"));
+            outError = eTDAL_OUTPUT_BAD_PARAMETER_ERROR;
+        }
+    }
+
+    if(TDAL_OUTPUTi_DescriptorTable[outCnt].IsEnable == TRUE && outError == eTDAL_OUTPUT_NO_ERROR)
+    {
+        if (TDAL_OUTPUTi_DescriptorTable[outCnt].pstHDMIDesc->videoMode != pstParams->VideoStandard)
+        {
+            //Disable video layer before resolution change
+            bool refreshVideoLayer = FALSE;
+            if(TDAL_DISPm_VideoLayerEnabled())
+            {
+                refreshVideoLayer = TRUE;
+            }
+
+            TDAL_OUTPUT_Disable(eTDAL_OUTPUT_VIDEO_DENC_ID_0);
+            TDAL_OUTPUT_Disable(eTDAL_OUTPUT_HDMI_ID_0);
+
+            if(refreshVideoLayer)
+            {
+                TDAL_DISP_LayerDisable(eTDAL_DISP_LAYER_VIDEO_ID_0);
+            }
+            MApi_DAC_Enable(DISABLE, FALSE);
+
+            E_MSAPI_XC_OUTPUT_TIMING_TYPE eMSTimings;
+            if (TDAL_OUTPUTi_HdmiConvertVideoStandardToMsTimings(pstParams->VideoStandard, &eMSTimings) == FALSE)
+            {
+                outError = eTDAL_OUTPUT_BAD_PARAMETER_ERROR;
+            }
+
+
+            if ( outError == eTDAL_OUTPUT_NO_ERROR && (bMSResult = msAPI_XC_EnableMiscOutput(DISABLE)) != TRUE)
+            {
+                mTBOX_TRACE((kTBOX_NIV_CRITICAL,"msAPI_XC_EnableMiscOutput disable failed\n"));
+                outError = eTDAL_OUTPUT_DRIVER_ERROR;
+            }
+
+            if(outError == eTDAL_OUTPUT_NO_ERROR)
+            {
+                MSAPI_XC_DEVICE_ID hdmi_device = {0, E_MSAPI_XC_DEVICE0};
+                if ((eXCResult = msAPI_XC_ChangeOutputResolution_EX(&hdmi_device, eMSTimings)) != E_MSAPI_XC_OK)
+                {
+                    mTBOX_TRACE((kTBOX_NIV_CRITICAL,"msAPI_XC_EnableMiscOutput failed\n"));
+                    outError = eTDAL_OUTPUT_DRIVER_ERROR;
+                }
+            }
+
+            if (outError == eTDAL_OUTPUT_NO_ERROR && (bMSResult = msAPI_XC_EnableMiscOutput(ENABLE)) != TRUE)
+            {
+                mTBOX_TRACE((kTBOX_NIV_CRITICAL,"msAPI_XC_EnableMiscOutput enable failed\n"));
+                outError = eTDAL_OUTPUT_DRIVER_ERROR;
+            }
+            else
+            {
+                //Set CVBS
+                outError  = TDAL_OUTPUT_VideoDencStandardSet(eTDAL_OUTPUT_VIDEO_DENC_ID_0, eTDAL_OUTPUT_VIDEO_SD_STD_PAL_BG );
+                if(outError == eTDAL_OUTPUT_NO_ERROR)
+                {
+                    TDAL_OUTPUTi_DescriptorTable[outCnt].pstHDMIDesc->videoMode = pstParams->VideoStandard;
+                }
+                else
+                {
+                    mTBOX_TRACE((kTBOX_NIV_CRITICAL,"TDAL_OUTPUT_VideoDencStandardSet enable failed\n"));
+                    outError = eTDAL_OUTPUT_DRIVER_ERROR;
+                }
+				if( (pstParams->VideoStandard == eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_I_50) ||
+				  (pstParams->VideoStandard == eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_I_5994) ||
+				  (pstParams->VideoStandard == eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_I_60) )
+				{
+				  // I 1920x1080
+				  TDAL_DISPi_GFXLayerScale(eTDAL_DISP_LAYER_GFX_ID_0,eTDAL_DISP_GFXScale_1920_1080);
+
+            }
+				else if( (pstParams->VideoStandard == eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_P_50) ||
+					 (pstParams->VideoStandard == eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_P_30) ||
+					 (pstParams->VideoStandard == eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_P_24) ||
+					 (pstParams->VideoStandard == eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_P_25) ||
+					 (pstParams->VideoStandard == eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_P_2997) ||
+					 (pstParams->VideoStandard == eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_P_2398) ||
+					 (pstParams->VideoStandard == eTDAL_OUTPUT_VIDEO_HD_STD_1920_1080_P_5994) )
+				{
+                    // P 1920x1080
+                    TDAL_DISPi_GFXLayerScale(eTDAL_DISP_LAYER_GFX_ID_0,eTDAL_DISP_GFXScale_1920_1080);
+				}else if( (pstParams->VideoStandard == eTDAL_OUTPUT_VIDEO_HD_STD_720_576_P_50) ||
+					 (pstParams->VideoStandard == eTDAL_OUTPUT_VIDEO_HD_STD_720_576_I_50))
+				{
+                    TDAL_DISPi_GFXLayerScale(eTDAL_DISP_LAYER_GFX_ID_0,eTDAL_DISP_GFXScale_720x576);
+				}else
+				{
+                    TDAL_DISPi_GFXLayerScale(eTDAL_DISP_LAYER_GFX_ID_0,eTDAL_DISP_GFXScale_1280_720);
+				}
+        
+            }
+            MApi_DAC_Enable(ENABLE, FALSE);
+
+            if(refreshVideoLayer)
+            {
+                TDAL_DISP_LayerEnable(eTDAL_DISP_LAYER_VIDEO_ID_0);
+            }
+            TDAL_OUTPUT_Enable(eTDAL_OUTPUT_VIDEO_DENC_ID_0);
+            TDAL_OUTPUT_Enable(eTDAL_OUTPUT_HDMI_ID_0);
+
+        }
+        if(TDAL_OUTPUTi_DescriptorTable[outCnt].pstHDMIDesc->audioMode != pstParams->AudioMode)
+        {
+            MS_BOOL onOff;
+            AUDIO_FS_TYPE hdmi_SmpFreq;
+            HDMI_TX_OUTPUT_TYPE outType;
+            TDAL_OUTPUTi_AudioAnaEnable(FALSE);
+            if(pstParams->AudioMode == eTDAL_OUTPUT_AUDIO_DIGITAL_MODE_UNCOMPRESSED)
+            {
+                /* output PCM on HDMI */
+                MApi_AUDIO_HDMI_TX_SetMode(HDMI_OUT_PCM);
+
+                MApi_AUDIO_HDMI_Tx_GetStatus(&onOff,&hdmi_SmpFreq,&outType);
+                if(outType != HDMI_OUT_PCM)
+                {
+                    outError = eTDAL_OUTPUT_DRIVER_ERROR;
+                }
+            }
+            else
+            {
+                tTDAL_AV_AudioType AudioType;
+                AudioType = TDAL_AV_Audio_StreamType();
+                switch (AudioType)
+                {
+                    case eTDAL_AV_AUDIO_TYPE_AC3:
+                        MApi_AUDIO_SetAC3Info(Audio_AC3_infoType_DrcMode, LINE_MODE, 0);//Line Mod
+                        MApi_AUDIO_SetAC3Info(Audio_AC3_infoType_DownmixMode, DOLBY_DOWNMIX_MODE_LTRT, 0);
+                        break;
+                    case eTDAL_AV_AUDIO_TYPE_EAC3:
+                        MApi_AUDIO_SetAC3PInfo(Audio_AC3P_infoType_DrcMode, LINE_MODE, 0);//Line Mod
+                        MApi_AUDIO_SetAC3PInfo(Audio_AC3P_infoType_DownmixMode, DOLBY_DOWNMIX_MODE_LTRT, 0);//LtRt
+                        MApi_AUDIO_SetAC3PInfo(Audio_AC3P_infoType_hdmiTxBypass_enable,TRUE,0);
+                        break;
+                    default:
+                        break;
+                }
+                /* output Non-PCM on HDMI */
+                MApi_AUDIO_HDMI_TX_SetMode(HDMI_OUT_NONPCM);
+
+                MApi_AUDIO_HDMI_Tx_GetStatus(&onOff, &hdmi_SmpFreq, &outType);
+                if (outType != HDMI_OUT_NONPCM)
+                {
+                    outError = eTDAL_OUTPUT_DRIVER_ERROR;
+                }
+            }
+
+            if (outError == eTDAL_OUTPUT_NO_ERROR)
+            {
+                TDAL_OUTPUTi_DescriptorTable[outCnt].pstHDMIDesc->audioMode = pstParams->AudioMode;
+            }
+        }
+    }
+
+    TDAL_UnlockMutex(TDAL_OUTPUT_Mutex);
+    return (outError);
 
 }
 
@@ -346,18 +657,18 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_Enable(tTDAL_OUTPUT_OutputId Id)
     bool        desc_found = FALSE;
     uint32_t       i;
     bool        AV_Error;
-    
+
     mTBOX_FCT_ENTER("TDAL_OUTPUT_Enable");
-    
+
     /* check if not initialized */
     if (TDAL_OUTPUT_AlreadyInitialized == FALSE)
     {
         mTBOX_RETURN(eTDAL_OUTPUT_NOT_INIT_ERROR);
     }
-    
+
     /* lock ressources */
     TDAL_LockMutex(TDAL_OUTPUT_Mutex);
-    
+
     /* find the output descriptor */
     for (i=0; i<kTDAL_OUTPUTi_NB_OUTPUT && desc_found==FALSE; i++)
     {
@@ -419,6 +730,19 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_Enable(tTDAL_OUTPUT_OutputId Id)
                 }
                 break;
             }
+
+
+            case eTDAL_OUTPUT_HDMI_ID_0 :
+            {
+                if(TDAL_OUTPUTi_DescriptorTable[i].IsEnable != TRUE)
+                {
+                    MApi_HDMITx_DisableTMDSCtrl(FALSE);
+                    MApi_HDMITx_SetTMDSOnOff(TRUE);
+                    TDAL_OUTPUTi_DescriptorTable[i].IsEnable = TRUE;
+                }
+
+                break;
+            }
             default:
             {
                 OutErrorCode = eTDAL_OUTPUT_NOT_AVAILABLE_ERROR;
@@ -451,9 +775,9 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_Disable(tTDAL_OUTPUT_OutputId Id)
     bool        desc_found = FALSE;
     uint32_t       i;
     bool        AV_Error;
-    
+
     mTBOX_FCT_ENTER("TDAL_OUTPUT_Disable");
-    
+
     /* check if not initialized */
     if (TDAL_OUTPUT_AlreadyInitialized == FALSE)
     {
@@ -462,7 +786,7 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_Disable(tTDAL_OUTPUT_OutputId Id)
 
     /* lock ressources */
     TDAL_LockMutex(TDAL_OUTPUT_Mutex);
-    
+
     /* find the output descriptor */
     for (i=0; i<kTDAL_OUTPUTi_NB_OUTPUT && desc_found==FALSE; i++)
     {
@@ -525,6 +849,18 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_Disable(tTDAL_OUTPUT_OutputId Id)
                 }
                 break;
             }
+
+            
+            case eTDAL_OUTPUT_HDMI_ID_0 :
+            {
+                if(TDAL_OUTPUTi_DescriptorTable[i].IsEnable != FALSE)
+                {
+                    MApi_HDMITx_SetTMDSOnOff(FALSE);
+                    MApi_HDMITx_DisableTMDSCtrl(TRUE);
+                    TDAL_OUTPUTi_DescriptorTable[i].IsEnable = FALSE;
+                }
+                break;
+            }
             default:
             {
                 OutErrorCode = eTDAL_OUTPUT_NOT_AVAILABLE_ERROR;
@@ -536,7 +872,7 @@ GLOBAL tTDAL_OUTPUT_Error TDAL_OUTPUT_Disable(tTDAL_OUTPUT_OutputId Id)
     {
         OutErrorCode = eTDAL_OUTPUT_BAD_PARAMETER_ERROR;
     }
-    
+
     TDAL_UnlockMutex(TDAL_OUTPUT_Mutex);
     mTBOX_RETURN(OutErrorCode);
 }
@@ -702,9 +1038,9 @@ tTDAL_OUTPUT_Error p_TDAL_OUTPUTi_AnaAudio_Init(void)
     TDAL_AudioAnaMainCapability.IsLFEPresenceSupported      = FALSE;
     TDAL_AudioAnaMainCapability.IsRearRLPresenceSupported      = FALSE;
     TDAL_AudioAnaMainCapability.IsRearCenterPresenceSupported   = FALSE;
-    TDAL_AudioAnaMainCapability.IsFrontRLAttenuationSupported   = TRUE;
+    TDAL_AudioAnaMainCapability.IsFrontRLAttenuationSupported   = FALSE;
     TDAL_AudioAnaMainCapability.IsFrontCenterAttenuationSupported= TRUE;
-    TDAL_AudioAnaMainCapability.IsSourroundRLAttenuationSupported= TRUE;
+    TDAL_AudioAnaMainCapability.IsSourroundRLAttenuationSupported= FALSE;
     TDAL_AudioAnaMainCapability.IsLFEAttenuationSupported      = FALSE;
     TDAL_AudioAnaMainCapability.IsRearRLAttenuationSupported   = FALSE;
     TDAL_AudioAnaMainCapability.IsRearCenterAttenuationSupported = FALSE;

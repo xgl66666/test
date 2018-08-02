@@ -25,7 +25,6 @@
 #include "tbox.h"
 #include "tbox_hard_p.h"
 #include "crules.h"
-#define CAK_DLK
 
 #ifdef CAK_DLK
 #include "ca_cak.h"

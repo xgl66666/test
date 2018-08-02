@@ -48,11 +48,11 @@
 
 
 typedef MS_U8 PES_BUF[PES_BUFFER_SIZE];
-PES_BUF*      Pes_Buf_Addr =  (PES_BUF*)(DMX_DEMO_RESERVED_ADDRESS + 0x80000) ; // PES buffer size = 0x80000
+//PES_BUF*      Pes_Buf_Addr =  (PES_BUF*)(DMX_DEMO_RESERVED_ADDRESS + 0x80000) ; // PES buffer size = 0x80000
 MS_U8         Pes_Buf_AllocFlag[PES_BUFFER_NUM];            // allocation flag
 
 typedef MS_U8 SEC_BUF[SECTION_BUFFER_SIZE];
-SEC_BUF*      Section_Buf_Addr = (SEC_BUF*)DMX_DEMO_RESERVED_ADDRESS;
+//SEC_BUF*      Section_Buf_Addr = (SEC_BUF*)DMX_DEMO_RESERVED_ADDRESS;
 
 /********************************************************
    *   Macros                        *
@@ -525,6 +525,7 @@ tTDAL_DMX_Error   TDAL_DMX_Set_Filter(   tTDAL_DMX_ChannelId      ChannelId,
 	            "ChannelId   not   available, or   channel   not   used   or   bad   PID\n"));
 
 	      errorCode = kTDAL_DMX_ERROR_INVALID_CHANNEL_ID;
+          mTBOX_RETURN(errorCode);
 	   }
 
 	   /*-----------------------------------*/
@@ -538,12 +539,13 @@ tTDAL_DMX_Error   TDAL_DMX_Set_Filter(   tTDAL_DMX_ChannelId      ChannelId,
 	            "Argument   FilterId   not   available\n"));
 
 	      errorCode = kTDAL_DMX_ERROR_INVALID_FILTER_ID;
+          mTBOX_RETURN(errorCode);
 	   }
 
 	   /*-----------------------------------*/
 	   /*   check   argument   size        */
 	   /*-----------------------------------*/
-	   if   (   (Size   >   16   ||   pFilter == (uint8_t*)NULL   ||
+	   if   (   (Size   >   kTDAL_DMX_DEPTH_SIZE ||   pFilter == (uint8_t*)NULL   ||
 	      pMask == (uint8_t*)NULL   ||   pMode == (uint8_t*)NULL)
 	       && errorCode == kTDAL_DMX_NO_ERROR)
 	   {
@@ -551,13 +553,13 @@ tTDAL_DMX_Error   TDAL_DMX_Set_Filter(   tTDAL_DMX_ChannelId      ChannelId,
 	            "bad   argument   size\n"));
 
 	      errorCode = kTDAL_DMX_ERROR_BAD_PARAMETERS;
+          mTBOX_RETURN(errorCode);
 	   }
-
+       
 	   /*-----------------------------------*/
 	   /*   Lock   Protection   mutex        */
 	   /*-----------------------------------*/
 	   mLockAccess(TDAL_DMXi_pSectionTableAccess);
-
 	   /*------------------------------------------------*/
 	   /*   Save   hardware   filter   arguments.        */
 	   /*   For   bytes   >   size, the   mask   must   be   set   to   null   */
@@ -573,7 +575,7 @@ tTDAL_DMX_Error   TDAL_DMX_Set_Filter(   tTDAL_DMX_ChannelId      ChannelId,
 				TDAL_DMXi_pstFilter[FilterId].Filter[i] = pFilter[j];
 				TDAL_DMXi_pstFilter[FilterId].PositiveMask[i] = pMask[j];
 				TDAL_DMXi_pstFilter[FilterId].NegativeMask[i] = pMode[j];
-				j++;
+                j++;
 			}
 			else /* First and second bytes are section length and they are skipped */
 			{
@@ -589,7 +591,7 @@ tTDAL_DMX_Error   TDAL_DMX_Set_Filter(   tTDAL_DMX_ChannelId      ChannelId,
 		}
 		i++;
 	}
-
+    
 	   if(errorCode == kTDAL_DMX_NO_ERROR)
 	   {
 
@@ -960,7 +962,8 @@ tTDAL_DMX_Error   TDAL_DMXi_Control_Filter(   tTDAL_DMX_FilterId   FilterId,
 
 					   if (TDAL_DMXi_pstFilter[FilterId].SectionBufferPtr != NULL)
 					   {
-						   TDAL_Free(TDAL_DMXi_pstFilter[FilterId].SectionBufferPtr);
+						   //Transfer to cache va because the orignal memory was allocated as cache va.
+						   TDAL_Free(MsOS_PA2KSEG0(MsOS_VA2PA(TDAL_DMXi_pstFilter[FilterId].SectionBufferPtr)));
 						   TDAL_DMXi_pstFilter[FilterId].SectionBufferPtr = NULL;
 					   }
 
@@ -977,7 +980,8 @@ tTDAL_DMX_Error   TDAL_DMXi_Control_Filter(   tTDAL_DMX_FilterId   FilterId,
 		//			   // Set buffer size
 		//			   TDAL_DMXi_pstFilter[FilterId].FilterInfo.Info.SectInfo.SectBufSize = SECTION_BUFFER_SIZE;
 
-					   TDAL_DMXi_pstFilter[FilterId].SectionBufferPtr = TDAL_Malloc(bufferSize);
+					   //To use non-cache va for data coherence.
+					   TDAL_DMXi_pstFilter[FilterId].SectionBufferPtr = MsOS_PA2KSEG1(MsOS_VA2PA(TDAL_Malloc(bufferSize)));
 					   memset(TDAL_DMXi_pstFilter[FilterId].SectionBufferPtr, 0x0, bufferSize);
 
 					   TDAL_DMXi_pstFilter[FilterId].FilterInfo.Info.SectInfo.SectBufAddr = MsOS_VA2PA(TDAL_DMXi_pstFilter[FilterId].SectionBufferPtr);
@@ -987,7 +991,15 @@ tTDAL_DMX_Error   TDAL_DMXi_Control_Filter(   tTDAL_DMX_FilterId   FilterId,
 					   TDAL_DMXi_pstFilter[FilterId].FilterInfo.Info.SectInfo.Type2NotifyParam1 = FilterId;
 					   TDAL_DMXi_pstFilter[FilterId].FilterInfo.Info.SectInfo.pType2Notify     =    TDAL_DMXi_NotifySectCallback;
 
-					   TDAL_DMXi_pstFilter[FilterId].FilterInfo.Info.SectInfo.SectMode  =  DMX_SECT_MODE_CONTI | (TDAL_DMXi_pstFilter[FilterId].efilterCRCMode == eTDAL_DMX_CRC_CHECK ? DMX_SECT_MODE_CRCCHK : 0x0);
+					   if(TDAL_DMXi_pstFilter[FilterId].FilterType  == DMX_FILTER_TYPE_TELETEXT ||
+					      TDAL_DMXi_pstFilter[FilterId].FilterType  ==  DMX_FILTER_TYPE_PES)
+					   {
+						   TDAL_DMXi_pstFilter[FilterId].FilterInfo.Info.SectInfo.SectMode  =  DMX_SECT_MODE_CONTI;
+					   }
+					   else
+					   {
+						   TDAL_DMXi_pstFilter[FilterId].FilterInfo.Info.SectInfo.SectMode  =  DMX_SECT_MODE_CONTI | (TDAL_DMXi_pstFilter[FilterId].efilterCRCMode == eTDAL_DMX_CRC_CHECK ? DMX_SECT_MODE_CRCCHK : 0x0);
+					   }
 
 					   if (errorCode == kTDAL_DMX_NO_ERROR)
 					   {
@@ -1368,7 +1380,8 @@ tTDAL_DMX_Error   TDAL_DMX_Free_Filter(   tTDAL_DMX_FilterId   FilterId   )
 
 	      if (TDAL_DMXi_pstFilter[FilterId].SectionBufferPtr != NULL)
 	      {
-	    	  TDAL_Free(TDAL_DMXi_pstFilter[FilterId].SectionBufferPtr);
+	            //Transfer to cache va because the orignal memory was allocated as cache va.
+	            TDAL_Free(MsOS_PA2KSEG0(MsOS_VA2PA(TDAL_DMXi_pstFilter[FilterId].SectionBufferPtr)));
 	      }
 
 	      mTBOX_TRACE((kTBOX_NIV_1,"Free_Filter:   SUCCEED   [FilterlId=%d]\n",FilterId));
@@ -1624,3 +1637,41 @@ tTDAL_DMX_Error   TDAL_DMXi_FreeFilterAndAssociatedRessources(
 
 }
 
+tTDAL_DMX_Error   TDAL_DMXi_GetPidFilter(tTDAL_DMX_ChannelStream streamType, uint16_t *pid, uint16_t *filt)
+ {
+        mTBOX_FCT_ENTER("TDAL_DMXi_GetPidFilter");
+        uint8_t i = 0;
+        if(pid == NULL || filt == NULL)
+        {
+            mTBOX_RETURN(kTDAL_DMX_ERROR_BAD_PARAMETERS);
+        }
+        for   (i=0; i < kTDAL_DMXi_MAX_NB_OF_FILTERS; i++)
+        {
+            if(TDAL_DMXi_pstChannel[TDAL_DMXi_pstFilter[i].AssociatedChannelId].ChannelStream == streamType)
+            {
+                *pid = TDAL_DMXi_pstChannel[TDAL_DMXi_pstFilter[i].AssociatedChannelId].ChannelPid;
+                *filt = TDAL_DMXi_pstFilter[i].FilterHandle;
+                mTBOX_RETURN(kTDAL_DMX_NO_ERROR);
+            }
+        }
+        mTBOX_RETURN(kTDAL_DMX_ERROR_BAD_PARAMETERS);
+    }
+
+tTDAL_DMX_Error TDAL_DMXi_GetFilterByPid(uint16_t pid, uint16_t *filt)
+{
+    mTBOX_FCT_ENTER("TDAL_DMXi_GetFilterByPid");
+    uint8_t i = 0;
+    if (pid == NULL || filt == NULL)
+    {
+        mTBOX_RETURN(kTDAL_DMX_ERROR_BAD_PARAMETERS);
+    }
+    for (i = 0; i < kTDAL_DMXi_MAX_NB_OF_FILTERS; i++)
+    {
+        if (TDAL_DMXi_pstChannel[TDAL_DMXi_pstFilter[i].AssociatedChannelId].ChannelPid == pid)
+        {
+            *filt = TDAL_DMXi_pstFilter[i].FilterHandle;
+            mTBOX_RETURN(kTDAL_DMX_NO_ERROR);
+        }
+    }
+    mTBOX_RETURN(kTDAL_DMX_ERROR_BAD_PARAMETERS);
+}

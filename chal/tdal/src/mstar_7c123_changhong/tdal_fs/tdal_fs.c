@@ -85,12 +85,18 @@ void   TDAl_FS_PrintMem(void)
  * Comment       :
  *
  *****************************************************************************/
+bool _FS_Inited = false;
 tTDAL_FS_Error   TDAL_FS_Init(void)
 {
    tTDAL_FS_Error   result = eTDAL_FS_NO_ERROR;
 
+
    mTBOX_FCT_ENTER("TDAL_FS_Init");
    mTBOX_TRACE((kTBOX_NIV_5,"TDAL_FS_Init()\n"));
+   if (_FS_Inited)
+   {
+       mTBOX_RETURN(eTDAL_FS_NO_ERROR);
+   }
 
 #ifdef   PRODUCT_USE_USB
 //   result = pTDAL_FS_USB_Init();
@@ -115,6 +121,7 @@ tTDAL_FS_Error   TDAL_FS_Init(void)
    }
 
    MsFS_Init(FALSE);
+   _FS_Inited=TRUE;
    mTBOX_RETURN(result);
 }
 
@@ -136,18 +143,19 @@ tTDAL_FS_Error   TDAL_FS_Term(void)
    mTBOX_TRACE((kTBOX_NIV_5,"TDAL_FS_Term()\n"));
 
    result = pTDAL_FS_VFS_Term();
-   if   (   result == eTDAL_FS_NO_ERROR   )
+   if   (   result != eTDAL_FS_NO_ERROR   )
    {
       mTBOX_TRACE((kTBOX_NIV_CRITICAL,"pTDAL_FS_VFS_Term:   [ERROR]"));
       mTBOX_RETURN(result);
    }
 
    result = pTDAL_FS_LVM_Term();
-   if   (   result == eTDAL_FS_NO_ERROR   )
+   if   (   result != eTDAL_FS_NO_ERROR   )
    {
       mTBOX_TRACE((kTBOX_NIV_CRITICAL,"pTDAL_FS_LVM_Term:   [ERROR]"));
       mTBOX_RETURN(result);
    }
 
+   _FS_Inited=FALSE;
    mTBOX_RETURN(result);
 }

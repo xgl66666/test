@@ -34,9 +34,13 @@ mTBOX_SET_MODULE(eTDAL_DISP);
 /****************************************************************************
  *   DEFINES                                    *
  ****************************************************************************/
+#ifdef HD_ENABLE
 #define   kTDAL_DISP_BLENDER_0_WIDTH   1920
 #define   kTDAL_DISP_BLENDER_0_HEIGHT  1080
-
+#else
+#define   kTDAL_DISP_BLENDER_0_WIDTH   720
+#define   kTDAL_DISP_BLENDER_0_HEIGHT  576
+#endif
 #define   kTDAL_DISP_BLENDER_1_WIDTH   720
 #define   kTDAL_DISP_BLENDER_1_HEIGHT  576
 
@@ -125,7 +129,6 @@ const   char   *TDAL_DISP_PlatformRevisionGet(void)
 tTDAL_DISP_Error   TDAL_DISP_Init(   void   )
 {
     mTBOX_FCT_ENTER("TDAL_DISP_Init");
-    mTBOX_TRACE(( kTBOX_NIV_WARNING, "[%s %d]enter: \n",__FUNCTION__,__LINE__));
 
     if (TDAL_DISP_AlreadyInitialized == TRUE)
     {
@@ -133,13 +136,13 @@ tTDAL_DISP_Error   TDAL_DISP_Init(   void   )
     }
     /*   Set   Blenders   Capabilities   :   Blender   0   */
     TDAL_DISP_BlenderDescriptor[0].Id = eTDAL_DISP_BLENDER_ID_0;
-    TDAL_DISP_BlenderDescriptor[0].stCapability.heightMax = kTDAL_DISP_BLENDER_1_HEIGHT;
-    TDAL_DISP_BlenderDescriptor[0].stCapability.widthMax = kTDAL_DISP_BLENDER_1_WIDTH;
+    TDAL_DISP_BlenderDescriptor[0].stCapability.heightMax = kTDAL_DISP_BLENDER_0_HEIGHT;
+    TDAL_DISP_BlenderDescriptor[0].stCapability.widthMax = kTDAL_DISP_BLENDER_0_WIDTH;
     TDAL_DISP_BlenderDescriptor[0].stCapability.bBackgroundColor = TRUE;
     TDAL_DISP_BlenderDescriptor[0].stCapability.backgroundColorPixelFormatMask = kTDAL_DISP_PIXEL_FORMAT_RGB888   |   kTDAL_DISP_PIXEL_FORMAT_YUV888_444;
     TDAL_DISP_BlenderDescriptor[0].stCapability.nbLayer = kTDAL_DISPi_BLENDER_ID_1_NB_LAYER;
-    TDAL_DISP_BlenderDescriptor[0].Height = kTDAL_DISP_BLENDER_1_HEIGHT;
-    TDAL_DISP_BlenderDescriptor[0].Width = kTDAL_DISP_BLENDER_1_WIDTH;
+    TDAL_DISP_BlenderDescriptor[0].Height = kTDAL_DISP_BLENDER_0_HEIGHT;
+    TDAL_DISP_BlenderDescriptor[0].Width = kTDAL_DISP_BLENDER_0_WIDTH;
     
     TDAL_DISP_BlenderDescriptor[0].stBlenderOutputWindow.sLeft = 0;
     TDAL_DISP_BlenderDescriptor[0].stBlenderOutputWindow.sTop = 0;
@@ -159,16 +162,16 @@ tTDAL_DISP_Error   TDAL_DISP_Init(   void   )
     TDAL_DISP_LayerDescriptor[0].stCapability.IsGlobalTransparencyCapable = FALSE;
     TDAL_DISP_LayerDescriptor[0].stCapability.IsAspectRatioWindowConvCapable = FALSE;
     TDAL_DISP_LayerDescriptor[0].IsEnabled = FALSE;
+    TDAL_DISP_LayerDescriptor[0].bReadyToEnable = FALSE;
     TDAL_DISP_LayerDescriptor[0].pstVideoLayerDesc = &TDAL_DISP_VideoLayerDescriptor[1];
     TDAL_DISP_LayerDescriptor[0].stInputWindow.Left = 0;
     TDAL_DISP_LayerDescriptor[0].stInputWindow.Top = 0;
-    TDAL_DISP_LayerDescriptor[0].stInputWindow.Right = kTDAL_DISP_BLENDER_1_WIDTH   -   1;
-    TDAL_DISP_LayerDescriptor[0].stInputWindow.Bottom = kTDAL_DISP_BLENDER_1_HEIGHT   -   1;
+    TDAL_DISP_LayerDescriptor[0].stInputWindow.Right = kTDAL_DISP_BLENDER_0_WIDTH   -   1;
+    TDAL_DISP_LayerDescriptor[0].stInputWindow.Bottom = kTDAL_DISP_BLENDER_0_HEIGHT   -   1;
     TDAL_DISP_LayerDescriptor[0].stRequestedOutputWindow.Left = 0;
     TDAL_DISP_LayerDescriptor[0].stRequestedOutputWindow.Top = 0;
-    TDAL_DISP_LayerDescriptor[0].stRequestedOutputWindow.Right = kTDAL_DISP_BLENDER_1_WIDTH   -   1;
-    TDAL_DISP_LayerDescriptor[0].stRequestedOutputWindow.Bottom = kTDAL_DISP_BLENDER_1_HEIGHT   -   1;
-
+    TDAL_DISP_LayerDescriptor[0].stRequestedOutputWindow.Right = kTDAL_DISP_BLENDER_0_WIDTH   -   1;
+    TDAL_DISP_LayerDescriptor[0].stRequestedOutputWindow.Bottom = kTDAL_DISP_BLENDER_0_HEIGHT   -   1;
     TDAL_DISP_LayerDescriptor[1].Id = eTDAL_DISP_LAYER_GFX_ID_0;
     TDAL_DISP_LayerDescriptor[1].stCapability.NbRegionMax = (-1);
     TDAL_DISP_LayerDescriptor[1].stCapability.IsMultiRegionOnSameLineCapable = FALSE;
@@ -177,6 +180,7 @@ tTDAL_DISP_Error   TDAL_DISP_Init(   void   )
     TDAL_DISP_LayerDescriptor[1].stCapability.IsGlobalTransparencyCapable = TRUE;
     TDAL_DISP_LayerDescriptor[1].stCapability.IsAspectRatioWindowConvCapable = FALSE;
     TDAL_DISP_LayerDescriptor[1].IsEnabled = FALSE;
+    TDAL_DISP_LayerDescriptor[1].bReadyToEnable = FALSE;
     TDAL_DISP_LayerDescriptor[1].stInputWindow.Left = 0;
     TDAL_DISP_LayerDescriptor[1].stInputWindow.Top = 0;
     TDAL_DISP_LayerDescriptor[1].stInputWindow.Right = kTDAL_DISP_BLENDER_1_WIDTH   -   1;
@@ -194,6 +198,7 @@ tTDAL_DISP_Error   TDAL_DISP_Init(   void   )
     TDAL_DISP_LayerDescriptor[2].stCapability.IsGlobalTransparencyCapable = TRUE;
     TDAL_DISP_LayerDescriptor[2].stCapability.IsAspectRatioWindowConvCapable = FALSE;
     TDAL_DISP_LayerDescriptor[2].IsEnabled = FALSE;
+    TDAL_DISP_LayerDescriptor[2].bReadyToEnable = FALSE;
     TDAL_DISP_LayerDescriptor[2].stInputWindow.Left = 0;
     TDAL_DISP_LayerDescriptor[2].stInputWindow.Top = 0;
     TDAL_DISP_LayerDescriptor[2].stInputWindow.Right = kTDAL_DISP_BLENDER_1_WIDTH   -   1;
@@ -209,7 +214,6 @@ tTDAL_DISP_Error   TDAL_DISP_Init(   void   )
     TDAL_DISP_LayerInit();
 
     TDAL_DISP_AlreadyInitialized = TRUE;    
-    mTBOX_TRACE(( kTBOX_NIV_WARNING, "[%s %d]succeed \n",__FUNCTION__,__LINE__));
     
     return eTDAL_DISP_NO_ERROR;
 }
@@ -237,7 +241,7 @@ tTDAL_DISP_Error   TDAL_DISP_Term(   void   )
        mTBOX_RETURN(eTDAL_DISP_NOT_INIT_ERROR);
     }
 
-    /*   D�allocates   mutex   for   each   descriptor   */
+    /*   Dï¿½allocates   mutex   for   each   descriptor   */
     for(Index=0 ;Index<kTDAL_DISPi_NB_BLENDER; Index++)
     {
 //       STOS_SemaphoreDelete(NULL,TDAL_DISP_BlenderDescriptor[Index].Lock);

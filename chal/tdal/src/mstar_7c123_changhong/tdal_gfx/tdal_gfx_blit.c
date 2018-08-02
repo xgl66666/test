@@ -37,10 +37,17 @@
 #include "xc/msAPI_VE.h"
 
 #include "tdal_gfx_p.h"
+#if defined(USE_TDAL_MP)
+#include "tdal_mp_module_priv.h"
+#endif
 
 mTBOX_SET_MODULE(eTDAL_GFX);
 GLOBAL tTDAL_GFX_Palette *pTDAL_GFXi_Pallete;
 GLOBAL GFX_PaletteEntry    _gePalette[GOP_PALETTE_ENTRY_NUM];
+#if defined(USE_TDAL_MP)
+LOCAL tTDAL_GFX_BlitContext   src_gif;
+LOCAL tTDAL_GFX_BlitContext   dest_gif;
+#endif
 LOCAL void TDAL_GFXi_SetupGfxRectFillInfo(GFX_RectFillInfo *pGfxRectFillInfo, MS_U16 u16DstX, MS_U16 u16DstY, MS_U16 u16DstWidth, MS_U16 u16DstHeight,
                                     GFX_Buffer_Format gfxBufFmt, GFX_RgbColor ColorS, GFX_RgbColor ColorE, MS_U32 u32Flag);
 tTDAL_RegionDesc *TDAL_GFXm_RgnDescGet(tTDAL_GFX_RegionHandle regionHandle);
@@ -48,18 +55,39 @@ tTDAL_GFX_Color * TDAL_GFXm_GetCurPallete(uint8_t index);
 tTDAL_GFXi_BitmapDescriptor TDAL_GFXi_BitmapDescriptor[BITMAP_DESCRIPTOR_COUNT];
 
 void TDAL_GFXi_OverscanScale(void *);
+void TDAL_GFXi_WriteBackSourceBufferToMemory(MS_U32 buffPtr, uint32_t len);
+
 void TDAL_GFXm_InitBitmapDescriptors(void)
 {
 	int i;
-
 	for (i = 0; i < BITMAP_DESCRIPTOR_COUNT; i++)
 	{
-		memset(&TDAL_GFXi_BitmapDescriptor[i],0,sizeof(tTDAL_GFXi_BitmapDescriptor));
 		TDAL_GFXi_BitmapDescriptor[i].buffer            = NULL;
 		TDAL_GFXi_BitmapDescriptor[i].used              = false;
 		TDAL_GFXi_BitmapDescriptor[i].frameBufferId     = -1;
 		TDAL_GFXi_BitmapDescriptor[i].bFrameBufferUsed  = false;
 	}
+}
+
+void TDAL_GFXm_InitScaledDescriptors(void)
+{
+    MS_U8 u8FB = MApi_GOP_GWIN_GetFreeFBID();
+    
+    if (MApi_GOP_GWIN_CreateFB( u8FB, 0, 0, 720, 576, 0x0f) != GWIN_OK)
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failure\n"));
+        return;
+    }
+
+    TDAL_GFX_Scaled_RgnDesc.alpha            = 0;
+    TDAL_GFX_Scaled_RgnDesc.used             = false;
+    TDAL_GFX_Scaled_RgnDesc.offSet.x         = 0;
+    TDAL_GFX_Scaled_RgnDesc.offSet.y         = 0;
+    TDAL_GFX_Scaled_RgnDesc.size.width       = 720;
+    TDAL_GFX_Scaled_RgnDesc.size.height      = 576;    
+    TDAL_GFX_Scaled_RgnDesc.GeWinId          = 0xff;
+    TDAL_GFX_Scaled_RgnDesc.layerHandle      = 0x0000FFFF;
+    TDAL_GFX_Scaled_RgnDesc.frameBufferId    = u8FB;
 }
 
 int32_t TDAL_GFXi_FindFreeBitmapDescriptor(void)
@@ -103,10 +131,8 @@ bool TDAL_GFXi_AllocBitmapFrame(uint32_t size, void ** buffer, void ** alignedAd
     if (bIsFrameBuffer)
     {
         uint8_t         frameBufferId = MApi_GOP_GWIN_GetFreeFBID();
-        MS_U16          width=0, height=0, fbFmt=0;
+        MS_U16          width, height, fbFmt;
         GOP_GwinFBAttr  DstFBInfo;
-
-		memset(&DstFBInfo,0,sizeof(GOP_GwinFBAttr));
 
         if(MAX_GWIN_FB_SUPPORT >= frameBufferId)
         {
@@ -116,56 +142,52 @@ bool TDAL_GFXi_AllocBitmapFrame(uint32_t size, void ** buffer, void ** alignedAd
 
             E_GOP_API_Result Res;
 
-            //mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[%s %d]frameBufferId=0x%x width=%d height=%d fbFmt=%d\n",__FUNCTION__,__LINE__,frameBufferId, width, height, fbFmt));
+
+            mTBOX_TRACE((kTBOX_NIV_1, "frameBufferId x width x height x fbFmt = %d x %d x %d x %d\n", frameBufferId, width, height, fbFmt));
             Res = MApi_GOP_GWIN_CreateFB(frameBufferId, 0, 0, width, height, fbFmt);
 
-            /*
-	            if (Res != GWIN_OK)
-	            {
-	                mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failure\n"));
-	            }
-
-	            frameBufferId = MApi_GOP_GWIN_GetFreeFBID();
-	            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "frameBufferId x width x height x fbFmt = %d x %d x %d x %d\n", frameBufferId, width, height, fbFmt));
-	            Res = MApi_GOP_GWIN_CreateFB(frameBufferId, 0, 0, width, height, fbFmt);
-	            if (Res != GWIN_OK)
-	            {
-	                mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failure\n"));
-	            }
-
-	            frameBufferId = MApi_GOP_GWIN_GetFreeFBID();
-	            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "frameBufferId x width x height x fbFmt = %d x %d x %d x %d\n", frameBufferId, width, height, fbFmt));
-	            Res = MApi_GOP_GWIN_CreateFB(frameBufferId, 0, 0, width, height, fbFmt);
-	            if (Res != GWIN_OK)
-	            {
-	                mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failure\n"));
-	            }
-
-	            frameBufferId = MApi_GOP_GWIN_GetFreeFBID();
-	            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "frameBufferId x width x height x fbFmt = %d x %d x %d x %d\n", frameBufferId, width, height, fbFmt));
-	            Res = MApi_GOP_GWIN_CreateFB(frameBufferId, 0, 0, width, height, fbFmt);
-	            if (Res != GWIN_OK)
-	            {
-	                mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failure\n"));
-	            }
-	            */
-
-            //MApi_GOP_GWIN_CreateFB
             if (Res == GWIN_OK)
             {
                 TDAL_GFXi_BitmapDescriptor[bmpDesc].frameBufferId = frameBufferId;
                 MApi_GOP_GWIN_GetFBInfo(frameBufferId, &DstFBInfo);
-				//mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[%s %d]addr=0x%x pitch=%d width=%d height=%d fbFmt=%d\n",__FUNCTION__,__LINE__,DstFBInfo.addr,DstFBInfo.pitch,DstFBInfo.width,DstFBInfo.height,DstFBInfo.fbFmt));
                 MApi_GFX_ClearFrameBuffer(DstFBInfo.addr, DstFBInfo.size, 0);
                 MApi_GFX_FlushQueue();
                 *buffer = *alignedAddress = (void*)MS_PA2KSEG1(DstFBInfo.addr);
                 mTBOX_RETURN(true);
-            }
-            else
+            }else
+			{
+			    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failure\n"));
+                mTBOX_RETURN(false);
+			}
+
+            /*if (Res != GWIN_OK)
             {
                 mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failure\n"));
-                mTBOX_RETURN(false);
             }
+
+            frameBufferId = MApi_GOP_GWIN_GetFreeFBID();
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "frameBufferId x width x height x fbFmt = %d x %d x %d x %d\n", frameBufferId, width, height, fbFmt));
+            Res = MApi_GOP_GWIN_CreateFB(frameBufferId, 0, 0, width, height, fbFmt);
+            if (Res != GWIN_OK)
+            {
+                mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failure\n"));
+            }
+
+            frameBufferId = MApi_GOP_GWIN_GetFreeFBID();
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "frameBufferId x width x height x fbFmt = %d x %d x %d x %d\n", frameBufferId, width, height, fbFmt));
+            Res = MApi_GOP_GWIN_CreateFB(frameBufferId, 0, 0, width, height, fbFmt);
+            if (Res != GWIN_OK)
+            {
+                mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failure\n"));
+            }
+
+            frameBufferId = MApi_GOP_GWIN_GetFreeFBID();
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "frameBufferId x width x height x fbFmt = %d x %d x %d x %d\n", frameBufferId, width, height, fbFmt));
+            Res = MApi_GOP_GWIN_CreateFB(frameBufferId, 0, 0, width, height, fbFmt);
+            if (Res != GWIN_OK)
+            {
+                mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failure\n"));
+            }*/
         }
         else
         {
@@ -194,7 +216,11 @@ void TDAL_GFXi_FreeBitmapFrame(void * buffer, uint32_t bitmapHandle, bool bIsFra
         tTDAL_GFXi_BitmapDescriptor *bmpDesc = (tTDAL_GFXi_BitmapDescriptor *)bitmapHandle; 
         if (MApi_GOP_GWIN_IsFBExist(bmpDesc->frameBufferId))
         {
-            MApi_GOP_GWIN_DestroyFB(bmpDesc->frameBufferId);
+            if (GOP_API_SUCCESS != MApi_GOP_GWIN_DeleteFB(bmpDesc->frameBufferId))
+            {
+                printf("\n""\033[1;31m""[FUN][%s()@%04d]    ""\033[m""\n", __FUNCTION__, __LINE__);
+                mTBOX_ASSERT(FALSE);
+            }
         }
     }
     else
@@ -216,43 +242,13 @@ void TDAL_GFXi_FreeBitmapFrame(void * buffer, uint32_t bitmapHandle, bool bIsFra
  *      Revision
  *
  *===========================================================================*/
-#include <math.h>
-static double color_diff(int ar, int ag, int ab, int br, int bg, int bb)
-{
-	int absR = ar - br;
-	int absG = ag - bg;
-	int absB = ab - bb;
 
-	return sqrt((double)(absR*absR + absG*absG + absB*absB));
-}
-
-static int convert_true_color_2_index(tTDAL_GFX_Color *color, tTDAL_GFX_Palette *pallete)
-{
-	int i, index;
-	double diff, min_diff;
-
-	index = 0;
-	for (i=0; i<pallete->nbColors; i++)
-	{
-		diff = color_diff(color->ARGB8888.R, color->ARGB8888.G, color->ARGB8888.B, pallete->pColor[i].ARGB8888.R, pallete->pColor[i].ARGB8888.G, pallete->pColor[i].ARGB8888.B);
-		if (i == 0)
-		{
-			min_diff = diff;
-			index = 0;
-		}
-		else
-		{
-			if (min_diff > diff)
-			{
-				min_diff = diff;
-				index = i;
-			}
-		}
-	}
-
-	//printf("index %d\n", index);
-	return index;
-}
+#ifndef GFX_TEST_DEFAULT_WIDTH
+#define GFX_TEST_DEFAULT_WIDTH 1280
+#endif
+#ifndef GFX_TEST_DEFAULT_HEIGHT
+#define GFX_TEST_DEFAULT_HEIGHT 720
+#endif
 
 tTDAL_GFX_Error TDAL_GFX_RectangleDraw (tTDAL_GFX_RegionHandle regionHandle,
                    tTDAL_GFX_Point      offset,
@@ -270,80 +266,50 @@ tTDAL_GFX_Error TDAL_GFX_RectangleDraw (tTDAL_GFX_RegionHandle regionHandle,
     tTDAL_RegionDesc *regionDesc;
     tTDAL_GFX_Error error = eTDAL_GFX_NO_ERROR;
     tTDAL_GFX_Color palleteColor;
-    tTDAL_GFX_Palette *pallete = NULL;
+    tTDAL_GFX_Palette pallete;
     
     mTBOX_FCT_ENTER("TDAL_GFX_RectangleDraw");
     
+	if ((offset.x + size.width)> GFX_TEST_DEFAULT_WIDTH || (offset.y + size.height)> GFX_TEST_DEFAULT_HEIGHT) 
+    {
+        error = eTDAL_GFX_BAD_PARAMETER;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_GFX_RectangleDraw: fail to locate rectangle\n"));
+        mTBOX_RETURN(error);
+    }
     RectX       = offset.x;
     RectY       = offset.y;
     RectWidth   = size.width;
     RectHeight  = size.height;
     
     regionDesc = TDAL_GFXm_RgnDescGet(regionHandle);
-    MApi_GOP_GWIN_Switch2Gwin(regionDesc->GeWinId);
+	
     if (regionDesc == NULL)
     {
         error = eTDAL_GFX_UNKNOWN_ERROR;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_GFXm_RgnDescGet: fail to find appropriate region descriptor\n"));
         mTBOX_RETURN(error);
     }
-
-    if ((RectX >= regionDesc->size.width) || ((RectX + RectWidth) > regionDesc->size.width)
-        || (RectY >= regionDesc->size.height) || ((RectY + RectHeight) > regionDesc->size.height))
-    {
-        return eTDAL_GFX_BAD_PARAMETER;
-    }
-
-    switch (colorType)
-    {
-        case eTDAL_GFX_COLOR_CLUT_ARGB8888:
-            if (regionDesc->fbFmt != E_MS_FMT_I8)
-            {
-                pallete = (tTDAL_GFX_Palette *)TDAL_GFXm_RegionPaletteGet(regionHandle);
-				if (!pallete)
-				{
-					return eTDAL_GFX_BAD_PARAMETER;
-				}
-                //mTBOX_RETURN(eTDAL_GFX_FEATURE_NOT_SUPPORTED);
-			}
-            break;
-        case eTDAL_GFX_COLOR_TRUE_COLOR_ARGB8888:
-            if (regionDesc->fbFmt != E_MS_FMT_ARGB8888)
-            {
-				int index;
-				pallete = (tTDAL_GFX_Palette *)TDAL_GFXm_RegionPaletteGet(regionHandle);
-				if (!pallete)
-				{
-					return eTDAL_GFX_BAD_PARAMETER;
-				}
-				index = convert_true_color_2_index(&color, pallete);
-				color = pallete->pColor[index];
-				color.paletteEntry = index;
-				//mTBOX_RETURN(eTDAL_GFX_FEATURE_NOT_SUPPORTED);
-            }
-            break;
-        default:
-            mTBOX_RETURN(eTDAL_GFX_FEATURE_NOT_SUPPORTED);
-            break;
-    }
-
+    
+    MApi_GOP_GWIN_Switch2Gwin(regionDesc->GeWinId);
+    
     //Map color index to ARGB color
     if (colorType==eTDAL_GFX_COLOR_CLUT_AYCRCB8888 || colorType==eTDAL_GFX_COLOR_CLUT_ARGB8888)
     {
-        //TDAL_GFX_RegionPaletteGet(regionHandle, pallete);
-        pallete = (tTDAL_GFX_Palette *)TDAL_GFXm_RegionPaletteGet(regionHandle);
-        if (pallete == NULL)
+        error = TDAL_GFX_RegionPaletteGet(regionHandle, &pallete);
+        if ( error != eTDAL_GFX_NO_ERROR || pallete.pColor== NULL)
         {
             memset((void*)&palleteColor, 0, sizeof(tTDAL_GFX_Color));
         }
         else
         {
-            palleteColor = *(pallete->pColor + color.paletteEntry);
+            memcpy(&palleteColor,pallete.pColor + color.paletteEntry, sizeof(tTDAL_GFX_Color));
+//            palleteColor = *(pallete.pColor + color.paletteEntry);
         }
     }
     else
     {
-        palleteColor = color;
+        memcpy(&palleteColor,&color, sizeof(tTDAL_GFX_Color));
+//        palleteColor = color;
     }
     
     if (colorType==eTDAL_GFX_COLOR_CLUT_AYCRCB8888 || colorType==eTDAL_GFX_COLOR_TRUE_COLOR_AYCRCB8888)
@@ -360,22 +326,27 @@ tTDAL_GFX_Error TDAL_GFX_RectangleDraw (tTDAL_GFX_RegionHandle regionHandle,
         color_s.g = (uint8_t)(palleteColor.ARGB8888.G);
         color_s.b = (uint8_t)(palleteColor.ARGB8888.B);
     }
-
+    
+	 mTBOX_TRACE((kTBOX_NIV_1, "Rectangle ARGB Color: A=0x%X, R=0x%X, G=0x%X, B=0x%X \n", color_s.a, color_s.r, color_s.g, color_s.b));
+	
     //get current GWIN fbInfo.
-    MApi_GOP_GWIN_GetFBInfo(regionDesc->frameBufferId, &DstFBInfo);
+    if (GOP_API_SUCCESS != MApi_GOP_GWIN_GetFBInfo(regionDesc->frameBufferId, &DstFBInfo))
+    {
+        error = eTDAL_GFX_DRIVER_ERROR;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL,"\n""\033[1;31m""[FUN][%s()@%04d]: MApi_GOP_GWIN_GetFBInfo: failure""\033[m""\n", __FUNCTION__, __LINE__));
+		mTBOX_RETURN(error);
+    }
     
     //Set Dst buffer
     destinationBuffer.u32ColorFmt   = (MS_U8)DstFBInfo.fbFmt;
     destinationBuffer.u32Addr       = DstFBInfo.addr;
     destinationBuffer.u32Pitch      = DstFBInfo.pitch;
+    destinationBuffer.u32Height     = DstFBInfo.height;
+    destinationBuffer.u32Width      = DstFBInfo.width;
     MApi_GFX_SetDstBufferInfo(&destinationBuffer, 0);
 
     TDAL_GFXi_SetupGfxRectFillInfo(&gfxFillBlock, RectX, RectY, RectWidth, RectHeight,
             (MS_U8)DstFBInfo.fbFmt, color_s, color_s, GFXRECT_FLAG_COLOR_CONSTANT);
-    if (regionDesc->fbFmt == E_MS_FMT_I8)
-    {
-        gfxFillBlock.colorRange.color_s.b = color.paletteEntry;
-    }
     TDAL_GFXi_OverscanScale(&gfxFillBlock.dstBlock);
     gfx_result = MApi_GFX_RectFill(&gfxFillBlock);
     if (gfx_result != GFX_SUCCESS)
@@ -389,6 +360,63 @@ tTDAL_GFX_Error TDAL_GFX_RectangleDraw (tTDAL_GFX_RegionHandle regionHandle,
         mTBOX_ASSERT(gfx_result == GFX_SUCCESS);
     }
     
+    if(TDAL_GFX_Scaled_RgnDesc.used == true)
+    {
+        GOP_GwinFBAttr  gwinFB;
+        GFX_BufferInfo  sourceBuffer;
+        GFX_DrawRect    drawRect;
+        E_GOP_API_Result gop_result;
+        
+        sourceBuffer.u32Addr       = destinationBuffer.u32Addr;
+        sourceBuffer.u32ColorFmt   = destinationBuffer.u32ColorFmt;
+        sourceBuffer.u32Height     = destinationBuffer.u32Height;
+        sourceBuffer.u32Width      = destinationBuffer.u32Width;
+        sourceBuffer.u32Pitch      = destinationBuffer.u32Pitch;
+    
+        //Dst FB
+        gop_result = MApi_GOP_GWIN_GetFBInfo(TDAL_GFX_Scaled_RgnDesc.frameBufferId, &gwinFB);
+        if (gop_result != GOP_API_SUCCESS)
+        {
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_GetFBInfo: failure %d\n", gop_result));
+        }                
+        
+        destinationBuffer.u32Addr       = gwinFB.addr;
+        destinationBuffer.u32ColorFmt   = gwinFB.fbFmt;
+        destinationBuffer.u32Height     = gwinFB.height;
+        destinationBuffer.u32Width      = gwinFB.width;
+        destinationBuffer.u32Pitch      = gwinFB.pitch;
+    
+        gfx_result = MApi_GFX_SetSrcBufferInfo(&sourceBuffer, 0);
+        mTBOX_ASSERT(gfx_result == GFX_SUCCESS);
+    
+        gfx_result = MApi_GFX_SetDstBufferInfo(&destinationBuffer, 0);
+        mTBOX_ASSERT(gfx_result == GFX_SUCCESS);
+    
+        drawRect.srcblk.x = 0;
+        drawRect.srcblk.y = 0;
+        drawRect.srcblk.height = sourceBuffer.u32Height;
+        drawRect.srcblk.width = sourceBuffer.u32Width ;
+        
+        drawRect.dstblk.x = 0;
+        drawRect.dstblk.y = 0;
+        drawRect.dstblk.height = destinationBuffer.u32Height;
+        drawRect.dstblk.width = destinationBuffer.u32Width ;
+    
+        gfx_result = MApi_GFX_BitBlt(&drawRect, GFXDRAW_FLAG_SCALE);
+
+        if (gfx_result != GFX_SUCCESS)
+        {
+            error = eTDAL_GFX_DRIVER_ERROR;
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GFX_RectFill: failure %d\n", gfx_result));
+        }
+        else
+        {
+            gfx_result = MApi_GFX_FlushQueue();
+            mTBOX_ASSERT(gfx_result == GFX_SUCCESS);
+        }
+
+    }
+
     mTBOX_RETURN(error);
 }
 
@@ -421,67 +449,33 @@ tTDAL_GFX_Error   TDAL_GFX_BmpDraw   (
     tTDAL_GFX_Error error = eTDAL_GFX_NO_ERROR;
     tTDAL_RegionDesc *regionDesc;
     mTBOX_FCT_ENTER("TDAL_GFX_BmpDraw");
-
-    if (pBitmap == NULL)
-    {
-        return eTDAL_GFX_BAD_PARAMETER;
-    }
-	
+    
     //Switch destination GWIn to GeWinId and setting a destination buffer(frame)
     regionDesc = TDAL_GFXm_RgnDescGet(regionHandle);
+
     if (regionDesc == NULL)
     {
-        return eTDAL_GFX_UNKNOWN_REGION;
-    }
-
-    if ((offset.x >= regionDesc->size.width) || ((offset.x + pBitmap->size.width) > regionDesc->size.width)
-        || (offset.y >= regionDesc->size.height) || ((offset.y + pBitmap->size.height) > regionDesc->size.height))
-    {
-        return eTDAL_GFX_BAD_PARAMETER;
-    }
-
-    switch (pBitmap->colorType)
-    {
-        case eTDAL_GFX_COLOR_CLUT_ARGB8888:
-            if (regionDesc->fbFmt != E_MS_FMT_I8)
-            {
-                tTDAL_GFX_Palette *pallete = (tTDAL_GFX_Palette *)TDAL_GFXm_RegionPaletteGet(regionHandle);
-				if (!pallete)
-				{
-					return eTDAL_GFX_BAD_PARAMETER;
-				}
-                //mTBOX_RETURN(eTDAL_GFX_FEATURE_NOT_SUPPORTED);
-            }
-            break;
-        case eTDAL_GFX_COLOR_TRUE_COLOR_ARGB8888:
-            if (regionDesc->fbFmt != E_MS_FMT_ARGB8888)
-            {
-				//mTBOX_RETURN(eTDAL_GFX_FEATURE_NOT_SUPPORTED);
-            }
-            break;
-        default:
-            mTBOX_RETURN(eTDAL_GFX_FEATURE_NOT_SUPPORTED);
-            break;
-    }
+        error = eTDAL_GFX_UNKNOWN_ERROR;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_GFXm_RgnDescGet: fail to find appropriate region descriptor\n"));
+        mTBOX_RETURN(error);
+    } 
 
     MApi_GOP_GWIN_Switch2Gwin(regionDesc->GeWinId);
-    MApi_GOP_GWIN_GetFBInfo(regionDesc->frameBufferId, &DstFBAttr);
+
+    if (GOP_API_SUCCESS != MApi_GOP_GWIN_GetFBInfo(regionDesc->frameBufferId, &DstFBAttr))
+    {
+        error = eTDAL_GFX_DRIVER_ERROR;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL,"\n""\033[1;31m""[FUN][%s()@%04d]: MApi_GOP_GWIN_GetFBInfo: failure""\033[m""\n", __FUNCTION__, __LINE__));
+		mTBOX_RETURN(error);
+    }
     
     destinationBuffer.u32Addr       = DstFBAttr.addr;
     destinationBuffer.u32ColorFmt   = DstFBAttr.fbFmt;
     destinationBuffer.u32Width      = DstFBAttr.width;
     destinationBuffer.u32Height     = DstFBAttr.height;
     destinationBuffer.u32Pitch      = DstFBAttr.pitch;
-    gfx_result = MApi_GFX_SetDstBufferInfo(&destinationBuffer, 0);
+    MApi_GFX_SetDstBufferInfo(&destinationBuffer, 0);
     mTBOX_ASSERT(gfx_result == GFX_SUCCESS);
-	if (gfx_result != GFX_SUCCESS)
-	{
-		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[%s %d] err=%d,addr=0x%x,pitch=0x%x,height=%d,width=%d,colorfmt=%d\n",__FUNCTION__,__LINE__,gfx_result,destinationBuffer.u32Addr,destinationBuffer.u32Pitch,destinationBuffer.u32Height,destinationBuffer.u32Width,destinationBuffer.u32ColorFmt));
-	}
-	else
-	{
-		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[%s %d]addr=0x%x,pitch=0x%x,height=%d,width=%d,colorfmt=%d\n",__FUNCTION__,__LINE__,destinationBuffer.u32Addr,destinationBuffer.u32Pitch,destinationBuffer.u32Height,destinationBuffer.u32Width,destinationBuffer.u32ColorFmt));
-	}
     /* setting source buffer */
     switch (pBitmap->colorType)
     {
@@ -504,6 +498,13 @@ tTDAL_GFX_Error   TDAL_GFX_BmpDraw   (
             mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Non-handled color format %d\n", pBitmap->colorType));
             break;
     }
+    if ((offset.x + sourceBuffer.u32Width)> GFX_TEST_DEFAULT_WIDTH || (offset.y + sourceBuffer.u32Height)> GFX_TEST_DEFAULT_HEIGHT) 
+    {
+        error = eTDAL_GFX_BAD_PARAMETER;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_GFX_BmpDraw: fail to locate BMP\n"));
+        mTBOX_RETURN(error);
+    }
+
     sourceBuffer.u32Addr = (MS_PHYADDR)MsOS_VA2PA((MS_U32)pBitmap->pData);
     gfx_result = MApi_GFX_SetSrcBufferInfo(&sourceBuffer, 0);
     mTBOX_ASSERT(gfx_result == GFX_SUCCESS);  
@@ -513,16 +514,17 @@ tTDAL_GFX_Error   TDAL_GFX_BmpDraw   (
     gfxDrawRect.srcblk.height   = sourceBuffer.u32Height;
     gfxDrawRect.srcblk.width    = sourceBuffer.u32Width;
     
-    gfxDrawRect.dstblk.x        = /*regionDesc->offSet.x +*/ offset.x;
-    gfxDrawRect.dstblk.y        = /*regionDesc->offSet.y +*/ offset.y;
+    gfxDrawRect.dstblk.x        = offset.x;
+    gfxDrawRect.dstblk.y        = offset.y;
     gfxDrawRect.dstblk.height   = sourceBuffer.u32Height;
     gfxDrawRect.dstblk.width    = sourceBuffer.u32Width;
     
     mTBOX_TRACE((kTBOX_NIV_CRITICAL, "(x,y)=(%d,%d) \n",  offset.x, offset.y));
-    
+
+    TDAL_GFXi_WriteBackSourceBufferToMemory((MS_U32) pBitmap->pData, sourceBuffer.u32Height * sourceBuffer.u32Pitch);
     //TDAL_GFXi_OverscanScale(&gfxDrawRect);
     /// BitBlt
-    gfx_result = MApi_GFX_BitBlt(&gfxDrawRect, GFXDRAW_FLAG_DEFAULT);
+    gfx_result = MApi_GFX_BitBlt(&gfxDrawRect, GFXDRAW_FLAG_SCALE);
     if (gfx_result != GFX_SUCCESS)
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GFX_BitBlt returned error %d\n", gfx_result));
@@ -728,16 +730,16 @@ bool TDAL_GFXi_GetRegionBuffer(tTDAL_GFX_BlitContext * context, GFX_BufferInfo *
 		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[TDAL_GFXi_GetRegionBuffer]   Unknown region\n"));
 		mTBOX_RETURN(false);
 	}
-	
+
 	gop_res = MApi_GOP_GWIN_GetFBInfo(TDAL_GFX_RgnDesc[regDescription].frameBufferId, &bfInfo);
 	mTBOX_ASSERT(gop_res == GOP_API_SUCCESS);
-	
+
 	bufferInfo->u32Addr = 		bfInfo.addr;
 	bufferInfo->u32ColorFmt = 	(MS_U8)bfInfo.fbFmt;
 	bufferInfo->u32Width = 		bfInfo.width;
 	bufferInfo->u32Height =		bfInfo.height;
 	bufferInfo->u32Pitch =		bfInfo.pitch;
-	//mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[%s %d]fmt=%d,pitch=%d,width=%d,height=%d)\n",__FUNCTION__,__LINE__,bufferInfo->u32ColorFmt,bufferInfo->u32Pitch, bufferInfo->u32Width, bufferInfo->u32Height));
+	mTBOX_TRACE((kTBOX_NIV_3, "[TDAL_GFXi_GetRegionBuffer] colorFormat = %d, size=(%dx%d)\n", bufferInfo->u32ColorFmt, bufferInfo->u32Width, bufferInfo->u32Height));
 
 	mTBOX_RETURN(true);
 }
@@ -794,6 +796,9 @@ void TDAL_GFXi_WriteBackSourceBufferToMemory(MS_U32 buffPtr, uint32_t len)
     }
 
     r = MsOS_Dcache_Flush(newAddr, newLen);
+
+    MsOS_FlushMemory();
+
     mTBOX_TRACE((kTBOX_NIV_3, "Write back to cache of ptr = %p, len = %d, newBuff = %p, newLen = %d, success = %d", buffPtr, len, newAddr, newLen, r));
 }
 
@@ -834,16 +839,31 @@ bool TDAL_GFXi_GetMemoryBuffer(tTDAL_GFX_BlitContext * context, GFX_BufferInfo *
         bufferInfo->u32ColorFmt = GFX_FMT_ARGB8888;
         bufferInfo->u32Pitch = context->size.width<<2;
         break;
+    case eTDAL_GFX_COLOR_TRUE_COLOR_YUV422:
+        bufferInfo->u32ColorFmt = GFX_FMT_YUV422;
+        bufferInfo->u32Pitch = context->size.width<<1;
+        break;        
     default:
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Non-handled color format %d\n", context->colorType));
         mTBOX_RETURN(false);
         break;
 	}
-
+#if defined(USE_TDAL_MP)
+       MS_U32 Pitch = 0;
+       MS_U16 Format = 0;
+       Pitch = TDAL_MPm_GetPhotoPitch();
+       Format = TDAL_MPm_GetPhotoFormat();
+#endif
 	bufferInfo->u32Addr = MS_VA2PA((MS_U32)memoryHandle);
 	bufferInfo->u32Height = context->size.height;
 	bufferInfo->u32Width = context->size.width;
+#if defined(USE_TDAL_MP)
+       if (Pitch)
+           bufferInfo->u32Pitch = TDAL_MPm_GetPhotoPitch();
 
+       if (Format)
+           bufferInfo->u32ColorFmt = (MS_U32)TDAL_MPm_GetPhotoFormat();
+#endif
 	TDAL_GFXi_WriteBackSourceBufferToMemory((MS_U32) memoryHandle, bufferInfo->u32Height * bufferInfo->u32Pitch);
 
 	mTBOX_RETURN(true);
@@ -873,25 +893,29 @@ tTDAL_GFX_Error TDAL_GFX_Blit(tTDAL_GFX_BlitMethod   blitMethod,
     GFX_BufferInfo          sourceBuffer, destinationBuffer;
     tTDAL_GFX_Color         *pColor = NULL;
     bool                    operationBlit = false;
-	GOP_GwinFBAttr          gwinFB;
     
     mTBOX_FCT_ENTER("TDAL_GFX_Blit");
 
     memset(&sourceBuffer, 		0, 	sizeof(sourceBuffer));
     memset(&destinationBuffer, 	0, 	sizeof(destinationBuffer));
+#if defined(USE_TDAL_MP)
+    memcpy(&src_gif,&src,sizeof(tTDAL_GFX_BlitContext));
+    memcpy(&dest_gif,&dest,sizeof(tTDAL_GFX_BlitContext));
+#endif
+    mTBOX_TRACE((kTBOX_NIV_3, "TDAL_GFX_Blit: colorSrc = %d colorDest = %d\n",src.colorType, dest.colorType));
 
-	switch (blitMethod)
-	{
-		case eTDAL_GFX_BLIT_METHOD_COPY:
-		{
+    switch (blitMethod)
+    {
+        case eTDAL_GFX_BLIT_METHOD_COPY:
+        {
             switch (src.type)
             {
-				case eTDAL_GFX_TYPE_MEMORY:
-				{
-					switch (dest.type)
-					{                  
-						case eTDAL_GFX_TYPE_BITMAP:
-						{
+                 case eTDAL_GFX_TYPE_MEMORY:
+                {
+                    switch (dest.type)
+                    {                    
+                        case eTDAL_GFX_TYPE_BITMAP:
+                        {
                             break;
                         }
                         case eTDAL_GFX_TYPE_MEMORY:
@@ -969,17 +993,13 @@ tTDAL_GFX_Error TDAL_GFX_Blit(tTDAL_GFX_BlitMethod   blitMethod,
                             destinationBuffer.u32Height     = DstFBAttr.height;
                             destinationBuffer.u32Width      = DstFBAttr.width;
                             destinationBuffer.u32Pitch      = DstFBAttr.pitch;
+                            
                             gfx_result = MApi_GFX_SetDstBufferInfo(&destinationBuffer, 0);
-							if (gfx_result != GFX_SUCCESS)
-							{
-								error = eTDAL_GFX_DRIVER_ERROR;
-								mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[%s %d]err=%d,addr=0x%x,pitch=0x%x,height=%d,width=%d,colorfmt=%d\n",__FUNCTION__,__LINE__,gfx_result,destinationBuffer.u32Addr,destinationBuffer.u32Pitch,destinationBuffer.u32Height,destinationBuffer.u32Width,destinationBuffer.u32ColorFmt));
-							}
-							else
-							{
-								//mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[%s %d]addr=0x%x,pitch=0x%x,height=%d,width=%d,colorfmt=%d\n",__FUNCTION__,__LINE__,destinationBuffer.u32Addr,destinationBuffer.u32Pitch,destinationBuffer.u32Height,destinationBuffer.u32Width,destinationBuffer.u32ColorFmt));
-							}
-							
+                            if (gfx_result != GFX_SUCCESS)
+                            {
+                                error = eTDAL_GFX_DRIVER_ERROR;
+                                mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GFX_SetDstBufferInfo: failure %d\n", gfx_result));
+                            }                            
                             TDAL_GFXi_SetupGfxRectFillInfo(&gfxFillBlock, dest.offset.x, dest.offset.y, dest.size.width, dest.size.height,
                                     destinationBuffer.u32ColorFmt, color_s, color_s, GFXRECT_FLAG_COLOR_CONSTANT);
                             gfx_result = MApi_GFX_RectFill(&gfxFillBlock);
@@ -1019,9 +1039,9 @@ tTDAL_GFX_Error TDAL_GFX_Blit(tTDAL_GFX_BlitMethod   blitMethod,
         {
         	switch (src.type)
         	{
-	        	case eTDAL_GFX_TYPE_BITMAP:
-					memset(&gwinFB,0,sizeof(GOP_GwinFBAttr));
-					
+        	case eTDAL_GFX_TYPE_BITMAP:
+        	    {
+        	        GOP_GwinFBAttr  gwinFB;
         	        gop_result = MApi_GOP_GWIN_GetFBInfo(((tTDAL_GFXi_BitmapDescriptor *)src.pBuffer)->frameBufferId, &gwinFB);
                     if (gop_result != GOP_API_SUCCESS)
                     {
@@ -1032,87 +1052,78 @@ tTDAL_GFX_Error TDAL_GFX_Blit(tTDAL_GFX_BlitMethod   blitMethod,
                     sourceBuffer.u32ColorFmt    = gwinFB.fbFmt;
                     sourceBuffer.u32Height      = gwinFB.height;
                     sourceBuffer.u32Width       = gwinFB.width;
-                    sourceBuffer.u32Pitch       = (gwinFB.pitch%8)?((gwinFB.pitch/8 + 1) * 8):(gwinFB.pitch);//gwinFB.pitch; 8bytes aglin
-	        		break;
-	        	case eTDAL_GFX_TYPE_MEMORY:
-	        		if (TDAL_GFXi_GetMemoryBuffer(&src, &sourceBuffer) == false)
-	        		{
-	        			error = eTDAL_GFX_BAD_PARAMETER;
-	        		}
-	        		
-	        		break;
-	        	default:
-	        		mTBOX_ASSERT(FALSE);
-	        		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Unsupported combination of blit method, source and destination\n"));
-	        		error = eTDAL_GFX_FEATURE_NOT_SUPPORTED;
-	        		break;
+                    sourceBuffer.u32Pitch       = gwinFB.pitch;
+        	    }
+        		break;
+        	case eTDAL_GFX_TYPE_MEMORY:
+        		if (TDAL_GFXi_GetMemoryBuffer(&src, &sourceBuffer) == false)
+        		{
+        			error = eTDAL_GFX_BAD_PARAMETER;
+        		}
+        		
+        		break;
+        	default:
+        		mTBOX_ASSERT(FALSE);
+        		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Unsupported combination of blit method, source and destination\n"));
+        		error = eTDAL_GFX_FEATURE_NOT_SUPPORTED;
+        		break;
         	}
 
         	switch (dest.type)
         	{
-				case eTDAL_GFX_TYPE_BITMAP:               
-					memset(&gwinFB,0,sizeof(GOP_GwinFBAttr));
-					
-					gop_result = MApi_GOP_GWIN_GetFBInfo(((tTDAL_GFXi_BitmapDescriptor *)dest.pBuffer)->frameBufferId, &gwinFB);
-					if (gop_result != GOP_API_SUCCESS)
-					{
-						mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_GetFBInfo: failure %d\n", gop_result));
-					}
+        	case eTDAL_GFX_TYPE_BITMAP:
+                {
+                    GOP_GwinFBAttr  gwinFB;                 
 
-					destinationBuffer.u32Addr       = gwinFB.addr;
-					destinationBuffer.u32ColorFmt   = gwinFB.fbFmt;
-					destinationBuffer.u32Height     = gwinFB.height;
-					destinationBuffer.u32Width      = gwinFB.width;
-					destinationBuffer.u32Pitch      = gwinFB.pitch;
-					break;
-	        	case eTDAL_GFX_TYPE_MEMORY:
-					if (TDAL_GFXi_GetMemoryBuffer(&dest, &destinationBuffer) == false)
-					{
-						error = eTDAL_GFX_BAD_PARAMETER;
-					}
-					break;
-				case eTDAL_GFX_TYPE_DISPLAY:
-					if (TDAL_GFXi_GetRegionBuffer(&dest, &destinationBuffer) == false)
-					{
-						error = eTDAL_GFX_BAD_PARAMETER;
-					}
-					break;
-				default:
-					mTBOX_ASSERT(FALSE);
-					mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Unsupported combination of blit method, source and destination\n"));
-					error = eTDAL_GFX_FEATURE_NOT_SUPPORTED;
-					break;
-			}
+                    gop_result = MApi_GOP_GWIN_GetFBInfo(((tTDAL_GFXi_BitmapDescriptor *)dest.pBuffer)->frameBufferId, &gwinFB);
+                    if (gop_result != GOP_API_SUCCESS)
+                    {
+                        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_GetFBInfo: failure %d\n", gop_result));
+                    }
+                    
+                    destinationBuffer.u32Addr       = gwinFB.addr;
+                    destinationBuffer.u32ColorFmt   = gwinFB.fbFmt;
+                    destinationBuffer.u32Height     = gwinFB.height;
+                    destinationBuffer.u32Width      = gwinFB.width;
+                    destinationBuffer.u32Pitch      = gwinFB.pitch;
+                 }
+                break;
+        	case eTDAL_GFX_TYPE_MEMORY:
+        		if (TDAL_GFXi_GetMemoryBuffer(&dest, &destinationBuffer) == false)
+        		{
+        			error = eTDAL_GFX_BAD_PARAMETER;
+        		}
+        		break;
+        	case eTDAL_GFX_TYPE_DISPLAY:
+        		if (TDAL_GFXi_GetRegionBuffer(&dest, &destinationBuffer) == false)
+        		{
+        			error = eTDAL_GFX_BAD_PARAMETER;
+        		}
+        		break;
+        	default:
+        		mTBOX_ASSERT(FALSE);
+        		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Unsupported combination of blit method, source and destination\n"));
+        		error = eTDAL_GFX_FEATURE_NOT_SUPPORTED;
+        		break;
+        	}
         	operationBlit = true;
         	break;
         }
         default:
+        {
             mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Error: Unknown TDAL BLIT method\n"));
             break;
+        }
     }
 
     if (error==eTDAL_GFX_NO_ERROR && operationBlit==true)
     {
         GFX_DrawRect drawRect;
-		memset(&drawRect,0,sizeof(GFX_DrawRect));
-		
+
         gfx_result = MApi_GFX_SetSrcBufferInfo(&sourceBuffer, 0);
         mTBOX_ASSERT(gfx_result == GFX_SUCCESS);
-		if (gfx_result != GFX_SUCCESS)
-        {
-			mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GFX_SetSrcBufferInfo err=%d,addr=0x%x,pitch=0x%x,height=%d,width=%d,colorfmt=%d\n", gfx_result,sourceBuffer.u32Addr,sourceBuffer.u32Pitch,sourceBuffer.u32Height,sourceBuffer.u32Width,sourceBuffer.u32ColorFmt));
-        }
-
         gfx_result = MApi_GFX_SetDstBufferInfo(&destinationBuffer, 0);
         mTBOX_ASSERT(gfx_result == GFX_SUCCESS);
-		if (gfx_result != GFX_SUCCESS)
-        {
-            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[%s %d] err=%d,addr=0x%x,pitch=0x%x,height=%d,width=%d,colorfmt=%d\n",__FUNCTION__,__LINE__,gfx_result,destinationBuffer.u32Addr,destinationBuffer.u32Pitch,destinationBuffer.u32Height,destinationBuffer.u32Width,destinationBuffer.u32ColorFmt));
-        }
-		else
-		{
-			//mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[%s %d]addr=0x%x,pitch=0x%x,height=%d,width=%d,colorfmt=%d\n",__FUNCTION__,__LINE__,destinationBuffer.u32Addr,destinationBuffer.u32Pitch,destinationBuffer.u32Height,destinationBuffer.u32Width,destinationBuffer.u32ColorFmt));
-		}
 
         drawRect.srcblk.x = src.clipOffset.x;
         drawRect.srcblk.y = src.clipOffset.y;
@@ -1124,19 +1135,63 @@ tTDAL_GFX_Error TDAL_GFX_Blit(tTDAL_GFX_BlitMethod   blitMethod,
         drawRect.dstblk.height = dest.clipSize.height;
         drawRect.dstblk.width = dest.clipSize.width;
 
+        if(src.colorType==eTDAL_GFX_COLOR_TRUE_COLOR_YUV422)
+        {
+            MApi_GFX_SetDC_CSC_FMT(0, 0, GFX_YUV_IN_255, GFX_YUV_YUYV, GFX_YUV_YUYV);
+        }
+        
         if (dest.type == eTDAL_GFX_TYPE_DISPLAY)
         {
-			/* For now this scaling is needed for proper setting
-			* the so called "safe area" for graphics
-			*/
+            /* For now this scaling is needed for proper setting
+             * the so called "safe area" for graphics
+             */
             TDAL_GFXi_OverscanScale(&drawRect.dstblk);
       
             gfx_result = MApi_GFX_BitBlt(&drawRect, GFXDRAW_FLAG_SCALE);
             mTBOX_ASSERT(gfx_result == GFX_SUCCESS);
-			if (gfx_result != GFX_SUCCESS)
-			{
-				mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[%s %d]MApi_GFX_BitBlt returned error %d\n",__FUNCTION__,__LINE__,gfx_result));
-			}
+
+            if(TDAL_GFX_Scaled_RgnDesc.used == true)
+            {
+                GOP_GwinFBAttr  gwinFB;
+
+                sourceBuffer.u32Addr       = destinationBuffer.u32Addr;
+                sourceBuffer.u32ColorFmt   = destinationBuffer.u32ColorFmt;
+                sourceBuffer.u32Height     = destinationBuffer.u32Height;
+                sourceBuffer.u32Width      = destinationBuffer.u32Width;
+                sourceBuffer.u32Pitch      = destinationBuffer.u32Pitch;
+
+                //Dst FB
+                gop_result = MApi_GOP_GWIN_GetFBInfo(TDAL_GFX_Scaled_RgnDesc.frameBufferId, &gwinFB);
+                if (gop_result != GOP_API_SUCCESS)
+                {
+                    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_GetFBInfo: failure %d\n", gop_result));
+                }                
+                
+                destinationBuffer.u32Addr       = gwinFB.addr;
+                destinationBuffer.u32ColorFmt   = gwinFB.fbFmt;
+                destinationBuffer.u32Height     = gwinFB.height;
+                destinationBuffer.u32Width      = gwinFB.width;
+                destinationBuffer.u32Pitch      = gwinFB.pitch;
+
+                gfx_result = MApi_GFX_SetSrcBufferInfo(&sourceBuffer, 0);
+                mTBOX_ASSERT(gfx_result == GFX_SUCCESS);
+
+                gfx_result = MApi_GFX_SetDstBufferInfo(&destinationBuffer, 0);
+                mTBOX_ASSERT(gfx_result == GFX_SUCCESS);
+
+                drawRect.srcblk.x = 0;
+                drawRect.srcblk.y = 0;
+                drawRect.srcblk.height = sourceBuffer.u32Height;
+                drawRect.srcblk.width = sourceBuffer.u32Width ;
+                
+                drawRect.dstblk.x = 0;
+                drawRect.dstblk.y = 0;
+                drawRect.dstblk.height = destinationBuffer.u32Height;
+                drawRect.dstblk.width = destinationBuffer.u32Width ;
+
+                gfx_result = MApi_GFX_BitBlt(&drawRect, GFXDRAW_FLAG_SCALE);
+                mTBOX_ASSERT(gfx_result == GFX_SUCCESS);
+            }
         }
         else
         {
@@ -1146,13 +1201,8 @@ tTDAL_GFX_Error TDAL_GFX_Blit(tTDAL_GFX_BlitMethod   blitMethod,
             {
                 mTBOX_TRACE((kTBOX_NIV_WARNING, "MApi_GFX_SetAlpha returned error %d\n", gfx_result));
             }
-			
             gfx_result = MApi_GFX_BitBlt(&drawRect, GFXDRAW_FLAG_SCALE);
             mTBOX_ASSERT(gfx_result == GFX_SUCCESS);
-			if (gfx_result != GFX_SUCCESS)
-			{
-				mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[%s %d]MApi_GFX_BitBlt returned error %d\n",__FUNCTION__,__LINE__,gfx_result));
-			}
         }
 
         if (gfx_result != GFX_SUCCESS)
@@ -1165,10 +1215,6 @@ tTDAL_GFX_Error TDAL_GFX_Blit(tTDAL_GFX_BlitMethod   blitMethod,
             MApi_GFX_SetAlpha(TRUE, COEF_ONE, ABL_FROM_ASRC, 0xFF);
             gfx_result = MApi_GFX_FlushQueue();
             mTBOX_ASSERT(gfx_result == GFX_SUCCESS);
-			if (gfx_result != GFX_SUCCESS)
-			{
-				mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[%s %d]MApi_GFX_FlushQueue returned error %d\n",__FUNCTION__,__LINE__,gfx_result));
-			}
         }
     }
 
@@ -1264,8 +1310,8 @@ tTDAL_GFX_Error   TDAL_GFX_Copy2DNonZero   (
 	 char*	 dstWritePointer = (char*)pDest;
 	 char*	 srcReadPointer = (char*)pSrc;
 	 
-	 mTBOX_FCT_ENTER("TDAL_GFX_Copy2DNonZero");
-	 
+    mTBOX_FCT_ENTER("TDAL_GFX_Copy2DNonZero");
+    
 	 /*   if   source	to	 copy	is	 outside   dest   ->   return	*/
 	 if   ((srcOffset.x > (int32_t)dstSize.width)	||
 	   (srcOffset.y > (int32_t)dstSize.height)	 ||
@@ -1363,6 +1409,7 @@ tTDAL_GFX_Error   TDAL_GFX_Copy2DNonZero   (
 	 }
 	
 	return	 eTDAL_GFX_NO_ERROR;
+
 }
 
 /*===========================================================================
@@ -1430,87 +1477,87 @@ tTDAL_GFX_Error   TDAL_GFX_Free   (
  *===========================================================================*/
 tTDAL_GFX_Error   TDAL_GFX_BitmapCreate(tTDAL_GFX_BitmapHandle   *pBitmapHandle, tTDAL_GFX_Bitmap   *pBitmapConfig)
 {
-	tTDAL_GFX_Error error = eTDAL_GFX_NO_ERROR;
-
-	mTBOX_FCT_ENTER("TDAL_GFX_BitmapCreate");
-
-	uint16_t            fbFmt, fmtSize;
-	int32_t             bitmapDesc;
-	void * buffer = NULL;
-	void * alignedBuffer = NULL;
-	bool bRes;
-
-	if (pBitmapHandle==NULL || pBitmapConfig==NULL)
-	{
-		error = eTDAL_GFX_BAD_PARAMETER;
-		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Invalid parameter(s) bmpHandle=0x%x bmpConfig=0x%x\n", pBitmapHandle, pBitmapConfig));
-		mTBOX_RETURN(error);
-	}
-
-	if (pBitmapConfig->size.width == 0 || pBitmapConfig->size.height == 0)
-	{
-		error = eTDAL_GFX_BAD_PARAMETER;
-		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Bad bitmap size (w,h)=(%d,%d)\n"));
-		mTBOX_RETURN(error);
-	}
-
-	/*aglin by skyworth test*/
-	pBitmapConfig->size.width = (pBitmapConfig->size.width%2)?((pBitmapConfig->size.width/2+1)*2):(pBitmapConfig->size.width);
-
-	//mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[%s %d]colorType = %d, width=%d height=%d)\n",__FUNCTION__,__LINE__,pBitmapConfig->colorType,pBitmapConfig->size.width,pBitmapConfig->size.height));
-
-	bitmapDesc = TDAL_GFXi_FindFreeBitmapDescriptor();
-
-	if (bitmapDesc < 0)
-	{
-		error = eTDAL_GFX_NO_MEMORY;
-		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "No available bitmap descriptors!\n"));
-		mTBOX_RETURN(error);
-	}
-
-	switch (pBitmapConfig->colorType)
-	{
-		case eTDAL_GFX_COLOR_CLUT_AYCRCB8888:
-		case eTDAL_GFX_COLOR_CLUT_ARGB8888:
-			fbFmt = E_MS_FMT_I8;
-			fmtSize = 1;
-			break;
-		case eTDAL_GFX_COLOR_TRUE_COLOR_AYCRCB8888:
-		case eTDAL_GFX_COLOR_TRUE_COLOR_ARGB8888:
-			fbFmt = E_MS_FMT_ARGB8888;
-			fmtSize = 4;
-			break;
-		default:
-			mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Unhandled color type=0x%x\n", pBitmapConfig->colorType));
-			error = eTDAL_GFX_FEATURE_NOT_SUPPORTED;
-			mTBOX_RETURN(error);
-			break;
-	}
+    tTDAL_GFX_Error error = eTDAL_GFX_NO_ERROR;
     
-	TDAL_GFXi_BitmapDescriptor[bitmapDesc].fbFmt       = fbFmt;
-    TDAL_GFXi_BitmapDescriptor[bitmapDesc].pitch       = pBitmapConfig->size.width * fmtSize;
-    TDAL_GFXi_BitmapDescriptor[bitmapDesc].size.width  = pBitmapConfig->size.width;
-	TDAL_GFXi_BitmapDescriptor[bitmapDesc].size.height = pBitmapConfig->size.height;
-
-	//bRes = TDAL_GFXi_AllocBitmapBuffer(pBitmapConfig->size.width * fmtSize * pBitmapConfig->size.height, &buffer, &alignedBuffer);
-	bRes = TDAL_GFXi_AllocBitmapFrame(pBitmapConfig->size.width * fmtSize * pBitmapConfig->size.height, &buffer, &alignedBuffer, bitmapDesc, TRUE);
-	if(bRes != true)
-	{
-		error = eTDAL_GFX_NO_MEMORY;
-		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_GFXi_AllocBitmapFrame: failure!\n"));
-		mTBOX_RETURN(error);
-	}
-
-	TDAL_GFXi_BitmapDescriptor[bitmapDesc].buffer           = buffer;
-	TDAL_GFXi_BitmapDescriptor[bitmapDesc].alignedBuffer    = alignedBuffer;
-	TDAL_GFXi_BitmapDescriptor[bitmapDesc].used             = true;
-
-	*pBitmapHandle          = (tTDAL_GFX_BitmapHandle)&TDAL_GFXi_BitmapDescriptor[bitmapDesc];
-	pBitmapConfig->pData    = alignedBuffer;
+    mTBOX_FCT_ENTER("TDAL_GFX_BitmapCreate");
     
-	mTBOX_TRACE((kTBOX_NIV_1, "[TDAL_GFX_BitmapCreate]  frameID = %d Bitmap created 0x%x\n", TDAL_GFXi_BitmapDescriptor[bitmapDesc].frameBufferId,TDAL_GFXi_BitmapDescriptor[bitmapDesc].alignedBuffer));
+    uint16_t            fbFmt, fmtSize;
+    int32_t             bitmapDesc;
+    void * buffer = NULL;
+    void * alignedBuffer = NULL;
+    bool bRes;
 
-	mTBOX_RETURN(error);
+    if (pBitmapHandle==NULL || pBitmapConfig==NULL)
+    {
+        error = eTDAL_GFX_BAD_PARAMETER;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Invalid parameter(s) bmpHandle=0x%x bmpConfig=0x%x\n", pBitmapHandle, pBitmapConfig));
+        mTBOX_RETURN(error);
+    }
+    
+    if (pBitmapConfig->size.width == 0 || pBitmapConfig->size.height == 0)
+    {
+    	error = eTDAL_GFX_BAD_PARAMETER;
+    	mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Bad bitmap size (w,h)=(%d,%d)\n"));
+    	mTBOX_RETURN(error);
+    }
+
+    mTBOX_TRACE((kTBOX_NIV_1, "[TDAL_GFX_BitmapCreate]  colorType = %d, size = (%dx%d)\n",
+    		pBitmapConfig->colorType,
+    		pBitmapConfig->size.width,
+    		pBitmapConfig->size.height));
+
+    bitmapDesc = TDAL_GFXi_FindFreeBitmapDescriptor();
+
+    if (bitmapDesc < 0)
+    {
+        error = eTDAL_GFX_NO_MEMORY;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "No available bitmap descriptors!\n"));
+        mTBOX_RETURN(error);
+    }
+
+    switch (pBitmapConfig->colorType)
+    {
+        case eTDAL_GFX_COLOR_CLUT_AYCRCB8888:
+        case eTDAL_GFX_COLOR_CLUT_ARGB8888:
+            fbFmt = E_MS_FMT_I8;
+            fmtSize = 1;
+            break;
+        case eTDAL_GFX_COLOR_TRUE_COLOR_AYCRCB8888:
+        case eTDAL_GFX_COLOR_TRUE_COLOR_ARGB8888:
+            fbFmt = E_MS_FMT_ARGB8888;
+            fmtSize = 4;
+            break;
+        default:
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Unhandled color type=0x%x\n", pBitmapConfig->colorType));
+            error = eTDAL_GFX_FEATURE_NOT_SUPPORTED;
+            mTBOX_RETURN(error);
+            break;
+    }
+    
+    TDAL_GFXi_BitmapDescriptor[bitmapDesc].fbFmt    = fbFmt;
+    TDAL_GFXi_BitmapDescriptor[bitmapDesc].pitch    = pBitmapConfig->size.width * fmtSize;
+    TDAL_GFXi_BitmapDescriptor[bitmapDesc].size     = pBitmapConfig->size;
+
+    //bRes = TDAL_GFXi_AllocBitmapBuffer(pBitmapConfig->size.width * fmtSize * pBitmapConfig->size.height, &buffer, &alignedBuffer);
+    bRes = TDAL_GFXi_AllocBitmapFrame(pBitmapConfig->size.width * fmtSize * pBitmapConfig->size.height, &buffer, &alignedBuffer, bitmapDesc, TRUE);
+    if(bRes != true)
+    {
+        error = eTDAL_GFX_NO_MEMORY;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_GFXi_AllocBitmapFrame: failure!\n"));
+        mTBOX_RETURN(error);
+    }
+
+    TDAL_GFXi_BitmapDescriptor[bitmapDesc].buffer           = buffer;
+    TDAL_GFXi_BitmapDescriptor[bitmapDesc].alignedBuffer    = alignedBuffer;
+    TDAL_GFXi_BitmapDescriptor[bitmapDesc].used             = true;
+
+    *pBitmapHandle          = (tTDAL_GFX_BitmapHandle)&TDAL_GFXi_BitmapDescriptor[bitmapDesc];
+    pBitmapConfig->pData    = alignedBuffer;
+    
+    mTBOX_TRACE((kTBOX_NIV_1, "[TDAL_GFX_BitmapCreate]  frameID = %d Bitmap created 0x%x\n", TDAL_GFXi_BitmapDescriptor[bitmapDesc].frameBufferId, 
+            TDAL_GFXi_BitmapDescriptor[bitmapDesc].alignedBuffer));
+
+    mTBOX_RETURN(error);
 }
 
 /*===========================================================================
@@ -1574,7 +1621,37 @@ void TDAL_GFXi_OverscanScale(void *drawRect)
     pDrawRect->height    = SCALEY(pDrawRect->height);
 }
 /*********************************************************************************/
+#if defined(USE_TDAL_MP)
+tTDAL_GFX_Error TDAL_GFXm_Blit_GIF(void)
+{
 
+    tTDAL_GFX_Error result = eTDAL_GFX_NO_ERROR;
+    GWINID              GeWinId = 0xff;
+    int i = 0;
+    uint32_t BuffAddr = 0;
+    extern tTDAL_MP_Error TDAL_MP_PhotoGetOutAdr(tTDAL_MP_Handle Handle,uint32_t *pusAddr);
+    TDAL_MP_PhotoGetOutAdr(0,&BuffAddr);
+    src_gif.pBuffer = (void *)BuffAddr;
+    src_gif.type = eTDAL_GFX_TYPE_MEMORY;
+    dest_gif.type = eTDAL_GFX_TYPE_DISPLAY;
+    result = TDAL_GFX_Blit(eTDAL_GFX_BLIT_METHOD_SCALE, src_gif, dest_gif);
+    
+    for(i = 0; i < kTDAL_GFX_REGCOUNT; i++)
+    {
+         if (TDAL_GFX_RgnDesc[i].used)
+         {
+             GeWinId = TDAL_GFX_RgnDesc[i].GeWinId;
+             break;
+         }
+    }
+    
+    MApi_GOP_GWIN_Enable(GeWinId, TRUE) ;
+
+    MApi_GFX_FlushQueue();
+
+    return TRUE;
+}
+#endif
 #ifdef   PERF_GFX
 void   TDAL_GFXm_SysTimeStamp(void)
 {

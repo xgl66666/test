@@ -9,43 +9,51 @@
 /*              Includes                                */
 /********************************************************/
 
+#include <sys/stat.h>
+#include <pthread.h>
+#include <assert.h>
+
+#include "crules.h"
 #include "tdal_mp.h"
+#include "tdal_mp_p.h"
 
 #include "tdal_disp.h"
 
 #include "tbox.h"
 #include "tdal_common.h"
 #include "tdal_common_priv.h"
+#include "tdal_fs.h"
+#include "tdal_fs_p.h"
+
 #include "MsCommon.h"
 #include "MsTypes2.h"
 #include "MsTypes.h"
 
-#include "msAPI_MM.h"
+#include "mmsdk_interface_def.h"
+#include "mmsdk_interface.h"
+#include "msapi_MM_Common.h"
+#include "msapi_MM_Display.h"
+
+#include "porting_sysinfo.h"
+#include "MsFS.h"
+#include "MM_Player_Def.h"
+#include "MApi_MEMConfig_Interface.h"
+
 #include "apiHDMITx.h"
 #include "drvXC_IOPort.h"
 #include "apiXC.h"
-#include "drvMVOP.h"
-#include "apiVDEC.h"
 #include "apiVDEC_EX.h"
-#include "msAPI_XC.h"
-#include "tdal_mp_p.h"
-
-#include "crules.h"
-
-#include "drvAUDIO.h"
+#include "apiVDEC.h"
 #include "drvMVOP.h"
-
 #include "apiDMX.h"
-
 #include "apiAUDIO.h"
 #include "apiDAC.h"
-
-#include "MsCommon.h"
 #include "MsMemory.h"
+#include "msAPI_XC.h"
 
 #include "tdal_disp.h"
 #include "tdal_disp_module_priv.h"
-
+#include "tdal_av.h"
 /********************************************************/
 /*              Defines                                 */
 /********************************************************/
@@ -54,8 +62,7 @@
 #define MM_COPROCESSOR_ADDR                     0x00000000  /* Alignment 0 */
 #define MM_COPROCESSOR_LEN                      0x00200000 /* 2M */
 #define MM_COPROCESSOR_TYPE                     (MIU0)
-//#define PROTECT_TDAL_MP
-
+#define PROTECT_TDAL_MP
 /********************************************************/
 /*              Macros                                  */
 /********************************************************/
@@ -64,6 +71,7 @@ mTBOX_SET_MODULE(eTDAL_MP);
 /********************************************************/
 /*              Typedefs                                */
 /********************************************************/
+
 typedef enum
 {
     eTDAL_MP_CallbackMovie,
@@ -74,7 +82,7 @@ typedef enum
 typedef struct
 {
     tTDAL_MPi_CallbackType callbackType;
-    EN_MPLAYER_COMMAND_TYPE eCmd;
+    EN_MMSDK_CALLBACK_MSG eCmd;
     unsigned int  u32Param;
     unsigned int  u32Info;
     bool shouldExit;
@@ -83,6 +91,13 @@ typedef struct
 /********************************************************/
 /*              Local Module Variables (MODULE)         */
 /********************************************************/
+#define DRM_MODEL_ID                    0x3130
+#define MMSDK_BUF_PHOTO_MEMORY_POOL_LEN 0x0000100000
+
+#ifndef VDPLAYER_BS_EXT_AVAILABLE
+#define MMSDK_BUF_VDPLAYER_BITSTREAM_AUDIO 0x0000400000
+#define BITSTREAM_AUDIO_BUFFER_ALIGNMENT 0x1000
+#endif
 
 /********************************************************/
 /*              Global Variables (GLOBAL/IMPORT)        */
@@ -96,7 +111,7 @@ IMPORT MS_U8 Customer_hash[];
 /*              Local File Variables (LOCAL)            */
 /********************************************************/
 LOCAL MS_BOOL b_MM_Initied = FALSE;
-LOCAL ST_CPCODEC_MSG_SUBTITLE_INIT_INFO _prestSubtitleInit;
+// wait porting LOCAL ST_CPCODEC_MSG_SUBTITLE_INIT_INFO _prestSubtitleInit;
 LOCAL MS_BOOL b_InternalSubtitleInitialize = FALSE;
 
 LOCAL MS_U8 u8TSPFirmwareForRTSP[] = {
@@ -111,29 +126,58 @@ tTDAL_MPm_Desc *TDAL_MPi_DescList[kTDAL_MPm_OPEN_SESSION_MAX];
 
 LOCAL TDAL_mutex_id TDAL_MPi_Mutex = NULL;
 LOCAL uint32_t TDAL_MPi_MutexThreadLocked = 0;
+LOCAL tTDAL_MP_Capabilities _MPCapabilities = 0;
+#ifndef VDPLAYER_BS_EXT_AVAILABLE
+LOCAL void* _gpBSAudBufVA;
+#endif
+
+
+
+
+//for ring buffer info
+MS_U32 _gu32VdplayerReadTimerOut = 0xFFFFFFFF;
+MS_BOOL _gbFastInit = FALSE;
+MS_U32 _gu32InitDataSize = 0x20000;
+MS_S32 _gs32MinBufferSec = 10;
+MS_S32 _gs32MaxBufferSec = 30;
+
+EN_MMSDK_MEDIA_TYPE _geMediaType = E_MMSDK_MEDIA_TYPE_MOVIE;
+static MS_U32 _gu32FileOption = MPLAYER_MODE_INVALID;
+
+MS_U8 _gu8FileExtName[EXTENTION_NAME_LENGTH] = {};
+MS_BOOL _gbFileSupported = TRUE;
+//for debug info.....
+EN_MMSDK_DBG_LEVEL _geDebugLevel  = E_MMSDK_DBG_LEVEL_NONE;
 
 /********************************************************/
 /*              Local Functions Declarations (LOCAL)    */
 /********************************************************/
-LOCAL void _TDAL_MPm_Mplayer_Movie_CallBack(EN_MPLAYER_COMMAND_TYPE eCmd, unsigned int  u32Param, unsigned int  u32Info);
-LOCAL void _TDAL_MPm_Mplayer_Photo_CallBack(EN_MPLAYER_COMMAND_TYPE eCmd, unsigned int  u32Param, unsigned int  u32Info);
-LOCAL void _TDAL_MPm_Mplayer_Music_CallBack(EN_MPLAYER_COMMAND_TYPE eCmd, unsigned int  u32Param, unsigned int  u32Info);
-LOCAL MS_BOOL _TDAL_MPm_MM_MemInit(MM_MEM_INFO *pMem_Info, MM_MEMMAP_INFO *pMemMap_Info);
-LOCAL void _SubInitHandler(unsigned int  u32Info);
-LOCAL void _SubQueuePushHandler(unsigned int  u32Info);
-LOCAL void _SubtitleDisplayHandler(unsigned int  u32Info);
-LOCAL void TDAL_MPi_CallbackTask(void* arg);
+LOCAL MS_BOOL _TDAL_MPm_MM_MemInit();
 
 #if defined(SDEC_GLUE_JPEG_TDAL_MP_PARTITION)
 
 LOCAL MS_S32     TDAL_MPi_MemPart = -1;
 LOCAL uint32_t   TDAL_MPi_AllocCount = 0;
 
+IMPORT void Get_NonCachePoolID(MS_S32 *s32NonCachePoolID);
+IMPORT void Get_CachePoolID(MS_S32 *s32CachePoolID);
+
+static void _PT_SYS_ReadDB(ST_MMSDK_DIVXDRM_INFO *pstDRMInfo)
+{
+    //To read from NVM
+}
+
+static void _PT_SYS_WriteDB(ST_MMSDK_DIVXDRM_INFO *pstDRMInfo)
+{
+    //To write to NVM
+}
+
 tTDAL_MP_Error TDAL_MP_Malloc(uint32_t size, void ** p)
 {
     tTDAL_MP_Error err;
-
     mTBOX_FCT_ENTER("TDAL_MP_Malloc");
+#if 0 //wait porting
+
 
     if (size == 0 || p == NULL)
     {
@@ -164,13 +208,14 @@ tTDAL_MP_Error TDAL_MP_Malloc(uint32_t size, void ** p)
     }
 
     TDAL_MPi_UnlockMutex();
-
+#endif
     mTBOX_RETURN(err);
 }
 
 tTDAL_MP_Error TDAL_MP_Free(void * p)
 {
     tTDAL_MP_Error err;
+#if 0 //wait porting
 
     if (p == 0)
     {
@@ -186,13 +231,14 @@ tTDAL_MP_Error TDAL_MP_Free(void * p)
     }
 
     TDAL_MPi_UnlockMutex();
-
+#endif
     return err;
 }
 
 uint32_t TDAL_MP_GetAvailableSpace()
 {
     uint32_t ret = 0;
+#if 0 //wait porting
 
     TDAL_MPi_LockMutex();
 
@@ -208,16 +254,16 @@ uint32_t TDAL_MP_GetAvailableSpace()
     }
 
     TDAL_MPi_UnlockMutex();
-
+#endif
     return ret;
 }
 
 bool TDAL_MPi_ReleasePool(void)
 {
-    MS_BOOL bRet;
     bool retValue = true;
-
     mTBOX_FCT_ENTER("TDAL_MPi_ReleasePool");
+#if 0 //wait porting
+    MS_BOOL bRet;
 
     TDAL_MPi_LockMutex();
 
@@ -238,7 +284,7 @@ bool TDAL_MPi_ReleasePool(void)
     }
 
     TDAL_MPi_UnlockMutex();
-
+#endif
     mTBOX_RETURN(retValue);
 }
 
@@ -255,166 +301,58 @@ bool TDAL_MPi_ReleasePool(void)
  *                 of the TDAL_MP API.
  *
  *****************************************************************************/
+
 tTDAL_MP_Error TDAL_MP_Init(tTDAL_MP_InitParams *pstInitParams)
 {
+    tTDAL_MP_Error result = eTDAL_MP_NO_ERROR;
+//    MS_U8 u8Volume = DEFAULT_VOLUME;
+//    MS_BOOL bMute = FALSE;
+    MS_S32 s32MstarCachedPoolID = INVALID_POOL_ID,s32MstarNonCachedPoolID=INVALID_POOL_ID;
 
-	tTDAL_MP_Error result = eTDAL_MP_NO_ERROR;
-
-	MS_BOOL B_Ret;
-    MM_MEM_INFO MM_MemInfo;
-    AUDIO_INFO MM_AudioInfo;
-    MM_TSP_INFO MM_TSPInfo;
-    void * ptmpMem = NULL;
-
+    Get_CachePoolID(&s32MstarCachedPoolID);
+    Get_NonCachePoolID(&s32MstarNonCachedPoolID);
+    
     mTBOX_FCT_ENTER("TDAL_MP_Init");
 
-    if(b_MM_Initied)
+    if (b_MM_Initied)
+        return FALSE;
+
+    TDAL_AV_Init();
+
+    //Prepare sys related info before MMSDK_Initialize()
+    if (PT_SYS_SetCusInfo(Customer_info, Customer_hash) == FALSE)
     {
-    	mTBOX_TRACE((kTBOX_NIV_WARNING, "TDAL_MP_Init already initialized\n"));
-        mTBOX_RETURN(eTDAL_MP_NOT_DONE_ERROR);
-    }
-
-    MM_MemInfo.u32Miu0_mem_size = MIU_DRAM_LEN0;
-    MM_MemInfo.u32Miu1_mem_size = ENABLE_MIU_1;
-    MM_MemInfo.u32Miu_boundary = MIU_INTERVAL;
-    MM_MemInfo.u32Mmap_items = 60;
-    MM_MemInfo.u32Total_mem_size = MM_MemInfo.u32Miu0_mem_size + MM_MemInfo.u32Miu1_mem_size;
-    ptmpMem = MsOS_AllocateMemory(sizeof(MM_MEMMAP_INFO)* MM_MemInfo.u32Mmap_items,gs32NonCachedPoolID);
-    if(!ptmpMem)
-    {
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_MP_Init could not allocate memory for MM_MEMMAP_INFO\n"));
-        mTBOX_RETURN(eTDAL_MP_NO_MEMORY_ERROR);
-    }
-    memset(ptmpMem, 0x00, sizeof(MM_MEMMAP_INFO)*MM_MemInfo.u32Mmap_items);
-
-    _TDAL_MPm_MM_MemInit(&MM_MemInfo, (MM_MEMMAP_INFO *)ptmpMem);
-
-    MM_AudioInfo.u32AudioSrc= AUDIO_SOURCE_DTV;
-    MM_AudioInfo.u32AudioPath= AUDIO_PATH_MAIN_SPEAKER;
-    MM_AudioInfo.u32AudioOutput = AUDIO_OUTPUT_MAIN_SPEAKER;
-
-    MM_TSPInfo.pAddr = u8TSPFirmwareForRTSP;
-    MM_TSPInfo.u32Size = sizeof(u8TSPFirmwareForRTSP);
-
-    if(MApi_DMX_ChkAlive() != DMX_FILTER_STATUS_OK)
-    {
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_MP_Init: DMX needs to be initialized before MM\n"));
-        mTBOX_RETURN(eTDAL_MP_NOT_DONE_ERROR);
-    }
-    // TODO: DemoAV_TSP_StopDmxFlt();///stop live flt
-#if MSTAR_QUEUE
-    TDAL_MPi_CallbackQueue = MsOS_CreateQueue(NULL, //It is useless now, can pass NULL.
-            0,   // queue size (byte unit) : now fixed as 10 * u32MessageSize
-            E_MSG_FIXED_SIZE,   // E_MSG_VAR_SIZE has not been supported yet
-            sizeof(tTDAL_MPi_CallbackMsg), // message size (byte unit) for E_MSG_FIXED_SIZE
-            E_MSOS_FIFO,        // E_MSOS_FIFO suspended in FIFO order
-            "TDAL_MP_Queue");      // queue name)
-#else
-    TDAL_CreateQueue(TDAL_QUEUE_MSG_MAX_NO, sizeof(tTDAL_MPi_CallbackMsg), &TDAL_MPi_CallbackQueue);
-#endif
-    if (TDAL_MPi_CallbackQueue == -1)
-    {
-        mTBOX_TRACE((kTBOX_NIV_1, "[TDAL_MP_Init]: Could not create TDAL_MP queue\n"));
         result = eTDAL_MP_NOT_DONE_ERROR;
+        mTBOX_RETURN(result);        
     }
+    PT_SYS_SetMemPoolID(s32MstarCachedPoolID, s32MstarNonCachedPoolID);
+    PT_SYS_SetTspVQInfo(TSP_VQ_BUF_ADR, TSP_VQ_BUF_LEN);
+    PT_SYS_SetDBReadWrite(_PT_SYS_ReadDB, _PT_SYS_WriteDB);
+    PT_SYS_SetDRMID(DRM_MODEL_ID);//to revise? by teddy.chen
+    _TDAL_MPm_MM_MemInit();
+    //Create and initialize MM player.
+    TDAL_MPm_Player_Initialize();
 
-    if (result == eTDAL_MP_NO_ERROR)
+    //For image type subtitle
+    msAPI_MM_Scaler_ForceOpen();
+
+    MApi_AUDIO_SetSourceInfo(E_AUDIO_INFO_GAME_IN);
+    PT_SYS_SetMMPhotoPath(MM_PHOTO_PATH);
+    //audio de-mute and initial volume setting , move from mm mdw
+//    bMute = FALSE;
+//    Demo_Audio_SetMute(&bMute);
+
+//    u8Volume = DEFAULT_VOLUME;
+//    Demo_Audio_SetAbsoluteVolume(&u8Volume);
+    _MPCapabilities = eTDAL_MP_CAPS_TRACK | eTDAL_MP_CAPS_SPEED | eTDAL_MP_CAPS_POS;
+    TDAL_CreateMutex(&TDAL_MPi_Mutex);
+
+    if (TDAL_MPi_Mutex == NULL)
     {
-        MApp_MPlayer_SetMemPool(gs32CachedPoolID, 1);
-        MApp_MPlayer_SetMemPool(gs32NonCachedPoolID, 0);
-        MApp_MPlayer_SetCustomerInfo(Customer_info,49,Customer_hash,16);
-        B_Ret=MApi_MPlayer_Initialize(&MM_AudioInfo,&MM_TSPInfo,(void*)&MM_MemInfo, ptmpMem);
-        if(B_Ret)
-        {
-            MApi_MPlayer_RegisterCallBack(E_MPLAYER_MEDIA_MOVIE, _TDAL_MPm_Mplayer_Movie_CallBack);
-            MApi_MPlayer_RegisterCallBack(E_MPLAYER_MEDIA_PHOTO, _TDAL_MPm_Mplayer_Photo_CallBack);
-            MApi_MPlayer_RegisterCallBack(E_MPLAYER_MEDIA_MUSIC, _TDAL_MPm_Mplayer_Music_CallBack);
-        }
-        else
-        {
-            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_MP_Init: Could not initialize MM\n"));
-            result = eTDAL_MP_NOT_DONE_ERROR;
-        }
+        result = eTDAL_MP_NOT_DONE_ERROR;        
+        mTBOX_RETURN(result);
     }
-
-    if (result == eTDAL_MP_NO_ERROR)
-    {
-        TDAL_CreateMutex(&TDAL_MPi_Mutex);
-        mTBOX_ASSERT(TDAL_MPi_Mutex != NULL);
-    }
-
-    if (result == eTDAL_MP_NO_ERROR)
-    {
-        TDAL_MPi_CallbackTaskId = TDAL_CreateTask(
-                eTDAL_PRIORITY_NORMAL,
-                "TDAL MP Task",
-                TDAL_MPi_CallbackTaskStack,
-                sizeof(TDAL_MPi_CallbackTaskStack),
-                TDAL_MPi_CallbackTask,
-                NULL);
-
-        if (TDAL_MPi_CallbackTaskId == NULL)
-        {
-            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_MP_Init: Could not initialize MP callback task\n"));
-            result = eTDAL_MP_NOT_DONE_ERROR;
-        }
-
-    }
-
-    if (MsOS_FreeMemory(ptmpMem, gs32NonCachedPoolID))
-    {
-        ptmpMem = NULL;
-    }
-    else
-    {
-        mTBOX_ASSERTm(FALSE, "free(ptmpMem) should always sucedd\n");
-    }
-
-    if (result == eTDAL_MP_NO_ERROR)
-    {
-        b_MM_Initied = TRUE;
-    }
-    else
-    {
-        b_MM_Initied = FALSE;
-
-        MApi_MPlayer_Finalize();
-        MApi_MPlayer_RegisterCallBack(E_MPLAYER_MEDIA_MOVIE, NULL);
-        MApi_MPlayer_RegisterCallBack(E_MPLAYER_MEDIA_PHOTO, NULL);
-        MApi_MPlayer_RegisterCallBack(E_MPLAYER_MEDIA_MUSIC, NULL);
-
-        if (TDAL_MPi_CallbackQueue != -1)
-        {
-            tTDAL_MPi_CallbackMsg msg;
-            MS_BOOL bRet;
-
-            msg.shouldExit = true;
-#if MSTAR_QUEUE
-            bRet = MsOS_SendToQueue(TDAL_MPi_CallbackQueue, (MS_U8 *) &msg, sizeof(tTDAL_MPi_CallbackMsg), MSOS_WAIT_FOREVER);
-#else
-            bRet = TDAL_Enqueue(TDAL_MPi_CallbackQueue, &msg);
-#endif
-            mTBOX_ASSERT(bRet == TRUE);
-        }
-
-        if (TDAL_MPi_CallbackTaskId != NULL)
-        {
-            /* This waits until thread finished and deletes it */
-            TDAL_DeleteTask(TDAL_MPi_CallbackTaskId);
-            TDAL_MPi_CallbackTaskId = NULL;
-        }
-
-        if (TDAL_MPi_CallbackQueue != -1)
-        {
-#if MSTAR_QUEUE
-            MsOS_DeleteQueue(TDAL_MPi_CallbackQueue);
-#else
-            TDAL_DeleteQueue(TDAL_MPi_CallbackQueue);
-#endif
-            TDAL_MPi_CallbackQueue = -1;
-        }
-    }
-
+    b_MM_Initied = TRUE;
     mTBOX_RETURN(result);
 }
 
@@ -435,9 +373,62 @@ tTDAL_MP_Error TDAL_MP_Init(tTDAL_MP_InitParams *pstInitParams)
  *****************************************************************************/
 tTDAL_MP_Error TDAL_MP_Terminate (void)
 {
-	tTDAL_MP_Error result = eTDAL_MP_NO_ERROR;
+    tTDAL_MP_Error result = eTDAL_MP_NO_ERROR;
+    MS_S32 s32MstarCachedPoolID = INVALID_POOL_ID,s32MstarNonCachedPoolID=INVALID_POOL_ID;
+    int i = 0;
+    mTBOX_FCT_ENTER("TDAL_MP_Terminate");
 
-	mTBOX_FCT_ENTER("TDAL_MP_Terminate");
+    if(b_MM_Initied == FALSE)
+    {
+        mTBOX_TRACE((kTBOX_NIV_WARNING, "TDAL_MP_Terminate: MM not initialized\n"));
+        mTBOX_RETURN(eTDAL_MP_NOT_INIT_ERROR);
+    }
+    
+    i = TDAL_MPi_GetRunningMediaDescriptor();
+
+    if (i != -1)
+    {
+        TDAL_MP_Stop((tTDAL_MP_Handle)TDAL_MPi_DescList[i]);
+        TDAL_MP_Close((tTDAL_MP_Handle)TDAL_MPi_DescList[i]);
+    }
+    
+    Get_CachePoolID(&s32MstarCachedPoolID);
+    Get_NonCachePoolID(&s32MstarNonCachedPoolID);
+
+    if (!TDAL_MPm_Player_Finalize())
+    {
+        result = eTDAL_MP_NOT_DONE_ERROR;
+    }    
+    
+ #ifndef VDPLAYER_BS_EXT_AVAILABLE
+    if(_gpBSAudBufVA)
+    {
+        MsOS_FreeMemory(_gpBSAudBufVA, s32MstarNonCachedPoolID);
+        _gpBSAudBufVA = NULL;
+    }
+#endif
+
+    if (result != eTDAL_MP_NO_ERROR)
+    {
+        mTBOX_TRACE((kTBOX_NIV_WARNING, "TDAL_MPm_MPlayer_Finalize not done!\n"));
+        mTBOX_RETURN(result);
+    }
+    
+    if (!TDAL_MPm_Finalize())
+    {
+        result = eTDAL_MP_NOT_DONE_ERROR;
+        mTBOX_TRACE((kTBOX_NIV_WARNING, "-----> MM_Finalize ERROR ERROR!!!!\n"));
+    }
+    
+    if (result != eTDAL_MP_NO_ERROR)
+    {
+        mTBOX_TRACE((kTBOX_NIV_WARNING, "_MM_Finalize not done!\n"));
+        mTBOX_RETURN(result);
+    }
+    
+    b_MM_Initied = FALSE;       
+#if 0 // wait porting
+
 
     if(b_MM_Initied == FALSE)
     {
@@ -466,9 +457,9 @@ tTDAL_MP_Error TDAL_MP_Terminate (void)
         msg.shouldExit = true;
 #if MSTAR_QUEUE
         bRet = MsOS_SendToQueue(TDAL_MPi_CallbackQueue, (MS_U8 *) &msg, sizeof(tTDAL_MPi_CallbackMsg), MSOS_WAIT_FOREVER);
-#else        
+#else
         bRet = TDAL_Enqueue(TDAL_MPi_CallbackQueue, &msg);
-#endif        
+#endif
         mTBOX_ASSERT(bRet == TRUE);
     }
 
@@ -481,9 +472,9 @@ tTDAL_MP_Error TDAL_MP_Terminate (void)
 
     if (TDAL_MPi_CallbackQueue != -1)
     {
-#if MSTAR_QUEUE    
+#if MSTAR_QUEUE
         MsOS_DeleteQueue(TDAL_MPi_CallbackQueue);
-#else        
+#else
         TDAL_DeleteQueue(TDAL_MPi_CallbackQueue);
 #endif
         TDAL_MPi_CallbackQueue = -1;
@@ -496,6 +487,8 @@ tTDAL_MP_Error TDAL_MP_Terminate (void)
     }
 
     b_MM_Initied = FALSE;
+    
+#endif
 
 	mTBOX_RETURN(result);
 }
@@ -503,44 +496,48 @@ tTDAL_MP_Error TDAL_MP_Terminate (void)
 char      *TDAL_MP_RevisionGet(void) {
 
     mTBOX_FCT_ENTER("TDAL_MP_RevisionGet");
+    
 
 	return kTDAL_MP_REVISION;
 }
 tTDAL_MP_Error TDAL_MP_Open(tTDAL_MP_OpenParams *pstParams, tTDAL_MP_Handle *pHandle) {
 
-	tTDAL_MP_Error result = eTDAL_MP_NO_ERROR;
-	tTDAL_MPm_Desc *pstDesc = NULL;
-	int i;
-	uint8_t ucDescIdx = 0;
+    tTDAL_MP_Error result = eTDAL_MP_NO_ERROR;
+    tTDAL_MPm_Desc *pstDesc = NULL;
+    int i;
+    uint8_t ucDescIdx = 0;
 
-	mTBOX_FCT_ENTER("TDAL_MP_Open");
+    MPLAYER_MEDIA sMplayerMeida;
+    EN_MPLAYER_FILE_MODE pFileOption = MPLAYER_FILE_MODE;
+    uint8_t _u8FileName[FILE_NAME_LENGTH] = {};
+    mTBOX_FCT_ENTER("TDAL_MP_Open");
 
-	if((pstParams == (tTDAL_MP_OpenParams *)NULL))
-	{
-		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_MP_Open: Bad input parameters\n"));
-		result = eTDAL_MP_BAD_PARAMETER_ERROR;
-	}
+    if((pstParams == (tTDAL_MP_OpenParams *)NULL))
+    {
+    	mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_MP_Open: Bad input parameters\n"));
+    	result = eTDAL_MP_BAD_PARAMETER_ERROR;
+    }
 
     TDAL_MPi_LockMutex();
 
-	if(result == eTDAL_MP_NO_ERROR)
+    if(result == eTDAL_MP_NO_ERROR)
     {
-		/* search for a free empty desc in the list */
-		for(i = 0; i < kTDAL_MPm_OPEN_SESSION_MAX; i++)
-		{
-			if(TDAL_MPi_DescList[i] == (tTDAL_MPm_Desc *)NULL)
-			{
-				ucDescIdx = i;
-				break;
-			}
-		}
+        /* search for a free empty desc in the list */
+        for(i = 0; i < kTDAL_MPm_OPEN_SESSION_MAX; i++)
+        {
+            if(TDAL_MPi_DescList[i] == (tTDAL_MPm_Desc *)NULL)
+            {
+                ucDescIdx = i;
+                break;
+            }
+        }
 
-		if(ucDescIdx == kTDAL_MPm_OPEN_SESSION_MAX)
-		{
-			mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_MP_Open: Max session reached\n"));
-			result = eTDAL_MP_NB_HANDLE_MAX_ERROR;
-		}
-	}
+        if(ucDescIdx == kTDAL_MPm_OPEN_SESSION_MAX)
+        {
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_MP_Open: Max session reached\n"));
+            result = eTDAL_MP_NB_HANDLE_MAX_ERROR;
+        }
+    }
 
     if(result == eTDAL_MP_NO_ERROR)
     {
@@ -556,23 +553,25 @@ tTDAL_MP_Error TDAL_MP_Open(tTDAL_MP_OpenParams *pstParams, tTDAL_MP_Handle *pHa
 
     if(result == eTDAL_MP_NO_ERROR)
     {
-
-		memset(pstDesc,         0, sizeof(tTDAL_MPm_Desc));
-
+        memset(pstDesc,         0, sizeof(tTDAL_MPm_Desc));
         pstDesc->uiMagicNumber  = kTDAL_MPm_MAGIC_NUMBER;
         pstDesc->pEvtNotify     = pstParams->EvtNotify;
-		pstDesc->pInputDataRead = pstParams->InputDataRead;
-		pstDesc->pInputDataSeek = pstParams->InputDataSeek;
-		pstDesc->pInputDataLength = pstParams->InputDataLength;
+        if (pstDesc->pEvtNotify == NULL)
+        {
+            mTBOX_TRACE((kTBOX_NIV_WARNING, "pstDesc->pEvtNotify is NULL\n")); 
+        }
+        pstDesc->pInputDataRead = pstParams->InputDataRead;
+        pstDesc->pInputDataSeek = pstParams->InputDataSeek;
+        pstDesc->pInputDataLength = pstParams->InputDataLength;
         pstDesc->pCtx           = pstParams->pCtx;
-		//pstDesc->uiOutputMask   = pstParams->eDefaultOutput;
-		pstDesc->iSpeed = 0xFFFF;
-		//pstDesc->pPrivDataBuf   = pstParams->pPrivDataBuf;
-		//pstDesc->uiPrivDataSize = pstParams->uiPrivDataSize;
-		pstDesc->bIsStreamed    = pstParams->bIsStreamed;
-		pstDesc->eStreamAudCodecType = pstParams->eStreamAudType;
-		pstDesc->eStreamVidCodecType = pstParams->eStreamVidType;
-		pstDesc->bIsPlaying     = false;
+        //pstDesc->uiOutputMask   = pstParams->eDefaultOutput;
+        pstDesc->iSpeed = 0xFFFF;
+        //pstDesc->pPrivDataBuf   = pstParams->pPrivDataBuf;
+        //pstDesc->uiPrivDataSize = pstParams->uiPrivDataSize;
+        pstDesc->bIsStreamed    = pstParams->bIsStreamed;
+        pstDesc->eStreamAudCodecType = pstParams->eStreamAudType;
+        pstDesc->eStreamVidCodecType = pstParams->eStreamVidType;
+        pstDesc->bIsPlaying     = false;
         //#if 1
         /* TEMP BUGFIX - THIS MODIFICATION SHOULD BE DONE LATER (BY GS) INSIDE  THE MODULE "stffmpeg.c" */
         //pstDesc->bGoingToBeStopped = FALSE;
@@ -581,97 +580,226 @@ tTDAL_MP_Error TDAL_MP_Open(tTDAL_MP_OpenParams *pstParams, tTDAL_MP_Handle *pHa
         //pstDesc->bGoingToBeStarted = FALSE;
         //#endif /* fix interlock-bug */
 
-		/*if(pstParams->bIsStreamed == TRUE)
-		{
-			mTBOX_TRACE((kTBOX_NIV_1, "Open:"
-						 "Stream video type (%s)\n",
-						 AVPm_ContentTypeToString(pstParams->eStreamVidType)));
+        /*if(pstParams->bIsStreamed == TRUE)
+        {
+        	mTBOX_TRACE((kTBOX_NIV_1, "Open:"
+        				 "Stream video type (%s)\n",
+        				 AVPm_ContentTypeToString(pstParams->eStreamVidType)));
 
-			switch(pstParams->eStreamVidType)
-			{
-			case eAVP_STREAM_CONTENT_H264:
-				pstDesc->eStreamVidCodecType = eAVPm_VID_CODEC_TYPE_H264;
-				break;
-			case eAVP_STREAM_CONTENT_MP2V:
-				pstDesc->eStreamVidCodecType = eAVPm_VID_CODEC_TYPE_MPEG;
-				break;
-			default:
-				pstDesc->eStreamVidCodecType = eAVPm_VID_CODEC_TYPE_NONE;
-				mTBOX_TRACE((kTBOX_NIV_WARNING, "Open:"
-							 "Stream video type (%s) unkown\n",
-							 AVPm_ContentTypeToString(pstParams->eStreamVidType)));
-				break;
-			}
+        	switch(pstParams->eStreamVidType)
+        	{
+        	case eAVP_STREAM_CONTENT_H264:
+        		pstDesc->eStreamVidCodecType = eAVPm_VID_CODEC_TYPE_H264;
+        		break;
+        	case eAVP_STREAM_CONTENT_MP2V:
+        		pstDesc->eStreamVidCodecType = eAVPm_VID_CODEC_TYPE_MPEG;
+        		break;
+        	default:
+        		pstDesc->eStreamVidCodecType = eAVPm_VID_CODEC_TYPE_NONE;
+        		mTBOX_TRACE((kTBOX_NIV_WARNING, "Open:"
+        					 "Stream video type (%s) unkown\n",
+        					 AVPm_ContentTypeToString(pstParams->eStreamVidType)));
+        		break;
+        	}
 
-			mTBOX_TRACE((kTBOX_NIV_1, "Open:"
-						 "Stream audio type (%s)\n",
-						 AVPm_ContentTypeToString(pstParams->eStreamAudType)));
+        	mTBOX_TRACE((kTBOX_NIV_1, "Open:"
+        				 "Stream audio type (%s)\n",
+        				 AVPm_ContentTypeToString(pstParams->eStreamAudType)));
 
-			switch(pstParams->eStreamAudType)
-			{
-			case eAVP_STREAM_CONTENT_MP2A:
-				pstDesc->eStreamAudCodecType = eAVPm_AUD_CODEC_TYPE_MPEG2;
-				break;
-			case eAVP_STREAM_CONTENT_MP3A:
-				pstDesc->eStreamAudCodecType = eAVPm_AUD_CODEC_TYPE_MPEG3;
-				break;
-			case eAVP_STREAM_CONTENT_AAC:
-				pstDesc->eStreamAudCodecType = eAVPm_AUD_CODEC_TYPE_AAC;
-				break;
-			default:
-				pstDesc->eStreamAudCodecType = eAVPm_AUD_CODEC_TYPE_NONE;
-				mTBOX_TRACE((kTBOX_NIV_WARNING, "Open:"
-							 "Stream audio type (%s) unkown\n",
-							 AVPm_ContentTypeToString(pstParams->eStreamAudType)));
-				break;
-			}
-		}
-		else
-		{
-			pstDesc->eStreamVidCodecType = eAVPm_VID_CODEC_TYPE_NONE;
-			pstDesc->eStreamAudCodecType = eAVPm_AUD_CODEC_TYPE_NONE;
-		}*/
+        	switch(pstParams->eStreamAudType)
+        	{
+        	case eAVP_STREAM_CONTENT_MP2A:
+        		pstDesc->eStreamAudCodecType = eAVPm_AUD_CODEC_TYPE_MPEG2;
+        		break;
+        	case eAVP_STREAM_CONTENT_MP3A:
+        		pstDesc->eStreamAudCodecType = eAVPm_AUD_CODEC_TYPE_MPEG3;
+        		break;
+        	case eAVP_STREAM_CONTENT_AAC:
+        		pstDesc->eStreamAudCodecType = eAVPm_AUD_CODEC_TYPE_AAC;
+        		break;
+        	default:
+        		pstDesc->eStreamAudCodecType = eAVPm_AUD_CODEC_TYPE_NONE;
+        		mTBOX_TRACE((kTBOX_NIV_WARNING, "Open:"
+        					 "Stream audio type (%s) unkown\n",
+        					 AVPm_ContentTypeToString(pstParams->eStreamAudType)));
+        		break;
+        	}
+        }
+        else
+        {
+        	pstDesc->eStreamVidCodecType = eAVPm_VID_CODEC_TYPE_NONE;
+        	pstDesc->eStreamAudCodecType = eAVPm_AUD_CODEC_TYPE_NONE;
+        }*/
 
-		/* store the desc in the list here
-		 * because needed in file open/read/seek callbacks
-		 */
-		TDAL_MPi_DescList[ucDescIdx] = pstDesc;
+        /* store the desc in the list here
+         * because needed in file open/read/seek callbacks
+         */
+        TDAL_MPi_DescList[ucDescIdx] = pstDesc;
 
-		/* minimum basic caps for the moment */
-		pstDesc->stCaps = eTDAL_MP_CAPS_BASIC;
-
-
-	}
+        /* minimum basic caps for the moment */
+        pstDesc->stCaps = eTDAL_MP_CAPS_BASIC;
+    }
 
     if(result == eTDAL_MP_NO_ERROR)
     {
-		pstDesc->bOpened = TRUE;
-		/* descriptor pointer as handle */
+        pstDesc->bOpened = TRUE;
+        /* descriptor pointer as handle */
         *pHandle = (tTDAL_MP_Handle)pstDesc;
     }
-	else
-	{
-		/* free all resources in case of error */
-		if(pstDesc != NULL)
-		{
-			TDAL_Free(pstDesc);
+    else
+    {
+    	/* free all resources in case of error */
+    	if(pstDesc != NULL)
+    	{
+            TDAL_Free(pstDesc);
 
-			if((result != eTDAL_MP_NB_HANDLE_MAX_ERROR) &&
-			   (result != eTDAL_MP_BAD_PARAMETER_ERROR))
-			{
-				/* reset desc list */
-				TDAL_MPi_DescList[ucDescIdx] = NULL;
-			}
-		}
-	}
+            if((result != eTDAL_MP_NB_HANDLE_MAX_ERROR) &&
+            (result != eTDAL_MP_BAD_PARAMETER_ERROR))
+            {
+                /* reset desc list */
+                TDAL_MPi_DescList[ucDescIdx] = NULL;
+            }
+    	}
+    }
+    
+    if (!TDAL_MPi_ReleasePool())
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Could not release memory pool\n"));
+        mTBOX_RETURN(eTDAL_MP_NO_MEMORY_ERROR);
+    }
 
+    mTDAL_FS_MP_GetFileName(_u8FileName);
+    memset(&sMplayerMeida, 0, sizeof(MPLAYER_MEDIA));
+    
+    MApi_AUDIO_SetSourceInfo(E_AUDIO_INFO_GAME_IN);
+    MApi_AUDIO_SPDIF_SetMode(MSAPI_AUD_SPDIF_PCM);
+    
+    if(pFileOption == MPLAYER_FILE_MODE)
+    {
+
+        _pInputDataRead = pstDesc->pInputDataRead;
+        _pInputDataSeek = pstDesc->pInputDataSeek;
+        _pInputDataLength = pstDesc->pInputDataLength;
+    
+        //Check file type supported or not
+        memset(_gu8FileExtName, 0, sizeof(_gu8FileExtName));
+        if (pstParams->fileExtension != NULL)
+        {
+            memcpy(_gu8FileExtName, pstParams->fileExtension, 4*sizeof(char));
+        }
+        else
+        {
+            mTBOX_TRACE((kTBOX_NIV_1,"pstParams->fileExtension is NULL, parse from full filename\n"));
+            MS_U8 *_ExtNamePtr = NULL;
+            MS_BOOL _Ret = FALSE;
+            _ExtNamePtr = _u8FileName + strlen((char *)_u8FileName) - 1;
+            while(_ExtNamePtr > _u8FileName)
+            {
+                if(_ExtNamePtr[0] == '.')
+                {
+                    _ExtNamePtr++;
+                    _Ret = TRUE;
+                    break;
+                }
+                else if(_ExtNamePtr[0] == '/')
+                {   // no extension name.
+                    _Ret = FALSE;
+                }
+                _ExtNamePtr--;
+            }
+            if (_Ret)
+            {
+                strcpy(_gu8FileExtName, _ExtNamePtr);
+            }
+        }
+        _gu8FileExtName[strlen(_gu8FileExtName)]=0;
+
+        if (strlen(_gu8FileExtName) > 0)
+        {
+            MS_U32 i = 0;
+            
+            while(_gu8FileExtName[i])
+            {
+                //prevent the extension becomes upper case, and may cause the file can't be opened
+                _gu8FileExtName[i] = toupper(_gu8FileExtName[i]);
+                i++;
+            }
+            
+            for (i = 0; i < sizeof(_gstZmmSupportExtTable) / sizeof(Z_File_Ext_Info); i++)
+            {
+                if (strcmp(&_gstZmmSupportExtTable[i].FileExt[0], (char *)_gu8FileExtName) == 0)
+                {
+                    _geMediaType = _gstZmmSupportExtTable[i].FileType;
+                    break;
+                }
+            }
+            mTBOX_TRACE((kTBOX_NIV_1, "Index=%d FileExtentionName = %s _geMediaType=%d\n", i, _gu8FileExtName, _geMediaType));
+            if(i == sizeof(_gstZmmSupportExtTable) / sizeof(Z_File_Ext_Info))
+            {
+                mTBOX_TRACE((kTBOX_NIV_1, "extension name is not support yet i=%d _gstZmmSupportExtTable=%d Z_File_Ext_Info=%d\n", i, sizeof(_gstZmmSupportExtTable),sizeof(Z_File_Ext_Info)));
+                _gbFileSupported = FALSE;
+            }
+        }
+        else
+        {
+            _gbFileSupported = TRUE;
+        }
+        TDAL_MPm_SetFileIsSupport(_gbFileSupported);
+
+        if (_geMediaType == E_MMSDK_MEDIA_TYPE_MUSIC && pstDesc->eStreamAudCodecType == eTDAL_MP_STREAM_CONTENT_PCM)
+        {
+            //=========================PCM========================
+            TDAL_MPm_Player_SetOption(E_MMSDK_MEDIA_TYPE_MUSIC, MPLAYER_OPTION_SET_MUSIC_TYPE, MPLAYER_SUBTYPE_PCM);            
+            MPLAYER_PCM_PARAM* pPCM_Param;
+            pPCM_Param = (MPLAYER_PCM_PARAM*)AllocNoncachedMem(sizeof(MPLAYER_PCM_PARAM));
+            pPCM_Param->eFormatTag = PCM_FORMAT_PCM;
+            pPCM_Param->u16Channels = 2;
+            pPCM_Param->u16BitsPerSample = 16;
+            pPCM_Param->u32SamplesPerSec = 44100;
+            pPCM_Param->bBigEndian = TRUE;
+            TDAL_MPm_Player_SetOption(E_MMSDK_MEDIA_TYPE_MUSIC, MPLAYER_OPTION_MUSIC_SET_PCM_PARAM, (unsigned int)pPCM_Param);
+            FreeNoncachedMem(pPCM_Param);            
+        }
+
+        //Force disable SLIDE SHOW for MVOP/GOP show photo behavior are consistent
+        TDAL_MPm_Player_SetOption(E_MMSDK_MEDIA_TYPE_PHOTO, MPLAYER_OPTION_DISABLE_SLIDE_SHOW, TRUE);
+        
+        //set display window, {0, 0, 0, 0} means full panel
+        sMplayerMeida.eFileMode = MPLAYER_FILE_MODE;
+        sMplayerMeida.u32DispX = 0;
+        sMplayerMeida.u32DispY = 0;
+        sMplayerMeida.u32DispW = IPANEL(&gDevId ,Width);
+        sMplayerMeida.u32DispH = IPANEL(&gDevId ,Height);
+        sMplayerMeida.u32GotoTimeMs = 0;
+#if DEMO_FILE
+        sMplayerMeida.filename = (char*)_u8FileName;//utf8fn;
+#else
+        sMplayerMeida.filename = NULL;
+#endif
+
+        TDAL_MPm_Player_SetOption(E_MMSDK_MEDIA_TYPE_MOVIE,MPLAYER_OPTION_SET_DBG_LEVEL,E_MMSDK_DBG_LEVEL_NONE);
+
+        if (!TDAL_MPm_Player_CreateMediaFile(_geMediaType, &sMplayerMeida))
+        {
+            result = eTDAL_MP_NOT_DONE_ERROR;
+        }
+        
+    }
+    else if ((pFileOption == MPLAYER_SEEKABLE_STREAM_MODE) || (pFileOption == MPLAYER_UNSEEKABLE_STREAM_MODE))
+    {
+    }
+    if (result == eTDAL_MP_NO_ERROR)
+    {
+        pstDesc->bIsPlaying = TRUE;
+    }
+    
     TDAL_MPi_UnlockMutex();
-
-	mTBOX_RETURN(result);
+    mTBOX_RETURN(result);
 }
 
 static char * getNotifyTypeAsText(EN_MPLAYER_NOTIFY_TYPE t)
 {
+#if 0 //wait porting
     switch(t)
     {
     case MPLAYER_EXIT_OK: //playback ok, and exit to ap
@@ -725,14 +853,17 @@ static char * getNotifyTypeAsText(EN_MPLAYER_NOTIFY_TYPE t)
     default:
         return "MPLAYER_NOTIFY_UNKNOWN";
     }
+#endif
+    return "HAHATEST";
 }
 
 tTDAL_MP_Error TDAL_MP_Close(tTDAL_MP_Handle Handle) {
 	tTDAL_MP_Error result = eTDAL_MP_NO_ERROR;
+	mTBOX_FCT_ENTER("TDAL_MP_Close");
+
 	tTDAL_MPm_Desc *pstDesc;
 	int i;
 
-	mTBOX_FCT_ENTER("TDAL_MP_Close");
 
 	pstDesc = (tTDAL_MPm_Desc *) Handle;
 
@@ -745,21 +876,29 @@ tTDAL_MP_Error TDAL_MP_Close(tTDAL_MP_Handle Handle) {
 	TDAL_MPi_LockMutex();
 
 	i = TDAL_MPi_GetRunningMediaDescriptor();
-
+        
 	if (i >= 0)
 	{
-	    if (TDAL_MPi_DescList[i] == pstDesc)
-        {
-            bool r = TDAL_MPm_Stop();
-
-            if (r)
+            if (TDAL_MPi_DescList[i] == pstDesc)
             {
-                TDAL_MPi_UnlockMutex();
-                MsOS_DelayTask(1000);
-                TDAL_MPi_LockMutex();
-                TDAL_MPi_DescList[i]->pEvtNotify(Handle, eTDAL_MP_EVENT_STOPPED, TDAL_MPi_DescList[i]->pCtx);
+                mTBOX_TRACE((kTBOX_NIV_1, "Index %d is still running\n",i));
+                bool r = TDAL_MPm_Close();
+
+                if (r)
+                {
+                    TDAL_MPi_UnlockMutex();
+                    MsOS_DelayTask(100);
+                    TDAL_MPi_LockMutex();
+                    if (TDAL_MPi_DescList[i]->pEvtNotify)
+                    {
+                        TDAL_MPi_DescList[i]->pEvtNotify(Handle, eTDAL_MP_EVENT_STOPPED, TDAL_MPi_DescList[i]->pCtx);
+                    }
+                }
+                else
+                {
+                    result = eTDAL_MP_NOT_DONE_ERROR;
+                }
             }
-        }
 	}
 
 	/* free all resources */
@@ -786,151 +925,153 @@ tTDAL_MP_Error TDAL_MP_Close(tTDAL_MP_Handle Handle) {
 
 tTDAL_MP_Error TDAL_MP_CapabilityGet(tTDAL_MP_Handle Handle, tTDAL_MP_Capabilities *pstCaps) {
 	tTDAL_MP_Error result = eTDAL_MP_NO_ERROR;
-
 	mTBOX_FCT_ENTER("TDAL_MP_CapabilityGet");
-
-	printf("TDAL_MP_CapabilityGet NOT IMPLEMENTED\n");
-
+       *pstCaps = _MPCapabilities;
 	mTBOX_RETURN(result);
 }
 
 tTDAL_MP_Error TDAL_MP_OutputSet(tTDAL_MP_Handle Handle, uint32_t uiOutputMask) {
 	tTDAL_MP_Error result = eTDAL_MP_NO_ERROR;
-
 	mTBOX_FCT_ENTER("TDAL_MP_OutputSet");
+#if 0 //wait porting
+
 
 	printf("TDAL_MP_OutputSet NOT IMPLEMENTED\n");
-
+#endif
 	mTBOX_RETURN(result);
 }
-
-LOCAL void _TDAL_MPm_Mplayer_Movie_CallBack(EN_MPLAYER_COMMAND_TYPE eCmd, unsigned int  u32Param, unsigned int  u32Info)
+tTDAL_MP_Error TDAL_MP_PictureGetMetadata(tTDAL_MP_Handle Handle, tTDAL_MP_MetaDataPict *pstMetadata)
 {
-    tTDAL_MPi_CallbackMsg msg;
-    MS_BOOL bRet;
+    tTDAL_MP_Error result = eTDAL_MP_NO_ERROR;
+    mTBOX_FCT_ENTER("TDAL_MP_PictureGetMetadata");
 
-    mTBOX_FCT_ENTER("_TDAL_MPm_Mplayer_Movie_CallBack");
+    tTDAL_MPm_Desc *pstDesc;
+    int i;
+    
+    pstDesc = (tTDAL_MPm_Desc *) Handle;
 
-    mTBOX_TRACE((kTBOX_NIV_1, "_TDAL_MPm_Mplayer_Movie_CallBack: cmd = %d, param = %s, info = %d\n", eCmd, getNotifyTypeAsText(u32Param), u32Info));
-
-    if (TDAL_MPi_CallbackQueue != -1)
+    if(pstDesc == (tTDAL_MPm_Desc *)NULL)
     {
-        msg.shouldExit = false;
-        msg.eCmd = eCmd;
-        msg.callbackType = eTDAL_MP_CallbackMovie;
-        msg.u32Info = u32Info;
-        msg.u32Param = u32Param;
-
-#if MSTAR_QUEUE
-        bRet = MsOS_SendToQueue(TDAL_MPi_CallbackQueue, (MS_U8 *) &msg, sizeof(msg), 0);
-#else
-        bRet = TDAL_Enqueue(TDAL_MPi_CallbackQueue, (MS_U8 *) &msg);
-#endif
-        if (bRet == FALSE)
-        {
-            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[_TDAL_MPm_Mplayer_Movie_CallBack] Could not send event to queue\n"));
-        }
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_MP_PictureGetMetadata: bad handle\n"));
+        result = eTDAL_MP_BAD_PARAMETER_ERROR;
     }
+
+    TDAL_MPi_LockMutex();
+
+    i = TDAL_MPi_GetRunningMediaDescriptor();
+
+    if (i < 0 || pstDesc != TDAL_MPi_DescList[i])  
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[TDAL_MP_PictureGetMetadata] No running MM or given handle not playing\n"));
+        TDAL_MPi_UnlockMutex();
+        mTBOX_RETURN(eTDAL_MP_NOT_DONE_ERROR); 
+    }
+    
+    memset(pstMetadata,0,sizeof(tTDAL_MP_MetaDataPict));
+    if (result == eTDAL_MP_NO_ERROR)
+    {
+        result = TDAL_MPm_PictureGetMetadata(pstMetadata);
+    }
+    
+    TDAL_MPi_UnlockMutex();
+    mTBOX_RETURN(result);
 }
-
-LOCAL void _SubInitHandler(unsigned int  u32Info)
+tTDAL_MP_Error TDAL_MP_AudioGetMetadata(tTDAL_MP_Handle Handle, tTDAL_MP_MetaDataAudio *pstMetadata)
 {
-    mTBOX_FCT_ENTER("_SubInitHandler()\n");
-    ST_CPCODEC_MSG_SUBTITLE_INIT_INFO *stSubtitle = (ST_CPCODEC_MSG_SUBTITLE_INIT_INFO *)u32Info;
+    tTDAL_MP_Error result = eTDAL_MP_NO_ERROR;
+    mTBOX_FCT_ENTER("TDAL_MP_AudioGetMetadata");
 
-    if(stSubtitle->bInit && !b_InternalSubtitleInitialize)
+    tTDAL_MPm_Desc *pstDesc;
+    int i;
+    
+    pstDesc = (tTDAL_MPm_Desc *) Handle;
+
+    if(pstDesc == (tTDAL_MPm_Desc *)NULL)
     {
-        VDEC_DispInfo   info = {0};
-        MApi_VDEC_GetDispInfo(&info);
-        if((info.u16HorSize== 0) || (info.u16VerSize == 0))
-        {
-            printf("Post to Check\n");
-            return;
-        }
-        // to prevent from UI doesn't close subtitle correctly
-        MApi_MPlayer_Close();
-        MApi_MPlayer_Disconnect();
-
-
-        SUBTITLE_IRenderTarget m_RenderTarge =
-        {
-            MM_SubRender_Create,
-            MM_SubRender_GetVideoSizeFromVdec,
-            MM_SubRender_Open,
-            MM_SubRender_Close,
-            MM_SubRender_CreateWindow,
-            MM_SubRender_DestroyWindow,
-            MM_SubRender_SetPalette,
-            MM_SubRender_Bitblt,
-            MM_SubRender_ClearWindowByIndex,
-            MM_SubRender_ClearWindowByColor,
-            MM_SubRender_GetWindowInfo,
-            MM_SubRender_Lock,
-            MM_SubRender_UnLock,
-            MM_SubRender_RenderFont,
-            MM_SubRender_Show,
-            MM_SubRender_Unshow
-        };
-        switch(stSubtitle->eType)
-        {
-            case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_TEXT:
-                printf("Subtitle Type: TEXT\n");
-                MApi_MPlayer_Set_Subtitle_Type(E_SUBTITLE_TYPE_TTF);
-                break;
-            case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_TS_PGS:
-                printf("Subtitle Type: ts-pgs\n");
-                MApi_MPlayer_Set_Subtitle_Type(E_SUBTITLE_TYPE_TS);
-                break;
-            case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_TS_BMP:
-                printf("Subtitle Type: ts-bmp(dvb-subtitle)\n");
-                MApi_MPlayer_Set_Subtitle_Type(E_SUBTITLE_TYPE_TS);
-                break;
-            case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_IMAGE_BMP:
-                printf("Subtitle Type: image-bmp\n");
-                MApi_MPlayer_Set_Subtitle_Type(E_SUBTITLE_TYPE_BMP);
-                break;
-            case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_IMAGE_VOBSUB:
-                printf("Subtitle Type: vob-sub\n");
-                MApi_MPlayer_Set_Subtitle_Type(E_SUBTITLE_TYPE_VOBSUB);
-                break;
-            default:
-                printf("Subtitle Type: unknown\n");
-                MApi_MPlayer_Set_Subtitle_Type(E_SUBTITLE_TYPE_UNKNOWN);
-                break;
-        }
-
-
-        switch(stSubtitle->eType)
-        {
-            case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_IMAGE_BMP:
-            case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_IMAGE_VOBSUB:
-                //use default dimension
-                //MApi_MPlayer_Set_Subtitle_Dimension(stSubtitle->u16BmpWidth, stSubtitle->u16BmpHeight);
-                MApi_MPlayer_Connect(&m_RenderTarge);
-                MApi_MPlayer_Open();
-                break;
-            case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_TS_PGS:
-            case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_TEXT:
-            case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_TS_BMP:
-                MApi_MPlayer_Connect(&m_RenderTarge);
-                MApi_MPlayer_Open();
-                break;
-            default:
-                break;
-        }
-
-        b_InternalSubtitleInitialize = TRUE;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_MP_AudioGetMetadata: bad handle\n"));
+        result = eTDAL_MP_BAD_PARAMETER_ERROR;
     }
-    //De-INIT
-    else if(!stSubtitle->bInit && b_InternalSubtitleInitialize)
+
+    TDAL_MPi_LockMutex();
+
+    i = TDAL_MPi_GetRunningMediaDescriptor();
+
+    if (i < 0 || pstDesc != TDAL_MPi_DescList[i])  
     {
-        MApi_MPlayer_Close();
-        MApi_MPlayer_Disconnect();
-        b_InternalSubtitleInitialize = FALSE;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[TDAL_MP_AudioGetMetadata] No running MM or given handle not playing\n"));
+        TDAL_MPi_UnlockMutex();
+        mTBOX_RETURN(eTDAL_MP_NOT_DONE_ERROR); 
     }
-    else {
-        // mm_print("Subtitle init or de-init fail!!\n");
+    
+    memset(pstMetadata,0,sizeof(tTDAL_MP_MetaDataAudio));
+    if (result == eTDAL_MP_NO_ERROR)
+    {
+        result = TDAL_MPm_AudioGetMetadata(pstMetadata);
     }
+    mTBOX_TRACE((kTBOX_NIV_1, "Audio Metadata Info\n"));
+    mTBOX_TRACE((kTBOX_NIV_1, "stDuration=%lu\n",pstMetadata->stDuration));
+    mTBOX_TRACE((kTBOX_NIV_1, "bIsSupported=%d\n",pstMetadata->bIsSupported));
+    mTBOX_TRACE((kTBOX_NIV_1, "bIsID3Present=%d\n",pstMetadata->bIsID3Present));
+    mTBOX_TRACE((kTBOX_NIV_1, "uiAudioDataStart = %lu\n",pstMetadata->uiAudioDataStart));
+    mTBOX_TRACE((kTBOX_NIV_1, "uiAudioDataEnd = %lu\n",pstMetadata->uiAudioDataEnd));
+    mTBOX_TRACE((kTBOX_NIV_1, "uiBitrate = %lu\n",pstMetadata->uiBitrate));
+    mTBOX_TRACE((kTBOX_NIV_1, "uiFrameSize = %lu\n",pstMetadata->uiFrameSize));
+    mTBOX_TRACE((kTBOX_NIV_1, "uiFrequency = %lu\n",pstMetadata->uiFrequency));
+    mTBOX_TRACE((kTBOX_NIV_1, "uiSamplePerframe = %lu\n",pstMetadata->uiSamplePerframe));    
+    TDAL_MPi_UnlockMutex();
+    mTBOX_RETURN(result);
+}
+tTDAL_MP_Error TDAL_MP_AVGetMetadata(tTDAL_MP_Handle Handle, tTDAL_MP_MetaDataAv *pstMetadata)
+{
+    tTDAL_MP_Error result = eTDAL_MP_NO_ERROR;
+    mTBOX_FCT_ENTER("TDAL_MP_AVGetMetadata");
+
+    tTDAL_MPm_Desc *pstDesc;
+    int i;
+    
+    pstDesc = (tTDAL_MPm_Desc *) Handle;
+
+    if(pstDesc == (tTDAL_MPm_Desc *)NULL)
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_MP_AVGetMetadata: bad handle\n"));
+        result = eTDAL_MP_BAD_PARAMETER_ERROR;
+    }
+
+    TDAL_MPi_LockMutex();
+
+    i = TDAL_MPi_GetRunningMediaDescriptor();
+
+    if (i < 0 || pstDesc != TDAL_MPi_DescList[i])  
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[TDAL_MP_AVGetMetadata] No running MM or given handle not playing\n"));
+        TDAL_MPi_UnlockMutex();
+        mTBOX_RETURN(eTDAL_MP_NOT_DONE_ERROR); 
+    }
+    
+    memset(pstMetadata,0,sizeof(tTDAL_MP_MetaDataAv));
+    if (result == eTDAL_MP_NO_ERROR)
+    {
+        result = TDAL_MPm_AVGetMetadata(pstMetadata);
+    }
+    mTBOX_TRACE((kTBOX_NIV_1, "AV Metadata Info\n"));
+    mTBOX_TRACE((kTBOX_NIV_1, "stDuration=%lu\n",pstMetadata->stDuration));
+    mTBOX_TRACE((kTBOX_NIV_1, "bIsVideoPresent=%lu\n",pstMetadata->bIsVideoPresent));
+    mTBOX_TRACE((kTBOX_NIV_1, "bIsAudioPresent=%lu\n",pstMetadata->bIsAudioPresent));
+    
+    mTBOX_TRACE((kTBOX_NIV_1, "VContentType = %d\n",pstMetadata->Video.eType));
+    mTBOX_TRACE((kTBOX_NIV_1, "Width = %lu\n",pstMetadata->Video.uiWidth));
+    mTBOX_TRACE((kTBOX_NIV_1, "Height = %lu\n",pstMetadata->Video.uiHeight));
+    mTBOX_TRACE((kTBOX_NIV_1, "iFramerate = %lu\n",pstMetadata->Video.iFramerate));
+    mTBOX_TRACE((kTBOX_NIV_1, "iBitrate = %lu\n",pstMetadata->Video.iBitrate));
+    mTBOX_TRACE((kTBOX_NIV_1, "bIsSupported = %lu\n",pstMetadata->Video.bIsSupported));
+    
+    mTBOX_TRACE((kTBOX_NIV_1, "AContentType = %d\n",pstMetadata->Audio.eType));
+    mTBOX_TRACE((kTBOX_NIV_1, "iSamplerate = %d\n",pstMetadata->Audio.iSamplerate));
+    mTBOX_TRACE((kTBOX_NIV_1, "iChannels = %d\n",pstMetadata->Audio.iChannels));
+    mTBOX_TRACE((kTBOX_NIV_1, "iBitrate = %d\n",pstMetadata->Audio.iBitrate));
+    mTBOX_TRACE((kTBOX_NIV_1, "bIsSupported = %d\n",pstMetadata->Audio.bIsSupported));
+    TDAL_MPi_UnlockMutex();
+    mTBOX_RETURN(result);
 }
 
 int TDAL_MPi_GetRunningMediaDescriptor(void)
@@ -947,292 +1088,130 @@ int TDAL_MPi_GetRunningMediaDescriptor(void)
             }
         }
     }
-
     return -1;
 }
-
-LOCAL void _TDAL_MPm_Mplayer_Photo_CallBack(EN_MPLAYER_COMMAND_TYPE eCmd, unsigned int  u32Param, unsigned int  u32Info)
+MS_BOOL TDAL_MPi_CheckMediaDescriptor(tTDAL_MPm_Desc * desc)
 {
-    tTDAL_MPi_CallbackMsg msg;
-    MS_BOOL bRet;
+    int i;
 
-    mTBOX_FCT_ENTER("_TDAL_MPm_Mplayer_Photo_CallBack");
-
-    if (TDAL_MPi_CallbackQueue != -1)
+    for (i = 0; i < kTDAL_MPm_OPEN_SESSION_MAX; i++)
     {
-        msg.shouldExit = false;
-        msg.eCmd = eCmd;
-        msg.callbackType = eTDAL_MP_CallbackPhoto;
-        msg.u32Info = u32Info;
-        msg.u32Param = u32Param;
-
-#if MSTAR_QUEUE
-        bRet = MsOS_SendToQueue(TDAL_MPi_CallbackQueue, (MS_U8 *) &msg, sizeof(msg), 0);
-#else        
-        bRet = TDAL_Enqueue(TDAL_MPi_CallbackQueue, &msg);
-#endif
-        if (bRet == FALSE)
+        if (TDAL_MPi_DescList[i] != NULL)
         {
-            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[_TDAL_MPm_Mplayer_Photo_CallBack] Could not send event to queue\n"));
+            if (TDAL_MPi_DescList[i] == desc)
+            {
+                return TRUE;
+            }
         }
     }
-
-    mTBOX_RETURN;
+    return FALSE;
 }
-
-LOCAL void _TDAL_MPm_Mplayer_Music_CallBack(EN_MPLAYER_COMMAND_TYPE eCmd, unsigned int  u32Param, unsigned int  u32Info)
+LOCAL MS_BOOL _TDAL_MPm_MM_MemInit()
 {
-    tTDAL_MPi_CallbackMsg msg;
-    MS_BOOL bRet;
-
-    mTBOX_FCT_ENTER("_TDAL_MPm_Mplayer_Music_CallBack");
-
-    if (TDAL_MPi_CallbackQueue != -1)
-    {
-        msg.shouldExit = false;
-        msg.eCmd = eCmd;
-        msg.callbackType = eTDAL_MP_CallbackMusic;
-        msg.u32Info = u32Info;
-        msg.u32Param = u32Param;
-
-#if MSTAR_QUEUE
-        bRet = MsOS_SendToQueue(TDAL_MPi_CallbackQueue, (MS_U8 *) &msg, sizeof(msg), 0);
+        PT_SYS_MmapInfo stMmapInfo={};
+        ST_MMSDK_MMAP_INFO stMIUInfo={};
+    
+        //DRAM info
+        stMIUInfo.u32Miu0MemSize  =  MIU_DRAM_LEN0;
+#if (ENABLE_MIU_1 == 1)
+        stMIUInfo.u32Miu1MemSize  =  MIU_DRAM_LEN1;
+#endif
+        stMIUInfo.u32MiuBoundary  =  MIU_INTERVAL;
+        stMIUInfo.u32NMmapItems   =  sizeof(stMmapInfo)/sizeof(ST_MMSDK_BUF_INFO);
+        stMIUInfo.u32TotalMemSize =  MIU_DRAM_LEN;
+    
+        //E_MMSDK_BUF_PHOTO_DISPLAY (need to check)
+        MM_FILL_MEM_INFO(stMmapInfo.stPhotoDispBufAddr, PHOTO_DISPLAY_ADR, PHOTO_DISPLAY_LEN, PHOTO_DISPLAY_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_PHOTO_DISPLAY_MPO
+        //currenty doesn't support 3D display .mpo file, no need for this buffer
+        //MM_FILL_MEM_INFO(stMmapInfo.stPhotoMPODispBufAddr, PHOTO_MPO_DISPLAY_ADR, PHOTO_MPO_DISPLAY_LEN, PHOTO_MPO_DISPLAY_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_PHOTO_INTERNAL
+        MM_FILL_MEM_INFO(stMmapInfo.stJPDInterBufAddr, JPD_INTER_BUF_ADR, JPD_INTER_BUF_LEN, JPD_INTER_BUF_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_PHOTO_MEMORY_POOL
+        MM_FILL_MEM_INFO(stMmapInfo.stPhotoMemPoolAddr, JPD_INTER_BUF_ADR, MMSDK_BUF_PHOTO_MEMORY_POOL_LEN, JPD_INTER_BUF_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_PHOTO_OUTPUT
+        //MM_FILL_MEM_INFO(stMmapInfo.stJPDOutBufAddr, JPD_OUT_ADR, JPD_OUT_LEN, JPD_OUT_MEMORY_TYPE);
+        MM_FILL_MEM_INFO( stMmapInfo.stJPDOutBufAddr, VDEC_FRAME_BUF_ADR, VDEC_FRAME_BUF_LEN, VDEC_FRAME_BUF_MEMORY_TYPE);
+        
+        //E_MMSDK_BUF_PHOTO_PROGRESSIVE
+        MM_FILL_MEM_INFO(stMmapInfo.stPhotoProgAddr, JPD_INTER_BUF_ADR, JPD_INTER_BUF_LEN, JPD_INTER_BUF_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_PHOTO_READ
+        MM_FILL_MEM_INFO(stMmapInfo.stJPDReadBufAddr, JPD_READ_BUF_ADR, JPD_READ_BUF_LEN, JPD_READ_BUF_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_PHOTO_SHAREMEMORY
+        MM_FILL_MEM_INFO(stMmapInfo.stPhotoShareMemAddr, PHOTO_SHARE_MEM_ADR, PHOTO_SHARE_MEM_LEN, PHOTO_SHARE_MEM_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_VDPLAYER_AEON_DATA
+        MM_FILL_MEM_INFO(stMmapInfo.stVdplayerDataAddr, VDPLAYER_DATA_ADR, VDPLAYER_DATA_LEN, VDPLAYER_DATA_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_VDPLAYER_BITSTREAM_AUDIO
+#ifdef VDPLAYER_BS_EXT_AVAILABLE
+        MM_FILL_MEM_INFO(stMmapInfo.stVdplayerBSExtAddr, VDPLAYER_BS_EXT_ADR, VDPLAYER_BS_EXT_LEN, VDPLAYER_BS_EXT_MEMORY_TYPE);
 #else
-        bRet = TDAL_Enqueue(TDAL_MPi_CallbackQueue, &msg);
+        MS_S32 s32MstarNonCachedPoolID=INVALID_POOL_ID;
+        Get_NonCachePoolID(&s32MstarNonCachedPoolID);
+    
+        _gpBSAudBufVA = (void *)AllocNoncachedMem(MMSDK_BUF_VDPLAYER_BITSTREAM_AUDIO + BITSTREAM_AUDIO_BUFFER_ALIGNMENT);
+        if(!_gpBSAudBufVA)
+            mTBOX_TRACE((kTBOX_NIV_WARNING,"ERROR!!! No enough free mem for E_MMSDK_BUF_VDPLAYER_BITSTREAM_AUDIO!\n"));
+    
+        MS_PHY PhyBSAudBufPA = MsOS_VA2PA((MS_VIRT)MEMALIGN(BITSTREAM_AUDIO_BUFFER_ALIGNMENT, (MS_VIRT)_gpBSAudBufVA));
+    
+        MS_U32 u32BSAudioMemType = 0;
+        if(PhyBSAudBufPA & MIU_INTERVAL)
+            u32BSAudioMemType |= MIU1;
+        else
+            u32BSAudioMemType |= MIU0;
+    
+        MM_FILL_MEM_INFO(stMmapInfo.stVdplayerBSExtAddr, PhyBSAudBufPA, MMSDK_BUF_VDPLAYER_BITSTREAM_AUDIO, u32BSAudioMemType);
 #endif
-        if (bRet == FALSE)
-        {
-            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[_TDAL_MPm_Mplayer_Music_CallBack] Could not send event to queue\n"));
-        }
-    }
+    
+        //E_MMSDK_BUF_VDPLAYER_BITSTREAM_SUBTITLE
+        MM_FILL_MEM_INFO(stMmapInfo.stVdplayerSubBSAddr, VDPLAYER_SUB_BS_ADR, VDPLAYER_SUB_BS_LEN, VDPLAYER_SUB_BS_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_VDPLAYER_BITSTREAM_VIDEO
+        MM_FILL_MEM_INFO(stMmapInfo.stVdplayerBSAddr, VDPLAYER_BS_ADR, VDPLAYER_BS_LEN, VDPLAYER_BS_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_VDPLAYER_SHAREMEMORY: /* needed size >= 4K*/
+        MM_FILL_MEM_INFO(stMmapInfo.stVdplayerShmMemAddr, VDPLAYER_SHARE_MEM_ADR, VDPLAYER_SHARE_MEM_LEN, VDPLAYER_SHARE_MEM_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_SUBTITLE_PUSH
+        MM_FILL_MEM_INFO(stMmapInfo.stVdplayerSubAddr, VDPLAYER_SUB_ADR, VDPLAYER_SUB_LEN, VDPLAYER_SUB_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_DEMUX_SEC
+        MM_FILL_MEM_INFO(stMmapInfo.stTspFWAddr, TSP_FW_BUF_ADR, TSP_FW_BUF_LEN, TSP_FW_BUF_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_MAD_DECODE
 
-    mTBOX_RETURN;
-}
+        MM_FILL_MEM_INFO(stMmapInfo.stMADDecBufAddr, MAD_ADV_BUF_ADR, MAD_ADV_BUF_LEN, MAD_ADV_BUF_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_VDEC_CPU
+        MM_FILL_MEM_INFO(stMmapInfo.stVdecAeonAddr, VDEC_AEON_ADR, VDEC_AEON_LEN, VDEC_AEON_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_VDEC_FRAMEBUFFER
+        MM_FILL_MEM_INFO(stMmapInfo.stVdecFrameBufAddr, VDEC_FRAME_BUF_ADR, VDEC_FRAME_BUF_LEN, VDEC_FRAME_BUF_MEMORY_TYPE);
 
-LOCAL MS_BOOL _TDAL_MPm_MM_MemInit(MM_MEM_INFO *pMem_Info, MM_MEMMAP_INFO *pMemMap_Info)
-{
-    MS_U32 i;
-    if(pMemMap_Info == NULL)
-        return FALSE;
+        //E_MMSDK_BUF_VDEC_FRAMEBUFFER_SD
+        MM_FILL_MEM_INFO(stMmapInfo.stVdecFrameBufferSDAddr, VDEC_FRAME_BUF_ADR, VDEC_FRAME_BUF_LEN, VDEC_FRAME_BUF_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_VDEC_STREAMBUFFER
+        MM_FILL_MEM_INFO(stMmapInfo.stVdecBitStreamAddr, VDEC_BIT_STREAM_ADR, VDEC_BIT_STREAM_LEN, VDEC_BIT_STREAM_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_XC_MAIN_FB
+        MM_FILL_MEM_INFO(stMmapInfo.stXCMainFrameBufAddr, SC0_MAIN_FB_ADR, SC0_MAIN_FB_LEN, SC0_MAIN_FB_MEMORY_TYPE);
+    
+        //E_MMSDK_BUF_PHY_ADDR_FOR_COPY_DATA (need to check)
+        MM_FILL_MEM_INFO(stMmapInfo.stPHYAddrForCopyDataAddr, PHY_COPY_DATA_ADR, PHY_COPY_DATA_LEN, PHY_COPY_DATA_MEMORY_TYPE);
+    
+        PT_SYS_SetMmapInfo(&stMmapInfo, &stMIUInfo);
+    
+        return TRUE;
 
-    for(i = 0; i < pMem_Info->u32Mmap_items; i++)
-    {
-        if(i == E_MMAP_ID_VDEC_CPU)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_VDEC_CPU;
-            (pMemMap_Info+i)->u32Addr = VDEC_AEON_ADR;
-            (pMemMap_Info+i)->u32Size = VDEC_AEON_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00000010;
-            (pMemMap_Info+i)->bIs_miu0 = (VDEC_AEON_MEMORY_TYPE & 0x01) ? 0:1;
-
-        }
-        else if(i == E_MMAP_ID_VDEC_FRAMEBUFFER)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_VDEC_FRAMEBUFFER;
-            (pMemMap_Info+i)->u32Addr = VDEC_FRAME_BUF_ADR;
-            (pMemMap_Info+i)->u32Size = VDEC_FRAME_BUF_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00000200;
-            (pMemMap_Info+i)->bIs_miu0 = (VDEC_FRAME_BUF_MEMORY_TYPE & 0x01) ? 0:1;
-
-        }
-        else if(i == E_MMAP_ID_VDEC_BITSTREAM)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_VDEC_BITSTREAM;
-            (pMemMap_Info+i)->u32Addr = VDEC_BIT_STREAM_ADR;
-            (pMemMap_Info+i)->u32Size = VDEC_BIT_STREAM_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00000008;
-            (pMemMap_Info+i)->bIs_miu0 = (VDEC_BIT_STREAM_MEMORY_TYPE & 0x01) ? 0:1;
-
-        }
-        else if(i == E_MMAP_ID_XC_MAIN_FB)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_XC_MAIN_FB;
-            (pMemMap_Info+i)->u32Addr = SC0_MAIN_FB_ADR;
-            (pMemMap_Info+i)->u32Size = SC0_MAIN_FB_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00000010;
-            (pMemMap_Info+i)->bIs_miu0 = (SC0_MAIN_FB_MEMORY_TYPE & 0x01) ? 0:1;;
-
-        }
-        else if(i == E_MMAP_ID_VE)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_VE;
-            (pMemMap_Info+i)->u32Addr = VE_FRAME_BUF_ADR;
-            (pMemMap_Info+i)->u32Size = VE_FRAME_BUF_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00000008;
-            (pMemMap_Info+i)->bIs_miu0 = 1;
-
-        }
-        else if(i == E_MMAP_ID_MAD_DEC)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_MAD_DEC;
-            (pMemMap_Info+i)->u32Addr = MAD_DEC_BUF_ADR;
-            (pMemMap_Info+i)->u32Size = MAD_DEC_BUF_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00001000;
-            (pMemMap_Info+i)->bIs_miu0 = 1;
-
-        }
-        else if(i == E_MMAP_ID_MAD_SE)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_MAD_SE;
-            (pMemMap_Info+i)->u32Addr = MAD_SE_BUF_ADR;
-            (pMemMap_Info+i)->u32Size = MAD_SE_BUF_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00001000;
-            (pMemMap_Info+i)->bIs_miu0 = 1;
-
-        }
-        else if(i == E_MMAP_ID_COPROCESSOR)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_COPROCESSOR;
-            (pMemMap_Info+i)->u32Addr = MM_COPROCESSOR_ADDR;
-            (pMemMap_Info+i)->u32Size = MM_COPROCESSOR_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00000000;
-            (pMemMap_Info+i)->bIs_miu0 = (MM_COPROCESSOR_TYPE & 0x01) ? 0:1;
-
-        }
-        else if(i == E_MMAP_ID_VDPLAYER_DATA)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_VDPLAYER_DATA;
-            (pMemMap_Info+i)->u32Addr = VDPLAYER_DATA_ADR;
-            (pMemMap_Info+i)->u32Size = VDPLAYER_DATA_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00000000;
-            (pMemMap_Info+i)->bIs_miu0 = (VDPLAYER_DATA_MEMORY_TYPE & 0x01) ? 0:1;
-
-        }
-        else if(i == E_MMAP_ID_VDPLAYER_BITSTREAM)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_VDPLAYER_BITSTREAM;
-            (pMemMap_Info+i)->u32Addr = VDPLAYER_BS_ADR;
-            (pMemMap_Info+i)->u32Size = VDPLAYER_BS_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00000000;
-            (pMemMap_Info+i)->bIs_miu0 = (VDPLAYER_DATA_MEMORY_TYPE & 0x01) ? 0:1;
-
-        }
-        else if(i == E_MMAP_ID_VDPLAYER_BITSTREAM_EXT)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_VDPLAYER_BITSTREAM_EXT;
-            (pMemMap_Info+i)->u32Addr = VDPLAYER_BS_EXT_ADR;
-            (pMemMap_Info+i)->u32Size = VDPLAYER_BS_EXT_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00000000;
-            (pMemMap_Info+i)->bIs_miu0 = (VDPLAYER_DATA_MEMORY_TYPE & 0x01) ? 0:1;
-
-        }
-        else if(i == E_MMAP_ID_VDPLAYER_BITSTREAM)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_VDPLAYER_BITSTREAM;
-            (pMemMap_Info+i)->u32Addr = VDPLAYER_BS_ADR;
-            (pMemMap_Info+i)->u32Size = VDPLAYER_BS_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00000000;
-            (pMemMap_Info+i)->bIs_miu0 = (VDPLAYER_BS_MEMORY_TYPE & 0x01) ? 0:1;
-
-        }
-        else if(i == E_MMAP_ID_VDPLAYER_BITSTREAM_EXT)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_VDPLAYER_BITSTREAM_EXT;
-            (pMemMap_Info+i)->u32Addr = VDPLAYER_BS_EXT_ADR;
-            (pMemMap_Info+i)->u32Size = VDPLAYER_BS_EXT_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00000000;
-            (pMemMap_Info+i)->bIs_miu0 = (VDPLAYER_BS_EXT_MEMORY_TYPE & 0x01) ? 0:1;
-
-        }
-        else if(i == E_MMAP_ID_VDPLAYER_SUBTITLE_BITSTREAM_BUFF)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_VDPLAYER_SUBTITLE_BITSTREAM_BUFF;
-            (pMemMap_Info+i)->u32Addr = VDPLAYER_SUB_BS_ADR;
-            (pMemMap_Info+i)->u32Size = VDPLAYER_SUB_BS_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00000000;
-            (pMemMap_Info+i)->bIs_miu0 = (VDPLAYER_SUB_BS_MEMORY_TYPE & 0x01) ? 0:1;
-
-        }
-        else if(i == E_MMAP_ID_MM_SUBTITLE_BUFFER)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_MM_SUBTITLE_BUFFER;
-            (pMemMap_Info+i)->u32Addr = VDPLAYER_SUB_ADR;
-            (pMemMap_Info+i)->u32Size = VDPLAYER_SUB_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00000000;
-            (pMemMap_Info+i)->bIs_miu0 = (VDPLAYER_SUB_MEMORY_TYPE & 0x01) ? 0:1;
-
-        }
-        else if(i == E_MMAP_ID_DMX_SECBUF)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_DMX_SECBUF;
-            (pMemMap_Info+i)->u32Addr = VDPLAYER_DMX_SEC_ADR;
-            (pMemMap_Info+i)->u32Size = VDPLAYER_DMX_SEC_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00010000;
-            (pMemMap_Info+i)->bIs_miu0 = (VDPLAYER_DMX_SEC_MEMORY_TYPE & 0x01) ? 0:1;
-
-        }
-        else if(i == E_MMAP_ID_PHOTO_INTER)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_PHOTO_INTER;
-            (pMemMap_Info+i)->u32Addr = JPD_INTER_BUF_ADR;
-            (pMemMap_Info+i)->u32Size = JPD_INTER_BUF_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00001000;
-            (pMemMap_Info+i)->bIs_miu0 = (JPD_INTER_BUF_MEMORY_TYPE & 0x01) ? 0:1;
-        }
-        else if(i == E_MMAP_ID_JPD_READ)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_JPD_READ;
-            (pMemMap_Info+i)->u32Addr = JPD_READ_BUF_ADR;
-            (pMemMap_Info+i)->u32Size = JPD_READ_BUF_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00001000;
-            (pMemMap_Info+i)->bIs_miu0 = (JPD_READ_BUF_MEMORY_TYPE & 0x01) ? 0:1;
-        }
-        else if(i == E_MMAP_ID_JPD_WRITE)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_JPD_WRITE;
-            (pMemMap_Info+i)->u32Addr = JPD_OUT_ADR;
-            (pMemMap_Info+i)->u32Size = JPD_OUT_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00001000;
-            (pMemMap_Info+i)->bIs_miu0 = (JPD_OUT_MEMORY_TYPE & 0x01) ? 0:1;
-        }
-        else if(i == E_MMAP_ID_PHOTO_SHAREMEM)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_PHOTO_SHAREMEM;
-            (pMemMap_Info+i)->u32Addr = PHOTO_SHARE_MEM_ADR;
-            (pMemMap_Info+i)->u32Size =PHOTO_SHARE_MEM_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00001000;
-            (pMemMap_Info+i)->bIs_miu0 = (PHOTO_SHARE_MEM_MEMORY_TYPE & 0x01) ? 0:1;
-        }
-        else if(i == E_MMAP_ID_DMX_SECBUF)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_DMX_SECBUF;
-            (pMemMap_Info+i)->u32Addr = TSP_FW_BUF_ADR;
-            (pMemMap_Info+i)->u32Size =TSP_FW_BUF_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00000000;
-            (pMemMap_Info+i)->bIs_miu0 = (TSP_FW_BUF_MEMORY_TYPE & 0x01) ? 0:1;
-        }
-        else if(i == E_MMAP_ID_DUMMY2)
-        {
-            (pMemMap_Info+i)->u32ID = E_MMAP_ID_DUMMY2;
-            (pMemMap_Info+i)->u32Addr = TSP_VQ_BUF_ADR;
-            (pMemMap_Info+i)->u32Size =TSP_VQ_BUF_LEN;
-            (pMemMap_Info+i)->u8Layer = 0;
-            (pMemMap_Info+i)->u32Align = 0x00000000;
-            (pMemMap_Info+i)->bIs_miu0 = (TSP_VQ_BUF_MEMORY_TYPE & 0x01) ? 0:1;
-        }
-    }
-    return TRUE;
 }
 
 // true if TDAL_MP is initialized
@@ -1241,77 +1220,9 @@ MS_BOOL is_TDAL_MP_Initialized(void)
 	return b_MM_Initied;
 }
 
-LOCAL void _SubQueuePushHandler(unsigned int  u32Info)
-{
-    ST_CPCODEC_MSG_SUBQUEUE_PUSH_INFO *stQueueInfo = (ST_CPCODEC_MSG_SUBQUEUE_PUSH_INFO *)u32Info;
-    switch(stQueueInfo->eType)
-    {
-        case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_TS_PGS:
-            MApi_MPlayer_Push_SpuQueue((U8 *)stQueueInfo->u32QueueStar, (U16)stQueueInfo->u32QueueSize, (stQueueInfo->u32PTSStart), E_SUBTITLE_TYPE_TS, 0);
-            break;
-        case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_TS_BMP:
-            MApi_MPlayer_Push_SpuQueue((U8 *)stQueueInfo->u32QueueStar, (U16)stQueueInfo->u32QueueSize, (stQueueInfo->u32PTSStart), E_SUBTITLE_TYPE_TS, 0);
-            break;
-        case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_TEXT:
-            MApi_MPlayer_Push_SpuQueue((U8 *)stQueueInfo->u32QueueStar, (U16)stQueueInfo->u32QueueSize, ( stQueueInfo->u32PTSStart), E_SUBTITLE_TYPE_TTF, (stQueueInfo->u32PTSEnd - stQueueInfo->u32PTSStart));
-            break;
-        case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_IMAGE_BMP :
-            MApi_MPlayer_Push_SpuQueue((U8 *)stQueueInfo->u32QueueStar, (U16)stQueueInfo->u32QueueSize, (stQueueInfo->u32PTSStart * 90), E_SUBTITLE_TYPE_BMP, 0);
-            break;
-        case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_IMAGE_VOBSUB:
-            MApi_MPlayer_Push_SpuQueue((U8 *)stQueueInfo->u32QueueStar, (U16)stQueueInfo->u32QueueSize, (stQueueInfo->u32PTSStart * 90), E_SUBTITLE_TYPE_VOBSUB, 0);
-            break;
-#if MM_REMOVE_TXT_SUBTITLE == 0
-        case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_TEXT:
-            if(_bExitSubTask)
-                break;
-
-            MsOS_ObtainMutex(_s32QMutex, MSOS_WAIT_FOREVER);
-            if((s32QBack + 1) % Q_SIZE == s32QFront)
-            {
-                printf("@@@Queue is full!!!@@@\n");
-                break;//drop data
-            }
-            m_QElement[s32QBack].pu8Buf = (MS_U8*)MsOS_AllocateMemory(stQueueInfo->u32QueueSize, gs32NonCachedPoolID);
-            memcpy(m_QElement[s32QBack].pu8Buf, (void*)stQueueInfo->u32QueueStar, stQueueInfo->u32QueueSize * sizeof(MS_U8));
-            m_QElement[s32QBack].u16Len = stQueueInfo->u32QueueSize;
-            m_QElement[s32QBack].u32PTS = stQueueInfo->u32PTSStart;
-            m_QElement[s32QBack].u32Duration = stQueueInfo->u32PTSStart - stQueueInfo->u32PTSEnd;
-
-            s32QBack++;
-            if(s32QBack >= Q_SIZE)
-                s32QBack = 0;
-            MsOS_ReleaseMutex(_s32QMutex);
-            break;
-#endif
-        default:
-            break;
-    }
-}
-
-LOCAL void _SubtitleDisplayHandler(unsigned int  u32Info)
-{
-    ST_CPCODEC_MSG_SUBTITLE_INIT_INFO *stSubtitle = (ST_CPCODEC_MSG_SUBTITLE_INIT_INFO *)u32Info;
-    switch(stSubtitle->eType)
-    {
-        case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_TS_BMP:
-        case E_CPCODEC_INTERNAL_SUBTITLE_TYPE_IMAGE_VOBSUB:
-            if(stSubtitle->bShow)
-            {
-                MApi_MPlayer_Open();
-            }
-            else
-            {
-                MApi_MPlayer_Close();
-            }
-         break;
-    default:
-        break;
-    }
-}
-
 LOCAL bool TDAL_MPi_VideoSetOutput(VDEC_DispInfo *pstVidStatus)
 {
+#if 0 //wait porting
     MVOP_VidStat stMvopVidSt;
     MVOP_InputSel tMvopInputSel;
     video_disp_info MM_DispInfo;
@@ -1391,7 +1302,7 @@ LOCAL bool TDAL_MPi_VideoSetOutput(VDEC_DispInfo *pstVidStatus)
     mTBOX_TRACE((kTBOX_NIV_1, "->u8AspectRate = %u\n", stMvopVidSt.u8AspectRate));
     //db_print("->u16SarWidth = %u\n", stMvopVidSt.u16SarWidth);
     //db_print("->u16SarHeight = %u\n", stMvopVidSt.u16SarHeight);
-
+#endif
     return TRUE;
 }
 
@@ -1432,217 +1343,25 @@ bool TDAL_MPi_GetDecoderStatus(void)
     mTBOX_RETURN(TRUE);
 }
 
-LOCAL void TDAL_MPi_CallbackTask(void* arg)
-{
-    tTDAL_MPi_CallbackMsg msg;
-    MS_U32 actualSize;
-    MS_BOOL bRet;
-    tTDAL_MP_EvtNotify notifyFct = NULL;
-    tTDAL_MP_Event event;
-    int index;
-
-    mTBOX_FCT_ENTER("TDAL_MPi_CallbackTask");
-
-    while(1)
-    {
-#if MSTAR_QUEUE
-        bRet = MsOS_RecvFromQueue(TDAL_MPi_CallbackQueue, (MS_U8 *) &msg, sizeof(msg), &actualSize, MSOS_WAIT_FOREVER);
-#else        
-        bRet = TDAL_Dequeue(TDAL_MPi_CallbackQueue, (MS_U8 *) &msg);
-#endif        
-        if (bRet == TRUE && (actualSize == sizeof(msg)))
-        {
-            if (msg.shouldExit)
-            {
-                mTBOX_TRACE((kTBOX_NIV_1, "Stopping TDAL_MP task\n"));
-                break;
-            }
-
-            TDAL_MPi_LockMutex();
-
-            index = TDAL_MPi_GetRunningMediaDescriptor();
-
-            if (index < 0)
-            {
-                mTBOX_TRACE((kTBOX_NIV_WARNING, "No running media, skipping event, eventType = %d, cmd = %d, param = %d\n", msg.callbackType, msg.eCmd, msg.u32Param));
-                continue;
-            }
-
-            notifyFct = TDAL_MPi_DescList[index]->pEvtNotify;
-
-            switch(msg.callbackType)
-            {
-            case eTDAL_MP_CallbackMovie:
-                switch (msg.eCmd)
-                    {
-                        case MPLAYER_COMMAND_NOTIFY:
-                            switch(msg.u32Param)
-                            {
-                                case MPLAYER_FRAME_READY:
-                                    //_SubInitHandler((MS_U32)&_prestSubtitleInit);
-                                    //appDemo_XC_PlayVideo_UsingDefaultSetting();
-                                    break;
-                                case MPLAYER_EXIT_OK:
-                #if MM_REMOVE_TXT_SUBTITLE == 0
-                                    _MM_TxtSubtitleFinalize();
-                #endif
-                                    TDAL_MPm_Stop();
-                                    if (notifyFct != NULL)
-                                    {
-                                        notifyFct((tTDAL_MP_Handle) TDAL_MPi_DescList[index], eTDAL_MP_EVENT_FINISHED, TDAL_MPi_DescList[index]->pCtx);
-                                    }
-                                    //if(u8IsRepeat)
-                                        // appDemo_MM_Play(&_u32FileOption, _pu8FileName);
-                                    break;
-                                case MPLAYER_START_PLAY:
-                                    printf("Movie init OK\n");
-                                    break;
-
-                                case MPLAYER_EXIT_ERROR_FILE:
-                                    printf("Movie unsupport file!\n");
-                #if MM_REMOVE_TXT_SUBTITLE == 0
-                                    _MM_TxtSubtitleFinalize();
-                #endif
-                                    TDAL_MPm_Stop();
-                                    if (notifyFct != NULL)
-                                    {
-                                        notifyFct((tTDAL_MP_Handle) TDAL_MPi_DescList[index], eTDAL_MP_EVENT_STREAM_ERROR, TDAL_MPi_DescList[index]->pCtx);
-                                    }
-                                    break;
-
-                                case MPLAYER_SUFFICIENT_DATA:
-                                    break;
-                                case MPLAYER_BLACKSCREEN_OFF:
-                                    TDAL_DISPm_ReconfigureAndUnmuteVideoLayer(true, NULL, NULL, TRUE);
-                                    break;
-                            }
-                            break;
-
-                        case MPLAYER_COMMAND_SUBTITLE:
-                            switch(msg.u32Param)
-                            {
-                                case MPLAYER_SET_SUBTITLE_PALETTE:
-                                    break;
-                                case MPLAYER_SUBTITLE_INIT:
-                                    memcpy(&_prestSubtitleInit, (void*)msg.u32Info, sizeof(ST_CPCODEC_MSG_SUBTITLE_INIT_INFO));
-                                    //_SubInitHandler((MS_U32)&_prestSubtitleInit);
-                                    break;
-                                case MPLAYER_SUBQUEUE_PUSH:
-                                    _SubQueuePushHandler(msg.u32Info);
-                                    break;
-                                case MPLAYER_SUBTITLE_ENABLE:
-                                    break;
-                                case MPLAYER_SET_SUBTITLE_TRACK:
-                                    break;
-                                case MPLAYER_TS_SUBTITLE_PROGRAM_CHANGED:
-                                    break;
-                                case MPLAYER_SUBTITLE_DISPLAY:
-                                    //_SubtitleDisplayHandler(msg.u32Info);
-                                    break;
-                            }
-                            break;
-                        default:
-                            mTBOX_ASSERTm(FALSE, "Unsupported MM event\n");
-                            break;
-                    }
-                break;
-            case eTDAL_MP_CallbackMusic:
-                switch (msg.eCmd)
-                {
-                    case MPLAYER_COMMAND_NOTIFY:
-                        switch(msg.u32Param)
-                        {
-                            case MPLAYER_START_PLAY:
-                                printf("Music Init ok!\n");
-                                break;
-                            case MPLAYER_EXIT_ERROR_FILE:
-                                TDAL_MPm_Stop();
-                                if (notifyFct != NULL)
-                                {
-                                    notifyFct((tTDAL_MP_Handle) TDAL_MPi_DescList[index], eTDAL_MP_EVENT_STREAM_ERROR, TDAL_MPi_DescList[index]->pCtx);
-                                }
-                                printf("Music play fail!\n");
-                                break;
-                            case MPLAYER_EXIT_OK:
-                                TDAL_MPm_Stop();
-                                if (notifyFct != NULL)
-                                {
-                                    notifyFct((tTDAL_MP_Handle) TDAL_MPi_DescList[index], eTDAL_MP_EVENT_FINISHED, TDAL_MPi_DescList[index]->pCtx);
-                                }
-                                printf("Music exit ok!\n");
-                                break;
-                            default:
-                                printf("Unsupported music event %d\n", msg.u32Param);
-                                break;
-                        }
-                        break;
-
-                    default:
-                        break;
-                }
-
-                break;
-            case eTDAL_MP_CallbackPhoto:
-                switch (msg.eCmd)
-                {
-                    case MPLAYER_COMMAND_NOTIFY:
-                        switch(msg.u32Param)
-                        {
-                            case MPLAYER_PHOTO_DECODE_DONE:
-                                printf("---------------->Decode Successfully!\n");
-                                break;
-                            case MPLAYER_PHOTO_DECODE_FAILED:
-                                printf("---------------->Decode Error! \n");
-                                break;
-                            case MPLAYER_EXIT_ERROR_FILE:
-                                printf("---------------->Unsupported File! \n");
-                                break;
-
-                            default:
-                                break;
-                        }
-                        break;
-
-                    default:
-                        break;
-                }
-                break;
-            default:
-                mTBOX_ASSERT(false);
-                break;
-            }
-
-            TDAL_MPi_UnlockMutex();
-
-        }
-        else
-        {
-            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[TDAL_MPi_CallbackTask] Message not received or message size not right, ret = %d, size = %d, actualSize = %d", bRet, sizeof(msg), actualSize));
-        }
-    }
-
-
-}
-
 void TDAL_MPi_LockMutex()
 {
 #ifdef PROTECT_TDAL_MP
     TDAL_LockMutex(TDAL_MPi_Mutex);
-    TDAL_MPi_MutexThreadLocked = TDAL_GetRunningThreadSystemId();
+    //TDAL_MPi_MutexThreadLocked = TDAL_GetRunningThreadSystemId();
 #endif
 }
 
 void TDAL_MPi_UnlockMutex()
 {
 #ifdef PROTECT_TDAL_MP
-    TDAL_MPi_MutexThreadLocked = NULL;
+    //TDAL_MPi_MutexThreadLocked = NULL;
     TDAL_UnlockMutex(TDAL_MPi_Mutex);
 #endif
 }
 
 bool TDAL_MPi_LockMutexIfDifferentThread()
 {
-#ifdef PROTECT_TDAL_MP
+#if 0
     if (TDAL_MPi_MutexThreadLocked != TDAL_GetRunningThreadSystemId())
     {
         TDAL_MPi_LockMutex();
@@ -1651,5 +1370,3 @@ bool TDAL_MPi_LockMutexIfDifferentThread()
 #endif
     return false;
 }
-
-

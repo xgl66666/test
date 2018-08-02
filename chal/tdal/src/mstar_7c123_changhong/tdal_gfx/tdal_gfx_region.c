@@ -18,12 +18,11 @@
 #include "tdal_gfx.h"
 #include "tdal_gfx_p.h"
 
-#define GFX_DEFAULT_WIDTH (720)
-#define GFX_DEFAULT_HEIGHT (576)
-
 #define MSTAR_INVALID_LAYER_HANDLE 0x0000FFFF
 
 #define IMAGE_LAYER_FADE
+#define FB_ALIGN_CONSTANT 16
+
 /********************************************************/
 /*        Global   Variables   (GLOBAL/IMPORT)      */
 /********************************************************/
@@ -35,11 +34,13 @@ GLOBAL uint8_t TDAL_DISPm_LayerGOPDesc(uint32_t layerHandle);
 GLOBAL uint8_t TDAL_DISPm_LayerGWINDesc(uint32_t layerHandle);
 LOCAL tTDAL_GFX_Palette   *pTDAL_GFXi_Pallete[kTDAL_GFX_REGCOUNT] = {0};
 tTDAL_RegionDesc    TDAL_GFX_RgnDesc[kTDAL_GFX_REGCOUNT];
+tTDAL_RegionDesc    TDAL_GFX_Scaled_RgnDesc;
+
 int transRgnIdx = -1;
 void TDAL_GFXm_ClearRegionFromDisplay(tTDAL_GFX_RegionHandle regionHandle, bool clear, bool fadeOut);
 
-uint16_t minYOffset[3] = {GFX_DEFAULT_HEIGHT, GFX_DEFAULT_HEIGHT, GFX_DEFAULT_HEIGHT};
-uint16_t minXOffset[3] = {GFX_DEFAULT_WIDTH, GFX_DEFAULT_WIDTH, GFX_DEFAULT_WIDTH};
+uint16_t minYOffset[3] = {576, 576, 576};
+uint16_t minXOffset[3] = {720, 720, 720};
 /********************************************************/
 /*        Local   File   Variables   (LOCAL)      */
 /********************************************************/
@@ -71,6 +72,14 @@ int32_t TDAL_GFXm_FindAvailableRegionDescription()
  *      Revision
  *
  *===========================================================================*/
+
+#ifndef GFX_TEST_DEFAULT_WIDTH
+#define GFX_TEST_DEFAULT_WIDTH 1280
+#endif
+#ifndef GFX_TEST_DEFAULT_HEIGHT
+#define GFX_TEST_DEFAULT_HEIGHT 720
+#endif
+
 tTDAL_GFX_Error   TDAL_GFX_RegionCreate(tTDAL_GFX_RegionHandle   *pRegionHandle,
                      tTDAL_GFX_RegionConfig   *pRegionConfig)
 {
@@ -81,6 +90,8 @@ tTDAL_GFX_Error   TDAL_GFX_RegionCreate(tTDAL_GFX_RegionHandle   *pRegionHandle,
     uint8_t         frameBufferId = -1;
     uint16_t        fbFmt;
     int32_t         regDesc;
+    
+    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "parameter(s) WIDTH=0x%x HEIGHT=0x%x\n", pRegionConfig->size.width , pRegionConfig->size.height));
 
     if (pRegionHandle==NULL || pRegionConfig==NULL)
     {
@@ -89,10 +100,11 @@ tTDAL_GFX_Error   TDAL_GFX_RegionCreate(tTDAL_GFX_RegionHandle   *pRegionHandle,
         mTBOX_RETURN(error);
     }
 
-    if ((pRegionConfig->size.width > GFX_DEFAULT_WIDTH) || (pRegionConfig->size.height > GFX_DEFAULT_HEIGHT))
+	if ((pRegionConfig->size.width > GFX_TEST_DEFAULT_WIDTH) || (pRegionConfig->size.height> GFX_TEST_DEFAULT_HEIGHT))
     {
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL,"RegionCreate:   width or height error\n"));
-        mTBOX_RETURN(eTDAL_GFX_BAD_PARAMETER);
+        error = eTDAL_GFX_BAD_PARAMETER;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Bad parameter(s) WIDTH=0x%x HEIGHT=0x%x\n", pRegionConfig->size.width , pRegionConfig->size.height));
+        mTBOX_RETURN(error);
     }
 
     regDesc = TDAL_GFXm_FindAvailableRegionDescription();
@@ -105,21 +117,13 @@ tTDAL_GFX_Error   TDAL_GFX_RegionCreate(tTDAL_GFX_RegionHandle   *pRegionHandle,
 
     switch (pRegionConfig->colorType)
     {
-        //case eTDAL_GFX_COLOR_CLUT_AYCRCB8888:
+        case eTDAL_GFX_COLOR_CLUT_AYCRCB8888:
         case eTDAL_GFX_COLOR_CLUT_ARGB8888:
-            fbFmt = E_MS_FMT_I8;//E_MS_FMT_ARGB8888; 
-            if (pRegionConfig->size.width % 8)
-            {
-            	pRegionConfig->size.width += 8 - pRegionConfig->size.width % 8;
-            }
+            fbFmt = E_MS_FMT_ARGB8888; 
             break;
-        //case eTDAL_GFX_COLOR_TRUE_COLOR_AYCRCB8888:
+        case eTDAL_GFX_COLOR_TRUE_COLOR_AYCRCB8888:
         case eTDAL_GFX_COLOR_TRUE_COLOR_ARGB8888:
-            fbFmt = E_MS_FMT_ARGB8888;
-            if (pRegionConfig->size.width % 2)
-            {
-            	pRegionConfig->size.width += 2 - pRegionConfig->size.width % 2;
-            }
+            fbFmt = E_MS_FMT_ARGB8888;              
             break;
         default:
             mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Unhandled color type=0x%x\n", pRegionConfig->colorType));
@@ -168,8 +172,7 @@ tTDAL_GFX_Error   TDAL_GFX_RegionDestinationSet(tTDAL_GFX_RegionHandle   regionH
             uint8_t gwinId;
             TDAL_GFX_RgnDesc[i].layerHandle = layerHandle;
             gopId                           = TDAL_DISPm_LayerGOPDesc(layerHandle);
-            gwinId                          = TDAL_DISPm_LayerGWINDesc(layerHandle);
-            
+            gwinId                          = TDAL_GFX_RgnDesc[i].GeWinId;
             gop_result                      = MApi_GOP_GWIN_SwitchGOP(gopId);
             if (gop_result != GOP_API_SUCCESS)
             {
@@ -182,6 +185,7 @@ tTDAL_GFX_Error   TDAL_GFX_RegionDestinationSet(tTDAL_GFX_RegionHandle   regionH
 
             if (gopId == LAYER_OSD1)
             {
+                printf("gopId [LAYER_OSD1]\n");
                 GOP_GwinFBAttr DstFBInfo;
                 if (MApi_GOP_GWIN_IsGwinExist(gwinId) && i == 0)
                 {
@@ -191,32 +195,39 @@ tTDAL_GFX_Error   TDAL_GFX_RegionDestinationSet(tTDAL_GFX_RegionHandle   regionH
 
                 if (TDAL_GFX_RgnDesc[i].GeWinId == 0xff)
                 {
-              #if 1
-                    MS_U8 fbId = MApi_GOP_GWIN_GetFreeFBID();
-                    
-                    if (MAX_GWIN_FB_SUPPORT <= fbId)
-                    {
-                        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_GetFreeFBID: failure\n"));
-                        return eTDAL_GFX_NO_MEMORY;
-                    }
-                    if (GWIN_OK != MApi_GOP_GWIN_CreateFB(fbId, 0, 0, TDAL_GFX_RgnDesc[i].size.width, TDAL_GFX_RgnDesc[i].size.height, TDAL_GFX_RgnDesc[i].fbFmt))
-                    {
-                        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_GetFreeFBID: failure\n"));
-                        return eTDAL_GFX_NO_MEMORY;
-                    }
-                    TDAL_GFX_RgnDesc[i].GeWinId = MApi_GOP_GWIN_CreateWin_Assign_FB(gopId, fbId, 0, 0);//MApi_GOP_GWIN_CreateWin(TDAL_GFX_RgnDesc[i].size.width, TDAL_GFX_RgnDesc[i].size.height, 3855);
-                    if(TDAL_GFX_RgnDesc[i].GeWinId == GWIN_NO_AVAILABLE)
-                    {
-                        MApi_GOP_GWIN_DestroyFB(fbId);
-                        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateWin_Assign_FB: failure\n"));
-                        return eTDAL_GFX_NO_MEMORY;
-                    }
-	#else
-		 TDAL_GFX_RgnDesc[i].GeWinId = MApi_GOP_GWIN_CreateWin(TDAL_GFX_RgnDesc[i].size.width, TDAL_GFX_RgnDesc[i].size.height, 3855);
-	#endif
-                    MApi_GOP_GWIN_SetWinDispPosition(TDAL_GFX_RgnDesc[i].GeWinId, TDAL_GFX_RgnDesc[i].offSet.x, TDAL_GFX_RgnDesc[i].offSet.y);
 
-                    TDAL_GFX_RgnDesc[i].frameBufferId = MApi_GOP_GWIN_GetFBfromGWIN(TDAL_GFX_RgnDesc[i].GeWinId);
+                    MS_U8 u8FB;
+
+                    u8FB = MApi_GOP_GWIN_GetFreeFBID();
+
+                    gop_result = MApi_GOP_GWIN_CreateFB( u8FB, 0, 0, TDAL_GFX_RgnDesc[i].size.width, TDAL_GFX_RgnDesc[i].size.height, 0x0F);
+                    if ( gop_result != GWIN_OK)
+                    {
+                        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failure\n"));
+                        mTBOX_RETURN(eTDAL_GFX_DRIVER_ERROR);
+
+                    }
+
+                    TDAL_GFX_RgnDesc[i].frameBufferId = u8FB;
+                    
+                    if ((TDAL_GFX_Scaled_RgnDesc.used == TRUE) && (TDAL_GFX_Scaled_RgnDesc.frameBufferId == 0xFF))
+                    {
+                        u8FB = MApi_GOP_GWIN_GetFreeFBID();
+
+                        gop_result = MApi_GOP_GWIN_CreateFB( u8FB, 0, 0, TDAL_GFX_Scaled_RgnDesc.size.width, TDAL_GFX_Scaled_RgnDesc.size.height, 0x0F);
+                        if ( gop_result != GWIN_OK)
+                        {
+                            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failure\n"));
+                        
+                        }
+                        TDAL_GFX_RgnDesc[i].GeWinId = MApi_GOP_GWIN_CreateWin_Assign_FB(gopId, u8FB, 0, 0);
+                        TDAL_GFX_Scaled_RgnDesc.frameBufferId = u8FB;
+                        TDAL_GFX_Scaled_RgnDesc.GeWinId = TDAL_GFX_RgnDesc[i].GeWinId;
+                    }else
+                    {
+                        TDAL_GFX_RgnDesc[i].GeWinId = MApi_GOP_GWIN_CreateWin_Assign_FB(gopId, TDAL_GFX_RgnDesc[i].frameBufferId, 0, 0);                    
+                    }
+                    MApi_GOP_GWIN_SetWinDispPosition(TDAL_GFX_RgnDesc[i].GeWinId, TDAL_GFX_RgnDesc[i].offSet.x, TDAL_GFX_RgnDesc[i].offSet.y);
                     TDAL_GFX_RgnDesc[i].deletableWin = true;
                     MApi_GOP_GWIN_SwapOverlapWin(gopId, TDAL_GFX_RgnDesc[i].GeWinId);
                 }
@@ -242,18 +253,35 @@ tTDAL_GFX_Error   TDAL_GFX_RegionDestinationSet(tTDAL_GFX_RegionHandle   regionH
             {
                 static bool layer_osd2_initialized  = FALSE;
                 gop_result                          = GOP_API_SUCCESS;
+                printf("gopId [LAYER_OSD2]\n");
                 if (MApi_GOP_GWIN_IsGwinExist(gwinId))
                 {
                     TDAL_GFX_RgnDesc[i].GeWinId = gwinId;
                     TDAL_GFX_RgnDesc[i].frameBufferId = MApi_GOP_GWIN_GetFBfromGWIN(gwinId);
+                }else
+                {
+                    TDAL_GFX_RgnDesc[i].GeWinId = MApi_GOP_GWIN_CreateWin(TDAL_GFX_RgnDesc[i].size.width, TDAL_GFX_RgnDesc[i].size.height, 0x0f);
+                    MApi_GOP_GWIN_SetWinDispPosition(TDAL_GFX_RgnDesc[i].GeWinId, TDAL_GFX_RgnDesc[i].offSet.x, TDAL_GFX_RgnDesc[i].offSet.y);
+                    TDAL_GFX_RgnDesc[i].frameBufferId = MApi_GOP_GWIN_GetFBfromGWIN(TDAL_GFX_RgnDesc[i].GeWinId);
+                    TDAL_GFX_RgnDesc[i].deletableWin = true;
+                    MApi_GOP_GWIN_SwapOverlapWin(gopId, TDAL_GFX_RgnDesc[i].GeWinId);
                 }
 
-                if (layer_osd2_initialized == FALSE)
+                //if (layer_osd2_initialized == FALSE) should clear buffer any way
                 {
                     GOP_GwinFBAttr  DstFBInfo;                  
-                    MApi_GOP_GWIN_GetFBInfo(TDAL_GFX_RgnDesc[i].frameBufferId, &DstFBInfo);
+                    gop_result = MApi_GOP_GWIN_GetFBInfo(TDAL_GFX_RgnDesc[i].frameBufferId, &DstFBInfo);
+                    if (gop_result != GOP_API_SUCCESS)
+                    {
+                         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GFX_ClearFrameBuffer: failure %d\n", gop_result));
+                    }
+
+                    gop_result = MApi_GFX_ClearFrameBuffer(DstFBInfo.addr, DstFBInfo.size, 0);
+                    if (gop_result != GOP_API_SUCCESS)
+                    {
+                         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GFX_ClearFrameBuffer: failure %d\n", gop_result));
+                    }
                     
-                    MApi_GFX_ClearFrameBuffer(DstFBInfo.addr, DstFBInfo.size, 0);
                     layer_osd2_initialized = TRUE;
                     
                     if ((gop_result=MApi_GOP_GWIN_Switch2Gwin(TDAL_GFX_RgnDesc[i].GeWinId)) != GOP_API_SUCCESS)
@@ -266,7 +294,7 @@ tTDAL_GFX_Error   TDAL_GFX_RegionDestinationSet(tTDAL_GFX_RegionHandle   regionH
             else
                 mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_GFX_RegionDestinationSet: incorect gopId=%d\n", gopId));      
            
-            if ((gop_result=MApi_GOP_GWIN_SetBlending(TDAL_GFX_RgnDesc[i].GeWinId, /*TRUE*/TDAL_GFX_RgnDesc[i].fbFmt == E_MS_FMT_ARGB8888, TDAL_GFX_RgnDesc[i].alpha)) != GOP_API_SUCCESS)
+            if ((gop_result=MApi_GOP_GWIN_SetBlending(TDAL_GFX_RgnDesc[i].GeWinId, TRUE, TDAL_GFX_RgnDesc[i].alpha)) != GOP_API_SUCCESS)
             {
                 mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_SetBlending: failure %d\n", gop_result));
             }            
@@ -409,6 +437,7 @@ tTDAL_GFX_Error   TDAL_GFX_RegionDelete(tTDAL_GFX_RegionHandle   regionHandle)
     {
         error = eTDAL_GFX_BAD_PARAMETER;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "The region with handle(frame buffer Id) %d does not exist\n", regionHandle));
+        mTBOX_RETURN(error);
     }
 
     if (MApi_GOP_GWIN_IsFBExist(TDAL_GFX_RgnDesc[regDesc].frameBufferId))
@@ -417,20 +446,30 @@ tTDAL_GFX_Error   TDAL_GFX_RegionDelete(tTDAL_GFX_RegionHandle   regionHandle)
     }
     else
     {
-        //error = eTDAL_GFX_BAD_PARAMETER;
-        //mTBOX_ASSERT(FALSE);
-        //mTBOX_TRACE((kTBOX_NIV_CRITICAL, "The region with handle(frame buffer Id) %d does not exist\n", regionHandle));
+        //error = eTDAL_GFX_NO_ERROR;
+        printf("\n""\033[1;31m""[FUN][%s()@%04d]  regDesc:%d  fbid:%d""\033[m""\n", __FUNCTION__, __LINE__,regDesc,TDAL_GFX_RgnDesc[regDesc].frameBufferId);
+     //   mTBOX_ASSERT(FALSE);
+     //   mTBOX_TRACE((kTBOX_NIV_CRITICAL, "The region with handle(frame buffer Id) %d does not exist\n", regionHandle));
     }
     
     if (TDAL_GFX_RgnDesc[regDesc].deletableWin == true)
     {
-        gop_result = MApi_GOP_GWIN_DestroyWin(TDAL_GFX_RgnDesc[regDesc].GeWinId);
+        gop_result = MApi_GOP_GWIN_DeleteWin(TDAL_GFX_RgnDesc[regDesc].GeWinId);
         if (gop_result != GOP_API_SUCCESS)
         {
             error = eTDAL_GFX_DRIVER_ERROR;
-            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_DestroyWin: failed to destroy GWIN\n"));
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_DeleteWin: failed to destroy GWIN\n"));
+            printf("\n""\033[1;31m""[FUN][%s()@%04d]    ""\033[m""\n", __FUNCTION__, __LINE__);
+            mTBOX_ASSERT(FALSE);
         }
-        TDAL_GFX_RgnDesc[regDesc].GeWinId == GWIN_NO_AVAILABLE;
+        
+        if(TDAL_GFX_Scaled_RgnDesc.used == true && (TDAL_GFX_Scaled_RgnDesc.GeWinId == TDAL_GFX_RgnDesc[regDesc].GeWinId))
+        {
+            MApi_GOP_GWIN_Destroy32FB(TDAL_GFX_RgnDesc[regDesc].frameBufferId);
+            TDAL_GFX_Scaled_RgnDesc.GeWinId = 0xFF;
+            TDAL_GFX_Scaled_RgnDesc.frameBufferId = 0xFF;
+        
+        }
     }
     
     TDAL_GFX_RgnDesc[regDesc].used = false;
@@ -474,31 +513,26 @@ tTDAL_GFX_Error TDAL_GFX_RegionShow(tTDAL_GFX_RegionHandle   regionHandle)
     {
         error = eTDAL_GFX_UNKNOWN_REGION;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "There is mess with region handle bookkeeping!\n", regionHandle));
-        return error;
     }
-
-    if (!TDAL_GFX_RgnDesc[i].visible)
+    
+    if (error == eTDAL_GFX_NO_ERROR)
     {
-        TDAL_GFX_RgnDesc[i].visible = true;
-        if (TDAL_DISPm_IsGFXLayerEnable(TDAL_GFX_RgnDesc[i].layerHandle))
+        gop_result = MApi_GOP_GWIN_Enable(GeWinId, TRUE);
+        if (gop_result != GOP_API_SUCCESS)
         {
-            gop_result = MApi_GOP_GWIN_Enable(GeWinId, TRUE);
-            if (gop_result != GOP_API_SUCCESS)
-            {
-                error = eTDAL_GFX_DRIVER_ERROR;
-                mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_Enable: failure %\n", gop_result));
-            }
-    #ifdef IMAGE_LAYER_FADE
-            {
-                uint8_t gopId;
-                gopId = TDAL_DISPm_LayerGOPDesc(TDAL_GFX_RgnDesc[i].layerHandle);
-                if (gopId == LAYER_OSD2)
-                {
-                    MApi_GOP_GWIN_SetFadeInOut(GeWinId, E_GOP_GWIN_FADE_IN, TRUE, 128);
-                }
-            }
-    #endif
+            error = eTDAL_GFX_DRIVER_ERROR;
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_Enable: failure %\n", gop_result));
         }
+#ifdef IMAGE_LAYER_FADE
+        {
+            uint8_t gopId;
+            gopId = TDAL_DISPm_LayerGOPDesc(TDAL_GFX_RgnDesc[i].layerHandle);
+            if (gopId == LAYER_OSD2)
+            {
+                MApi_GOP_GWIN_SetFadeInOut(GeWinId, E_GOP_GWIN_FADE_IN, TRUE, 128);
+            }
+        }
+#endif
     }
     
     mTBOX_RETURN(error);
@@ -539,45 +573,31 @@ tTDAL_GFX_Error TDAL_GFX_RegionHide(tTDAL_GFX_RegionHandle   regionHandle)
     {
         error = eTDAL_GFX_UNKNOWN_REGION;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "There is mess with region handle bookkeeping!\n", regionHandle));
-        return error;
     }
 
-    if (TDAL_GFX_RgnDesc[i].visible)
+    if (error == eTDAL_GFX_NO_ERROR)
     {
-        TDAL_GFX_RgnDesc[i].visible = false;
-        if (TDAL_DISPm_IsGFXLayerEnable(TDAL_GFX_RgnDesc[i].layerHandle))
+        if (TDAL_GFX_RgnDesc[i].layerHandle != MSTAR_INVALID_LAYER_HANDLE)
         {
-        #if 1
-            gop_result = MApi_GOP_GWIN_Enable(GeWinId, FALSE);
-            if (gop_result != GOP_API_SUCCESS)
+            uint8_t gopId;
+            gopId = TDAL_DISPm_LayerGOPDesc(TDAL_GFX_RgnDesc[i].layerHandle);
+
+            if (gopId==LAYER_OSD1 || gopId==LAYER_OSD2)
             {
-                 error = eTDAL_GFX_DRIVER_ERROR;
-                 mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_Enable: failure %\n", gop_result));
+#ifdef IMAGE_LAYER_FADE
+                TDAL_GFXm_ClearRegionFromDisplay(regionHandle, false, gopId==LAYER_OSD2);
+#else
+                TDAL_GFXm_ClearRegionFromDisplay(regionHandle, false, false);
+#endif
             }
-        #else
-            if (TDAL_GFX_RgnDesc[i].layerHandle != MSTAR_INVALID_LAYER_HANDLE)
-            {
-                uint8_t gopId;
-                gopId = TDAL_DISPm_LayerGOPDesc(TDAL_GFX_RgnDesc[i].layerHandle);
-    
-                if (gopId==LAYER_OSD1 || gopId==LAYER_OSD2)
-                {
-    #ifdef IMAGE_LAYER_FADE
-                    TDAL_GFXm_ClearRegionFromDisplay(regionHandle, false, gopId==LAYER_OSD2);
-    #else
-                    TDAL_GFXm_ClearRegionFromDisplay(regionHandle, false, false);
-    #endif
-                }
-                else
-                    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_GFX_RegionHide failure\n"));
-            }
-    
-            if (gop_result != GOP_API_SUCCESS)
-            {
-                error = eTDAL_GFX_DRIVER_ERROR;
-                mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_Enable: failure %\n", gop_result));
-            }
-        #endif
+            else
+                mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_GFX_RegionHide failure\n"));
+        }
+
+        if (gop_result != GOP_API_SUCCESS)
+        {
+            error = eTDAL_GFX_DRIVER_ERROR;
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_Enable: failure %\n", gop_result));
         }
     }
     
@@ -614,21 +634,40 @@ tTDAL_GFX_Error   TDAL_GFX_RegionPaletteSet   (tTDAL_GFX_RegionHandle   regionHa
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Error: Palette is empty!\n"));
         mTBOX_RETURN(error);
     }
-
-    if (pPalette->colorType != eTDAL_GFX_COLOR_CLUT_ARGB8888)
-    {
-        return eTDAL_GFX_BAD_PARAMETER;
-    }
-
+    
+	
+	if(!((pPalette->colorType == eTDAL_GFX_COLOR_CLUT_AYCRCB8888) ||
+	(pPalette->colorType == eTDAL_GFX_COLOR_CLUT_ARGB8888) ||
+	(pPalette->colorType == eTDAL_GFX_COLOR_TRUE_COLOR_AYCRCB8888) ||
+	(pPalette->colorType == eTDAL_GFX_COLOR_TRUE_COLOR_ARGB8888) ||
+	(pPalette->colorType == eTDAL_GFX_COLOR_TRUE_COLOR_RGB888) ||
+	(pPalette->colorType == eTDAL_GFX_COLOR_TRUE_COLOR_YCRCB888_422) ||
+	(pPalette->colorType == eTDAL_GFX_COLOR_TRUE_COLOR_YCRCB888_444) ||
+	(pPalette->colorType == eTDAL_GFX_COLOR_TRUE_COLOR_ARGB4444) ||
+	(pPalette->colorType == eTDAL_GFX_COLOR_TRUE_COLOR_ARGB1555) ||
+	(pPalette->colorType == eTDAL_GFX_COLOR_ALPHA_OVER_LAYER)))
+	{
+        error = eTDAL_GFX_BAD_PARAMETER;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Error: colorType is not support!\n"));
+        mTBOX_RETURN(error);
+	}
+    
     for (i = 0; i < kTDAL_GFX_REGCOUNT; i++)
     {
-        if (TDAL_GFX_RgnDesc[i].used == true && (regionHandle==(tTDAL_GFX_RegionHandle)&TDAL_GFX_RgnDesc[i]))
+        if (TDAL_GFX_RgnDesc[i].used == true && (tTDAL_GFX_RegionHandle)&TDAL_GFX_RgnDesc[i]== regionHandle)
         {
             regDesc = i;
             break;
         }
     }
     
+    if (regDesc == -1)
+    {
+        error = eTDAL_GFX_BAD_PARAMETER;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Error: TDAL GFX Region not found!\n"));
+        mTBOX_RETURN(error);
+    }
+
     pTDAL_GFXi_Pallete[regDesc] = pPalette;    
     for (i=0; i<pTDAL_GFXi_Pallete[regDesc]->nbColors; i++)
     {
@@ -655,69 +694,6 @@ tTDAL_GFX_Error   TDAL_GFX_RegionPaletteSet   (tTDAL_GFX_RegionHandle   regionHa
         }
     }
     //Set GE palette table when bitblt from I8 to ARGB
-#if 1
-    if (TDAL_GFX_RgnDesc[regDesc].fbFmt == E_MS_FMT_I8)
-    {
-        MApi_GOP_GWIN_SwitchGOP(TDAL_DISPm_LayerGOPDesc(TDAL_GFX_RgnDesc[regDesc].layerHandle));
-        MApi_GOP_GWIN_SetPaletteOpt((GOP_PaletteEntry *)_gePalette, 0, GOP_PALETTE_ENTRY_NUM - 1, E_GOP_PAL_ARGB8888);
-    }
-#endif
-    gfx_result = MApi_GFX_SetPaletteOpt(_gePalette, 0, GOP_PALETTE_ENTRY_NUM - 1);   
-    if (gfx_result != GFX_SUCCESS)
-    {
-        error = eTDAL_GFX_DRIVER_ERROR;
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GFX_SetPaletteOpt: error occurred %d!\n", gfx_result));
-        mTBOX_RETURN(error);        
-    }
-
-     mTBOX_RETURN(error);
-}
-
-#if 0
-tTDAL_GFX_Error   TDAL_GFXm_BlitPaletteSet   (tTDAL_GFX_RegionHandle   regionHandle,
-        tTDAL_GFX_Palette   *pPalette)
-{
-    tTDAL_GFX_Error     error = eTDAL_GFX_NO_ERROR;
-    GFX_Result          gfx_result;
-    int i;
-    mTBOX_FCT_ENTER("TDAL_GFXm_RegionPaletteSet");
-    
-    if (!pPalette)
-    {
-        error = eTDAL_GFX_BAD_PARAMETER;
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Error: Palette is empty!\n"));
-        mTBOX_RETURN(error);
-    }
-
-    if (pPalette->colorType != eTDAL_GFX_COLOR_CLUT_ARGB8888)
-    {
-        return eTDAL_GFX_BAD_PARAMETER;
-    }
-
-    for (i=0; i<pPalette->nbColors; i++)
-    {
-        if (pPalette->colorType == eTDAL_GFX_COLOR_CLUT_AYCRCB8888)
-        {
-            _gePalette[i].RGB.u8R = TDAL_GFX_ycrcb2R(pPalette->pColor[i].AYCrCb8888.Y,
-                                                     pPalette->pColor[i].AYCrCb8888.Cr,
-                                                     pPalette->pColor[i].AYCrCb8888.Cb);  
-            _gePalette[i].RGB.u8G = TDAL_GFX_ycrcb2G(pPalette->pColor[i].AYCrCb8888.Y, 
-                                                     pPalette->pColor[i].AYCrCb8888.Cr,
-                                                     pPalette->pColor[i].AYCrCb8888.Cb); 
-            _gePalette[i].RGB.u8B = TDAL_GFX_ycrcb2B(pPalette->pColor[i].AYCrCb8888.Y, 
-                                                     pPalette->pColor[i].AYCrCb8888.Cr,
-                                                     pPalette->pColor[i].AYCrCb8888.Cb);
-            _gePalette[i].RGB.u8A = pPalette->pColor[i].AYCrCb8888.alpha;
-        }
-        else
-        {
-            _gePalette[i].RGB.u8R = pPalette->pColor[i].ARGB8888.R;
-            _gePalette[i].RGB.u8G = pPalette->pColor[i].ARGB8888.G;
-            _gePalette[i].RGB.u8B = pPalette->pColor[i].ARGB8888.B;
-            _gePalette[i].RGB.u8A = pPalette->pColor[i].ARGB8888.alpha;
-        }
-    }
-    //Set GE palette table when bitblt from I8 to ARGB
     gfx_result = MApi_GFX_SetPaletteOpt(_gePalette, 0, GOP_PALETTE_ENTRY_NUM - 1);   
     if (gfx_result != GFX_SUCCESS)
     {
@@ -727,8 +703,6 @@ tTDAL_GFX_Error   TDAL_GFXm_BlitPaletteSet   (tTDAL_GFX_RegionHandle   regionHan
     }
      mTBOX_RETURN(error);
 }
-#endif
-
 /*===========================================================================
  *
  * TDAL_GFX_RegionPaletteGet
@@ -747,57 +721,41 @@ tTDAL_GFX_Error   TDAL_GFX_RegionPaletteGet   (tTDAL_GFX_RegionHandle   regionHa
         tTDAL_GFX_Palette   *pPalette)
 {
     int i;
-
-    if (pPalette == NULL)
+    mTBOX_FCT_ENTER("TDAL_GFX_RegionPaletteGet");
+	
+    if (!pPalette)
     {
-        return eTDAL_GFX_BAD_PARAMETER;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Error: Palette is empty!\n"));
+        mTBOX_RETURN(eTDAL_GFX_BAD_PARAMETER);
     }
 
     for (i = 0; i < kTDAL_GFX_REGCOUNT; i++)
     {
-        if (TDAL_GFX_RgnDesc[i].used == true && (regionHandle==(tTDAL_GFX_RegionHandle)&TDAL_GFX_RgnDesc[i]))
+        if (TDAL_GFX_RgnDesc[i].used == true && (tTDAL_GFX_RegionHandle)&TDAL_GFX_RgnDesc[i]== regionHandle)
         {
             break;
         }
     }
-    
+
+	if(i>=kTDAL_GFX_REGCOUNT)
+	{
+        pPalette->pColor = NULL;
+        mTBOX_RETURN(eTDAL_GFX_NO_ERROR);
+    }
+
     if (pTDAL_GFXi_Pallete[i])
     {
-        pPalette->nbColors = pTDAL_GFXi_Pallete[i]->nbColors;
         pPalette->colorType = pTDAL_GFXi_Pallete[i]->colorType;
-        for (i=0; i<pTDAL_GFXi_Pallete[i]->nbColors; i++)
-        {
-            pPalette->pColor[i] = pTDAL_GFXi_Pallete[i]->pColor[i];
-        }
+        pPalette->nbColors = pTDAL_GFXi_Pallete[i]->nbColors;
+        pPalette->pColor = pTDAL_GFXi_Pallete[i]->pColor;
     }
     else
     {
-        pPalette->nbColors = 0;
+        mTBOX_RETURN(eTDAL_GFX_UNKNOWN_ERROR);
     }
-    
-    return eTDAL_GFX_NO_ERROR;
+    mTBOX_RETURN(eTDAL_GFX_NO_ERROR);
+
 }
-
-tTDAL_GFX_Palette *TDAL_GFXm_RegionPaletteGet(tTDAL_GFX_RegionHandle regionHandle)
-{
-    int i;
-    
-    for (i = 0; i < kTDAL_GFX_REGCOUNT; i++)
-    {
-        if (TDAL_GFX_RgnDesc[i].used == true && (regionHandle==(tTDAL_GFX_RegionHandle)&TDAL_GFX_RgnDesc[i]))
-        {
-            break;
-        }
-    }
-    
-    if (i < kTDAL_GFX_REGCOUNT)
-    {
-        return pTDAL_GFXi_Pallete[i];
-    }
-
-    return NULL;
-}
-
 /*===========================================================================
  *
  * TDAL_GFX_RegionTransparencySet
@@ -838,7 +796,7 @@ tTDAL_GFX_Error   TDAL_GFX_RegionTransparencySet   (tTDAL_GFX_RegionHandle   reg
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "There is mess with region handle bookkeeping!\n", regionHandle));
     }
 
-    gop_result = MApi_GOP_GWIN_SetBlending(GeWinId, TDAL_GFX_RgnDesc[i].fbFmt == E_MS_FMT_ARGB8888, alpha);
+    gop_result = MApi_GOP_GWIN_SetBlending(GeWinId, TRUE, alpha);
     if (gop_result != GOP_API_SUCCESS)
     {
         error = eTDAL_GFX_DRIVER_ERROR;
@@ -881,15 +839,7 @@ void TDAL_GFXm_ClearRegionFromDisplay(tTDAL_GFX_RegionHandle regionHandle, bool 
             destinationBuffer.u32Height     = DstFBAttr.height;
             destinationBuffer.u32Width      = DstFBAttr.width;
             destinationBuffer.u32Pitch      = DstFBAttr.pitch;
-            gop_result = MApi_GFX_SetDstBufferInfo(&destinationBuffer, 0);
-			if (gop_result != GFX_SUCCESS)
-            {
-                mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GFX_SetDstBufferInfo: failure %d\n", gop_result));
-            } 
-			else
-			{
-				mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[%s %d]addr=0x%x,pitch=0x%x,height=%d,width=%d,colorfmt=%d\n",__FUNCTION__,__LINE__,destinationBuffer.u32Addr,destinationBuffer.u32Pitch,destinationBuffer.u32Height,destinationBuffer.u32Width,destinationBuffer.u32ColorFmt));
-			}
+            MApi_GFX_SetDstBufferInfo(&destinationBuffer, 0);
 
             x = TDAL_GFX_RgnDesc[i].offSet.x;
             y = TDAL_GFX_RgnDesc[i].offSet.y;
@@ -1058,19 +1008,15 @@ bool   TDAL_GFXm_ConvertSrcAreaToDstActiveArea_Optimized(
 bool   TDAL_GFXm_RegionHideAll(tTDAL_DISP_LayerId Id)
 {
     int i;
-    //uint8_t gopId;
+    uint8_t gopId;
     for(i = 0; i < kTDAL_GFX_REGCOUNT; i++)
     {
          if (TDAL_GFX_RgnDesc[i].used)
          {
-			//gopId = TDAL_DISPm_LayerGOPDesc(TDAL_GFX_RgnDesc[i].layerHandle);
-			//if (gopId == Id)
-			if (TDAL_DISPm_LayerId(TDAL_GFX_RgnDesc[i].layerHandle) == Id)
+			gopId = TDAL_DISPm_LayerGOPDesc(TDAL_GFX_RgnDesc[i].layerHandle);
+			if (gopId == Id)
 			{
-				if (TDAL_GFX_RgnDesc[i].visible)
-				{
-					MApi_GOP_GWIN_Enable( TDAL_GFX_RgnDesc[i].GeWinId, FALSE);
-				}
+				MApi_GOP_GWIN_Enable( TDAL_GFX_RgnDesc[i].GeWinId, FALSE);
 			}
          }
     }
@@ -1088,19 +1034,15 @@ bool   TDAL_GFXm_RegionHideAll(tTDAL_DISP_LayerId Id)
 bool   TDAL_GFXm_RegionShowAll(tTDAL_DISP_LayerId Id)
 {
     int i;
-    //uint8_t gopId;
+    uint8_t gopId;
     for(i = 0; i < kTDAL_GFX_REGCOUNT; i++)
     {
          if (TDAL_GFX_RgnDesc[i].used)
          {
-			//gopId = TDAL_DISPm_LayerGOPDesc(TDAL_GFX_RgnDesc[i].layerHandle);
-			//if (gopId == Id)
-			if (TDAL_DISPm_LayerId(TDAL_GFX_RgnDesc[i].layerHandle) == Id)
+			gopId = TDAL_DISPm_LayerGOPDesc(TDAL_GFX_RgnDesc[i].layerHandle);
+			if (gopId == Id)
 			{
-				if (TDAL_GFX_RgnDesc[i].visible)
-				{
-					MApi_GOP_GWIN_Enable( TDAL_GFX_RgnDesc[i].GeWinId, TRUE);
-				}
+				MApi_GOP_GWIN_Enable( TDAL_GFX_RgnDesc[i].GeWinId, TRUE);
 			}
          }
     }    
@@ -1181,16 +1123,29 @@ tTDAL_GFX_Color *TDAL_GFXm_GetCurPallete(uint8_t index)
 
 tTDAL_GFX_Error TDAL_GFXm_CreateFB(uint8_t *frameBufferId, uint32_t regionDescriptor, tTDAL_GFX_Size *size, tTDAL_GFX_Point *offset, uint16_t fbFmt)
 {
+    uint32_t width;
+    uint32_t remainder;
+
     mTBOX_FCT_ENTER("TDAL_GFXm_CreateFB");
+
+    width = size->width;
+
+    remainder = width % FB_ALIGN_CONSTANT;
+    if (remainder != 0)
+    {
+        width += ( FB_ALIGN_CONSTANT - remainder);
+    }
 
     TDAL_GFX_RgnDesc[regionDescriptor].alpha            = 0;
     TDAL_GFX_RgnDesc[regionDescriptor].used             = true;
-    TDAL_GFX_RgnDesc[regionDescriptor].visible = false;
-    TDAL_GFX_RgnDesc[regionDescriptor].offSet           = *offset;
-    TDAL_GFX_RgnDesc[regionDescriptor].size             = *size;
+    TDAL_GFX_RgnDesc[regionDescriptor].offSet.x         = offset->x;
+    TDAL_GFX_RgnDesc[regionDescriptor].offSet.y         = offset->y;
+    TDAL_GFX_RgnDesc[regionDescriptor].size.width       = width;
+    TDAL_GFX_RgnDesc[regionDescriptor].size.height      = size->height;    
     TDAL_GFX_RgnDesc[regionDescriptor].GeWinId          = -1;
     TDAL_GFX_RgnDesc[regionDescriptor].layerHandle      = MSTAR_INVALID_LAYER_HANDLE;
-    TDAL_GFX_RgnDesc[regionDescriptor].fbFmt = fbFmt;
+    TDAL_GFX_RgnDesc[regionDescriptor].frameBufferId    = 0xFF;
     
     mTBOX_RETURN(eTDAL_GFX_NO_ERROR);
 }
+

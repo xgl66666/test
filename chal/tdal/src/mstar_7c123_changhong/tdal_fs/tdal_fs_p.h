@@ -57,6 +57,7 @@ IMPORT   tTDAL_FS_Error   pTDAL_FS_VFS_Term(void);
 
    tTDAL_FS_Error      mTDAL_FS_PVR_NotifyRecordedContent(uint8_t *pMountPoint, uint32_t sizeKB);
 
+IMPORT   tTDAL_FS_Error mTDAL_FS_MP_GetFileName(uint8_t* pFileName);
 #ifdef   __cplusplus
 }
 #endif

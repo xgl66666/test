@@ -412,8 +412,6 @@ LOCAL   void   p_TDAL_TSSOURCE_STPTI_EventCallback(   STEVT_CallReason_t   Reaso
    TDAL_LockMutex(   TDAL_TSSOURCE_Start_Stop   );
 
    pst_eventdata = (STPTI_EventData_t   *)   EventData;
-   /*if   (   pst_eventdata != NULL   )
-      printf("*EventData.SlotHandle = 0x%x\n", pst_eventdata->SlotHandle   );*/
    if   (   Event == STPTI_EVENT_BUFFER_OVERFLOW_EVT   )
    {
       mTBOX_TRACE((kTBOX_NIV_CRITICAL, "STPTI_EventCallback:   BUFFER_OVERFLOW   event   from   %s\n",

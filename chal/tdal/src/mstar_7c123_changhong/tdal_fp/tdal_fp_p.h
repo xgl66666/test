@@ -22,7 +22,12 @@ extern   "C"   {
 /*******************************************************/
 /*          Defines                     */
 /*******************************************************/
-
+#define SAR_CHANNEL_0 0
+#define SAR_CHANNEL_1 1
+#define SAR_CHANNEL_2 2
+#define IO_NUM_LED_GREEN_LOCK 90//PAD_PM_GPIO1 [FP_DOUT]
+#define IO_NUM_LED_RED_POWER 91//PAD_PM_GPIO2 [FP_CLK]
+#define IO_NUM_LED_YELLOW_STANDBY 92//PAD_PM_GPIO3 [FP_STB]
 /*******************************************************/
 /*          Macros                         */
 /*******************************************************/
@@ -40,19 +45,6 @@ extern   "C"   {
 /*******************************************************/
 tTDAL_FP_ErrorCode   TDAL_FP_key_Init(void);
 tTDAL_FP_ErrorCode   TDAL_FP_key_Terminate(void);
-typedef enum
-{
-	CHDRV_FP_LED_RED,				///< 红色指示灯
-	CHDRV_FP_LED_YELLOW,			///< 黄色指示灯
-	CHDRV_FP_LED_GREEN,				///< 绿色指示灯
-}CHDRV_FP_LAMP_TYPE_e;
-///@brief LED灯状态定义
-typedef enum
-{
-	CHDRV_FP_LAMP_ON,			///< 开
-	CHDRV_FP_LAMP_OFF,			///< 关
-	CHDRV_FP_LAMP_STATE_MAX		///< 错误判断
-}CHDRV_FP_LAMP_STATE_e;
 
 
 #ifdef   __cplusplus

@@ -79,6 +79,7 @@ mTBOX_SET_MODULE(eTDAL_DMD);
 //  Local Variables
 //-------------------------------------------------------------------------------------------------
 LOCAL bool TDAL_DMDi_bFirstInitDone = false;
+LOCAL bool TDAL_DMDi_bFirstTuneDone = false;
 LOCAL tTDAL_DMD_Front_End TDAL_DMDi_pstFE[kTDAL_DMD_MAX_FRONT_END];
 LOCAL tTDAL_DMD_TerSourceState TDAL_DMDi_SourceState =
 		eTDAL_DMD_CFG_SOURCE_IS_DTV;
@@ -658,6 +659,7 @@ tTDAL_DMD_Error TDAL_DMD_CloseFEInstance(tTDAL_DMD_FE eFeID)
 #ifdef   MEDIUM_SAT
 		TDAL_DMDi_pstFE[eFeID].bSatConfigOLBandDone = false;
 #endif
+                TDAL_DMDi_bFirstTuneDone = false;
 	}
 
 	mTBOX_RETURN(eError);
@@ -904,11 +906,6 @@ tTDAL_DMD_Error TDAL_DMD_GetTSReliability(tTDAL_DMD_FE eFeID,
 			{
 				*pTSReliability = 0;
 			}
-
-			printf(
-					"freq   %d   Quality   %d   BER   %d   ->   %d.%dx10**-%d   reliability   %d\r\n",
-					psInfo->TunFrequency, qualityToUse, berToUse, *pQuo, *pRem,
-					*pExp, *pTSReliability);
 			mTBOX_TRACE((kTBOX_NIV_2,"[TDAL_DMD_GetTSReliability]   freq   %d   Quality   %d   BER   %d   ->   %d.%dx10**-%d   reliability   %d\n", psInfo->TunFrequency, qualityToUse, berToUse, *pQuo,*pRem,*pExp, *pTSReliability));
 		}
 	}
@@ -930,7 +927,6 @@ tTDAL_DMD_Error TDAL_DMD_GetTSReliability(
 		uint32_t *pRem,
 		int32_t *pExp)
 {
-	printf("NOT IMPLEMENTED....TDAL_DMD_GetTSReliability.....\n");
 	return eTDAL_DMD_NO_ERROR;
 }
 #endif   /*#if   !defined(TS_RELABILITY_USE_LEVEL_QUALITY_BER)*/
@@ -1024,8 +1020,8 @@ tTDAL_DMD_Error TDAL_DMD_GetInfo(tTDAL_DMD_FE eFeID, tTDAL_DMD_Info *psInfo)
 		//pParam->CabParam.u8TuneFreqOffset;
 
                 EN_LOCK_STATUS eDemodstatus = E_DEMOD_CHECKING;
-				MApi_DigiTuner_GetLock(0, &eDemodstatus);
-		if (E_DEMOD_LOCK  != eDemodstatus)
+    MApi_DigiTuner_GetLock(0, &eDemodstatus);
+		if (E_DEMOD_LOCK != eDemodstatus)
 		{
 			mTBOX_TRACE((kTBOX_NIV_WARNING, "MApi_DigiTuner_GetLock() returned FALSE.\n"));
 			psInfo->CarrierStatus = eTDAL_DMD_LOCK_FAILED;
@@ -1143,7 +1139,7 @@ tTDAL_DMD_Error TDAL_DMD_Tune(tTDAL_DMD_FE eFeID, tTDAL_DMD_TunData *psTunData,
 		{
 			mTBOX_TRACE((kTBOX_NIV_1,"[TDAL_DMD_TUNE] Tune request queued"));
 		}
-
+                TDAL_DMDi_bFirstTuneDone = true;
 	}
 
 	mTBOX_RETURN(eError);
@@ -1162,7 +1158,7 @@ tTDAL_DMD_Error TDAL_DMD_Tune(tTDAL_DMD_FE eFeID, tTDAL_DMD_TunData *psTunData,
 tTDAL_DMD_Error TDAL_DMD_Unlock(tTDAL_DMD_FE eFeID)
 {
 	tTDAL_DMD_Error eError = eTDAL_DMD_NO_ERROR;
-	MS_BOOL locked, queueResult;
+	MS_BOOL retLocked, queueResult;
 
 #if   1
 	tTDAL_DMD_FrontEndMsgQStruct pstFrontEndMsg;
@@ -1180,19 +1176,19 @@ tTDAL_DMD_Error TDAL_DMD_Unlock(tTDAL_DMD_FE eFeID)
 	mLockAccess(TDAL_DMDi_pstFE[eFeID].pFrontEndAccess);
 
         EN_LOCK_STATUS eDemodstatus = E_DEMOD_CHECKING;
-	MApi_DigiTuner_GetLock(0, &eDemodstatus);
-	if (E_DEMOD_LOCK  != eDemodstatus)
-	{
-		locked = FALSE;
-	}
-	else
-	{
-		locked = TRUE;
-	}
-	if (locked == FALSE || TDAL_DMDi_pstFE[eFeID].eTdalDmdActionInProgress == eTDAL_DMD_FRONT_END_ACTION_NONE)
+	retLocked = MApi_DigiTuner_GetLock((MS_U8)eFeID, &eDemodstatus);
+
+    // why need check eTdalDmdActionInProgress??
+    // common to avoid to showing Assertion failed (ErrCodeDMD == eDMD_NO_ERROR) in FILE cabinstall_dmd.c
+	if ((eDemodstatus != E_DEMOD_LOCK && retLocked) /*|| TDAL_DMDi_pstFE[eFeID].eTdalDmdActionInProgress == eTDAL_DMD_FRONT_END_ACTION_NONE*/)
 	{
 		eError = eTDAL_DMD_NOT_LOCKED;
 	}
+        else if((TDAL_DMDi_bFirstTuneDone == false) && (eError == E_DEMOD_LOCK))
+        {        
+                eError = eTDAL_DMD_NOT_LOCKED;
+        }        
+
 
 #if   1
 	/*   Send   the   command   to   the   management   task   */
@@ -1602,7 +1598,7 @@ LOCAL void TDAL_DMD_TuneTask(
 			break;
 		case eTDAL_DMD_FRONT_END_ACTION_TUNNING_IN_PROGRESS:
 			MApi_DigiTuner_GetLock(0, &eDemodstatus);
-			if (E_DEMOD_LOCK  == eDemodstatus)
+			if (E_DEMOD_LOCK == eDemodstatus)
 			{
 				mTBOX_TRACE((kTBOX_NIV_1, "[TDAL_DMDi_FrontEndManagementTask] Tuner locked\n"));
 				TDAL_DMDi_NotifyStatus(ucFrontEnd, eTDAL_DMD_LOCKED);
@@ -1626,7 +1622,7 @@ LOCAL void TDAL_DMD_TuneTask(
 			break;
 		case eTDAL_DMD_FRONT_END_ACTION_SCANNING_IN_PROGRESS:
 			MApi_DigiTuner_GetLock(0, &eDemodstatus);
-			if (E_DEMOD_LOCK  == eDemodstatus)
+			if (E_DEMOD_LOCK == eDemodstatus)
 			{
 				mTBOX_TRACE((kTBOX_NIV_1, "[TDAL_DMDi_FrontEndManagementTask] Tuner locked\n"));
 				TDAL_DMDi_NotifyStatus(ucFrontEnd, eTDAL_DMD_FOUND);
@@ -1648,8 +1644,8 @@ LOCAL void TDAL_DMD_TuneTask(
 			}
 			break;
 		case eTDAL_DMD_FRONT_END_ACTION_TUNED:
-					MApi_DigiTuner_GetLock(0, &eDemodstatus);
-			if (E_DEMOD_LOCK  != eDemodstatus)
+			MApi_DigiTuner_GetLock(0, &eDemodstatus);
+			if (E_DEMOD_LOCK != eDemodstatus)
 			{
 				mTBOX_TRACE((kTBOX_NIV_1, "Signal lost, sending SIGNAL LOST\n"));
 				TDAL_DMDi_NotifyStatus(ucFrontEnd, eTDAL_DMD_SIGNAL_LOST);
@@ -1681,8 +1677,8 @@ LOCAL void TDAL_DMD_TuneTask(
 			}
 			break;
 		case eTDAL_DMD_FRONT_END_ACTION_SILENT_TUNE:
-					MApi_DigiTuner_GetLock(0, &eDemodstatus);
-			if (E_DEMOD_LOCK  == eDemodstatus)
+			MApi_DigiTuner_GetLock(0, &eDemodstatus);
+			if (E_DEMOD_LOCK == eDemodstatus)
 			{
 				mTBOX_TRACE((kTBOX_NIV_1, "[TDAL_DMDi_FrontEndManagementTask] Tuner locked\n"));
 				TDAL_DMDi_NotifyStatus(ucFrontEnd, eTDAL_DMD_LOCKED);
@@ -1983,7 +1979,10 @@ TDAL_DMDi_QAM_Tune   (unsigned   char   ucFeID,
 		mTBOX_RETURN(bError);
 		break;
 	}
-
+        #if 1//tuner_debug
+        param.CabParam.eIQMode = CAB_IQ_NORMAL;
+        param.CabParam.eBandWidth = CAB_BW_8M;
+        #endif
 	bError = MApi_DigiTuner_Tune2RfCh(0, &param, FE_TUNE_MANUAL) == TRUE ? false : true;
 
 	mTBOX_TRACE((kTBOX_NIV_1, "Tune to (Freq) = (%ld), (Symbol rate) = (%d) Try Lock\n",

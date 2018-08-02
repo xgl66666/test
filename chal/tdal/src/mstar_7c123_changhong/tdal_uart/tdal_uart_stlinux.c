@@ -10,7 +10,7 @@
  *
  * Description           : UART HAL implementation
  * Target              : Linux
- * Author              : Julien Flatrès
+ * Author              : Julien FlatrÃ¨s
  * Date of creation      : 16 / 11 / 2004.
  *
  *******************************************************************************/

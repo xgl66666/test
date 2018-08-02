@@ -56,11 +56,17 @@ typedef enum
 #define PVR_FILE_LINEAR  0
 #define PVR_FILE_CIRCULAR  1
 #define APIPVR_PLAYBACK_SPEED_1X  1000
-#define PVR_FILE_SIZE_TO_STOP     (1*1024)   /* 1 MB space for USB reserved */
+#define PVR_FILE_SIZE_TO_STOP     (5*1024)   /* 5 MB space for USB reserved */
 #define PVR_FILE_CHUCK_MAX_SIZE  3*1024*1024 /* 3 GB chunk */
 #define PVR_THUMBNAIL_CAPTURE_TIME 30        /* number of seconds before thumbnail capture */
+#ifdef HD_ENABLE
+#define PVR_THUMBNAIL_CAPTURE_WIDTH 300      /* width of thumbnail */
+#define PVR_THUMBNAIL_CAPTURE_HEIGHT 170     /* height of thumbnail */
+#else
 #define PVR_THUMBNAIL_CAPTURE_WIDTH 160      /* width of thumbnail */
 #define PVR_THUMBNAIL_CAPTURE_HEIGHT 120     /* height of thumbnail */
+#endif
+
 #define MIN_TIME_SHIFT_DISK_SPACE_IN_KB (512*1024)  /* 512MB */
 #define INVALID_PID 0x1FFF
 #define PVR_IS_VALID_PID(x)  ((x!= 0)&& (x< INVALID_PID))
@@ -94,6 +100,12 @@ typedef struct tTDAL_PVR_Desc_t
     PVRProgramInfo_t *pPVRProgInfo;
 } tTDAL_PVR_Desc;
 
+typedef struct tTDAL_PVR_Rec_Filters_t
+{
+    uint8_t u8FilterID;
+    uint32_t u32PID;
+} tTDAL_PVR_Rec_Filters;
+
 #if(defined(ENABLE_STATICMEM_PVR) && (MEMORY_MAP == MMAP_128MB))
 
 #else
@@ -116,8 +128,8 @@ MS_BOOL TDAL_PVRm_KLADDER_FUNC(void);
 void    TDAL_PVRm_FreezeScreen(MS_BOOL bFrezon);
 MS_BOOL TDAL_PVRm_AllocateMem(int pvrId);
 MS_BOOL TDAL_PVRm_FreeMem(int pvrId);
-MS_BOOL TDAL_PVRm_BatchAllocateMem();
-MS_BOOL TDAL_PVRm_BatchFreeMem();
+MS_BOOL TDAL_PVRm_BatchAllocateMem(void);
+MS_BOOL TDAL_PVRm_BatchFreeMem(void);
 MS_BOOL TDAL_PVRm_GetRecIdx(MS_U8 *u8RecIdx, MS_BOOL bTimeshift);
 MS_BOOL TDAL_PVRm_GetRecMountPath(MS_BOOL bTimeshift, char *mountpath);
 MS_BOOL TDAL_PVRm_CheckUSB(char *mountPath);
@@ -128,9 +140,14 @@ MS_BOOL TDAL_PVRm_FileModePlay(MS_U32 u32VCodec, MS_U32 u32ACodec);
 void    TDAL_PVRm_PhyClose(void);
 APIPVR_ENCRYPTION_TYPE TDAL_PVRm_ConvEncrType(uint8_t eEncrType);
 void    TDAL_PVRm_SetCryptKey(uint8_t *u8Crypt);
-uint8_t* TDAL_PVRm_GetCryptKey();
+uint8_t* TDAL_PVRm_GetCryptKey(void);
 void TDAL_PVRi_CaptureWin(uint8_t eSource, uint32_t width, uint32_t height, char *filename);
 void TDAL_PVRi_PlaybackNextChunk(tTDAL_PVR_Desc *pPVRDesc, uint16_t curFileIdx);
 bool TDAL_PVRi_RecordNextChunk(tTDAL_PVR_Desc *pPVRDesc);
-
+bool TDAL_PVRm_ResetPVRRecFilters(void);
+tTDAL_PVR_Rec_Filters *TDAL_PVRm_GetPVRRecFilters(void);
+tTDAL_PVR_Error TDAL_PVRi_BackGround_Record_Start(void);
+tTDAL_PVR_Error TDAL_PVRi_BackGround_Record_Stop(void);
+MS_BOOL TDAL_PVRi_PlaybackSwitchChunk(void);
+MS_BOOL TDAL_PVRi_SeamlessPlayback(void);
 #endif /* TDAL_PVR_P_H_ */

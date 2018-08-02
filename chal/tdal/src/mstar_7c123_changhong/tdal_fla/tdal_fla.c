@@ -40,7 +40,9 @@
 #define		 MSFLASH_ACCESS_8_BITS  1
 #define		 MSFLASH_ACCESS_16_BITS 2
 
-
+#if !defined (PAIRING_KEY_ENCRYPTED)
+#define          PAIRING_KEY_ENCRYPTED   0
+#endif
 /****************************************************************************
  *  MACROS                                              *
  ****************************************************************************/
@@ -55,7 +57,7 @@ typedef   struct{
 
 
 
-#define CH_FLASH_MAP		(1)
+
 /****************************************************************************
  *  GLOBAL VARIABLES (GLOBAL/IMPORT)                            *
  ****************************************************************************/
@@ -65,26 +67,6 @@ LOCAL tTDAL_FLA_Partition  * TDAL_FLA_Partitions = NULL;
  * LOCAL   MODULE   VARIABLES   (MODULE/IMPORT)                        *
  ****************************************************************************/
 TDAL_mutex_id        TDAL_FLA_Mutex = NULL;
-#if CH_FLASH_MAP
-#define CH_FLASH_MAP_NUM (2)
-uint32_t g_flash_map_src[CH_FLASH_MAP_NUM][2] = {{0x780000,0x78ffff},{0x7A0000,0x7Affff} };
-uint32_t g_flash_map_dst[CH_FLASH_MAP_NUM] = {0x7E0000,0x7F0000  };
-
-TDAL_FLA_AddressMap(uint32_t   * rp_Address)
-{
-
-	int i = 0;
-	uint32_t fla_address = *rp_Address;
-	for(i = 0; i < CH_FLASH_MAP_NUM;i++)
-	{
-		if(fla_address >= g_flash_map_src[i][0] &&  fla_address <= g_flash_map_src[i][1] )
-		{
-			*rp_Address = (g_flash_map_dst[i] + (fla_address - g_flash_map_src[i][0]));
-		}
-	}
-
-}
-#endif
 /****************************************************************************
  *  LOCAL FILE VARIABLES (LOCAL)                               *
  ****************************************************************************/
@@ -94,7 +76,7 @@ LOCAL   int32_t             TDAL_FLA_AlreadyInitialized = 0;
 LOCAL   bool            TDAL_FLA_isPartitionSet = 0;
 LOCAL   bool            TDAL_FLA_Opened=FALSE;
 LOCAL   uint8_t               TDAL_FLA_NbPartition = 0;
-LOCAL   uint8_t             * TDAL_FLA_LayerBuffer = NULL;
+//LOCAL   uint8_t             * TDAL_FLA_LayerBuffer = NULL;
 
 LOCAL  uint32_t TDAL_FLA_BlockCount = 0;
 LOCAL  uint32_t TDAL_FLA_BlockSize = 0;
@@ -106,8 +88,7 @@ LOCAL bool mstarFlashInitialized = false;
  ****************************************************************************/
 bool   p_TDAL_FLA_CheckIfReadEnable(   uint32_t   Address, uint32_t   Size   );
 bool   p_TDAL_FLA_CheckIfWriteEnable(   uint32_t   Address, uint32_t   Size   );
-bool   p_TDAL_FLA_CheckValidAddress(uint32_t address);
-
+bool p_TDAL_FLA_CheckValidAddress(uint32_t address);
 
 /****************************************************************************
  *  FUNCTIONS DEFINITIONS (LOCAL/GLOBAL)                        *
@@ -172,8 +153,8 @@ tTDAL_FLA_ErrorCode   TDAL_FLA_Init()
 	TDAL_FLA_Partitions = TDAL_Malloc(TDAL_FLA_BlockCount * 9 * sizeof(tTDAL_FLA_Partition));
 	mTBOX_ASSERT(TDAL_FLA_Partitions != NULL);
 
-	TDAL_FLA_LayerBuffer = TDAL_Malloc(TDAL_FLA_BlockSize * sizeof(uint8_t));
-	mTBOX_ASSERT(TDAL_FLA_LayerBuffer != NULL);
+	//TDAL_FLA_LayerBuffer = TDAL_Malloc(TDAL_FLA_BlockSize * sizeof(uint8_t));
+	//mTBOX_ASSERT(TDAL_FLA_LayerBuffer != NULL);
 
 	address = /*BaseAddress*/   0;
 	for (i=0 ; i < TDAL_FLA_BlockCount; i++   )
@@ -251,12 +232,8 @@ tTDAL_FLA_ErrorCode   TDAL_FLA_SetPartition   (   uint8_t   nbPartition   ,
 	}
 
 	memcpy(TDAL_FLA_Partitions, partition, nbPartition * sizeof(tTDAL_FLA_Partition));
-	/* For backup NVM-in-flash strategy */
-	TDAL_FLA_Partitions[nbPartition].Rights = TDAL_FLA_READ_ENABLE | TDAL_FLA_WRITE_ENABLE;
-	TDAL_FLA_Partitions[nbPartition].StartAddress = 0x510000;
-	TDAL_FLA_Partitions[nbPartition].EndAddress = 0x520000;
 
-	TDAL_FLA_NbPartition = nbPartition + 1;
+	TDAL_FLA_NbPartition = nbPartition;
 	TDAL_FLA_isPartitionSet = 1;
 
 	mTBOX_RETURN(eTDAL_FLA_NO_ERROR);
@@ -288,8 +265,8 @@ tTDAL_FLA_ErrorCode   TDAL_FLA_Term   (void)
 	TDAL_Free(TDAL_FLA_Partitions);
 	TDAL_FLA_Partitions = NULL;
 
-	TDAL_Free(TDAL_FLA_LayerBuffer);
-	TDAL_FLA_LayerBuffer = NULL;
+	//TDAL_Free(TDAL_FLA_LayerBuffer);
+	//TDAL_FLA_LayerBuffer = NULL;
 
 	/*   Terminate   semaphore   for   api   lock   */
 	TDAL_DeleteMutex(TDAL_FLA_Mutex);
@@ -477,78 +454,6 @@ tTDAL_FLA_ErrorCode   TDAL_FLA_Close   (void)
  * Comment       :
  *
  **========================================================================**/
-tTDAL_FLA_ErrorCode   TDAL_FLA_Erase_OTA   (   uint32_t   Address, uint32_t   NumberToErase   )
-{
-	uint32_t        blockNumber;
-	uint32_t        startingBlockAddress;
-	uint32_t        blockSize;
-
-	mTBOX_FCT_ENTER("TDAL_FLA_Erase");
-
-	/*   check   right   access   */
-
-	TDAL_LockMutex(TDAL_FLA_Mutex);
-
-	/*   check   Address   parameter   */
-	blockNumber = TDAL_FLA_GetBlockNumber(Address);
-	startingBlockAddress = TDAL_FLA_GetBlockAddress(blockNumber);
-	Address = startingBlockAddress;
-
-	/*   check   NumberToErase   parameter   */
-	blockSize = TDAL_FLA_GetBlockSize(blockNumber);
-	NumberToErase = blockSize;
-	if   (blockSize != NumberToErase)
-	{
-		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "NumberToErase   doesn't   match   the   block   size\n"));
-		TDAL_UnlockMutex(TDAL_FLA_Mutex);
-		mTBOX_RETURN(eTDAL_FLA_BAD_PARAMETER);
-	}
-
-	/*   test   if   access   to   flash   memory   is   allowed   */
-	if(!TDAL_FLA_Opened)
-	{
-		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Flash   not   opened\n"));
-		TDAL_UnlockMutex(TDAL_FLA_Mutex);
-		mTBOX_RETURN(eTDAL_FLA_NOT_DONE);
-	}
-
-	if (NumberToErase > 0 &&
-			((p_TDAL_FLA_CheckValidAddress(Address + NumberToErase - 1) != true) ||
-			(p_TDAL_FLA_CheckValidAddress(Address) != true)))
-	{
-		mTBOX_TRACE((kTBOX_NIV_WARNING, "Address 0x%x not valid\n", Address + NumberToErase - 1));
-		TDAL_UnlockMutex(TDAL_FLA_Mutex);
-		mTBOX_RETURN(eTDAL_FLA_ERROR);
-	}
-
-	mTBOX_TRACE((kTBOX_NIV_1, "MDrv_SERFLASH_AddressErase adr 0x%x, num %d\n", Address, NumberToErase));
-	
-	if (FALSE == MDrv_SERFLASH_AddressErase(Address, NumberToErase, TRUE))
-	{
-		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Unable   to   erase   a   flash   block\n"));
-		TDAL_UnlockMutex(TDAL_FLA_Mutex);
-		mTBOX_RETURN(eTDAL_FLA_ERROR);
-	}
-	else
-	{
-		mTBOX_TRACE((kTBOX_NIV_1, "erase   flash   block   @0x%x   s=%d\n", Address, NumberToErase));
-	}
-
-	TDAL_UnlockMutex(TDAL_FLA_Mutex);
-	mTBOX_RETURN(eTDAL_FLA_NO_ERROR);
-}
-
-
-/**========================================================================**
- * Function Name : TDAL_FLA_Erase
- *
- * Description   :
- *
- * Side effects  :
- *
- * Comment       :
- *
- **========================================================================**/
 tTDAL_FLA_ErrorCode   TDAL_FLA_Erase   (   uint32_t   Address, uint32_t   NumberToErase   )
 {
 	uint32_t        blockNumber;
@@ -566,9 +471,6 @@ tTDAL_FLA_ErrorCode   TDAL_FLA_Erase   (   uint32_t   Address, uint32_t   Number
 			mTBOX_RETURN(   ERROR_WHEN_NO_RIGHT   );
 		}
 	}
-#if CH_FLASH_MAP
-	TDAL_FLA_AddressMap(&Address);
-#endif
 
 	TDAL_LockMutex(TDAL_FLA_Mutex);
 
@@ -583,6 +485,7 @@ tTDAL_FLA_ErrorCode   TDAL_FLA_Erase   (   uint32_t   Address, uint32_t   Number
 	}
 
 	/*   check   NumberToErase   parameter   */
+	#if 0//skip here for supporting erase bytes instead of blocks
 	blockSize = TDAL_FLA_GetBlockSize(blockNumber);
 	if   (blockSize != NumberToErase)
 	{
@@ -590,7 +493,7 @@ tTDAL_FLA_ErrorCode   TDAL_FLA_Erase   (   uint32_t   Address, uint32_t   Number
 		TDAL_UnlockMutex(TDAL_FLA_Mutex);
 		mTBOX_RETURN(eTDAL_FLA_BAD_PARAMETER);
 	}
-
+	#endif
 	/*   test   if   access   to   flash   memory   is   allowed   */
 	if(!TDAL_FLA_Opened)
 	{
@@ -609,7 +512,6 @@ tTDAL_FLA_ErrorCode   TDAL_FLA_Erase   (   uint32_t   Address, uint32_t   Number
 	}
 
 	mTBOX_TRACE((kTBOX_NIV_1, "MDrv_SERFLASH_AddressErase adr 0x%x, num %d\n", Address, NumberToErase));
-	
 	if (FALSE == MDrv_SERFLASH_AddressErase(Address, NumberToErase, TRUE))
 	{
 		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Unable   to   erase   a   flash   block\n"));
@@ -623,116 +525,6 @@ tTDAL_FLA_ErrorCode   TDAL_FLA_Erase   (   uint32_t   Address, uint32_t   Number
 
 	TDAL_UnlockMutex(TDAL_FLA_Mutex);
 	mTBOX_RETURN(eTDAL_FLA_NO_ERROR);
-}
-
-/**========================================================================**
- * Function Name : TDAL_FLA_Read
- *
- * Description   :
- *
- * Side effects  :
- *
- * Comment       :
- *
- **========================================================================**/
-uint32_t   TDAL_FLA_Read_OTA   (   uint32_t   Address   ,
-		uint8_t * Buffer   ,
-		uint32_t   NumberToRead   )
-{
-	bool   ErrCode;
-	uint32_t   nbActualRead; /*   returned    */
-	size_t   realCount;   /*   real   number   of   bytes   read        */
-	uint32_t   realAddr;   /*   real   start   address   of   read        */
-	uint32_t   begin;       /*   number   bytes   between   addr   and   realAddr   */
-	uint32_t   end;       /*   number   bytes   between   (addr+count)      */
-	/*        and   (realAddr+realCount)   */
-
-	mTBOX_FCT_ENTER("TDAL_FLA_Read");
-
-	if(   NumberToRead == 0 || Buffer == NULL)
-	{
-		mTBOX_TRACE((kTBOX_NIV_WARNING, "Bad   Parameter   ERROR\n"));
-		mTBOX_RETURN   (0);
-	}
-
-	TDAL_LockMutex(TDAL_FLA_Mutex);
-
-	begin=(int)Address % (int)MSFLASH_ACCESS_8_BITS;
-	end=(int)(Address + NumberToRead) % (int)MSFLASH_ACCESS_8_BITS;
-	mTBOX_TRACE((kTBOX_NIV_1,"begin=%d   end=%d\n",begin,end));
-
-	realCount = NumberToRead;
-
-	if   (begin > 0)
-	{
-		realAddr = (uint32_t)(   Address   -   begin   );
-		realCount = realCount + (uint32_t)   begin;
-	}
-	else
-	{
-		realAddr = Address;
-	}
-	if   (end > 0)
-	{
-		realCount = realCount + (MSFLASH_ACCESS_8_BITS   -   end);
-	}
-
-	if (NumberToRead > 0 &&
-			((p_TDAL_FLA_CheckValidAddress(realAddr + realCount - 1) != true) ||
-			(p_TDAL_FLA_CheckValidAddress(realAddr) != true))
-	)
-	{
-		mTBOX_TRACE((kTBOX_NIV_WARNING, "Address %x not valid\n", realAddr + realCount - 1));
-		TDAL_UnlockMutex(TDAL_FLA_Mutex);
-		mTBOX_RETURN(0);
-	}
-
-	mTBOX_TRACE((kTBOX_NIV_1,"Read   %u   octets   at   address   [0x%x]\n",NumberToRead,Address));
-
-
-	/***************************************************************************************/
-	/*   While watching live, if Flash has to be accessed (Timer DB update or whatever...)  */
-	/*   this task_lock()/task_unlock() is causing Video Artefacts!!!            */
-	/***************************************************************************************/
-	//STOS_TaskLock();
-
-	ErrCode = MDrv_SERFLASH_Read(realAddr,realCount,TDAL_FLA_LayerBuffer);
-	nbActualRead = realCount;
-
-	if(   ErrCode == FALSE)
-	{
-		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Unable   to   read   flash\n"));
-		TDAL_UnlockMutex(   TDAL_FLA_Mutex   );
-		mTBOX_RETURN(0);
-	}
-	else
-	{
-		mTBOX_TRACE((kTBOX_NIV_1, "read   flash[Addr@0x%x   s=%d]   OK\n", realAddr, realCount));
-	}
-
-	if   (nbActualRead != realCount)
-	{
-		mTBOX_TRACE((kTBOX_NIV_WARNING, "nbActualRead != realCount   \n"));
-		TDAL_UnlockMutex(   TDAL_FLA_Mutex   );
-		mTBOX_RETURN(0);
-	}
-
-	memcpy(Buffer,&(TDAL_FLA_LayerBuffer[begin]),NumberToRead);
-
-	nbActualRead=nbActualRead-begin;
-	if   (end > 0)
-	{
-		nbActualRead=nbActualRead-(MSFLASH_ACCESS_8_BITS-end);
-	}
-	if   (nbActualRead != NumberToRead)
-	{
-		mTBOX_TRACE((kTBOX_NIV_WARNING, "nbActualRead   %u != count   %u\n",nbActualRead,NumberToRead));
-		TDAL_UnlockMutex(TDAL_FLA_Mutex);
-		mTBOX_RETURN(0);
-	}
-
-	TDAL_UnlockMutex(TDAL_FLA_Mutex);
-	mTBOX_RETURN(nbActualRead);
 }
 
 /**========================================================================**
@@ -767,9 +559,7 @@ uint32_t   TDAL_FLA_Read   (   uint32_t   Address   ,
 			mTBOX_RETURN(   0   );
 		}
 	}
-#if CH_FLASH_MAP
-	TDAL_FLA_AddressMap(&Address);
-#endif
+
 	if(   NumberToRead == 0 || Buffer == NULL)
 	{
 		mTBOX_TRACE((kTBOX_NIV_WARNING, "Bad   Parameter   ERROR\n"));
@@ -817,7 +607,7 @@ uint32_t   TDAL_FLA_Read   (   uint32_t   Address   ,
 	/***************************************************************************************/
 	//STOS_TaskLock();
 
-	ErrCode = MDrv_SERFLASH_Read(realAddr,realCount,TDAL_FLA_LayerBuffer);
+	ErrCode = MDrv_SERFLASH_Read(realAddr,realCount,Buffer);
 	nbActualRead = realCount;
 
 	if(   ErrCode == FALSE)
@@ -838,7 +628,7 @@ uint32_t   TDAL_FLA_Read   (   uint32_t   Address   ,
 		mTBOX_RETURN(0);
 	}
 
-	memcpy(Buffer,&(TDAL_FLA_LayerBuffer[begin]),NumberToRead);
+	//memcpy(Buffer,&(TDAL_FLA_LayerBuffer[begin]),NumberToRead);
 
 	nbActualRead=nbActualRead-begin;
 	if   (end > 0)
@@ -852,239 +642,19 @@ uint32_t   TDAL_FLA_Read   (   uint32_t   Address   ,
 		mTBOX_RETURN(0);
 	}
 
+#if defined(KAON_MSD5C59_BOOTLOADER) && (PAIRING_KEY_ENCRYPTED == 1)
+	/* If PK is encrypted, decrypt it */
+	if (Address == 0x160 && (Buffer[0] != 0x00 || Buffer[1] != 0x00 || Buffer[2] != 0x01 || Buffer[3] != 0x6C))
+	{
+		unsigned char PK_decrypted[NumberToRead];
+		if (TDAL_SEC_Decryptdata(Buffer, PK_decrypted, NumberToRead) == 0)
+		{
+			memcpy(Buffer, PK_decrypted, NumberToRead);
+		}
+	}
+#endif
 	TDAL_UnlockMutex(TDAL_FLA_Mutex);
 	mTBOX_RETURN(nbActualRead);
-}
-
-/**========================================================================**
- * Function Name : TDAL_FLA_Write
- *
- * Description   :
- *
- * Side effects  :
- *
- * Comment       :
- *
- **========================================================================**/
-uint32_t   TDAL_FLA_Write_OTA   (   uint32_t   Address   ,
-		uint8_t*   Buffer   ,
-		uint32_t   NumberToWrite   )
-{
-	uint32_t      nbActualWrite;
-	uint32_t      nbActualRead;
-	uint32_t      realAddr;   /*   real   start   address   of   write      */
-	uint32_t      realCount;   /*   real   number   of   bytes   write        */
-	uint32_t      begin;       /*   number   bytes   between   addr   and   realAddr   */
-	uint32_t      end;       /*   number   bytes   between   (addr+count)      */
-	/*        and   (realAddr+realCount)   */
-	uint32_t      BlockBaseAddress;
-	bool   ms_err = TRUE;
-	/*uint32_t      Blockbyteswritten;*/
-
-	mTBOX_FCT_ENTER("TDAL_FLA_Write()");
-
-
-
-	if(NumberToWrite == 0 || Buffer == NULL)
-	{
-		mTBOX_TRACE((kTBOX_NIV_WARNING, "Bad   Parameter   ERROR\n"));
-		mTBOX_RETURN(   0   );
-	}
-
-	TDAL_LockMutex(TDAL_FLA_Mutex);
-
-	BlockBaseAddress = (Address   /   TDAL_FLA_BlockSize) * TDAL_FLA_BlockSize;
-
-	begin      =(int)Address % (int)MSFLASH_ACCESS_8_BITS;
-	end      =(int)(Address + NumberToWrite) % (int)MSFLASH_ACCESS_8_BITS;
-	mTBOX_TRACE((kTBOX_NIV_4,"begin=%d   end=%d\n",begin,end));
-
-	realCount = NumberToWrite;
-	if   (begin > 0)
-	{
-		/*   align   realAddr   and   update   realCount   */
-		realAddr = (uint32_t)(Address   -   begin);
-		realCount = realCount + (uint32_t)begin;
-	}
-	else
-	{
-		/*   addr   is   already   aligned   */
-		realAddr = Address;
-	}
-	if   (end > 0)
-	{
-		/*   end   of   buffer   is   not   aligned   :   update   realCount   */
-		realCount = realCount + (uint32_t)(MSFLASH_ACCESS_8_BITS   -   end);
-	}
-
-	if (realCount > 0 &&
-			((p_TDAL_FLA_CheckValidAddress(realAddr + realCount - 1) != true) ||
-			(p_TDAL_FLA_CheckValidAddress(realAddr) != true))
-	)
-	{
-		mTBOX_TRACE((kTBOX_NIV_WARNING, "Address 0x%x not valid\n", realAddr + realCount - 1));
-		TDAL_UnlockMutex(TDAL_FLA_Mutex);
-		mTBOX_RETURN(0);
-	}
-	/*   read   to   get   bytes   before   and   after   buffer   in   TDAL_FLA_LayerBuffer   */
-
-	/***************************************************************************************/
-	/*   While watching live, if Flash has to be accessed (Timer DB update or whatever...)  */
-	/*   this task_lock()/task_unlock() is causing Video Artefacts!!!            */
-	/***************************************************************************************/
-	//STOS_TaskLock();
-	/*ms_err = STFLASH_Read(   TDAL_FLA_STFlash_Hndl   ,
-			(uint32_t)(realAddr   ),
-			TDAL_FLA_LayerBuffer,
-			realCount,
-			&nbActualRead);*/
-	mTBOX_TRACE((kTBOX_NIV_1, "Flash Read: realAddr = 0x%x, realCount = %d\n", realAddr, realCount));
-
-	//ms_err = MDrv_SERFLASH_Read(realAddr,realCount,TDAL_FLA_LayerBuffer);
-	ms_err = MDrv_SERFLASH_Read(BlockBaseAddress,TDAL_FLA_BlockSize,TDAL_FLA_LayerBuffer);
-		nbActualRead = realCount;
-	//STOS_TaskUnlock();
-
-	if(   ms_err == FALSE)
-	{
-		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MSFLASH_Read   failed\n"   ));
-		TDAL_UnlockMutex(   TDAL_FLA_Mutex   );
-		mTBOX_RETURN(   0   );
-	}
-
-	if   (   nbActualRead != realCount   )
-	{
-		mTBOX_TRACE((kTBOX_NIV_WARNING, "nbActualRead != realCount   \n"));
-		TDAL_UnlockMutex(   TDAL_FLA_Mutex   );
-		mTBOX_RETURN(0);
-	}
-
-	mTBOX_TRACE((kTBOX_NIV_1,"Write   %u   octets   at   address   [0x%x]\n", NumberToWrite,Address));
-
-	/*   copy   bytes   from   buffer   to   TDAL_FLA_LayerBuffer   */
-	//memcpy(&(TDAL_FLA_LayerBuffer[begin]),Buffer,NumberToWrite);
-	memcpy(&(TDAL_FLA_LayerBuffer[realAddr - BlockBaseAddress]),Buffer,NumberToWrite);
-
-	/*   write   TDAL_FLA_LayerBuffer   */
-
-	/***************************************************************************************/
-	/*   While watching live, if Flash has to be accessed (Timer DB update or whatever...)  */
-	/*   this task_lock()/task_unlock() is causing Video Artefacts!!!            */
-	/***************************************************************************************/
-	//STOS_TaskLock();
-
-	/*ms_err = STFLASH_Write(   TDAL_FLA_STFlash_Hndl   ,
-			(uint32_t)(realAddr   ),
-			TDAL_FLA_LayerBuffer,
-			realCount,
-			&nbActualWrite);*/
-			
-	TDAL_FLA_Erase_OTA(realAddr,realCount);
-	mTBOX_TRACE((kTBOX_NIV_1, "Flash Writing: realAddr = 0x%x, realCount = %d\n", realAddr,realCount));
-	ms_err = MDrv_SERFLASH_Write(BlockBaseAddress,TDAL_FLA_BlockSize,TDAL_FLA_LayerBuffer);
-	nbActualWrite=realCount;
-	//STOS_TaskUnlock();
-
-	if(   ms_err == FALSE)
-	{
-		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MSFLASH_Write   failed \n"));
-		TDAL_UnlockMutex(TDAL_FLA_Mutex);
-		mTBOX_RETURN(   0   );
-	}
-	else
-	{
-		mTBOX_TRACE((kTBOX_NIV_1, "write   flash[Addr@0x%x   s=%d]   OK\n", realAddr, realCount));
-	}
-
-
-	if   (nbActualWrite != realCount)
-	{
-		mTBOX_TRACE((kTBOX_NIV_WARNING, "nbActualWrite != realCount   \n"));
-		TDAL_UnlockMutex(TDAL_FLA_Mutex);
-		mTBOX_RETURN(   0   );
-	}
-	mTBOX_TRACE((kTBOX_NIV_1,"Number   bytes   written   :   %u   \n", nbActualWrite));
-
-	nbActualWrite=nbActualWrite-begin;
-	if   (end > 0)
-	{
-		nbActualWrite=nbActualWrite-(MSFLASH_ACCESS_8_BITS-end);
-	}
-
-	if   (nbActualWrite != NumberToWrite)
-	{
-		mTBOX_TRACE((kTBOX_NIV_WARNING, "nbActualWrite != count   \n"));
-		TDAL_UnlockMutex(TDAL_FLA_Mutex);
-		mTBOX_RETURN(   0   );
-	}
-
-#if   0
-	/*-----------------------------------------------------------*/
-	/*   Verification   that   the   write   operation   has   been   successful   */
-	/*-----------------------------------------------------------*/
-	/*   read   to   get   bytes   before   and   after   buffer   in   TDAL_FLA_LayerBuffer   */
-	if(   MDrv_SERFLASH_Read(realAddr,realCount,TDAL_FLA_LayerBuffer) == FALSE)
-	{
-		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Unable   to   read   flash\n"));
-		TDAL_UnlockMutex(TDAL_FLA_Mutex);
-		mTBOX_RETURN(0);
-	}
-
-#if   0
-	{
-		uint32_t   count;
-
-		for   (count=0;count<NumberToWrite;count++)
-		{
-			if(*(TDAL_FLA_LayerBuffer+begin+count) != *(Buffer+count))
-			{
-				printf("EEE   Base   Address   0x%x, begin   %d   Address   0x%x, Write   0x%x, Read   0x%x, \r\nrealCount   %d, nbActualRead,   %d   nbActualWrite   %d, NumberToWrite   %d   \r\n",
-						realAddr,
-						begin,
-						realAddr + begin + count,
-						*(Buffer+count), *(TDAL_FLA_LayerBuffer+begin+count),
-						realCount, nbActualRead,
-						nbActualWrite, NumberToWrite);
-				TDAL_UnlockMutex(TDAL_FLA_Mutex);
-				/*      mTBOX_RETURN(0);*/
-			}
-		}
-
-	}
-#else
-	if(memcmp(TDAL_FLA_LayerBuffer+begin,Buffer,NumberToWrite)!=0)
-	{
-		printf("Flash   Page   Error\r\n");
-		mTBOX_TRACE((kTBOX_NIV_WARNING, "TDAL_FLA_LayerBuffer[begin+i] != buffer[i]\n"));
-#if   0
-		/*   Save   all   the   block   */
-		if(   MDrv_SERFLASH_Read(realAddr,realCount,TDAL_FLA_LayerBuffer) == FALSE)
-		{
-			mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Unable   to   read   flash\n"));
-			TDAL_UnlockMutex(TDAL_FLA_Mutex);
-			mTBOX_RETURN(0);
-		}
-
-		MDrv_SERFLASH_AddressErase(BlockBaseAddress, TDAL_FLA_BlockSize, TRUE);
-		/*   Copy   the   right   buffer   at   the   right   place   */
-		memcpy(TDAL_FLA_BlockBuffer + (Address   -   BlockBaseAddress), Buffer, NumberToWrite);
-
-		MDrv_SERFLASH_Write(BlockBaseAddress,TDAL_FLA_BlockSize,TDAL_FLA_BlockBuffer)
-
-		MDrv_SERFLASH_Read(realAddr,realCount,TDAL_FLA_LayerBuffer);
-
-		if(memcmp(TDAL_FLA_LayerBuffer+begin,Buffer,NumberToWrite)!=0)
-		{
-			printf("Err\r\n");
-		}
-#endif
-	}
-#endif
-	/*-----------------------------------------------------------*/
-#endif
-
-	TDAL_UnlockMutex(TDAL_FLA_Mutex);
-	mTBOX_RETURN(nbActualWrite);
 }
 
 /**========================================================================**
@@ -1123,9 +693,7 @@ uint32_t   TDAL_FLA_Write   (   uint32_t   Address   ,
 			mTBOX_RETURN(   0   );
 		}
 	}
-#if CH_FLASH_MAP
-	TDAL_FLA_AddressMap(&Address);
-#endif
+
 	if(NumberToWrite == 0 || Buffer == NULL)
 	{
 		mTBOX_TRACE((kTBOX_NIV_WARNING, "Bad   Parameter   ERROR\n"));
@@ -1167,6 +735,8 @@ uint32_t   TDAL_FLA_Write   (   uint32_t   Address   ,
 		TDAL_UnlockMutex(TDAL_FLA_Mutex);
 		mTBOX_RETURN(0);
 	}
+
+
 	/*   read   to   get   bytes   before   and   after   buffer   in   TDAL_FLA_LayerBuffer   */
 
 	/***************************************************************************************/
@@ -1181,7 +751,7 @@ uint32_t   TDAL_FLA_Write   (   uint32_t   Address   ,
 			&nbActualRead);*/
 	mTBOX_TRACE((kTBOX_NIV_1, "Flash Read: realAddr = 0x%x, realCount = %d\n", realAddr, realCount));
 
-	ms_err = MDrv_SERFLASH_Read(realAddr,realCount,TDAL_FLA_LayerBuffer);
+	//ms_err = MDrv_SERFLASH_Read(realAddr,realCount,TDAL_FLA_LayerBuffer);
 		nbActualRead = realCount;
 	//STOS_TaskUnlock();
 
@@ -1202,7 +772,7 @@ uint32_t   TDAL_FLA_Write   (   uint32_t   Address   ,
 	mTBOX_TRACE((kTBOX_NIV_1,"Write   %u   octets   at   address   [0x%x]\n", NumberToWrite,Address));
 
 	/*   copy   bytes   from   buffer   to   TDAL_FLA_LayerBuffer   */
-	memcpy(&(TDAL_FLA_LayerBuffer[begin]),Buffer,NumberToWrite);
+	//memcpy(&(TDAL_FLA_LayerBuffer[begin]),Buffer,NumberToWrite);
 
 	/*   write   TDAL_FLA_LayerBuffer   */
 
@@ -1218,7 +788,7 @@ uint32_t   TDAL_FLA_Write   (   uint32_t   Address   ,
 			realCount,
 			&nbActualWrite);*/
 	mTBOX_TRACE((kTBOX_NIV_1, "Flash Writing: realAddr = 0x%x, realCount = %d\n", realAddr,realCount));
-	ms_err = MDrv_SERFLASH_Write(realAddr,realCount,TDAL_FLA_LayerBuffer);
+	ms_err = MDrv_SERFLASH_Write(realAddr,realCount,Buffer);
 	nbActualWrite=realCount;
 	//STOS_TaskUnlock();
 
@@ -1275,13 +845,6 @@ uint32_t   TDAL_FLA_Write   (   uint32_t   Address   ,
 		{
 			if(*(TDAL_FLA_LayerBuffer+begin+count) != *(Buffer+count))
 			{
-				printf("EEE   Base   Address   0x%x, begin   %d   Address   0x%x, Write   0x%x, Read   0x%x, \r\nrealCount   %d, nbActualRead,   %d   nbActualWrite   %d, NumberToWrite   %d   \r\n",
-						realAddr,
-						begin,
-						realAddr + begin + count,
-						*(Buffer+count), *(TDAL_FLA_LayerBuffer+begin+count),
-						realCount, nbActualRead,
-						nbActualWrite, NumberToWrite);
 				TDAL_UnlockMutex(TDAL_FLA_Mutex);
 				/*      mTBOX_RETURN(0);*/
 			}
@@ -1291,7 +854,6 @@ uint32_t   TDAL_FLA_Write   (   uint32_t   Address   ,
 #else
 	if(memcmp(TDAL_FLA_LayerBuffer+begin,Buffer,NumberToWrite)!=0)
 	{
-		printf("Flash   Page   Error\r\n");
 		mTBOX_TRACE((kTBOX_NIV_WARNING, "TDAL_FLA_LayerBuffer[begin+i] != buffer[i]\n"));
 #if   0
 		/*   Save   all   the   block   */
@@ -1309,11 +871,6 @@ uint32_t   TDAL_FLA_Write   (   uint32_t   Address   ,
 		MDrv_SERFLASH_Write(BlockBaseAddress,TDAL_FLA_BlockSize,TDAL_FLA_BlockBuffer)
 
 		MDrv_SERFLASH_Read(realAddr,realCount,TDAL_FLA_LayerBuffer);
-
-		if(memcmp(TDAL_FLA_LayerBuffer+begin,Buffer,NumberToWrite)!=0)
-		{
-			printf("Err\r\n");
-		}
 #endif
 	}
 #endif

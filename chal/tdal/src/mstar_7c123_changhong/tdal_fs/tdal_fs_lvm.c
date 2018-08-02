@@ -22,7 +22,7 @@
 #include <stdio.h>
 #include <string.h>      /*   for   strcpy()   */
 #include <stdlib.h>
-#include "pltf_hardcfg.h"
+//#include "pltf_hardcfg.h"
 #include <tdal_common.h>
 #include <tdal_fs.h>
 #include "tdal_fs_lvm_p.h"
@@ -36,7 +36,8 @@
 
 #include "MsOS.h"
 
-#include "drvUSB.h"
+//#include "drvUSB.h"
+#include "drvUSB_eCos.h"
 #include <cyg/io/io.h>
 #include <cyg/io/disk.h>
 
@@ -104,7 +105,7 @@ LOCAL   tTDAL_FS_DeviceCallback      TDAL_FS_DeviceCallback;
 
 LOCAL   struct   TDAL_FS_Message      TDAL_FS_MessageToBeRenotified[5];
 LOCAL   int8_t            TDAL_FS_IndexMessage = 0;
-
+LOCAL	bool bUSB_Init = FALSE;
 
 /*****************************************************************************
  *  Global Functions Declarations (IMPORT)                         *
@@ -187,10 +188,12 @@ tTDAL_FS_Error      pTDAL_FS_LVM_Init(   void   )
    TDAL_CreateMutex(   &TDAL_FS_VolumeMutex   );
 
    /**   Init   the   task   **/
-
-   MApi_SystemDeviceHost_Init();
-
-   MDrv_USB_RegisterCallBack(pTDAL_FS_device_callback_fn);
+   if(!bUSB_Init)
+   {
+      MApi_SystemDeviceHost_Init();
+      MDrv_USB_RegisterCallBack(pTDAL_FS_device_callback_fn);
+      bUSB_Init = TRUE;
+   }
 #ifdef   PRODUCT_USE_ATAPI
    tdal_fs_err = TDAL_FSi_SetupAtapiDevice();
    if   (tdal_fs_err != eTDAL_FS_NO_ERROR)
@@ -227,9 +230,7 @@ void TDAL_FSi_DeviceCallback (tTDALm_WorkerThreadsDescriptor * descriptor)
 
     if(pmsg->event == eTDAL_FS_DEVICE_EVENT_REMOVED)
     {
-#ifdef USE_TDAL_MP
-        TDAL_MPm_UsbRemoved();
-#endif
+        //TDAL_MPm_UsbRemoved();
 
 #ifdef USE_TDAL_PVR         
         TDAL_PVRm_UsbRemoved();
@@ -392,9 +393,12 @@ tTDAL_FS_Error      pTDAL_FS_LVM_Term(   void   )
 {
 	tTDAL_FS_Error result = eTDAL_FS_NO_ERROR;
 
-	mTBOX_FCT_ENTER("TDAL_FS_Term");
+	mTBOX_FCT_ENTER("TDAL_VFS_Term");
 
 	MDrv_USB_RegisterCallBack(NULL);
+
+	TDAL_DeleteMutex(TDAL_FS_DeviceMutex);
+	TDAL_DeleteMutex(TDAL_FS_VolumeMutex);
 
 	mTBOX_TRACE((kTBOX_NIV_5,"TDAL_FS_Term()\n"));
 	mTBOX_RETURN(result);

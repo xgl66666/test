@@ -38,7 +38,10 @@
    ********************************************************/
 
 #define kTDAL_DMX_SIGNAL_WAIT_BUFFER_TIMEOUT 1000
-
+//This define resolve problem with HW CRC check
+#undef SOFTWARE_CHECK_CRC
+#define CRC32_MAX_COEFFICIENTS  256
+#define CRC32_POLYNOMIAL        0x04C11DB7
 /*#define MULTIMEDIA_DISABLE_FILTERS */
 
 /********************************************************
@@ -50,20 +53,21 @@ mTBOX_SET_MODULE(eTDAL_DMX);
 /********************************************************
    *   Local   File   Variables   (LOCAL)            *
    ********************************************************/
+LOCAL tTDAL_DMX_ChannelId _Live_VideoChannel = 0xFF;
+LOCAL tTDAL_DMX_ChannelId _Live_AudioChannel = 0xFF;
+LOCAL tTDAL_DMX_ChannelId _Live_PCRChannel = 0xFF;
 #if   defined(TTXT_OSD_ON)   &&   defined(TTXT_VBI_ON)
 bool   gTDAL_DMX_AllocChannelTeletextOsd = FALSE;
 #endif
-
 LOCAL bool TDAL_DMXi_DisableSections = false;
-
+#ifdef SOFTWARE_CHECK_CRC
+LOCAL void TDAL_DMXi_SectionCheckCRC(uint8_t  *pCheckCrc, uint8_t  *pBlock, uint32_t length);
+#endif
 void TDAL_DMXm_DisableFilters(bool disable)
 {
 #ifdef MULTIMEDIA_DISABLE_FILTERS
 
     int i = 0;
-
-    printf("############## Disabling all filters, this could be dangerous #########\n");
-
     mLockAccess(TDAL_DMXi_pSectionTableAccess);
 
     for (i = 0; i < kTDAL_DMXi_MAX_NB_OF_FILTERS; i++)
@@ -144,7 +148,9 @@ void TDAL_DMXi_SectionTask(void * argv)
 	static MS_U8 sectionBuffer[1024*8];//it is too big for heap
 	DMX_FILTER_STATUS status;
 	int id = (int) argv;
-
+#ifdef SOFTWARE_CHECK_CRC
+	uint32_t                     checkCrc;
+#endif
 	mTBOX_FCT_ENTER_T("TDAL_DMXi_SectionTask   ");
 
 	for (; TDAL_DMXi_SectionTaskArr[id].ShouldExit == FALSE;)
@@ -220,7 +226,6 @@ void TDAL_DMXi_SectionTask(void * argv)
 
 				if (TDAL_DMXi_DisableSections)
 				{
-				    printf("Should not get here\n");
 				    MApi_DMX_Stop(TDAL_DMXi_pstFilter[filterId].FilterHandle);
 				    MApi_DMX_SectReset(TDAL_DMXi_pstFilter[filterId].FilterHandle);
 				    goto unlock_mutex;
@@ -243,6 +248,17 @@ void TDAL_DMXi_SectionTask(void * argv)
 
 					if (callbackSectionBuffer != NULL)
 					{
+#ifdef SOFTWARE_CHECK_CRC
+						if(TDAL_DMXi_pstFilter[filterId].efilterCRCMode == eTDAL_DMX_CRC_CHECK)
+						{
+							TDAL_DMXi_SectionCheckCRC((uint8_t*) &checkCrc, sectionBuffer, bytesReceived);
+							if(checkCrc)
+							{
+								mTBOX_TRACE((kTBOX_NIV_CRITICAL,"m_sectionReceivedCallback: CRC Error for PID -> 0x%x Table ID %x \n", TDAL_DMXi_pstChannel[channelId].ChannelPid,sectionBuffer[0]));
+								goto unlock_mutex;
+							}
+						}
+#endif
 						memcpy(callbackSectionBuffer, sectionBuffer, bytesReceived);
 
 						/*-----------------------------------*/
@@ -463,8 +479,14 @@ tTDAL_DMX_Error   TDAL_DMX_Allocate_Channel
 			  {
 			  /*==========================*/
 			  case   eTDAL_DMX_VIDEO_STREAM:
+                    _Live_VideoChannel = channelId;
+                    break;
 			  case   eTDAL_DMX_AUDIO_STREAM:
+                    _Live_AudioChannel = channelId;
+                    break;
 			  case   eTDAL_DMX_PCR_STREAM:
+                    _Live_PCRChannel = channelId;
+                    break;
 			  case   eTDAL_DMX_TELETEXT_STREAM:
 			  case   eTDAL_DMX_SUBTITLE_STREAM:
 				break;
@@ -700,14 +722,14 @@ tTDAL_DMX_Error   TDAL_DMX_Set_Channel_PID(   tTDAL_DMX_ChannelId   ChannelId   
 	   /*------------------------------------*/
 	   if   (!TDAL_DMXi_initialized)
 	   {
-		mTBOX_TRACE((kTBOX_NIV_CRITICAL,"Set_Channel_PID:   TDAL_DMX   module   has   not   been   initialized\n"));
+          mTBOX_TRACE((kTBOX_NIV_CRITICAL,"Set_Channel_PID:   TDAL_DMX   module   has   not   been   initialized\n"));
 	      mTBOX_RETURN(kTDAL_DMX_ERROR_NOT_INITIALIZED);
 	   }
 
 	   /*-----------------------------*/
 	   /*   Check   channel   Id      */
 	   /*-----------------------------*/
-	if ((ChannelId < 0) ||  (ChannelId >= kTDAL_DMXi_MAX_NB_OF_CHANNELS))
+	   if ((ChannelId < 0) ||  (ChannelId >= kTDAL_DMXi_MAX_NB_OF_CHANNELS))
 	   {
 	      mTBOX_TRACE((kTBOX_NIV_CRITICAL,"Set_Channel_PID:   Argument   ChannelId   not   available\n"));
 	      errorCode = kTDAL_DMX_ERROR_INVALID_CHANNEL_ID;
@@ -784,14 +806,18 @@ tTDAL_DMX_Error   TDAL_DMX_Set_Channel_PID(   tTDAL_DMX_ChannelId   ChannelId   
 	      if(TDAL_DMXi_pstChannel[ChannelId].bEnable == TRUE)
 	      {
 	      /*   Force   a   enable/disable   sequence   to   update   the   PID   in   demux   HW   */
+	      mUnLockAccess(TDAL_DMXi_pSectionTableAccess);
 	      errorCode = TDAL_DMX_Control_Channel(ChannelId,   eTDAL_DMX_CTRL_DISABLE);
+	      mLockAccess(TDAL_DMXi_pSectionTableAccess);
 	      if(errorCode   !=   kTDAL_DMX_NO_ERROR)
 	      {
 	        mTBOX_TRACE((kTBOX_NIV_CRITICAL,"Set_Channel_PID:   Control_Channel(DISABLE)   FAILED)\n"));
 	      }
 	      else
 	      {
+	        mUnLockAccess(TDAL_DMXi_pSectionTableAccess);
 	        errorCode = TDAL_DMX_Control_Channel(ChannelId,   eTDAL_DMX_CTRL_ENABLE);
+	        mLockAccess(TDAL_DMXi_pSectionTableAccess);
 	        if(errorCode   !=   kTDAL_DMX_NO_ERROR)
 	        {
 	            mTBOX_TRACE((kTBOX_NIV_CRITICAL,"Set_Channel_PID:   Control_Channel(ENABLE)   FAILED)\n"));
@@ -911,6 +937,7 @@ tTDAL_DMX_Error   TDAL_DMX_Control_Channel(   tTDAL_DMX_ChannelId   ChannelId,
 	   switch   (Ctrl)
 	   {
 	      case   eTDAL_DMX_CTRL_ENABLE:
+            
 	      if   ((TDAL_DMXi_pstChannel[ChannelId].bEnable == FALSE)   &&
 	        (TDAL_DMXi_pstChannel[ChannelId].ChannelPid   !=   kTDAL_DMX_ILLEGAL_PID))
 	      {
@@ -974,6 +1001,7 @@ tTDAL_DMX_Error   TDAL_DMX_Control_Channel(   tTDAL_DMX_ChannelId   ChannelId,
 	      break;
 
 	      case   eTDAL_DMX_CTRL_DISABLE:
+                
 	      if   ((TDAL_DMXi_pstChannel[ChannelId].bEnable == TRUE)   &&
 	        (TDAL_DMXi_pstChannel[ChannelId].ChannelPid   !=   kTDAL_DMX_ILLEGAL_PID))
 	        {
@@ -1175,13 +1203,16 @@ tTDAL_DMX_Error   TDAL_DMX_Free_Channel(   tTDAL_DMX_ChannelId   ChannelId   )
 	   switch(TDAL_DMXi_pstChannel[ChannelId].ChannelStream)
 	   {
 	      case   eTDAL_DMX_VIDEO_STREAM:
+          _Live_VideoChannel = 0xFF;
 	      pChStreamStr="VID";
 	      break;
 	      case   eTDAL_DMX_AUDIO_STREAM:
 	      pChStreamStr="AUD";
+          _Live_AudioChannel = 0xFF;
 	      break;
 	      case   eTDAL_DMX_PCR_STREAM:
 	      pChStreamStr="PCR";
+          _Live_PCRChannel = 0xFF;
 	      break;
 	      case   eTDAL_DMX_TELETEXT_STREAM:
 	      pChStreamStr="TXT";
@@ -1345,3 +1376,80 @@ tTDAL_DMX_Error   TDAL_DMXi_FreeChannelAndAssociatedRessources(
 
 }
 
+bool TDAL_DMXi_GetLiveChannelID(tTDAL_DMX_ChannelId *VideoChannelID,tTDAL_DMX_ChannelId *AudioChannelID,tTDAL_DMX_ChannelId *PCRChannelID)
+{
+    *VideoChannelID = _Live_VideoChannel;
+    *AudioChannelID = _Live_AudioChannel;
+    *PCRChannelID   = _Live_PCRChannel;
+    return TRUE;
+}
+
+bool TDAL_DMXi_GetLiveChannelPID(int32_t *VideoPID, int32_t *AudioPID, int32_t *PCRPID)
+{
+    *VideoPID = TDAL_DMXi_pstChannel[_Live_VideoChannel].ChannelPid;
+    *AudioPID = TDAL_DMXi_pstChannel[_Live_AudioChannel].ChannelPid;
+    *PCRPID = TDAL_DMXi_pstChannel[_Live_PCRChannel].ChannelPid;        
+    return TRUE;
+}
+#ifdef SOFTWARE_CHECK_CRC
+/***********************************************************************
+* Function Name : TDAL_DMXi_SectionCheckCRC
+*
+* Description   :
+*
+* Side effects  :
+*
+* Comment       :
+*
+**********************************************************************/
+LOCAL void TDAL_DMXi_SectionCheckCRC (uint8_t  *pCheckCrc,
+                                   uint8_t  *pBlock,
+                                   uint32_t length)
+{
+    static      crc32_table[CRC32_MAX_COEFFICIENTS] = {1};
+    int         loopCntCoef;
+    int         loopCntBit;
+    uint32_t    coef32;
+    uint8_t     *pEnd;
+
+    mTBOX_FCT_ENTER("TDAL_DMXi_writeChecksum");
+
+    if(crc32_table[0])
+    {
+        for(loopCntCoef = 0; loopCntCoef < CRC32_MAX_COEFFICIENTS; loopCntCoef++)
+        {
+            coef32 = (uint32_t) loopCntCoef << 24;
+
+            for(loopCntBit = 0; loopCntBit < 8; loopCntBit++)
+            {
+                if (coef32 & 0x80000000)
+                {
+                                        coef32 = ((coef32 << 1) ^ CRC32_POLYNOMIAL);
+                }
+                                else
+                                {
+                                        coef32 <<= 1;
+                                }
+            }
+
+            crc32_table[loopCntCoef] = coef32;
+        }
+    }
+
+    pEnd = pBlock + length;
+
+    uint32_t crc32 = 0xFFFFFFFF;
+
+    for(; pBlock < pEnd; pBlock++)
+    {
+        crc32 = (crc32 << 8) ^ crc32_table[ ((crc32 >> 24) ^ *pBlock) & 0x000000FF ];
+    }
+
+    pCheckCrc[0] = (uint8_t) (crc32 >> 24);
+    pCheckCrc[1] = (uint8_t) (crc32 >> 16);
+    pCheckCrc[2] = (uint8_t) (crc32 >> 8);
+    pCheckCrc[3] = (uint8_t) (crc32);
+
+   mTBOX_RETURN;
+}
+#endif

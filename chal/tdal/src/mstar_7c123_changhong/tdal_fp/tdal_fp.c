@@ -22,6 +22,7 @@
 #include "Board.h"
 #include "drvFrontPnl.h"
 #include "drvSAR.h"
+#include "drvGPIO.h"
 
 #include "crules.h"
 #include "tbox.h"
@@ -41,6 +42,9 @@
 #define TDAL_FP_BLINK_INTERVAL 100
 #define TDAL_FP_KBD_QUERY      200 // same as KEYPAD_QUERY_TIME_MS in drvGA1204A.c
 
+//KAON_BR_LED
+#define LED_POWER_RED       BALL_E16
+#define LED_POWER_GREEN       BALL_D12
 
 /****************************************************************************
  *  MACROS                                                                  *
@@ -64,6 +68,7 @@ typedef enum
 /****************************************************************************
  *  GLOBAL VARIABLES (GLOBAL/IMPORT)                                        *
  ****************************************************************************/
+tTDAL_FP_LED_STATUS LED_STATUS = FP_LED_GREEN_ON;//KAON_BR_LED
 
 /****************************************************************************
  *  LOCAL MODULE VARIABLES (MODULE/IMPORT)                                  *
@@ -91,7 +96,30 @@ LOCAL MS_U8  tdalFpStack[16*1024];
  *  FUNCTIONS DEFINITIONS (LOCAL/GLOBAL)                                    *
  ****************************************************************************/
 
+#if 1//KAON_BR_LED
+void TP_FPi_LEDGreenOn(void)
+{
+	mdrv_gpio_set_low(LED_POWER_GREEN);
+}
+void TP_FPi_LEDGreenOff(void)
+{
+	mdrv_gpio_set_high(LED_POWER_GREEN);
+}
+void TP_FPi_LEDRedOn(void)
+{
+	mdrv_gpio_set_low(LED_POWER_RED);
+}
+void TP_FPi_LEDRedOff(void)
+{
+	mdrv_gpio_set_high(LED_POWER_RED);
+}
 
+ void TDAL_FP_SetLedSatus(tTDAL_FP_LED_STATUS eLED_STATUS)
+{
+    LED_STATUS = eLED_STATUS;
+}
+
+#else
 /* ----------------------------------------------------------------------------
    Name:        TP_FPi_LedCommanOn
 
@@ -103,6 +131,7 @@ LOCAL MS_U8  tdalFpStack[16*1024];
    ------------------------------------------------------------------------- */
 LOCAL void TP_FPi_LedCommanOn(void)
 {
+	TDAL_FP_LedGreenOn();
 }
 
 /* ----------------------------------------------------------------------------
@@ -116,6 +145,8 @@ LOCAL void TP_FPi_LedCommanOn(void)
    ------------------------------------------------------------------------- */
 LOCAL void TP_FPi_LedCommanOff(void)
 {
+	TDAL_FP_LedREDOff();
+	TDAL_FP_LedGreenOff();
 }
 
 /* ----------------------------------------------------------------------------
@@ -130,6 +161,7 @@ LOCAL void TP_FPi_LedCommanOff(void)
 LOCAL void TP_FPi_LedTunerLock(void)
 {
 	//mdrv_gpio_set_high(IO_NUM_LED_GREEN_LOCK);
+	TDAL_FP_LedGreenOn();
 }
 
 /* ----------------------------------------------------------------------------
@@ -144,6 +176,7 @@ LOCAL void TP_FPi_LedTunerLock(void)
 LOCAL void TP_FPi_LedTunerUnLock(void)
 {
 	//mdrv_gpio_set_low(IO_NUM_LED_GREEN_LOCK);
+	TDAL_FP_LedGreenOff();
 }
 
 /* ----------------------------------------------------------------------------
@@ -185,8 +218,9 @@ LOCAL void TP_FPi_LedMailOff(void)
    ------------------------------------------------------------------------- */
 LOCAL void TP_FPi_LedStandbyOn(void)
 {
-	CHDRV_FP_CtrlLamp(CHDRV_FP_LED_GREEN,CHDRV_FP_LAMP_OFF);
-	CHDRV_FP_CtrlLamp(CHDRV_FP_LED_RED,CHDRV_FP_LAMP_ON);
+	//mdrv_gpio_set_high(IO_NUM_LED_RED_POWER);
+	TDAL_FP_LedREDOn();
+	TDAL_FP_LedGreenOff();
 }
 
 /* ----------------------------------------------------------------------------
@@ -200,10 +234,11 @@ LOCAL void TP_FPi_LedStandbyOn(void)
    ------------------------------------------------------------------------- */
 LOCAL void TP_FPi_LedStandbyOff(void)
 {
-	CHDRV_FP_CtrlLamp(CHDRV_FP_LED_RED,CHDRV_FP_LAMP_OFF);
-	CHDRV_FP_CtrlLamp(CHDRV_FP_LED_GREEN,CHDRV_FP_LAMP_ON);
+	//mdrv_gpio_set_low(IO_NUM_LED_RED_POWER);
+	TDAL_FP_LedREDOff();
+	TDAL_FP_LedGreenOff();
 }
-
+#endif
 static MS_U32 TDAL_FPi_SmallerTime(MS_U32 time1, MS_U32 time2)
 {
     MS_U32 diff1 = time1 - time2;
@@ -235,9 +270,93 @@ static MS_U32 TDAL_FPi_CalculateTimeUntilEvent(MS_U32 nextEventTime)
 
 }
 
-
 static void TDAL_FPi_Task0(void * p)
 {
+#if 1//gpio_map_porting		
+    TDAL_FPi_LedAction       ledAction;
+    bool                     TDAL_FPi_RedOn = false;
+    bool                     blinkRequested = false;
+    MS_U32                   blinkTime = 0;
+    bool                     terminate  = false;
+    MS_BOOL                  bRet;
+    MS_U32                   actualSize;
+	
+    mTBOX_FCT_ENTER("TDAL_FPi_Task0");
+
+    while (!terminate)
+    {
+        MS_U32 timeout;
+
+        if (blinkRequested)
+        {
+            MS_U32 nextFpBlink = blinkTime + TDAL_FP_BLINK_INTERVAL;
+            timeout = TDAL_FPi_CalculateTimeUntilEvent(nextFpBlink);
+        }
+        else
+        {
+            timeout = MSOS_WAIT_FOREVER;
+        }
+
+#if MSTAR_QUEUE
+        bRet = MsOS_RecvFromQueue(tdalFpQueueID, (MS_U8 *) &ledAction, sizeof(TDAL_FPi_LedAction), &actualSize, timeout);
+#else
+        bRet = TDAL_Dequeue(tdalFpQueueID, &ledAction);
+#endif
+
+        if (blinkRequested && ((MsOS_GetSystemTime() - blinkTime) >= TDAL_FP_BLINK_INTERVAL))
+        {
+            blinkRequested = false;
+            blinkTime = 0;
+            if (TDAL_FPi_RedOn)
+            {
+                TP_FPi_LEDRedOn();
+                TP_FPi_LEDGreenOff();
+            }
+            else
+            {
+                TP_FPi_LEDRedOff();
+                TP_FPi_LEDGreenOn();
+            }
+        }
+
+        if (FALSE == bRet)
+        {
+            mTBOX_TRACE((kTBOX_NIV_WARNING, "tdalFpQueueID    failed\n"));
+            continue;
+        }
+
+        switch (ledAction)
+        {
+        case TDAL_FPi_LedAction_RedOn:
+            TP_FPi_LEDRedOn();
+            TP_FPi_LEDGreenOff();
+            TDAL_FPi_RedOn = true;
+            break;
+        case TDAL_FPi_LedAction_RedOff:
+            TP_FPi_LEDRedOff();
+            TP_FPi_LEDGreenOn();
+            TDAL_FPi_RedOn = false;
+            break;
+        case TDAL_FPi_LedAction_YellowOn:
+            break;
+        case TDAL_FPi_LedAction_YellowOff:
+            break;
+        case TDAL_FPi_LedAction_YellowBlink:
+            TP_FPi_LEDRedOff();
+            TP_FPi_LEDGreenOff();
+            blinkRequested = true;
+            blinkTime = MsOS_GetSystemTime();
+
+            break;
+        case TDAL_FPi_LedAction_Terminate:
+            terminate = true;
+            break;
+        default:
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_FPi_Task: Unknown action 0x%x\n", ledAction));
+            break;
+        }
+    }
+#else	
 	SAR_KpdRegCfg   stSarKpdCfg;
 	MS_U8 data;
 	MS_U32 ret = 0;
@@ -246,16 +365,16 @@ static void TDAL_FPi_Task0(void * p)
     mTBOX_FCT_ENTER("TDAL_FPi_Task0");
 	memset(&stSarKpdCfg,0,sizeof(stSarKpdCfg));
 	
-	//ret = MDrv_SAR_Adc_Config(SAR_CHANNEL_1,TRUE);
+	ret = MDrv_SAR_Adc_Config(SAR_CHANNEL_1,TRUE);
 	if (ret != E_SAR_ADC_OK)
 	{
 		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MDrv_SAR_Adc_Config=0x%x\n",ret));
 	}
 	
-	//data = MDrv_SAR_Adc_GetValue(SAR_CHANNEL_1);
+	data = MDrv_SAR_Adc_GetValue(SAR_CHANNEL_1);
 	//if (data )
 	{
-        //stSarKpdCfg.u8SARChID = SAR_CHANNEL_1;
+        stSarKpdCfg.u8SARChID = SAR_CHANNEL_1;
         stSarKpdCfg.tSARChBnd.u8LoBnd = 0x00;
         stSarKpdCfg.tSARChBnd.u8UpBnd = 0xFF;
         stSarKpdCfg.u8KeyLevelNum = 3;
@@ -277,7 +396,7 @@ static void TDAL_FPi_Task0(void * p)
     while (1)
     {
 		MDrv_SAR_Kpd_GetKeyCode(&u8Key, &u8Repeat);
-		//mTBOX_TRACE((kTBOX_NIV_CRITICAL, "data=0x%x,u8Key=0x%x,u8Repeat=%d\n",MDrv_SAR_Adc_GetValue(SAR_CHANNEL_1),u8Key,u8Repeat));
+		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "data=0x%x,u8Key=0x%x,u8Repeat=%d\n",MDrv_SAR_Adc_GetValue(SAR_CHANNEL_1),u8Key,u8Repeat));
 		TDAL_DelayTask(1000);
 		TP_FPi_LedTunerLock();
 		TDAL_DelayTask(1000);
@@ -293,9 +412,10 @@ static void TDAL_FPi_Task0(void * p)
 		TDAL_DelayTask(1000);
 		
     }
+	#endif
 }
 
-
+#if 0//gpio_map_porting		
 static void TDAL_FPi_Task(void * p)
 {
     TDAL_FPi_LedAction       ledAction;
@@ -310,12 +430,20 @@ static void TDAL_FPi_Task(void * p)
 
     mTBOX_FCT_ENTER("TDAL_FPi_Task");
 
-
+    bRet = MDrv_SAR_Enable(TRUE);
+	if (bRet != TRUE)
+	{
+		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MDrv_SAR_Enable failed\n"));
+	}
+	else
+	{
+		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MDrv_SAR_Enable success\n"));
+	}
 
     while (!terminate)
     {
         MS_U32 timeout;
-#if 1
+
         /* Let's calculate how much do we need to wait */
         {
             MS_U32 nextKbdRead = kbdQueryTime + TDAL_FP_KBD_QUERY;
@@ -325,12 +453,11 @@ static void TDAL_FPi_Task(void * p)
             timeout = TDAL_FPi_CalculateTimeUntilEvent(next);
         }
 
-	//	mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MDrv_SAR_Adc_GetValue=0x%x\n",MDrv_SAR_Adc_GetValue(SAR_CHANNEL_1)));
-		
+		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MDrv_SAR_Adc_GetValue=0x%x\n",MDrv_SAR_Adc_GetValue(SAR_CHANNEL_1)));
 #if MSTAR_QUEUE
-			bRet = MsOS_RecvFromQueue(tdalFpQueueID, (MS_U8 *)&ledAction, sizeof(TDAL_FPi_LedAction), &actualSize, timeout);
+        bRet = MsOS_RecvFromQueue(tdalFpQueueID, (MS_U8 *)&ledAction, sizeof(TDAL_FPi_LedAction), &actualSize, timeout);
 #else
-			bRet = TDAL_Dequeue(tdalFpQueueID, &ledAction);
+        bRet = TDAL_Dequeue(tdalFpQueueID, &ledAction);
 #endif
         if (blinkRequested && ((MsOS_GetSystemTime() - blinkTime) >= TDAL_FP_BLINK_INTERVAL))
         {
@@ -338,22 +465,20 @@ static void TDAL_FPi_Task(void * p)
             blinkTime = 0;
             if (TDAL_FPi_YellowOn)
             {
-				CHDRV_FP_CtrlLamp(CHDRV_FP_LED_GREEN,CHDRV_FP_LAMP_ON);
+                MDrv_SAR_Enable(FALSE);
             }
             else
             {
-              //  MDrv_SAR_Enable(TRUE);//FRONTPNL_LED_RED,FRONTPNL_LED_GREEN
+                MDrv_SAR_Enable(TRUE);//FRONTPNL_LED_RED,FRONTPNL_LED_GREEN
             }
         }
-#endif
 
         if ((MsOS_GetSystemTime() - kbdQueryTime) >= TDAL_FP_KBD_QUERY)
         {
             TDAL_FPi_ReadKeys();
             kbdQueryTime = MsOS_GetSystemTime();
         }
-		TDAL_DelayTask(50);
-#if 1
+#if 0
         if (FALSE == bRet)
         {
             mTBOX_TRACE((kTBOX_NIV_WARNING, "tdalFpQueueID    failed\n"));
@@ -364,29 +489,30 @@ static void TDAL_FPi_Task(void * p)
         switch(ledAction)
         {
         case TDAL_FPi_LedAction_RedOn:
-            TP_FPi_LedStandbyOn();
-            TDAL_FPi_YellowOn = false;
-
+            MDrv_SAR_Enable(FALSE);//MDrv_FrontPnl_EnableLED
             break;
         case TDAL_FPi_LedAction_RedOff:
-			TP_FPi_LedStandbyOff();
-			
-            TDAL_FPi_YellowOn = true;
+            MDrv_SAR_Enable(TRUE);
             break;
         case TDAL_FPi_LedAction_YellowOn:
-           // MDrv_SAR_Enable(FALSE);
+            MDrv_SAR_Enable(FALSE);
+            TDAL_FPi_YellowOn = true;
             break;
         case TDAL_FPi_LedAction_YellowOff:
-          //  MDrv_SAR_Enable(TRUE);
-           // TDAL_FPi_YellowOn = false;
+            MDrv_SAR_Enable(TRUE);
+            TDAL_FPi_YellowOn = false;
             break;
         case TDAL_FPi_LedAction_YellowBlink:
             if (TDAL_FPi_YellowOn)
             {
-				CHDRV_FP_CtrlLamp(CHDRV_FP_LED_GREEN,CHDRV_FP_LAMP_OFF);
-				blinkRequested = true;
-				blinkTime = MsOS_GetSystemTime();
+                MDrv_SAR_Enable(TRUE);
             }
+            else
+            {
+                MDrv_SAR_Enable(FALSE);
+            }
+            blinkRequested = true;
+            blinkTime = MsOS_GetSystemTime();
 
             break;
         case TDAL_FPi_LedAction_Terminate:
@@ -399,7 +525,7 @@ static void TDAL_FPi_Task(void * p)
 #endif
     }
 }
-
+#endif
 
 /**========================================================================**
  * Function    : TDAL_FP_Init
@@ -411,19 +537,15 @@ static void TDAL_FPi_Task(void * p)
  * Comment      :
  *
  **========================================================================**/
- #if 1
 tTDAL_FP_ErrorCode TDAL_FP_Init()
 {
-    tTDAL_FP_ErrorCode err = 0;
+    tTDAL_FP_ErrorCode err;
     MS_BOOL bRet = TRUE;
- 
+
     mTBOX_FCT_ENTER("TDAL_FP_Init");
-	if(TDAL_FP_Initialized==TRUE)
-	{
-        	mTBOX_RETURN(err);
-	} 
+
     //bRet = MDrv_SAR_Kpd_Init();//MDrv_FrontPnl_Init();
-	printf("=== zg  888MDrv_SAR_Kpd_Init success\n");
+
     if (bRet == FALSE)
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Could not intialize front panel\n"));
@@ -444,22 +566,26 @@ tTDAL_FP_ErrorCode TDAL_FP_Init()
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MsOS_CreateQueue FAIL\n"));
     }
-	//mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_CreateQueue success\n"));
+	mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_CreateQueue success\n"));
 
     tdalFpTask = TDAL_CreateTask(
             eTDAL_PRIORITY_NORMAL,
             "Tdal Fp Task",
             tdalFpStack,
             sizeof(tdalFpStack),
-            TDAL_FPi_Task,
+            TDAL_FPi_Task0,
             NULL);
     if (tdalFpTask == NULL)
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Creating task failed\n"));
     }
 	mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_CreateTask TDAL_FPi_Task success\n"));
-
+	#if 1//KAON_BR_LED
+	TDAL_FP_SetLedSatus(FP_LED_GREEN_ON);
+	err = eTDAL_FP_NO_ERROR;
+	#else
     err = TDAL_FP_key_Init();
+	#endif
 	TDAL_FP_Initialized = TRUE;
 
 	//mdrv_gpio_set_high(IO_NUM_LED_GREEN_LOCK);
@@ -468,7 +594,7 @@ tTDAL_FP_ErrorCode TDAL_FP_Init()
 
     mTBOX_RETURN(err);
 }
-#endif
+
 /**========================================================================**
  * Function    : TDAL_FP_Terminate
  *
@@ -481,12 +607,11 @@ tTDAL_FP_ErrorCode TDAL_FP_Init()
  **========================================================================**/
 tTDAL_FP_ErrorCode TDAL_FP_Terminate(void)
 {
-    tTDAL_FP_ErrorCode err = eTDAL_FP_NO_ERROR;
+    tTDAL_FP_ErrorCode err;
     MS_BOOL status;
     TDAL_FPi_LedAction ledAction;
 
     mTBOX_FCT_ENTER("TDAL_FP_Terminate");
-	printf(   "TDAL_FP_Terminate 01 \n"	);
 
     err = TDAL_FP_key_Terminate();
 
@@ -522,7 +647,7 @@ tTDAL_FP_ErrorCode TDAL_FP_Terminate(void)
 
     mTBOX_RETURN(err);
 }
-#if 1
+
 /**========================================================================**
  * Function    : TDAL_FP_Register
  *
@@ -560,7 +685,7 @@ tTDAL_FP_ClientId   TDAL_FP_Register(tTDAL_FP_CallbackFct   callback)
    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_FP_Register   error   NB_MAX_CLIENTS   reached\n"));
    mTBOX_RETURN(kTDAL_FP_NO_ID);
 }
-#endif
+
 /**========================================================================**
  * Function     : TDAL_FP_UnRegister
  *
@@ -615,7 +740,6 @@ tTDAL_FP_ErrorCode   TDAL_FP_SetInfo(tTDAL_FP_Info   eInfo, const   void   *para
         break;
     case eTDAL_FP_INFO_OFF:
         ledAction = TDAL_FPi_LedAction_RedOn;
-		
         break;
     case eTDAL_FP_INFO_RCVINFRARED:
         ledAction = TDAL_FPi_LedAction_YellowBlink;
@@ -638,7 +762,7 @@ tTDAL_FP_ErrorCode   TDAL_FP_SetInfo(tTDAL_FP_Info   eInfo, const   void   *para
         }
         break;
     default:
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_FP_SetInfo: Unsupported command [%d]\n",eInfo));
+        mTBOX_TRACE((kTBOX_NIV_1, "TDAL_FP_SetInfo: Unsupported command\n"));
         setInfo = false;
         break;
     }
@@ -657,7 +781,7 @@ tTDAL_FP_ErrorCode   TDAL_FP_SetInfo(tTDAL_FP_Info   eInfo, const   void   *para
         }
     }
 
-    return (eTDAL_FP_NO_ERROR); 
+    return (eTDAL_FP_NO_ERROR);
 }
 
 tTDAL_FP_ErrorCode TDAL_FP_EnterActiveLowPower(uint32_t timeout)
@@ -682,7 +806,7 @@ void TDAL_FPi_CallClientsCallbackFct(
    {
       if (gTDAL_fpClientFctArray[i] != NULL)
       {
-         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Call   function   @0x%x\n",
+         mTBOX_TRACE((kTBOX_NIV_1, "Call   function   @0x%x\n",
                       gTDAL_fpClientFctArray[i]   ));
          gTDAL_fpClientFctArray[i](KeyCode, KeyStatus);
       }

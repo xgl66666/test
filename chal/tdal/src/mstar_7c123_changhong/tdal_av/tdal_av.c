@@ -33,14 +33,13 @@
 
 
 
-
 /****************************************************************************
  *  DEFINES                                                                 *
  ****************************************************************************/
 #define kTDAL_AV_EVT_TASK_NAME         "tdalAVEvt"
 #define kTDAL_AV_EVT_QUEUE_NAME      "tdalAVEvtQueue"
 
-#define kTDAL_AV_EVT_TASK_STACK_SIZE  5120
+#define kTDAL_AV_EVT_TASK_STACK_SIZE  4096
 
 /****************************************************************************
  *  MACROS                                                                  *
@@ -75,7 +74,9 @@ LOCAL unsigned char     TDAL_AV_EvtTaskStack[kTDAL_AV_EVT_TASK_STACK_SIZE];
 /****************************************************************************
  *  FUNCTIONS DEFINITIONS (LOCAL/GLOBAL)                                    *
  ****************************************************************************/
-
+#ifdef PACKAGE_PVR 
+IMPORT bool TDAL_PVR_IsPlaybacking(void);
+#endif
 LOCAL void p_TDAL_AV_EventsTask(MS_U32 argc, void * argv);
 
 const char * TDAL_AV_APIRevisionGet(void )
@@ -123,7 +124,7 @@ tTDAL_AV_Error    TDAL_AV_Init( void )
 	}
 
 	/* Create Task and Queue for AVEvent */
-#if 1
+#if MSTAR_QUEUE
 	TDAL_AV_EvtQueue_p = MsOS_CreateQueue(
 		    NULL,         //It is useless now, can pass NULL.
             NULL,               // queue size (byte unit) : now fixed as 10 * u32MessageSize
@@ -208,8 +209,11 @@ tTDAL_AV_Error    TDAL_AV_Terminate( void )
 	TDAL_AV_EvtTaskStop = TRUE;
 	TDAL_AV_EvtTaskFinished = FALSE;
 	pEvtMsg.Exit = TRUE;
+#if MSTAR_QUEUE
 	bRet = MsOS_SendToQueue(TDAL_AV_EvtQueue_p, (MS_U8 *) &pEvtMsg, sizeof(pEvtMsg), MSOS_WAIT_FOREVER);
-	//bRet = TDAL_Enqueue(TDAL_AV_EvtQueue_p, &pEvtMsg);
+#else
+	bRet = TDAL_Enqueue(TDAL_AV_EvtQueue_p, &pEvtMsg);
+#endif
 	if (bRet != TRUE)
 	{
 		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[TDAL_AV_Terminate] Could not send end of task message\n"));
@@ -233,9 +237,11 @@ tTDAL_AV_Error    TDAL_AV_Terminate( void )
 	}
 #endif	
 	TDAL_AV_EvtTaskID = -1;
-
+#if MSTAR_QUEUE
 	bRet = MsOS_DeleteQueue(TDAL_AV_EvtQueue_p);
-	//bRet = TDAL_DeleteQueue(TDAL_AV_EvtQueue_p);
+#else
+	bRet = TDAL_DeleteQueue(TDAL_AV_EvtQueue_p);
+#endif
 	mTBOX_ASSERT(bRet == TRUE);
 	TDAL_AV_EvtQueue_p = -1;
 
@@ -296,7 +302,14 @@ tTDAL_AV_Error TDAL_AV_Start(tTDAL_AV_Decoder decoder,tTDAL_AV_StreamType Stream
     if (TDAL_AV_AlreadyInitialized == FALSE) {
         mTBOX_RETURN(eTDAL_AV_NO_ERROR);
     }
-
+#ifdef PACKAGE_PVR    
+    if (TDAL_PVR_IsPlaybacking())
+    {
+        mTBOX_TRACE((kTBOX_NIV_1, "[p_TDAL_AV_Start] PVR is Playbacking!\n" ));
+        mTBOX_RETURN(eTDAL_AV_NO_ERROR);
+    }
+#endif
+    
     TDAL_LockMutex(TDAL_AVi_Mutex);
 
     /* start selected decoder */
@@ -346,6 +359,13 @@ tTDAL_AV_Error    TDAL_AV_Stop( tTDAL_AV_Decoder decoder )
     {
         mTBOX_RETURN(eTDAL_AV_NO_ERROR);
     }
+#ifdef PACKAGE_PVR    
+    if (TDAL_PVR_IsPlaybacking())
+    {
+        mTBOX_TRACE((kTBOX_NIV_1, "[p_TDAL_AV_Start] PVR is Playbacking!\n" ));
+        mTBOX_RETURN(eTDAL_AV_NO_ERROR);
+    }
+#endif
 
     TDAL_LockMutex(TDAL_AVi_Mutex);
 
@@ -546,8 +566,11 @@ LOCAL void p_TDAL_AV_EventsTask(MS_U32 argc, void * argv)
 
 	while (TDAL_AV_EvtTaskStop == FALSE)
 	{
+#if MSTAR_QUEUE
 		bRet = MsOS_RecvFromQueue(TDAL_AV_EvtQueue_p, (MS_U8 *) &pEvtMsg, sizeof(pEvtMsg), &actualSize, MSOS_WAIT_FOREVER);
-		//bRet = TDAL_Dequeue(TDAL_AV_EvtQueue_p, &pEvtMsg);
+#else
+		bRet = TDAL_Dequeue(TDAL_AV_EvtQueue_p, &pEvtMsg);
+#endif
 		mTBOX_ASSERT(bRet == TRUE ? sizeof(pEvtMsg) == actualSize: FALSE);
 
 		if (pEvtMsg.Exit == FALSE)

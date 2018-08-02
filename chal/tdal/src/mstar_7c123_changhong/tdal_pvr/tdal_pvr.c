@@ -35,12 +35,16 @@
 #include "apiXC.h"
 #include "apiHDMITx.h"
 #include "apiDMX.h"
-#include "apiVDEC.h"
+#include "apiVDEC_EX.h"
 #include "apiGOP.h"
 #include "apiGFX.h"
+#include "apiPNL.h"
+#include "PVRPL_Record.h"
 
 #include "tdal_common.h"
+#include "tdal_dmx.h"
 #include "tdal_av.h"
+#include "tdal_disp.h"
 #include "tbox.h"
 #include "tdal_pvr.h"
 #include "tdal_pvr_p.h"
@@ -48,6 +52,11 @@
 /********************************************************
    *   Defines                        *
 ********************************************************/
+#define MAX_PLAYBACK_NUM 2
+#ifndef NARGA_CAVID
+#define NARGA_CAVID    (0x02)
+#endif
+
 //#define ENABLE_CAPVR
 /********************************************************
    *   Macros                        *
@@ -57,19 +66,15 @@ mTBOX_SET_MODULE(eTDAL_PVR_EM);
    *   Local   File   Variables   (LOCAL)            *
 ********************************************************/
 APIPVR_PLAYBACK_TYPE eTDAL_PVR_PlayType = EN_APIPVR_PLAYBACK_TYPE_BASICPLAYER;
-APIPVR_RECORD_TYPE   eTDAL_PVR_RecordType = EN_APIPVR_RECORD_TYPE_DUAL;
+APIPVR_RECORD_TYPE   eTDAL_PVR_RecordType = EN_APIPVR_RECORD_TYPE_SINGLE;
 
 LOCAL char          pxcMounthPath[20];
 char                mountPath[72] = {0};
 
-LOCAL bool          gTDAL_PVR_IsInitialized = false;
+LOCAL bool          gTDAL_PVR_IsInitialized = FALSE;
 LOCAL PVR_FSINFO    TDAL_PVR_recFSInfo[PVR_MAX_RECORDING_FILE];
 
-LOCAL MS_BOOL       TDAL_PVR_bPvrInit       = FALSE;
-LOCAL MS_U8         TDAL_PVRi_CurProgramIdx = 0;
-LOCAL MS_U8         TDAL_PVRi_TimeshiftIdx  = 0xFF;
 LOCAL MS_U8         TDAL_PVR_u8hRecord[PVR_MAX_RECORDING_FILE]={APIPVR_INVALID_HANDLER};
-LOCAL MS_U8         TDAL_PVR_u8hPlayback;
 LOCAL uint8_t       TDAL_PVRi_PCRFltId   = INVALID_FILTER_ID;
 LOCAL uint8_t       TDAL_PVRi_VideoFltId = INVALID_FILTER_ID;
 LOCAL uint8_t       TDAL_PVRi_AudioFltId = INVALID_FILTER_ID;
@@ -87,6 +92,12 @@ LOCAL char          CurRecordedFileName[FILE_PATH_SIZE] = {0};
 LOCAL PVRProgramInfo_t  TDAL_PVR_recprogramInfo[PVR_MAX_RECORDING_FILE];
 LOCAL PVRProgramInfo_t  TDAL_PVR_plyprogramInfo;
 LOCAL PVRProgramInfo_t  TDAL_PVR_livePromInfo;
+LOCAL PVRProgramInfo_t  TDAL_PVR_bgrecPromInfo;
+LOCAL uint8_t pvrbgRecHandle = 0;
+LOCAL uint8_t progbgIdx = 0;
+LOCAL tTDAL_DMX_ChannelId VideoChannel = 0xFF;
+LOCAL tTDAL_DMX_ChannelId AudioChannel = 0xFF;
+LOCAL tTDAL_DMX_ChannelId PCRChannel = 0xFF;
 
 LOCAL tTDAL_PVR_Desc    TDAL_PVR_Desc[PVR_MAX_RECORDING_FILE];
 
@@ -94,14 +105,46 @@ LOCAL uint8_t           TDAL_PVRi_FreeSpaceThreshold = 0; //100% will be used
 
 TDAL_mutex_id           TDAL_PVRi_Mutex = NULL;
 uint64_t        u64FreeSpaceInKB = 0, u64TotalSpaceInKB = 0;
+static const VDEC_StreamId _NullVidStreamID = {0};
+static const AUDIO_DEC_ID  _NullAudStreamID = AU_DEC_INVALID;
+extern VDEC_StreamId stStreamId;
+
+//For Unplugging USB
+static MS_BOOL _bUplugMsg=FALSE;
+static char _moutPath[FILE_PATH_SIZE]={0};
+static MS_BOOL _ReturnToLive = FALSE;
+tTDAL_PVR_Rec_Filters PVRRecFilters[128];
+
+LOCAL MS_U32 TDAL_PVR_playbackTime = 0;
+LOCAL MS_U32 TDAL_PVR_previousChunksTime = 0;
+MS_BOOL bIsSeamlessPlayback = FALSE;
+MS_U32 _u32SeamlessStartTime = 0;
+static MS_BOOL _bIsPlaySwitchChunk = FALSE;
 /********************************************************
    *   Module   variables   (MODULE)               *
 ********************************************************/
+typedef struct PVR_AV_ID_s
+{
+    void *vstreamID;
+    void *astreamID;
+
+}PVR_AV_ID_t;
+
+typedef enum
+{
+    PVR_PATH_MAIN,
+    PVR_PATH_SUB,
+    PVR_PATH_INVALID,
+} Ex_PVRPlaybackPath;
+
+
 /********************************************************
    *   Functions   Definitions   (LOCAL/GLOBAL)        *
 ********************************************************/
-GLOBAL bool TDAL_MPi_ReleasePool(void);
-
+//GLOBAL bool TDAL_MPi_ReleasePool(void);
+IMPORT bool TDAL_AV_AudioStarted(void);
+IMPORT bool TDAL_AV_VideoStarted(void);
+bool TDAL_PVR_IsPlaybacking(void);
 LOCAL APIPVR_CODEC_TYPE TDAL_PVRi_VDEC_TDAL2MS(uint32_t u32VCodec);
 LOCAL tTDAL_AV_VideoType TDAL_PVRi_VDEC_MS2TDAL(uint32_t u32VCodec);
 LOCAL APIPVR_AUD_CODEC_TYPE TDAL_PVRi_ADEC_TDAL2MS(uint32_t u32ACodec);
@@ -123,6 +166,176 @@ uint32_t TDAL_PVRi_GetDurationOfContent(tTDAL_PVR_Desc *pPVRDesc, char *FullReco
 void TDAL_PVRi_GetDurationAndSizeContent(tTDAL_PVR_Desc *pPVRDesc, char *FullRecordedFileName);
 LOCAL tTDAL_PVR_Speed TDAL_PVRi_TrickModeConvBack(APIPVR_PLAYBACK_SPEED enSpeed);
 LOCAL tTDAL_PVR_Callback TDAL_PVR_Notification; 
+LOCAL void TDAL_PVRi_ControlChannel_TDAL_DMX(bool enable);
+void TDAL_PVRi_PlaybackPreviousChunk(tTDAL_PVR_Desc *pPVRDesc, uint16_t curFileIdx);
+
+static DMX_FLOW_INPUT _eCurDMXInputSrc=DMX_FLOW_INPUT_DEMOD;
+static DMX_TSIF _eCurDMXFlowSet[PVR_MAX_RECORDING_FILE]={DMX_TSIF_LIVE0};
+static Ex_PVRPlaybackPath PVRPlaybackPath = PVR_PATH_INVALID;
+static MS_BOOL _bScreenFrozen[MAX_PLAYBACK_NUM];
+
+/********************************************************
+   *   Demo Functions   Definitions   (LOCAL/GLOBAL)        *
+********************************************************/
+MS_BOOL Demo_PVR_USB_UnplugEvent(char *moutPath)
+{
+    PVREventInfo_t event_info;
+    memset((void *)&event_info,0,sizeof(PVREventInfo_t));
+
+    if(gTDAL_PVR_IsInitialized)
+    {
+        if(strstr(MApi_PVR_GetMouthPath(),moutPath)!=NULL)
+        {
+            event_info.pvrEvent = EN_APIPVR_EVENT_ERROR_NO_DISK_SPACE;
+            _bUplugMsg=TRUE;
+            strcpy(_moutPath,moutPath);
+            MsOS_SendToQueue(TDAL_PVRi_QueueID, (MS_U8 *)&event_info, sizeof(PVREventInfo_t), 1000);
+            //printf("send to Queue <2> _u8TimeshiftIdx=%d\n",_u8TimeshiftIdx[_eCurPlaybackProgramPath]);
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+bool Demo_PVR_GetRecFlowSet(int* peDmxInput,int* pePlayback)
+{
+
+    *peDmxInput = _eCurDMXInputSrc ;
+    *pePlayback = DMX_TSIF_LIVE0;
+
+    printf("[%s][%d] DMX flow input = %d, DMX flow =%d\n",__FUNCTION__,__LINE__,*peDmxInput,*pePlayback);
+    return TRUE;
+}
+bool Demo_PVR_GetRecEng(int *peDmxPvrEng)
+{
+    (*peDmxPvrEng) = 0;
+    return TRUE;
+}
+
+LOCAL bool TDAL_PVRi_ShowProgramInfo(tTDAL_PVR_Handle pvrHandle)
+{
+    bool error = TRUE;
+    tTDAL_PVR_Desc  *pPVRDesc = NULL;
+    int i = 0;
+    
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = FALSE;
+        return error;
+    }
+
+    if (pvrHandle == (tTDAL_PVR_Handle)NULL)
+    {
+        error = FALSE;
+        return error;
+    }
+    
+    for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
+    {
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
+        {
+            pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
+            break;
+        }
+    }
+
+    printf("bIsCaptured = %d\n",pPVRDesc->bIsCaptured);
+    printf("bIsTimeshift = %d\n",pPVRDesc->bIsTimeshift);
+    printf("bUsed = %d\n",pPVRDesc->bUsed);
+    printf("eCurrentSpeed = %lu\n",pPVRDesc->eCurrentSpeed);
+    printf("FilesCount = %d\n",pPVRDesc->FilesCount);
+    printf("progIdx = %d\n",pPVRDesc->progIdx);
+    printf("pvrPlyHandle = %d\n",pPVRDesc->pvrPlyHandle);
+    printf("pvrRecHandle = %d\n",pPVRDesc->pvrRecHandle);
+    printf("u32FullRecDuration = %lu\n",pPVRDesc->u32FullRecDuration);
+    printf("u64FreeSpaceInKB = %llu\n",pPVRDesc->u64FreeSpaceInKB);
+    printf("u64FullRecSizeInKB = %llu\n",pPVRDesc->u64FullRecSizeInKB);
+
+    printf("ProgInfoElem.u16VideoPID = %ld\n",pPVRDesc->ProgInfoElem.u16VideoPID);
+    printf("ProgInfoElem.u16AudioPID = %ld\n",pPVRDesc->ProgInfoElem.u16AudioPID);
+    printf("ProgInfoElem.u16PCRPID = %ld\n",pPVRDesc->ProgInfoElem.u16PCRPID);
+    printf("ProgInfoElem.u16SubsPID = %ld\n",pPVRDesc->ProgInfoElem.u16SubsPID);
+
+    printf("u32VideoPid     : %d\n",TDAL_PVRi_FindPidInFilter(pPVRDesc->pPVRProgInfo->Filters, DMX_FILTER_TYPE_VIDEO));
+    printf("u32PCRPid       : %d\n",TDAL_PVRi_FindPidInFilter(pPVRDesc->pPVRProgInfo->Filters, DMX_FILTER_TYPE_PCR));
+    printf("u32AudioPid     : %lu\n",pPVRDesc->pPVRProgInfo->u16AudioPid);
+    printf("u32PmtPid       : %lu\n",TDAL_PVRi_FindPidInFilter(pPVRDesc->pPVRProgInfo->Filters, DMX_FILTER_TYPE_SECTION));
+    printf("enVCodec        : %lu\n",pPVRDesc->pPVRProgInfo->enVCodec);
+    printf("u32ACodec       : %lu\n",pPVRDesc->pPVRProgInfo->u32ACodec);
+    printf("u32LCN          : %lu\n",pPVRDesc->pPVRProgInfo->u32LCN);
+    printf("bIsEncrypted    : %d\n",pPVRDesc->pPVRProgInfo->bIsEncrypted);
+    printf("eEncryptionType : %d\n",pPVRDesc->pPVRProgInfo->enEncryptionType);
+    printf("enServiceType  : %d\n",pPVRDesc->pPVRProgInfo->enServiceType);
+    printf("u32StartTime    : %lu\n",pPVRDesc->pPVRProgInfo->u32StartTime);
+    printf("u32Duration     : %lu\n",pPVRDesc->pPVRProgInfo->u32Duration);
+    printf("u64FileLength    : %llu\n",pPVRDesc->pPVRProgInfo->u64FileLength);
+    printf("bIsScrambled    : %d\n",pPVRDesc->pPVRProgInfo->bIsScrambled);
+    printf("u8ProgIdx        : %d\n",pPVRDesc->pPVRProgInfo->u8ProgIdx);
+    printf("u16CCPid        : %d\n",pPVRDesc->pPVRProgInfo->u16CCPid);
+    printf("u8Age            : %d\n",pPVRDesc->pPVRProgInfo->u8Age);
+    printf("u32LastPlayPositionInSec : %lu\n",pPVRDesc->pPVRProgInfo->u32LastPlayPositionInSec);
+    printf("bLocked          : %d\n",pPVRDesc->pPVRProgInfo->bLocked);
+    printf("bLive            : %d\n",pPVRDesc->pPVRProgInfo->bLive);
+    
+    for (i=0; i<pPVRDesc->pPVRProgInfo->u8AudioInfoNum; i++)
+    {
+        if (i==0)
+            printf("=====Audio Info=====\n");
+        printf("u16AudPID%d = %d u8AudType%d = %d\n", i, pPVRDesc->pPVRProgInfo->AudioInfo[i].u16AudPID, i, pPVRDesc->pPVRProgInfo->AudioInfo[i].u8AudType);
+    }
+
+    for (i=0; i<pPVRDesc->pPVRProgInfo->u8TTXNum; i++)
+    {
+        if (i==0)
+            printf("=====TTX Info=====\n");
+        printf("u16TTX_Pid%d = %d\n", i, pPVRDesc->pPVRProgInfo->TXTInfo[i].u16TTX_Pid);
+        printf("u16TTX_PidFilter%d = %d\n", i, pPVRDesc->pPVRProgInfo->TXTInfo[i].u16TTX_PidFilter);
+        printf("u8ComponentTag%d = %d\n", i, pPVRDesc->pPVRProgInfo->TXTInfo[i].u8ComponentTag);
+        printf("u8lanuage_code%d = %d%d%d\n", i,
+        pPVRDesc->pPVRProgInfo->TXTInfo[i].u8lanuage_code[0],
+        pPVRDesc->pPVRProgInfo->TXTInfo[i].u8lanuage_code[1],
+        pPVRDesc->pPVRProgInfo->TXTInfo[i].u8lanuage_code[2]);
+        printf("u8TTXMagNum%d = %d\n", i, pPVRDesc->pPVRProgInfo->TXTInfo[i].u8TTXMagNum);
+        printf("u8TTXPageNum%d = %d\n", i, pPVRDesc->pPVRProgInfo->TXTInfo[i].u8TTXPageNum);
+        printf("u8TTXType%d = %d\n", i, pPVRDesc->pPVRProgInfo->TXTInfo[i].u8TTXType);
+    }
+    
+    for (i=0; i<pPVRDesc->pPVRProgInfo->u8DVBSubtitleNum; i++)
+    {
+        if (i==0)
+            printf("=====DVBSub Info=====\n");
+        printf("u16ancillary_page_id%d = %d\n", i, pPVRDesc->pPVRProgInfo->DVBSubtInfo[i].u16ancillary_page_id);
+        printf("u16composition_page_id%d = %d\n", i, pPVRDesc->pPVRProgInfo->DVBSubtInfo[i].u16composition_page_id);
+        printf("u16Sub_Pid%d = %d\n", i, pPVRDesc->pPVRProgInfo->DVBSubtInfo[i].u16Sub_Pid);
+        printf("u8lanuage_code%d = %d%d%d\n", i,
+        pPVRDesc->pPVRProgInfo->DVBSubtInfo[i].u8lanuage_code[0],
+        pPVRDesc->pPVRProgInfo->DVBSubtInfo[i].u8lanuage_code[1],
+        pPVRDesc->pPVRProgInfo->DVBSubtInfo[i].u8lanuage_code[2]);
+        printf("u8ComponentTag%d = %d\n", i, pPVRDesc->pPVRProgInfo->DVBSubtInfo[i].u8ComponentTag);
+        printf("u8subtitling_type%d = %d\n", i, pPVRDesc->pPVRProgInfo->DVBSubtInfo[i].u8subtitling_type);
+        printf("u8Sub_PidFilter%d = %d\n", i, pPVRDesc->pPVRProgInfo->DVBSubtInfo[i].u8Sub_PidFilter);
+    }
+
+    for (i=0; i<pPVRDesc->pPVRProgInfo->u8EBUSubtitleNum; i++)
+    {
+        if (i==0)
+            printf("=====EBUSub Info=====\n");
+        printf("u16TTX_Pid%d = %d\n", i, pPVRDesc->pPVRProgInfo->EBUSubtInfo[i].u16TTX_Pid);
+        printf("u16TTX_PidFilter%d = %d\n", i, pPVRDesc->pPVRProgInfo->EBUSubtInfo[i].u16TTX_PidFilter);
+        printf("u8ComponentTag%d = %d\n", i, pPVRDesc->pPVRProgInfo->EBUSubtInfo[i].u8ComponentTag);
+        printf("u8lanuage_code%d = %d%d%d\n", i,
+        pPVRDesc->pPVRProgInfo->EBUSubtInfo[i].u8lanuage_code[0],
+        pPVRDesc->pPVRProgInfo->EBUSubtInfo[i].u8lanuage_code[1],
+        pPVRDesc->pPVRProgInfo->EBUSubtInfo[i].u8lanuage_code[2]);
+        printf("u8TTXMagNum%d = %d\n", i, pPVRDesc->pPVRProgInfo->EBUSubtInfo[i].u8TTXMagNum);
+        printf("u8TTXPageNum%d = %d\n", i, pPVRDesc->pPVRProgInfo->EBUSubtInfo[i].u8TTXPageNum);
+        printf("u8TTXType%d = %d\n", i, pPVRDesc->pPVRProgInfo->EBUSubtInfo[i].u8TTXType);
+    }
+}
+
+/********************************************************
+   *   TDAL Functions   Definitions   (LOCAL/GLOBAL)        *
+********************************************************/
 
 tTDAL_PVR_Error TDAL_PVR_Init(void)
 {
@@ -130,7 +343,7 @@ tTDAL_PVR_Error TDAL_PVR_Init(void)
     mTBOX_FCT_ENTER("TDAL_PVR_Init");
     EN_APIPVR_FILE_SYSTEM_TYPE  eFSType = EN_APIPVR_FILE_SYSTEM_TYPE_VFAT;
     PVRFuncInfo_t               pvrFunc = {NULL};
-    PVR_TSPInfo_t               pvrTspInfo;
+    PVR_TSPInfo_t               pvrTspInfo = {0};
     DMX_FLOW_INPUT              DmxFlowInput;;
     int i = 0;
 #if (DMX_INPUT == DMX_INPUT_DEMOD)
@@ -142,7 +355,7 @@ tTDAL_PVR_Error TDAL_PVR_Init(void)
 #else
     DmxFlowInput = DMX_FLOW_INPUT_DEMOD;
 #endif
-
+    _eCurDMXInputSrc = DmxFlowInput;
     if (gTDAL_PVR_IsInitialized)
     {
         mTBOX_TRACE((kTBOX_NIV_1, "Already init PVR!\n"));
@@ -157,17 +370,23 @@ tTDAL_PVR_Error TDAL_PVR_Init(void)
     MsFS_Init(FALSE);
 
     // [01] Init PVR  ==============================================//
-    pvrTspInfo.u16DmxFlowInput  = (MS_U16) DmxFlowInput;
-    pvrTspInfo.bClkInv          = FALSE;
-    pvrTspInfo.bExtSync         = TRUE;
-    pvrTspInfo.bParallel        = TRUE;
+    //pvrTspInfo.u16DmxFlowInput  = (MS_U16) DmxFlowInput;
+    //pvrTspInfo.bClkInv          = FALSE;
+    //pvrTspInfo.bExtSync         = TRUE;
+    //pvrTspInfo.bParallel        = TRUE;
    
     pxcMounthPath[0] = '\0';
+    _moutPath[0]='\0';
     if (!MApi_PVR_Init(pxcMounthPath, eFSType, PVR_MAX_RECORDING_FILE, pvrTspInfo))
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_Init: fail to initialize PVR module\n"));
         mTBOX_RETURN(error);
+    }
+    if(!MApi_PVR_SetPlaybackPathNum(1))
+    {
+        printf("Fail to Set PlaybackPathNum!\n");
+        return FALSE;
     }
 
     // [02] Mem Layout: The base address/length of physical memory in MApi_PVR_Mmap ==============//
@@ -179,11 +398,11 @@ tTDAL_PVR_Error TDAL_PVR_Init(void)
     }
  
     // [03] Callback Function for PVR ==============//
-    pvrFunc.ALLOC       = TDAL_PVRm_MEMALLOC_FUNC;
-    pvrFunc.FREE        = TDAL_PVRm_MEMFREE_FUNC;
-    pvrFunc.PA2VA       = TDAL_PVRm_MEMPA2VA_FUNC;
-    pvrFunc.MemFlush    = TDAL_PVRm_MEMFLUSH_FUNC;
-    pvrFunc.KLADDER     = TDAL_PVRm_KLADDER_FUNC;
+    //pvrFunc.ALLOC       = TDAL_PVRm_MEMALLOC_FUNC;
+    //pvrFunc.FREE        = TDAL_PVRm_MEMFREE_FUNC;
+    //pvrFunc.PA2VA       = TDAL_PVRm_MEMPA2VA_FUNC;
+    //pvrFunc.MemFlush    = TDAL_PVRm_MEMFLUSH_FUNC;
+    //pvrFunc.KLADDER     = TDAL_PVRm_KLADDER_FUNC;
     //pvrFunc.TrickSetting = appDemo_PVR_SetTrickMode;  [PVR ERROR] Fail to set force motion(TRUE)!
     MApi_PVR_SetFuncInfo(pvrFunc);
     
@@ -194,14 +413,6 @@ tTDAL_PVR_Error TDAL_PVR_Init(void)
     MApi_PVR_SetRecordType(eTDAL_PVR_RecordType);
     MApi_PVR_SetPlaybackType(eTDAL_PVR_PlayType);
     
-    if(eTDAL_PVR_PlayType == EN_APIPVR_PLAYBACK_TYPE_ESPLAYER)
-    {
-        MApi_PVR_SetSyncInfo( PVR_SYNC_DELAY, 66);
-    }
-    else
-    {
-        MApi_PVR_SetSyncInfo( 180, 66);
-    }
 
     // [05] Create Message queue to receive info ==============//
     MApi_PVR_SetMsgWaitMs(0);
@@ -225,12 +436,11 @@ tTDAL_PVR_Error TDAL_PVR_Init(void)
     }
 
     // [06] Init PVR relative info ==============//
-    TDAL_PVR_bPvrInit           = TRUE;
-    TDAL_PVRi_CurProgramIdx    = 0;
-    TDAL_PVRi_TimeshiftIdx     = 0xFF;
-    TDAL_PVR_u8hPlayback        = APIPVR_INVALID_HANDLER;
+    PVRPlaybackPath = PVR_PATH_MAIN;
+    _bScreenFrozen[PVRPlaybackPath]=TRUE;
     memset(&TDAL_PVR_livePromInfo, 0, sizeof(PVRProgramInfo_t));
     memset(&TDAL_PVR_plyprogramInfo, 0, sizeof(PVRProgramInfo_t));
+    memset(&TDAL_PVR_bgrecPromInfo, 0, sizeof(PVRProgramInfo_t));
     
     for(i=0;i<PVR_MAX_RECORDING_FILE;i++)
     {
@@ -238,7 +448,11 @@ tTDAL_PVR_Error TDAL_PVR_Init(void)
         memset(&TDAL_PVR_recprogramInfo[i], 0, sizeof(PVRProgramInfo_t));
     }
 
-    gTDAL_PVR_IsInitialized = true;
+    MDrv_DSCMB2_SetDefaultCAVid(0, NARGA_CAVID);
+    MDrv_AESDMA_SetDefaultCAVid(NARGA_CAVID);
+    TDAL_PVRm_ResetPVRRecFilters();
+
+    gTDAL_PVR_IsInitialized = TRUE;
     mTBOX_RETURN(error);
     PVRInit_Fail:
     TDAL_PVR_Term();
@@ -297,7 +511,6 @@ tTDAL_PVR_Error TDAL_PVR_Term(void)
         TDAL_PVRi_TaskHandle = -1;
         //*Init relative info*//
 
-        TDAL_PVR_u8hPlayback = APIPVR_INVALID_HANDLER;
         memset(&TDAL_PVR_livePromInfo,0,sizeof(PVRProgramInfo_t));
         memset(&TDAL_PVR_plyprogramInfo,0,sizeof(PVRProgramInfo_t));
         for(i=0;i<PVR_MAX_RECORDING_FILE;i++)
@@ -316,7 +529,7 @@ tTDAL_PVR_Error TDAL_PVR_Term(void)
         TDAL_DeleteMutex(TDAL_PVRi_Mutex);
         TDAL_PVRi_Mutex = NULL;
         
-        gTDAL_PVR_IsInitialized = false;
+        gTDAL_PVR_IsInitialized = FALSE;
         mTBOX_RETURN(error);
     }
     
@@ -328,18 +541,23 @@ tTDAL_PVR_Error TDAL_PVR_Open(tTDAL_PVR_Handle *pvrHandle, bool bIsTimeshift, co
 {
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_Open");
-    int i;
-
+    int i = 0;
+    
+    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Path is %s\n",pPath));
+    
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    
     if (pvrHandle == NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);        
     }
     
     for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (TDAL_PVR_Desc[i].bUsed == false)
+        if (TDAL_PVR_Desc[i].bUsed == FALSE)
         {
             *pvrHandle = (tTDAL_PVR_Handle)&TDAL_PVR_Desc[i];
             break;
@@ -367,17 +585,19 @@ tTDAL_PVR_Error TDAL_PVR_Open(tTDAL_PVR_Handle *pvrHandle, bool bIsTimeshift, co
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Path is not correct\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);       
     }
     
     TDAL_PVR_Desc[i].pvrPlyHandle       = 0xFF;
     TDAL_PVR_Desc[i].pvrRecHandle       = 0xFF;
-    TDAL_PVR_Desc[i].progIdx            = NULL;
-    TDAL_PVR_Desc[i].bUsed              = true;
+    TDAL_PVR_Desc[i].progIdx            = 0xFF;
+    TDAL_PVR_Desc[i].bUsed              = TRUE;
     TDAL_PVR_Desc[i].bIsTimeshift       = bIsTimeshift;
     TDAL_PVR_Desc[i].pPVRProgInfo       = &TDAL_PVR_recprogramInfo[i];
     TDAL_PVRi_ResetProgInfo(TDAL_PVR_Desc[i].pPVRProgInfo);
     
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
    
 }
@@ -387,18 +607,20 @@ tTDAL_PVR_Error TDAL_PVR_Close(tTDAL_PVR_Handle pvrHandle)
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_Close");
     tTDAL_PVR_Desc *pPVRDesc = NULL;
-    int i;
-    
+    int i = 0;
+
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
     for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
@@ -409,6 +631,7 @@ tTDAL_PVR_Error TDAL_PVR_Close(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);        
     }
     
@@ -417,10 +640,9 @@ tTDAL_PVR_Error TDAL_PVR_Close(tTDAL_PVR_Handle pvrHandle)
     else
         TDAL_PVR_recFSInfo[PVR_NORMALREC_PATH_IDX].recPath[0] = '\0';
     
-    TDAL_PVRi_DisableRouteForPlayback();
-        
     memset(pPVRDesc, 0, sizeof(tTDAL_PVR_Desc));
     
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);    
 }
 
@@ -430,29 +652,40 @@ tTDAL_PVR_Error TDAL_PVR_Record_Start(tTDAL_PVR_Handle pvrHandle)
     mTBOX_FCT_ENTER("TDAL_PVR_Record_Start");
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
     DMX_FLOW_INPUT  DmxFlowInput = DMX_FLOW_INPUT_DEMOD;
-    bool            bRet = false;
-    bool            bRecordAll = false;
-    int i;
+    bool            bRet = FALSE;
+    bool            bRecordAll = FALSE;
+    int i = 0;
+    PVR_AV_ID_t AVStreamID;
+
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
     
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
-
+#if 0
 #if defined(SDEC_GLUE_JPEG_TDAL_MP_PARTITION)
-    if (TDAL_MPi_ReleasePool() == false)
+    if (TDAL_MPi_ReleasePool() == FALSE)
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Could not start record, MP memory partition still used!!!\n"));
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_RETURN(error);
     }
 #endif
-
+#endif
     for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
@@ -463,6 +696,7 @@ tTDAL_PVR_Error TDAL_PVR_Record_Start(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }   
 
@@ -471,6 +705,7 @@ tTDAL_PVR_Error TDAL_PVR_Record_Start(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Disk Space can't be detected!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error); 
     }
     
@@ -479,27 +714,11 @@ tTDAL_PVR_Error TDAL_PVR_Record_Start(tTDAL_PVR_Handle pvrHandle)
         error = eTDAL_PVR_ERROR_BAD_ARG;
         TDAL_PVR_Notification(eTDAL_PVR_NO_DISK_SPACE, NULL);
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Disk Space is not enough! (less than %dMB)\n",PVR_FILE_SIZE_TO_STOP/1024));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     pPVRDesc->u64FreeSpaceInKB = u64FreeSpaceInKB;
     pPVRDesc->u32FullRecDuration = 0;
-    // [01] Set dmx flow input for pvr record engine  ==============================================//
-#if (DMX_INPUT == DMX_INPUT_DEMOD)
-    DmxFlowInput = DMX_FLOW_INPUT_DEMOD;
-#elif (DMX_INPUT == DMX_INPUT_EXT_INPUT0)
-    DmxFlowInput = DMX_FLOW_INPUT_EXT_INPUT0;
-#elif (DMX_INPUT == DMX_INPUT_EXT_INPUT1)
-    DmxFlowInput = DMX_FLOW_INPUT_EXT_INPUT1;
-#else
-    DmxFlowInput = DMX_FLOW_INPUT_DEMOD;
-#endif
-
-    if (DMX_FILTER_STATUS_OK != MApi_DMX_FlowSet(DMX_FLOW_PVR, DmxFlowInput , FALSE, TRUE, TRUE))
-    {
-        error = eTDAL_PVR_ERROR_NOT_DONE;
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_DMX_FlowSet: failure for PVR Start\n"));
-        mTBOX_RETURN(error);
-    }
 
     if (pPVRDesc->FilesCount > 0)
     {
@@ -510,30 +729,46 @@ tTDAL_PVR_Error TDAL_PVR_Record_Start(tTDAL_PVR_Handle pvrHandle)
         while(TDAL_PVRm_IsFileExist(MApi_PVR_GetMouthPath(), pPVRDesc->pPVRProgInfo->FileName))
         {
             pPVRDesc->FilesCount++;
-            sprintf(strchr(pPVRDesc->pPVRProgInfo->FileName, '.')-3, "%03d.ts", pPVRDesc->FilesCount);
+            sprintf(strchr(pPVRDesc->pPVRProgInfo->FileName, '.')-3, "%03d.trp", pPVRDesc->FilesCount);
         }
     }
 
-
+    if (bIsSeamlessPlayback)
+    {
+        TDAL_PVRi_BackGround_Record_Stop();
+    }
     mTBOX_TRACE((kTBOX_NIV_5, "TDAL_PVR_Record_Start: Record file %s\n", pPVRDesc->pPVRProgInfo->FileName));
-
     /* Set metadata in order to save settings for playback */
     if (!MApi_PVR_SetMetaData(pPVRDesc->pPVRProgInfo, pPVRDesc->progIdx, 0, 0, 0, 0))
     {
         error = eTDAL_PVR_ERROR_IN_DRIVER;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_SetMetaData: failure!!!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        TDAL_PVRi_BackGround_Record_Start();
         mTBOX_RETURN(error);
     }
-    
-    bRet = MApi_PVR_RecordStart(&pPVRDesc->pvrRecHandle, pPVRDesc->progIdx, APIPVR_FILE_LINEAR, u64FreeSpaceInKB/1024, false);
-    if (bRet == false)
+    AVStreamID.vstreamID = (void *)(&_NullVidStreamID);
+    AVStreamID.astreamID = (void *)(&_NullAudStreamID);    
+    bRet = MApi_PVR_EX_RecordEngSet(&pPVRDesc->pvrRecHandle,(void *)(&AVStreamID), pPVRDesc->progIdx, APIPVR_FILE_LINEAR, u64FreeSpaceInKB/1024, FALSE);
+    if (bRet == FALSE)
     {
         error = eTDAL_PVR_ERROR_IN_DRIVER;
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_RecordStart: failure!!!\n"));
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_EX_RecordEngSet: failure!!!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);        
+        TDAL_PVRi_BackGround_Record_Start();
         mTBOX_RETURN(error);
     }
-
+    bRet = MApi_PVR_EX_RecordEngEnable(&pPVRDesc->pvrRecHandle,bRecordAll);
+    if (bRet == FALSE)
+    {
+        error = eTDAL_PVR_ERROR_IN_DRIVER;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_EX_RecordEngEnable: failure!!!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);        
+        TDAL_PVRi_BackGround_Record_Start();
+        mTBOX_RETURN(error);
+    }    
     pPVRDesc->FilesCount++;
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -542,19 +777,28 @@ tTDAL_PVR_Error TDAL_PVR_Record_Stop(tTDAL_PVR_Handle pvrHandle)
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_Record_Stop");
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
-    int i;
-    bool bRet = false;
+    int i = 0;
+    bool bRet = FALSE;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
     
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
@@ -565,6 +809,7 @@ tTDAL_PVR_Error TDAL_PVR_Record_Stop(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);        
     }
     
@@ -572,6 +817,7 @@ tTDAL_PVR_Error TDAL_PVR_Record_Stop(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrRecHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -579,6 +825,7 @@ tTDAL_PVR_Error TDAL_PVR_Record_Stop(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_IsRecording: no recordings to stop\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
@@ -586,7 +833,8 @@ tTDAL_PVR_Error TDAL_PVR_Record_Stop(tTDAL_PVR_Handle pvrHandle)
     pPVRDesc->pPVRProgInfo->u32StartTime = 0;
 
     bRet = MApi_PVR_RecordStop(&pPVRDesc->pvrRecHandle,pPVRDesc->progIdx);
-    if (bRet == false)
+    
+    if (bRet == FALSE)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_RecordStop: failed to stop\n"));
@@ -596,8 +844,11 @@ tTDAL_PVR_Error TDAL_PVR_Record_Stop(tTDAL_PVR_Handle pvrHandle)
     //patch to notify FS that recording has changed disk space
      pTDAL_PVR_NotifyRecordedContent(TDAL_PVR_recFSInfo[PVR_NORMALREC_PATH_IDX].recPath,
                (uint32_t) (pPVRDesc->u64FullRecSizeInKB + pPVRDesc->pPVRProgInfo->u64FileLength));
+    TDAL_PVRm_ResetPVRRecFilters();
 
     /* TODO -  program info reset?*/
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+    TDAL_PVRi_BackGround_Record_Start();
     mTBOX_RETURN(error);
 }
 
@@ -606,19 +857,28 @@ tTDAL_PVR_Error TDAL_PVR_Record_Pause(tTDAL_PVR_Handle pvrHandle)
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_Record_Pause");
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
-    bool            bRet = true;
-    int i;
+    bool            bRet = FALSE;
+    int i = 0;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
     
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
@@ -629,6 +889,7 @@ tTDAL_PVR_Error TDAL_PVR_Record_Pause(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);        
     }
     
@@ -636,16 +897,17 @@ tTDAL_PVR_Error TDAL_PVR_Record_Pause(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrRecHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
     bRet = MApi_PVR_RecordPause(pPVRDesc->progIdx);
-    if (bRet == false)
+    if (bRet == FALSE)
     {
         error = eTDAL_PVR_ERROR_IN_DRIVER;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_RecordPause: failed to pause current recording!\n"));    
     }
-    
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -654,19 +916,28 @@ tTDAL_PVR_Error TDAL_PVR_Record_Resume(tTDAL_PVR_Handle pvrHandle)
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_Record_Resume");
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
-    bool            bRet = true;
-    int i;
+    bool            bRet = FALSE;
+    int i = 0;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
     
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
@@ -677,6 +948,7 @@ tTDAL_PVR_Error TDAL_PVR_Record_Resume(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);        
     }
     
@@ -684,16 +956,17 @@ tTDAL_PVR_Error TDAL_PVR_Record_Resume(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrRecHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
     bRet = MApi_PVR_RecordResume(pPVRDesc->progIdx);
-    if (bRet == false)
+    if (bRet == FALSE)
     {
         error = eTDAL_PVR_ERROR_IN_DRIVER;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_RecordPause: failed to pause current recording!\n"));    
     }
-    
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -703,47 +976,67 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_RecordStart(tTDAL_PVR_Handle pvrHandle)
     mTBOX_FCT_ENTER("TDAL_PVR_Timeshift_RecordStart");
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
     DMX_FLOW_INPUT  DmxFlowInput = DMX_FLOW_INPUT_DEMOD;
-    bool            bRet = false;
-    bool            bRecordAll = false;
+    bool            bRet = FALSE;
+    bool            bRecordAll = FALSE;
     char            FileName[32] = {0};
-    int i;
-    
+    int i = 0;
+    PVR_AV_ID_t AVStreamID;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
+
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
-
+#if 0
 #if defined(SDEC_GLUE_JPEG_TDAL_MP_PARTITION)
-    if (TDAL_MPi_ReleasePool() == false)
+    if (TDAL_MPi_ReleasePool() == FALSE)
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Could not start record, MP memory partition still used!!!\n"));
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_RETURN(error);
     }
 #endif
-
+#endif
     for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
         }
     }    
     
-    if (pPVRDesc==NULL || pPVRDesc->bIsTimeshift==false)
+    if (pPVRDesc==NULL || pPVRDesc->bIsTimeshift==FALSE)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
+    }
+    
+    if (bIsSeamlessPlayback)
+    {
+        pPVRDesc->pvrRecHandle = pvrbgRecHandle;
+        pPVRDesc->progIdx = progbgIdx;
+        _u32SeamlessStartTime = MsOS_GetSystemTime() - _u32SeamlessStartTime;
+        _u32SeamlessStartTime/=1000;
     }
     
     if ((pPVRDesc->progIdx!=0xFF) && MApi_PVR_IsRecording(pPVRDesc->progIdx))
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Can not start timeshift recording\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
@@ -752,6 +1045,7 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_RecordStart(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Can not start timeshift recording. Playback is going on\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -762,6 +1056,7 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_RecordStart(tTDAL_PVR_Handle pvrHandle)
         if (bRet == FALSE)
         {
             mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Can not remove previous timeshift file!\n"));
+            TDAL_UnlockMutex(TDAL_PVRi_Mutex);
             mTBOX_RETURN(error);
         }
     }
@@ -775,6 +1070,7 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_RecordStart(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL,"Disk Space can't be detected!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -782,48 +1078,50 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_RecordStart(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Disk Space is not enough! (less than %dMB)\n",PVR_FILE_SIZE_TO_STOP/1024));
-        mTBOX_RETURN(error);
-    }
-
-    // [01] Set dmx flow input for pvr record engine  ==============================================//
-#if (DMX_INPUT == DMX_INPUT_DEMOD)
-    DmxFlowInput = DMX_FLOW_INPUT_DEMOD;
-#elif (DMX_INPUT == DMX_INPUT_EXT_INPUT0)
-    DmxFlowInput = DMX_FLOW_INPUT_EXT_INPUT0;
-#elif (DMX_INPUT == DMX_INPUT_EXT_INPUT1)
-    DmxFlowInput = DMX_FLOW_INPUT_EXT_INPUT1;
-#else
-    DmxFlowInput = DMX_FLOW_INPUT_DEMOD;
-#endif
-
-    if (DMX_FILTER_STATUS_OK != MApi_DMX_FlowSet(DMX_FLOW_PVR, DmxFlowInput, FALSE, TRUE, TRUE))
-    {
-        error = eTDAL_PVR_ERROR_NOT_DONE;
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_DMX_FlowSet: failure for PVR Start\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
     /* Set metadata in order to save settings for playback */
     bRet = MApi_PVR_SetMetaData(pPVRDesc->pPVRProgInfo, pPVRDesc->progIdx, 0, 0, 0, 0);
-    if (bRet == false)
+    if (bRet == FALSE)
     {
         error = eTDAL_PVR_ERROR_IN_DRIVER;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_SetMetaData: failure!!!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }    
     /* Timeshift setting for Live buffer */
-    MApi_PVR_FreezeScreenInTimeshiftRecord(EN_APIPVR_ACTION_TYPE_SET, &TDAL_PVRi_ScreenFrozen);
-    MApi_PVR_SetTimeshiftFileSize(u64FreeSpaceInKB);//limited to 4G
-    
+
+    MApi_PVR_EX_FreezeScreenInTimeshiftRecord(PVRPlaybackPath,EN_APIPVR_ACTION_TYPE_SET, &_bScreenFrozen[PVRPlaybackPath]);
+    MApi_PVR_SetTimeshiftFileSize(u64FreeSpaceInKB*0.98);//left at least 2% free space for PVR middleware
     /* TODO */
-    bRet = MApi_PVR_TimeshiftRecordStart(&pPVRDesc->pvrRecHandle, pPVRDesc->progIdx);
-    if (bRet == false)
+    
+    AVStreamID.vstreamID = (void *)(&_NullVidStreamID);
+    AVStreamID.astreamID = (void *)(&_NullAudStreamID); 
+
+    bRet = MApi_PVR_EX_TimeshiftRecordEngSet(&pPVRDesc->pvrRecHandle,(void *)(&AVStreamID),pPVRDesc->progIdx,PVRPlaybackPath);
+
+    if (bRet == FALSE)
     {
         error = eTDAL_PVR_ERROR_IN_DRIVER;
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_TimeshiftRecordStart: failure!!!\n"));
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_EX_TimeshiftRecordEngSet: failure!!!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
+
+    bRet = MApi_PVR_EX_TimeshiftRecordEngEnable(&pPVRDesc->pvrRecHandle);
+
+    if (bRet == FALSE)
+    {
+        error = eTDAL_PVR_ERROR_IN_DRIVER;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_EX_TimeshiftRecordEngEnable: failure!!!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }    
+
     pPVRDesc->FilesCount = 1;
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -832,31 +1130,41 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_RecordStop(tTDAL_PVR_Handle pvrHandle)
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_Timeshift_RecordStop");
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
-    uint8_t filename[128];
-    int i;
-    bool bRet = false;
+    uint8_t filename[128] = {0};
+    int i = 0;
+    bool bRet = FALSE;
     struct stat buf;
-    
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
+
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
         }
     }    
     
-    if (pPVRDesc==NULL || pPVRDesc->bIsTimeshift==false)
+    if (pPVRDesc==NULL || pPVRDesc->bIsTimeshift==FALSE)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -864,6 +1172,7 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_RecordStop(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Not valid pvrRecHandle - progIdx\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -871,6 +1180,7 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_RecordStop(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Already stop recording\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
@@ -878,7 +1188,7 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_RecordStop(tTDAL_PVR_Handle pvrHandle)
     MApi_PVR_GetRecordStartTime(pPVRDesc->pvrRecHandle, &pPVRDesc->pPVRProgInfo->u32StartTime);
 
     bRet = MApi_PVR_TimeshiftRecordStop(&pPVRDesc->pvrRecHandle, pPVRDesc->progIdx);   
-    if (bRet == false)
+    if (bRet == FALSE)
     {
         error = eTDAL_PVR_ERROR_IN_DRIVER;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_TimeshiftRecordStop: failure!!!\n"));
@@ -897,7 +1207,9 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_RecordStop(tTDAL_PVR_Handle pvrHandle)
    //patch to notify FS that recording has changed disk space
     pTDAL_PVR_NotifyRecordedContent(TDAL_PVR_recFSInfo[PVR_TIMESHIFT_PATH_IDX].recPath,
                     (uint32_t) (buf.st_size >> 10));
+    TDAL_PVRm_ResetPVRRecFilters();
 
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     /* TODO - audio mute?*/
     mTBOX_RETURN(error);
 }
@@ -916,45 +1228,85 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_PlaybackStart(tTDAL_PVR_Handle pvrHandle, uin
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_Timeshift_PlaybackStart");
 
-    bool bRet = false;
+    bool bRet = FALSE;
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
-    int i;
+    int i = 0;
     PVRDataInfo_t dataInfo;
     char PathName[32]={0};
+    PVR_AV_ID_t AVStreamID;
+    PVRFilterInfo_t *Filters = NULL;
     
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
+
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
+    if (bIsSeamlessPlayback)
+    {
+        TDAL_DISP_LayerEnable(eTDAL_DISP_LAYER_VIDEO_ID_0);
+        MApi_DMX_AVFifo_Reset(DMX_FILTER_TYPE_VIDEO, TRUE);
+        MApi_DMX_AVFifo_Reset(DMX_FILTER_TYPE_AUDIO, TRUE);
+        MApi_DMX_AVFifo_Reset(DMX_FILTER_TYPE_AUDIO2, TRUE);
+        _ReturnToLive = TRUE;        
+    }
+    else
+    {
+        if (TDAL_AV_VideoStarted())
+        {
+            TDAL_AV_Stop(eTDAL_AV_DECODER_VIDEO_1);
+            _ReturnToLive = TRUE;
+        }
+        if (TDAL_AV_AudioStarted())
+        {
+            TDAL_AV_Stop(eTDAL_AV_DECODER_AUDIO_1);
+            _ReturnToLive = TRUE;
+        }
+    }
+
+    if (_ReturnToLive == TRUE)
+    {
+        TDAL_DMXi_GetLiveChannelID(&VideoChannel,&AudioChannel,&PCRChannel);
+        TDAL_PVRi_ControlChannel_TDAL_DMX(FALSE);
+    }
+#if 0
 #if defined(SDEC_GLUE_JPEG_TDAL_MP_PARTITION)
-    if (TDAL_MPi_ReleasePool() == false)
+    if (TDAL_MPi_ReleasePool() == FALSE)
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Could not start record, MP memory partition still used!!!\n"));
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_RETURN(error);
     }
 #endif
-
+#endif
     for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
         }
     }    
     
-    if (pPVRDesc==NULL || pPVRDesc->bIsTimeshift==false)
+    if (pPVRDesc==NULL || pPVRDesc->bIsTimeshift==FALSE)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
-    PVRFilterInfo_t *Filters;
-
+    
     // [02] change to normal speed when playing  ==============================================//
     if (MApi_PVR_IsPlaybacking())
     {
@@ -964,40 +1316,54 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_PlaybackStart(tTDAL_PVR_Handle pvrHandle, uin
         if (bRet)
         {
             mTBOX_TRACE((kTBOX_NIV_CRITICAL, "There is playback, already\n"));
+            TDAL_UnlockMutex(TDAL_PVRi_Mutex);
             mTBOX_RETURN(error);
         }
         else
         {
             error = eTDAL_PVR_ERROR_NOT_DONE;
             mTBOX_TRACE((kTBOX_NIV_CRITICAL, "There is playback, already and something went wrong\n"));
+            TDAL_UnlockMutex(TDAL_PVRi_Mutex);
             mTBOX_RETURN(error); 
         }
     }
 
     // [03]  ==============================================//
     memcpy(&TDAL_PVR_plyprogramInfo, pPVRDesc->pPVRProgInfo, sizeof(PVRProgramInfo_t));
-    if (eTDAL_PVR_PlayType == EN_APIPVR_PLAYBACK_TYPE_ESPLAYER)
-    {
-        dataInfo.u16VideoPID    = TDAL_PVRi_FindPidInFilter(pPVRDesc->pPVRProgInfo, DMX_FILTER_TYPE_VIDEO);
-        dataInfo.enCodecType    = pPVRDesc->pPVRProgInfo->enVCodec;
-        dataInfo.u16AudioPID    = pPVRDesc->pPVRProgInfo->u16AudioPid;
-        dataInfo.enAdecType     = (APIPVR_AUD_CODEC_TYPE)pPVRDesc->pPVRProgInfo->enVCodec;
-        MApi_PVR_SetDataInfo(dataInfo);
-    }
+
     // [04]   ==============================================//
-
-    /* TODO - it is done, but should be checked if right filename is copied*/
-    TDAL_PVRi_EnableRouteForPlayback(DMX_FLOW_PLAYBACK, DMX_FLOW_INPUT_MEM, 0, 1, 1, &pPVRDesc->ProgInfoElem);
-
-    MApi_PVR_PlaybackABLoopReset();
-    bRet = MApi_PVR_TimeshiftPlaybackStart(&pPVRDesc->pvrPlyHandle, TDAL_PVR_plyprogramInfo.FileName, u32PlaybackTimeInSec, 0);
+    AVStreamID.vstreamID = (void *)(&_NullVidStreamID);
+    AVStreamID.astreamID = (void *)(&_NullAudStreamID);
+    
+    MApi_PVR_EX_PlaybackABLoopReset(pPVRDesc->pvrPlyHandle);
+#ifdef PRODUCT_USE_CA
+    tTDAL_PVR_Rec_Filters *rec_filter = NULL;
+    uint32_t descId;
+    
+    if(rec_filter)
+    {
+        for (i = 0 ; i < 128 ; i++)
+        {
+            if (PVRRecFilters[i].u8FilterID != INVALID_FILTER_ID && PVRRecFilters[i].u32PID != INVALID_PID)
+            {
+                descId = TDAL_DESC_GetDescramblerID((uint16_t)PVRRecFilters[i].u32PID);
+                if(descId != 0xFFFFFFFF)
+                {
+                    MDrv_DSCMB2_FltConnectFltId(0,descId,PVRRecFilters[i].u8FilterID);
+                }
+            }
+        }
+    }
+#endif
+    bRet = MApi_PVR_EX_TimeshiftPlaybackStart(PVRPlaybackPath,&pPVRDesc->pvrPlyHandle,PVRPlaybackPath,(void *)(&AVStreamID),TDAL_PVR_plyprogramInfo.FileName, u32PlaybackTimeInSec, 0);
     if (bRet == FALSE)
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_TimeshiftPlaybackStart failed\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     /*TODO - screen freezing?*/
-
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -1006,29 +1372,39 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_PlaybackStop(tTDAL_PVR_Handle pvrHandle)
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_Timeshift_PlaybackStop");
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
-    int i;
-    bool bRet = false;
-    
+    int i = 0;
+    bool bRet = FALSE;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
+
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
         }
     }    
     
-    if (pPVRDesc==NULL || pPVRDesc->bIsTimeshift==false)
+    if (pPVRDesc==NULL || pPVRDesc->bIsTimeshift==FALSE)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1036,6 +1412,7 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_PlaybackStop(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Not valid pvrPlyHandle\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1043,6 +1420,7 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_PlaybackStop(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Already stop playing\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
@@ -1050,11 +1428,31 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_PlaybackStop(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_IN_DRIVER;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackStop failed to execute!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
+    while (MApi_PVR_IsPlaybacking())
+    {
+        MsOS_DelayTask(10);
+    }
     /* TODO - so this should be done in the MW */
-    TDAL_PVRi_DisableRouteForPlayback();
+
     memset(&TDAL_PVR_plyprogramInfo, 0, sizeof(PVRProgramInfo_t));      
+    if (_ReturnToLive == TRUE)
+    {
+        tTDAL_AV_StreamType StreamType;
+        TDAL_PVRi_ControlChannel_TDAL_DMX(TRUE);
+        
+        StreamType.videoType = eTDAL_AV_VIDEO_TYPE_MPEG2;
+        TDAL_AV_Start(eTDAL_AV_DECODER_VIDEO_1,StreamType);
+
+        StreamType.audioType = eTDAL_AV_AUDIO_TYPE_MPEG;
+        TDAL_AV_Start(eTDAL_AV_DECODER_AUDIO_1,StreamType);
+        _ReturnToLive = FALSE;
+    }
+
+    TDAL_PVR_playbackTime = 0;
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -1063,66 +1461,110 @@ bool TDAL_PVR_IsRecording(tTDAL_PVR_Handle pvrHandle)
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_IsRecording");
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
-    int i;
-    bool bRet = false;
-    
+    int i = 0;
+    bool bRet = FALSE;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
+
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
         }
     }
     bRet = MApi_PVR_IsRecording(pPVRDesc->pvrRecHandle);
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     return bRet;
 }
 
+bool TDAL_PVR_IsPlaybacking(void)
+{
+    bool bRet = FALSE;
+    bRet = MApi_PVR_IsPlaybacking();
+    return bRet;
+}
 tTDAL_PVR_Error TDAL_PVR_PlaybackStart(tTDAL_PVR_Handle pvrHandle, uint32_t u32PlaybackTimeInSec)
 {
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_PlaybackStart");
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
-    int i;
-    char *FileName;
+    int i = 0;
     MS_BOOL bRet = FALSE;
+    PVR_AV_ID_t AVStreamID;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
 
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
+    
+    if (TDAL_AV_VideoStarted())
+    {
+        TDAL_AV_Stop(eTDAL_AV_DECODER_VIDEO_1);
+        _ReturnToLive = TRUE;
+    }
+    if (TDAL_AV_AudioStarted())
+    {
+        TDAL_AV_Stop(eTDAL_AV_DECODER_AUDIO_1);
+        _ReturnToLive = TRUE;
+    }
 
+    if (_ReturnToLive == TRUE)
+    {
+        TDAL_DMXi_GetLiveChannelID(&VideoChannel,&AudioChannel,&PCRChannel);
+        TDAL_PVRi_ControlChannel_TDAL_DMX(FALSE);
+    }
+#if 0
 #if defined(SDEC_GLUE_JPEG_TDAL_MP_PARTITION)
-    if (TDAL_MPi_ReleasePool() == false)
+    if (TDAL_MPi_ReleasePool() == FALSE)
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Could not start record, MP memory partition still used!!!\n"));
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_RETURN(error);
     }
 #endif
+#endif
 
     for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
         }
     }    
     
-    if (pPVRDesc==NULL || pPVRDesc->bIsTimeshift!=false)
+    if (pPVRDesc==NULL || pPVRDesc->bIsTimeshift!=FALSE)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1134,37 +1576,42 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackStart(tTDAL_PVR_Handle pvrHandle, uint32_t u32P
         if (bRet)
         {
             mTBOX_TRACE((kTBOX_NIV_CRITICAL, "There is playback, already\n"));
+            TDAL_UnlockMutex(TDAL_PVRi_Mutex);
             mTBOX_RETURN(error);
         }
         else
         {
             error = eTDAL_PVR_ERROR_NOT_DONE;
             mTBOX_TRACE((kTBOX_NIV_CRITICAL, "There is playback, already and something went wrong\n"));
+            TDAL_UnlockMutex(TDAL_PVRi_Mutex);
             mTBOX_RETURN(error); 
         }
     }
+    memcpy(&TDAL_PVR_plyprogramInfo, pPVRDesc->pPVRProgInfo, sizeof(PVRProgramInfo_t));
 
-    FileName = pPVRDesc->pPVRProgInfo->FileName;   
     pPVRDesc->eCurrentSpeed = EN_APIPVR_PLAYBACK_SPEED_1X;
-    
-    TDAL_PVRi_EnableRouteForPlayback(DMX_FLOW_PLAYBACK, DMX_FLOW_INPUT_MEM, 0, 1, 1, &pPVRDesc->ProgInfoElem);
-    
-    bRet = MApi_PVR_PlaybackABLoopReset();
+        
+    bRet = MApi_PVR_EX_PlaybackABLoopReset(pPVRDesc->pvrPlyHandle);
     if (!bRet)
     {
         //error = eTDAL_PVR_ERROR_NOT_DONE;
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackABLoopReset: failed to reset AB loop\n"));
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_EX_PlaybackABLoopReset: failed to reset AB loop\n"));
         //mTBOX_RETURN(error);
     }
     
-    bRet = MApi_PVR_PlaybackStart(&pPVRDesc->pvrPlyHandle, FileName, u32PlaybackTimeInSec,0);
+    AVStreamID.vstreamID = Demo_VDEC_GetStreamID(0);
+    AVStreamID.astreamID = (void *)(&_NullAudStreamID);
+    
+
+    bRet = MApi_PVR_EX_PlaybackStart(PVRPlaybackPath,&pPVRDesc->pvrPlyHandle,(void *)(&AVStreamID),TDAL_PVR_plyprogramInfo.FileName, u32PlaybackTimeInSec, 0);
     if(!bRet)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackStart: failed to start playback\n"));
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_EX_PlaybackStart: failed to start playback\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
-    
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -1173,18 +1620,27 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackStop(tTDAL_PVR_Handle pvrHandle)
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_PlaybackStop");
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
-    int i;
-    
+    int i = 0;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
+
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
@@ -1195,6 +1651,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackStop(tTDAL_PVR_Handle pvrHandle)
     {
         tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
         printf("Already stop playing\n");
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
@@ -1202,6 +1659,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackStop(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrRecHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1212,6 +1670,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackStop(tTDAL_PVR_Handle pvrHandle)
     if (TDAL_PVRm_CheckUSB(mountPath) == FALSE)
     {
         tTDAL_PVR_Error error = eTDAL_PVR_ERROR_NOT_DONE;
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1219,9 +1678,25 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackStop(tTDAL_PVR_Handle pvrHandle)
     {
         tTDAL_PVR_Error error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackStop: failed to stop playback\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
+    if (_ReturnToLive == TRUE)
+    {
+        tTDAL_AV_StreamType StreamType;
+        TDAL_PVRi_ControlChannel_TDAL_DMX(TRUE);
+        
+        StreamType.videoType = eTDAL_AV_VIDEO_TYPE_MPEG2;
+        TDAL_AV_Start(eTDAL_AV_DECODER_VIDEO_1,StreamType);
+
+        StreamType.audioType = eTDAL_AV_AUDIO_TYPE_MPEG;
+        TDAL_AV_Start(eTDAL_AV_DECODER_AUDIO_1,StreamType);
+        _ReturnToLive = FALSE;
+    }
+
+    TDAL_PVR_playbackTime = 0;
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -1230,19 +1705,28 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackPause(tTDAL_PVR_Handle pvrHandle)
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_PlaybackPause");
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
-    bool bRet = true;
-    int i;
-    
+    bool bRet = TRUE;
+    int i = 0;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
+
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     for (i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
@@ -1252,7 +1736,8 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackPause(tTDAL_PVR_Handle pvrHandle)
     if (MApi_PVR_IsPlaybacking() != TRUE)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Not in playback state\n"));
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Not in playback state!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1260,18 +1745,21 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackPause(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrPlyHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
     bRet = MApi_PVR_PlaybackPause(pPVRDesc->pvrPlyHandle);
-    if (bRet == false)
+    if (bRet == FALSE)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackPause: failed to pause!\n"));
     }
     else
-        pPVRDesc->eCurrentSpeed = EN_APIPVR_PLAYBACK_SPEED_0X;    
-
+    {
+        pPVRDesc->eCurrentSpeed = EN_APIPVR_PLAYBACK_SPEED_0X;
+    }
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -1280,19 +1768,28 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackResume(tTDAL_PVR_Handle pvrHandle)
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_PlaybackResume");
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
-    bool bRet = false;
-    int i;
-    
+    bool bRet = FALSE;
+    int i = 0;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
+
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     for (i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
@@ -1303,6 +1800,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackResume(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Not in playback state\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1310,6 +1808,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackResume(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrRecHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1322,14 +1821,17 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackResume(tTDAL_PVR_Handle pvrHandle)
         {
             error = eTDAL_PVR_ERROR_NOT_DONE;
             mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackResume: failed!\n"));
+            TDAL_UnlockMutex(TDAL_PVRi_Mutex);
             mTBOX_RETURN(error);            
         }
         pPVRDesc->eCurrentSpeed = EN_APIPVR_PLAYBACK_SPEED_1X;
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     else if (MApi_PVR_PlaybackGetSpeed(pPVRDesc->pvrPlyHandle) == EN_APIPVR_PLAYBACK_SPEED_STEP_IN)
     {
         /* TODO - audio mute?*/
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
@@ -1338,11 +1840,15 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackResume(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackSetSpeed: failed!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);            
     }
     else
+    {
         pPVRDesc->eCurrentSpeed = EN_APIPVR_PLAYBACK_SPEED_1X;
-    
+    }
+
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -1352,19 +1858,28 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackGetSpeed(tTDAL_PVR_Handle pvrHandle, tTDAL_PVR_
     mTBOX_FCT_ENTER("TDAL_PVR_PlaybackResume");
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
     APIPVR_PLAYBACK_SPEED speed;
-    bool bRet = false;
-    int i;
+    bool bRet = FALSE;
+    int i = 0;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
 
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     for (i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
@@ -1375,6 +1890,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackGetSpeed(tTDAL_PVR_Handle pvrHandle, tTDAL_PVR_
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Not in playback state\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
@@ -1382,13 +1898,14 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackGetSpeed(tTDAL_PVR_Handle pvrHandle, tTDAL_PVR_
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrRecHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     speed = MApi_PVR_PlaybackGetSpeed(pPVRDesc->pvrPlyHandle);
 
     *pSpeed = TDAL_PVRi_TrickModeConvBack(speed);
-
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -1396,21 +1913,30 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackFastForward(tTDAL_PVR_Handle pvrHandle, tTDAL_P
 {
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_PlaybackFastForward");
-    bool bRet = false;
+    bool bRet = FALSE;
     APIPVR_PLAYBACK_SPEED enSpeed = EN_APIPVR_PLAYBACK_SPEED_INVALID;
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
-    int i;
-    
+    int i = 0;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
+
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     for (i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
@@ -1421,6 +1947,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackFastForward(tTDAL_PVR_Handle pvrHandle, tTDAL_P
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Not in playback state\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1428,9 +1955,9 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackFastForward(tTDAL_PVR_Handle pvrHandle, tTDAL_P
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrPlyHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
-    
     enSpeed = TDAL_PVRi_TrickModeConv(enTrick);
     if (enSpeed == EN_APIPVR_PLAYBACK_SPEED_INVALID)
     {
@@ -1438,10 +1965,11 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackFastForward(tTDAL_PVR_Handle pvrHandle, tTDAL_P
     }
 
     bRet = MApi_PVR_PlaybackSetSpeed(pPVRDesc->pvrPlyHandle, enSpeed);
-    if (bRet == false)
+    if (bRet == FALSE)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackSetSpeed: failed!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);            
     }
     else
@@ -1457,7 +1985,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackFastForward(tTDAL_PVR_Handle pvrHandle, tTDAL_P
     {
         /* TODO - mute/unmute due to playback speed */
     }
-    
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -1466,20 +1994,29 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackFastBackward(tTDAL_PVR_Handle pvrHandle, tTDAL_
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_PlaybackFastBackward");
     APIPVR_PLAYBACK_SPEED enSpeed=EN_APIPVR_PLAYBACK_SPEED_INVALID;
-    bool bRet = false;
+    bool bRet = FALSE;
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
-    int i;
-    
+    int i = 0;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
+
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     for (i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
@@ -1490,6 +2027,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackFastBackward(tTDAL_PVR_Handle pvrHandle, tTDAL_
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Not in playback state\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1497,6 +2035,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackFastBackward(tTDAL_PVR_Handle pvrHandle, tTDAL_
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrPlyHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
@@ -1507,10 +2046,11 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackFastBackward(tTDAL_PVR_Handle pvrHandle, tTDAL_
     }
     
     bRet = MApi_PVR_PlaybackSetSpeed(pPVRDesc->pvrPlyHandle, enSpeed);
-    if (bRet == false)
+    if (bRet == FALSE)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackSetSpeed: failed!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);            
     }
     else
@@ -1524,7 +2064,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackFastBackward(tTDAL_PVR_Handle pvrHandle, tTDAL_
     {
         /* TODO - mute/unmute due to playback speed */
     }
-    
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -1534,19 +2074,28 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpToTime(tTDAL_PVR_Handle pvrHandle, int32_t 
     mTBOX_FCT_ENTER("TDAL_PVR_PlaybackJumpToTime");
     MS_U32 u32JumpToTimeInSeconds = (*u32Hour)*60*60+(*u32Minute)*60+(*u32Second);
     tTDAL_PVR_Desc  *pPVRDesc = NULL;
-    bool bRet = false;
-    int i;
-    
+    bool bRet = FALSE;
+    int i = 0;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
+
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     for (i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
@@ -1557,6 +2106,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpToTime(tTDAL_PVR_Handle pvrHandle, int32_t 
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVRDesc is corrupted!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);        
     }
         
@@ -1564,6 +2114,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpToTime(tTDAL_PVR_Handle pvrHandle, int32_t 
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrPlyHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1571,6 +2122,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpToTime(tTDAL_PVR_Handle pvrHandle, int32_t 
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "invalide value for hours\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1578,6 +2130,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpToTime(tTDAL_PVR_Handle pvrHandle, int32_t 
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "invalide value for minutes\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1585,6 +2138,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpToTime(tTDAL_PVR_Handle pvrHandle, int32_t 
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "invalide value for minutes\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1592,6 +2146,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpToTime(tTDAL_PVR_Handle pvrHandle, int32_t 
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Not in playback state\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1600,9 +2155,10 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpToTime(tTDAL_PVR_Handle pvrHandle, int32_t 
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackJumpToTime: failed to jump to time!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
-    
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -1620,7 +2176,7 @@ tTDAL_PVR_Error TDAL_PVR_SetProgramInfo(tTDAL_PVR_Handle pvrHandle, tTDAL_PVR_Ba
     mTBOX_FCT_ENTER("TDAL_PVRm_SetProgramInfo");   
     tTDAL_PVR_Desc *pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
     MS_U8 enIdx = APIPVR_FILE_LINEAR;
-    int i;
+    int i = 0;
     
     if (pPVRDesc == NULL)
     {
@@ -1636,10 +2192,7 @@ tTDAL_PVR_Error TDAL_PVR_SetProgramInfo(tTDAL_PVR_Handle pvrHandle, tTDAL_PVR_Ba
         mTBOX_RETURN(error);
     }
     
-    if(eTDAL_PVR_RecordType == EN_APIPVR_RECORD_TYPE_DUAL)
-    {
-        enIdx = APIPVR_FILE_LINEAR;
-    }
+    enIdx = APIPVR_FILE_LINEAR;
     
     TDAL_PVRi_ResetProgInfo(pPVRDesc->pPVRProgInfo);
     if (pPVRDesc->bIsTimeshift)
@@ -1682,6 +2235,31 @@ tTDAL_PVR_Error TDAL_PVR_SetProgramInfo(tTDAL_PVR_Handle pvrHandle, tTDAL_PVR_Ba
     pPVRDesc->progIdx = enIdx;
    
     pPVRDesc->FilesCount = pBasicProgInfo->filesCount;
+
+    pPVRDesc->pPVRProgInfo->bIsEncrypted = pBasicProgInfo->bIsEncrypted;
+    switch (pBasicProgInfo->eEncryptionType)
+    {
+        case eTDAL_PVR_ENCR_NONE:
+            pPVRDesc->pPVRProgInfo->enEncryptionType = EN_APIPVR_ENCRYPTION_NONE;
+            break;
+        case eTDAL_PVR_ENCR_DEFAULT:
+            pPVRDesc->pPVRProgInfo->enEncryptionType = EN_APIPVR_ENCRYPTION_DEFAULT;
+            break;
+        case eTDAL_PVR_ENCR_USER:
+            pPVRDesc->pPVRProgInfo->enEncryptionType = EN_APIPVR_ENCRYPTION_USER;
+            break;            
+        case eTDAL_PVR_ENCR_CIPLUS:
+            pPVRDesc->pPVRProgInfo->enEncryptionType = EN_APIPVR_ENCRYPTION_CIPLUS;
+            break;            
+        case eTDAL_PVR_ENCR_SMARTCARD:
+            pPVRDesc->pPVRProgInfo->enEncryptionType = EN_APIPVR_ENCRYPTION_SMARTCARD;
+            break;
+        default:
+            printf("Wrong EncryptionType : %d\n Reset to NONE",pBasicProgInfo->eEncryptionType);
+            pPVRDesc->pPVRProgInfo->bIsEncrypted = FALSE;
+            pPVRDesc->pPVRProgInfo->enEncryptionType = EN_APIPVR_ENCRYPTION_NONE;
+            break;
+    }
     mTBOX_RETURN(error);
 }
 
@@ -1745,7 +2323,7 @@ tTDAL_PVR_Error TDAL_PVR_GetProgramInfo(tTDAL_PVR_Handle pvrHandle, tTDAL_PVR_Co
     //pProgInfo->AudioInfo[0].u16AudPID = (MS_U16)pBasicInfo->u32AudioPid;
     //pProgInfo->AudioInfo[0].u8AudType = (MS_U16)pBasicInfo->u32ACodec;
     
-    int i;
+    int i = 0;
     /* Multiple audio tracks are enabled if they exist */
 
     for (i=0; i<pPVRDesc->pPVRProgInfo->u8AudioInfoNum; i++)
@@ -1782,87 +2360,22 @@ tTDAL_PVR_Error TDAL_PVR_GetProgramInfo(tTDAL_PVR_Handle pvrHandle, tTDAL_PVR_Co
         pPVRComplexInfo->u8Age                          = pPVRDesc->pPVRProgInfo->u8Age; 
         pPVRComplexInfo->bLocked                        = pPVRDesc->pPVRProgInfo->bLocked; // lock by user and it cannot be deleted even if disk is full
     }
-    
+    pPVRComplexInfo->stPVRBasicProgInfo.bIsEncrypted = pPVRDesc->pPVRProgInfo->bIsEncrypted;
+    pPVRComplexInfo->stPVRBasicProgInfo.eEncryptionType = pPVRDesc->pPVRProgInfo->enEncryptionType;
+
+    printf("PlaybackInfo \n");
+    printf("u32VideoPid     : %lu\n",pPVRComplexInfo->stPVRBasicProgInfo.u32VideoPid);
+    printf("u32PCRPid       : %lu\n",pPVRComplexInfo->stPVRBasicProgInfo.u32PCRPid);
+    printf("u32AudioPid     : %lu\n",pPVRComplexInfo->stPVRBasicProgInfo.u32AudioPid);
+    printf("u32PmtPid       : %lu\n",pPVRComplexInfo->stPVRBasicProgInfo.u32PmtPid);
+    printf("u32VCodec       : %lu\n",pPVRComplexInfo->stPVRBasicProgInfo.u32VCodec);
+    printf("u32ACodec       : %lu\n",pPVRComplexInfo->stPVRBasicProgInfo.u32ACodec);
+    printf("u32LCN          : %lu\n",pPVRComplexInfo->stPVRBasicProgInfo.u32LCN);
+    printf("u32LCN          : %lu\n",pPVRComplexInfo->stPVRBasicProgInfo.u32LCN);
+    printf("bIsEncrypted    : %d\n",pPVRComplexInfo->stPVRBasicProgInfo.bIsEncrypted);
+    printf("eEncryptionType : %d\n",pPVRComplexInfo->stPVRBasicProgInfo.eEncryptionType);
+  
     memset(CurRecordedFileName,0, sizeof(CurRecordedFileName));
-    mTBOX_RETURN(error);
-}
-
-tTDAL_PVR_Error TDAL_PVR_PlaybackStepIn(void)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_PlaybackStepIn");
-    
-    mTBOX_RETURN(error);
-}
-
-tTDAL_PVR_Error TDAL_PVR_PlaybackWithNormalSpeed(void)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_PlaybackWithNormalSpeed");
-    
-    mTBOX_RETURN(error);
-}
-
-tTDAL_PVR_Error TDAL_PVR_CaptureThumbnail(tTDAL_PVR_Handle pvrHandle, char *filename)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_CaptureThumbnail");
-    tTDAL_PVR_Desc *pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
-    
-    if (pPVRDesc == NULL)
-    {
-        error = eTDAL_PVR_ERROR_BAD_ARG;
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR handle is NULL\n"));
-        mTBOX_RETURN(error);
-    }
-   
-    mTBOX_RETURN(error);
-}
-
-tTDAL_PVR_Error TDAL_PVR_JumpToThumbnail(char *filename)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_JumpToThumbnail");
-    
-    mTBOX_RETURN(error);
-}
-
-tTDAL_PVR_Error TDAL_PVR_HideThumbnail(void)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_HideThumbnail");
-    
-    mTBOX_RETURN(error);
-}
-
-tTDAL_PVR_Error TDAL_PVR_PlaybackABLoop(uint32_t *u32ABBeginTime,uint32_t *u32ABEndTime)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_PlaybackABLoop");
-    
-    mTBOX_RETURN(error);
-}
-
-tTDAL_PVR_Error TDAL_PVR_PlaybackResetABLoop(void)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_PlaybackResetABLoop");
-    
-    mTBOX_RETURN(error);
-}
-tTDAL_PVR_Error TDAL_PVR_PlaybackAddSkipTime(uint32_t *u32BeginTimeInSec,uint32_t *u32EndTimeInSec)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_PlaybackAddSkipTime");
-    
-    mTBOX_RETURN(error);
-}
-
-tTDAL_PVR_Error TDAL_PVR_PlaybackRemoveSkipTime(uint32_t *u32BeginTimeInSec,uint32_t *u32EndTimeInSec)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_PlaybackRemoveSkipTime");
-    
     mTBOX_RETURN(error);
 }
 
@@ -1872,7 +2385,7 @@ tTDAL_PVR_Error TDAL_PVR_SetPlaybackRetentionLimit(tTDAL_PVR_Handle pvrHandle, c
     mTBOX_FCT_ENTER("TDAL_PVR_SetPlaybackRetentionLimit");
     tTDAL_PVR_Desc *pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
     MS_U32 u32RetentionLimitTime = *u32RetentionLimitTimeInSec;
-    int i;
+    int i = 0;
     
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
@@ -1883,7 +2396,7 @@ tTDAL_PVR_Error TDAL_PVR_SetPlaybackRetentionLimit(tTDAL_PVR_Handle pvrHandle, c
 
     for (i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
@@ -1924,18 +2437,27 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpForward(tTDAL_PVR_Handle pvrHandle)
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_PlaybackJumpForward");
     tTDAL_PVR_Desc *pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
-    int i;
+    int i = 0;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
 
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     for (i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
@@ -1946,6 +2468,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpForward(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrPlyHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1953,6 +2476,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpForward(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrPlyHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -1960,9 +2484,10 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpForward(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackJumpForward failed to jump\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
-    
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -1971,18 +2496,27 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpBackward(tTDAL_PVR_Handle pvrHandle)
     tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
     mTBOX_FCT_ENTER("TDAL_PVR_PlaybackJumpBackward");
     tTDAL_PVR_Desc *pPVRDesc = NULL;
-    int i;
+    int i = 0;
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    if (!gTDAL_PVR_IsInitialized)
+    {
+        error = eTDAL_PVR_ERROR_NOT_INIT;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "PVR is not initialized!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        mTBOX_RETURN(error);
+    }
 
     if (pvrHandle == (tTDAL_PVR_Handle)NULL)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrHandle is NULL!\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
 
     for (i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==true)
+        if (pvrHandle==(tTDAL_PVR_Handle)&TDAL_PVR_Desc[i] && TDAL_PVR_Desc[i].bUsed==TRUE)
         {
             pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
             break;
@@ -1993,6 +2527,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpBackward(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_BAD_ARG;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrPlyHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -2000,6 +2535,7 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpBackward(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "pvrPlyHandle is corrupted\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
     
@@ -2007,74 +2543,10 @@ tTDAL_PVR_Error TDAL_PVR_PlaybackJumpBackward(tTDAL_PVR_Handle pvrHandle)
     {
         error = eTDAL_PVR_ERROR_NOT_DONE;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackJumpBackward failed to jump\n"));
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
         mTBOX_RETURN(error);
     }
-    
-    mTBOX_RETURN(error);
-}
-
-tTDAL_PVR_Error TDAL_PVR_ShowTime(const uint32_t *u32Type, const uint32_t *u32Set)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_ShowTime");
-    
-    mTBOX_RETURN(error);
-}
-
-tTDAL_PVR_Error TDAL_PVR_SetPlaybackType(uint32_t* pu32PlaybackType)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_SetPlaybackType");
-    
-    mTBOX_RETURN(error);
-}
-
-tTDAL_PVR_Error TDAL_PVR_SetRecordType(uint32_t* pu32RecordType)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_SetRecordType");
-    
-    mTBOX_RETURN(error);
-}
-
-tTDAL_PVR_Error TDAL_PVR_RenameFile(char *fileName,char *newFileName)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_RenameFile");
-    
-    mTBOX_RETURN(error);
-}
-
-tTDAL_PVR_Error TDAL_PVR_GetTimeshiftRecStartTime(void)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_GetTimeshiftRecStartTime");
-    
-    mTBOX_RETURN(error);
-}
-
-tTDAL_PVR_Error TDAL_PVR_SetTimeshiftRecScreenFrozen(bool bFrozen)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_SetTimeshiftRecScreenFrozen");
-    
-    TDAL_PVRi_ScreenFrozen = bFrozen;
-    
-    mTBOX_RETURN(error);
-}
-tTDAL_PVR_Error TDAL_PVR_CheckUSBSpeed(void)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_CheckUSBSpeed");
-    
-    mTBOX_RETURN(error);
-}
- 
-tTDAL_PVR_Error TDAL_PVR_EnableStillImageZapping(MS_BOOL *bEnable)
-{
-    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
-    mTBOX_FCT_ENTER("TDAL_PVR_EnableStillImageZapping");
-    
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
     mTBOX_RETURN(error);
 }
 
@@ -2120,7 +2592,7 @@ LOCAL void TDAL_PVRi_GetProgInfo(PVRProgramInfo_t *pProgInfo, char* fileName)
 LOCAL void TDAL_PVRi_SetProgInfo(PVRProgramInfo_t *pProgInfo, void *pInfo)
 {
     tTDAL_PVR_BasicProgInfo *pBasicInfo = (tTDAL_PVR_BasicProgInfo *)pInfo;
-    int i;
+    int i = 0;
     if (pProgInfo==NULL || pInfo==NULL)
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_PVRm_SetProgInfo: failure\n"));
@@ -2192,7 +2664,7 @@ LOCAL void TDAL_PVRi_ResetProgInfo(PVRProgramInfo_t *pProgInfo)
     {
         pProgInfo->TXTInfo[i].u16TTX_Pid=INVALID_PID;
     }
-    
+
     for(i=0;i<APIPVR_MAX_AUDIOINFO_NUM;i++)
     {
         pProgInfo->AudioInfo[i].u16AudPID=INVALID_PID;
@@ -2206,7 +2678,7 @@ LOCAL void TDAL_PVRi_ResetProgInfo(PVRProgramInfo_t *pProgInfo)
     {
         pProgInfo->DVBSubtInfo[i].u16Sub_Pid=INVALID_PID;
     }
-    
+
     for(i=0;i<APIPVR_MAX_SUBTITLEINFO_NUM;i++)
     {
         pProgInfo->EBUSubtInfo[i].u16TTX_Pid=INVALID_PID;
@@ -2361,10 +2833,10 @@ LOCAL void TDAL_PVRi_Task(MS_U32 argc, void *argv)
         if(TRUE==MsOS_RecvFromQueue(TDAL_PVRi_QueueID, (MS_U8 *)&pvrEvent, sizeof(PVREventInfo_t), &u32MessageSize, MSOS_WAIT_FOREVER))
         {
             /*TODO */
-            int i;
+            int i = 0;
             for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
             {
-                if (TDAL_PVR_Desc[i].bUsed==true && i==pvrEvent.u32Data[0])
+                if (TDAL_PVR_Desc[i].bUsed==TRUE && TDAL_PVR_Desc[i].progIdx==pvrEvent.u32Data[0])
                 {
                     pvrHandle = (tTDAL_PVR_Handle)&TDAL_PVR_Desc[i];
                     TDAL_PVRi_Callback(&pvrEvent, pvrHandle);
@@ -2388,13 +2860,12 @@ LOCAL void TDAL_PVRi_Callback(PVREventInfo_t *event, tTDAL_PVR_Handle pvrHandle)
     static int recChunkCount = 0;
     static int curFileIdx = 0;
     static MS_U32 currentTime = 0;
-    static MS_BOOL bRecThreshold = false;
+    static MS_BOOL bRecThreshold = FALSE;
     
     switch(event->pvrEvent)
     {
         case EN_APIPVR_EVENT_NOTIFY_FILE_END:
         {
-            printf("\n""\033[1;31m""[FUN][%s()@%04d] Reach File End ""\033[m""\n", __FUNCTION__, __LINE__);
             mTBOX_TRACE((kTBOX_NIV_3, "Event occurred  - %d\n", event->pvrEvent));
             if (!PVR_IS_VALID_HANDLER(pPVRDesc->pvrPlyHandle))
             {
@@ -2420,10 +2891,12 @@ LOCAL void TDAL_PVRi_Callback(PVREventInfo_t *event, tTDAL_PVR_Handle pvrHandle)
             {
                 if (pPVRDesc->FilesCount>1 && ++curFileIdx<pPVRDesc->FilesCount)
                 {
+                    TDAL_PVR_previousChunksTime = TDAL_PVR_playbackTime;
                     TDAL_PVRi_PlaybackNextChunk(pPVRDesc, curFileIdx);
                 }
                 else
                 {
+                    TDAL_PVR_previousChunksTime = 0;
                     /* Reset file chunks counter */
                     curFileIdx = 0;
                     /* This is done due to request of need to display black screen
@@ -2436,6 +2909,7 @@ LOCAL void TDAL_PVRi_Callback(PVREventInfo_t *event, tTDAL_PVR_Handle pvrHandle)
                     {
                         TDAL_PVR_Notification(eTDAL_PVR_END_FILE, pvrHandle);
                     }
+                    TDAL_PVR_playbackTime = 0;
                 }
             }
             break;
@@ -2512,16 +2986,21 @@ LOCAL void TDAL_PVRi_Callback(PVREventInfo_t *event, tTDAL_PVR_Handle pvrHandle)
             if (bRecThreshold)
             {
             	TDAL_PVRm_GetDiskSpace(mountPath,&u64FreeSpaceInKB, &u64TotalSpaceInKB);
+                pPVRDesc->u64FreeSpaceInKB = u64FreeSpaceInKB - event->u32Data[1];
+                u64FreeSpaceInKB = pPVRDesc->u64FreeSpaceInKB;
+            }
+            else
+            {
+               u64FreeSpaceInKB = pPVRDesc->u64FreeSpaceInKB - event->u32Data[1] + pPVRDesc->pPVRProgInfo->u64FileLength;
+               pPVRDesc->u64FreeSpaceInKB = u64FreeSpaceInKB;
             }
 
             u32RecordSize[event->u32Data[0]] = event->u32Data[1];
-
-            u64FreeSpaceInKB = pPVRDesc->u64FreeSpaceInKB - event->u32Data[1] + pPVRDesc->pPVRProgInfo->u64FileLength;
-            pPVRDesc->u64FreeSpaceInKB = u64FreeSpaceInKB;
             pPVRDesc->pPVRProgInfo->u64FileLength = event->u32Data[1];
+
             if (u64FreeSpaceInKB*100 <= (u64TotalSpaceInKB*TDAL_PVRi_FreeSpaceThreshold))
             {
-            	bRecThreshold = true;
+            	bRecThreshold = TRUE;
                 mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Record threshold reached (%lldKB of %lldKB)\n", u64FreeSpaceInKB, u64TotalSpaceInKB));
 
                 if (TDAL_PVR_Notification != NULL)
@@ -2529,7 +3008,7 @@ LOCAL void TDAL_PVRi_Callback(PVREventInfo_t *event, tTDAL_PVR_Handle pvrHandle)
             }
             else
             {
-            	bRecThreshold = false;
+            	bRecThreshold = FALSE;
             }
 
             if (u64FreeSpaceInKB < PVR_FILE_SIZE_TO_STOP)
@@ -2541,7 +3020,7 @@ LOCAL void TDAL_PVRi_Callback(PVREventInfo_t *event, tTDAL_PVR_Handle pvrHandle)
                 return;
             }
 
-            if (u32RecordSize[event->u32Data[0]]>PVR_FILE_CHUCK_MAX_SIZE)
+            if ((pPVRDesc->bIsTimeshift == FALSE) && (u32RecordSize[event->u32Data[0]] > PVR_FILE_CHUCK_MAX_SIZE))
             {
                 /* In order to suppress retarded notifications from
                  * PVR driver in case of recording split in chunks 
@@ -2577,12 +3056,14 @@ LOCAL void TDAL_PVRi_Callback(PVREventInfo_t *event, tTDAL_PVR_Handle pvrHandle)
                 return;
             }
 
-            if (eTDAL_PVR_PlayType == EN_APIPVR_PLAYBACK_TYPE_ESPLAYER)
+            if (pPVRDesc->FilesCount > 1)
             {
-                if(u32ErrFrame>0)
-                {
-                    MApi_PVR_PlaybackJumpToTime(pPVRDesc->pvrPlyHandle, u32JumpToTimeInSeconds);
-                }
+                TDAL_PVR_playbackTime = TDAL_PVR_previousChunksTime;
+                TDAL_PVR_playbackTime += MApi_PVR_GetPlaybackTimeInSec(pPVRDesc->pvrPlyHandle);
+            }
+            else
+            {
+                TDAL_PVR_playbackTime = MApi_PVR_GetPlaybackTimeInSec(pPVRDesc->pvrPlyHandle);
             }
             break;
         }
@@ -2594,11 +3075,38 @@ LOCAL void TDAL_PVRi_Callback(PVREventInfo_t *event, tTDAL_PVR_Handle pvrHandle)
         }
         case EN_APIPVR_EVENT_NOTIFY_FILE_BEGIN:
         {
+            /* fix for rewinding back previous chunk,
+             * mstar is sending this callback 2 times always
+             * so skipping second call to prevent mw and app being notified that we are at the beginning of the file */
+            static case_begin_count = 0;
+            case_begin_count++;
+            if(case_begin_count == 2)
+            {
+                case_begin_count = 0;
+                break;
+            }
             mTBOX_TRACE((kTBOX_NIV_3, "Event occurred  - %d\n", event->pvrEvent));
-            printf("\n""\033[1;31m""[FUN][%s()@%04d] Reach File Begin, set playback speed 1x""\033[m""\n", __FUNCTION__, __LINE__);
-            MApi_PVR_PlaybackSetSpeed(pPVRDesc->pvrPlyHandle, APIPVR_PLAYBACK_SPEED_1X);
-            if (TDAL_PVR_Notification != NULL)
-                TDAL_PVR_Notification(eTDAL_PVR_BEGIN_FILE, pvrHandle);
+            if (pPVRDesc->FilesCount>1 && --curFileIdx>=0)
+            {
+                TDAL_PVRi_PlaybackPreviousChunk(pPVRDesc, curFileIdx);
+                if (TDAL_PVR_previousChunksTime - pPVRDesc->pPVRProgInfo->u32Duration > 0)
+                {
+                    TDAL_PVR_previousChunksTime -= pPVRDesc->pPVRProgInfo->u32Duration;
+                }
+                else
+                {
+                    TDAL_PVR_previousChunksTime = 0;
+                }
+            }
+            else
+            {
+                /* Reset file chunks counter */
+                curFileIdx = 0;
+
+                MApi_PVR_PlaybackSetSpeed(pPVRDesc->pvrPlyHandle, APIPVR_PLAYBACK_SPEED_1X);
+                if (TDAL_PVR_Notification != NULL)
+                    TDAL_PVR_Notification(eTDAL_PVR_BEGIN_FILE, pvrHandle);
+            }
             break;
         }
         case EN_APIPVR_EVENT_ERROR_SYNCBYTE_ERROR:
@@ -2668,10 +3176,10 @@ void TDAL_PVRi_EnableRouteForPlayback(int flow, int InSrc, int ClkInv, int ExtSy
     MS_BOOL st;
 #endif
 
-    MApi_VDEC_Rst();
-    MApi_VDEC_Exit();
+    MApi_VDEC_EX_Rst((VDEC_StreamId *)&stStreamId);
+    MApi_VDEC_EX_Exit((VDEC_StreamId *)&stStreamId);
     /* TODO - check if we need this setting for VDEC*/
-    TDAL_AV_Playback_bIsFileIn = true;
+    TDAL_AV_Playback_bIsFileIn = TRUE;
     if (TDAL_PVRi_PCRFltId != INVALID_FILTER_ID)
     {
         MApi_DMX_Stop(TDAL_PVRi_PCRFltId);
@@ -2925,11 +3433,17 @@ uint8_t TDAL_PVR_GetFreeSpaceThreshold()
     return TDAL_PVRi_FreeSpaceThreshold;
 }
 
+uint32_t TDAL_PVR_GetPlaybackTime()
+{
+    return TDAL_PVR_playbackTime;
+}
+
 void TDAL_PVRi_PlaybackNextChunk(tTDAL_PVR_Desc *pPVRDesc, uint16_t curFileIdx)
 {
     char nextFileChunk[128] = {0};
     char extension[5] = {0};
-    
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    _bIsPlaySwitchChunk = TRUE;
     if (!MApi_PVR_PlaybackStop(&pPVRDesc->pvrPlyHandle))
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackStop: failed to stop playback in order to take next file chunk for playback\n"));
@@ -2946,11 +3460,45 @@ void TDAL_PVRi_PlaybackNextChunk(tTDAL_PVR_Desc *pPVRDesc, uint16_t curFileIdx)
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackStart: failed to start playback next file chunk\n"));
     }
-    
+
+    if (!MApi_PVR_PlaybackSetSpeed(pPVRDesc->pvrPlyHandle, pPVRDesc->eCurrentSpeed))
+    {
+        printf("MApi_PVR_PlaybackSetSpeed: failed to set for playback\n");
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackSetSpeed: failed to set for playback\n"));
+    }
+    _bIsPlaySwitchChunk = FALSE;
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+}
+
+void TDAL_PVRi_PlaybackPreviousChunk(tTDAL_PVR_Desc *pPVRDesc, uint16_t curFileIdx)
+{
+    char nextFileChunk[128] = {0};
+    char extension[5] = {0};
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
+    _bIsPlaySwitchChunk = TRUE;
+    if (!MApi_PVR_PlaybackStop(&pPVRDesc->pvrPlyHandle))
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackStop: failed to stop playback in order to take next file chunk for playback\n"));
+    }
+    uint8_t length = strlen(pPVRDesc->pPVRProgInfo->FileName);
+
+    strcpy(extension, strchr(pPVRDesc->pPVRProgInfo->FileName, '.'));
+    strncpy(nextFileChunk, pPVRDesc->pPVRProgInfo->FileName, length);
+    sprintf(strchr(nextFileChunk, '.')-3, "%03d%s", curFileIdx, extension);
+
+    TDAL_PVRi_GetProgInfo(pPVRDesc->pPVRProgInfo, nextFileChunk);
+    //MApi_PVR_PlaybackABLoopReset();
+    if (!MApi_PVR_PlaybackStart(&pPVRDesc->pvrPlyHandle, nextFileChunk, pPVRDesc->pPVRProgInfo->u32Duration-5,0))
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackStart: failed to start playback next file chunk\n"));
+    }
+
     if (!MApi_PVR_PlaybackSetSpeed(pPVRDesc->pvrPlyHandle, pPVRDesc->eCurrentSpeed))
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_PlaybackSetSpeed: failed to set for playback\n"));
     }
+    _bIsPlaySwitchChunk = FALSE;
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
 }
 
 bool TDAL_PVRi_RecordNextChunk(tTDAL_PVR_Desc *pPVRDesc)
@@ -2959,14 +3507,15 @@ bool TDAL_PVRi_RecordNextChunk(tTDAL_PVR_Desc *pPVRDesc)
     char extension[5] = {0};
     uint16_t curFileIdx = pPVRDesc->FilesCount;
     uint8_t length = 0;
-    
+    TDAL_LockMutex(TDAL_PVRi_Mutex);
     pPVRDesc->u32FullRecDuration += MApi_PVR_GetRecordTime(pPVRDesc->pvrRecHandle, pPVRDesc->progIdx);
     pPVRDesc->u64FullRecSizeInKB += pPVRDesc->pPVRProgInfo->u64FileLength;
     
     if (!MApi_PVR_RecordStop(&pPVRDesc->pvrRecHandle, pPVRDesc->progIdx))
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_RecordStop: failed to stop recordin in order to make next file chunk\n"));
-        return false;
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        return FALSE;
     }    
 
     length = strlen(pPVRDesc->pPVRProgInfo->FileName);
@@ -2979,213 +3528,252 @@ bool TDAL_PVRi_RecordNextChunk(tTDAL_PVR_Desc *pPVRDesc)
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_SetMetaData: failed to set program info for next file chunk\n"));
     }
     
-    if (!MApi_PVR_RecordStart(&pPVRDesc->pvrRecHandle, pPVRDesc->progIdx, APIPVR_FILE_LINEAR, pPVRDesc->u64FreeSpaceInKB>>10, false))
+    if (!MApi_PVR_RecordStart(&pPVRDesc->pvrRecHandle, pPVRDesc->progIdx, APIPVR_FILE_LINEAR, pPVRDesc->u64FreeSpaceInKB>>10, FALSE))
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_RecordStart: failed to start recording next file chunk\n"));
-        return false;
+        TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+        return FALSE;
     }
     pPVRDesc->FilesCount = curFileIdx + 1;
-    return true;
+    TDAL_UnlockMutex(TDAL_PVRi_Mutex);
+    return TRUE;
 }
 
 void TDAL_PVRi_CaptureWin(uint8_t source, uint32_t width, uint32_t height, char *filename)
 {
-     GOP_DwinProperty       dwinProperty;
-     MS_PHYADDR             phyDWinBufAddr;
-     MS_U8                  u8IsInterlace;
-     MS_BOOL                bRetValue = TRUE;
-     //Dwin buffer size set to panel width and height to capture the whole frame
-     MS_U16                 u16DWinBufWidth = 0;
-     MS_U16                 u16DWinBufHeight = 0;
-     GOP_GwinFBAttr         bufAttr;
-     EN_GOP_DWIN_SRC_SEL    eSource = (EN_GOP_DWIN_SRC_SEL)source;
-     //Gwin size maybe different to panel size; GE_Bitblt with scaling to change size to display
-     MS_U32                 u32Flag = GFXDRAW_FLAG_SCALE;
-     GFX_BufferInfo         srcbufInfo;
-     GFX_BufferInfo         dstbufInfo;
-     GFX_DrawRect           drawrectInfo;
+    GOP_DwinProperty       dwinProperty;
+    MS_PHYADDR             phyDWinBufAddr;
+    //Dwin buffer size set to panel width and height to capture the whole frame
+    MS_U16                 u16DWinBufWidth = 0;
+    MS_U16                 u16DWinBufHeight = 0;
+    MS_U16                 u16DWinBufX = 0;
+    MS_U16                 u16DWinBufY = 0;
+    GOP_GwinFBAttr         bufAttr;
+    EN_GOP_DWIN_SRC_SEL    eSource = (EN_GOP_DWIN_SRC_SEL)source;
+    //Gwin size maybe different to panel size; GE_Bitblt with scaling to change size to display
+    MS_U32                 u32Flag = GFXDRAW_FLAG_SCALE;
+    GFX_BufferInfo         srcbufInfo;
+    GFX_BufferInfo         dstbufInfo;
+    GFX_DrawRect           drawrectInfo;
 
-     MApi_GOP_DWIN_SetSourceSel(eSource);
-     
-     if (eSource == DWIN_SRC_OP)
+    MApi_GOP_DWIN_SetSourceSel(eSource);
+
+    if (eSource == DWIN_SRC_OP)
+    {
+        //Source can only from Scaler OP
+        //OP scan type is progressive
+        tTDAL_DISP_Error error;
+        tTDAL_DISP_LayerWindow pstInputWindow;
+        tTDAL_DISP_LayerWindow pstOutputWindow;
+        error = TDAL_DISP_LayerIOWindowsGet(eTDAL_DISP_LAYER_VIDEO_ID_0, &pstInputWindow, &pstOutputWindow);
+        if(error == eTDAL_DISP_NO_ERROR)
+        {
+            u16DWinBufWidth = pstOutputWindow.Right - pstOutputWindow.Left + 1;;
+            u16DWinBufHeight = pstOutputWindow.Bottom - pstOutputWindow.Top + 1;
+            u16DWinBufX = pstOutputWindow.Left;
+            u16DWinBufY = pstOutputWindow.Top;
+			//Thumbnail could not be acquired if input video Width is lower than 720
+            if(u16DWinBufWidth < 720)
+            {
+                u16DWinBufX = 0;
+                u16DWinBufY = 0;
+                u16DWinBufWidth = 720;
+                u16DWinBufHeight = 576;
+            }
+        }
+        else
+        {
+            u16DWinBufX = 0;
+            u16DWinBufY = 0;
+            u16DWinBufWidth = 720;
+            u16DWinBufHeight = 576;
+        }
+    }
+    else if (eSource == DWIN_SRC_IP)
+    {
+     //Source can only from Scaler IP
+     //Is the DWIN source is IP, we need to know the video size and interlace or progressive
+     VDEC_EX_DispInfo   info;
+     VDEC_EX_Result     ret;
+
+     memset(&info, 0, sizeof(VDEC_EX_DispInfo));
+     ret = MApi_VDEC_EX_GetDispInfo((VDEC_StreamId *)&stStreamId, &info);
+
+     if (E_VDEC_EX_OK != ret)
      {
-         //Source can only from Scaler OP
-         //OP scan type is progressive
-         u16DWinBufWidth = 720;
-         u16DWinBufHeight = 576;
-     }
-     else if (eSource == DWIN_SRC_IP)
-     {
-         //Source can only from Scaler IP
-         //Is the DWIN source is IP, we need to know the video size and interlace or progressive
-         VDEC_DispInfo   info;
-         VDEC_Result     ret;
-
-         memset(&info, 0, sizeof(VDEC_DispInfo));
-         ret = MApi_VDEC_GetDispInfo(&info);
-
-         if (E_VDEC_OK != ret)
-         {
-             /* TODO */
-         }
-         else
-         {
-             u16DWinBufWidth = info.u16HorSize;
-             u16DWinBufHeight = info.u16VerSize;
-         }
-         //Interlaced video, 'dwinProperty.u16h' is set to 1/2 of video height
-         //If the scan type is DWIN_SCAN_MODE_PROGRESSIVE, the dwin buffer size should be also set to 1/2
-         //If the scan type is DWIN_SCAN_MODE_extern, the dwin buffer size should not change
-         if (info.u8Interlace == 1)
-         {
-             u16DWinBufHeight = u16DWinBufHeight>>1;
-         }
+         /* TODO */
      }
      else
      {
-         printf("This source number is not supported now.\n");
+         u16DWinBufWidth = info.u16HorSize;
+         u16DWinBufHeight = info.u16VerSize;
      }
-     //(1)SCAN type: DWIN_SCAN_MODE_PROGRESSIVE
-     // - Contiguous captured/Auto stop captured: In each vsync, capture the top or bottom field
-     //(2)SCAN type: DWIN_SCAN_MODE_extern
-     // - Contiguous captured: contiguously captured top and bottom field
-     // - Auto stop captured: Hardware will auto stop once the bottom field is captured.    
-     MApi_GOP_DWIN_SelectSourceScanType(DWIN_SCAN_MODE_PROGRESSIVE);
-     //Data format only YUV; Set data format to YUV422
-     MApi_GOP_DWIN_SetDataFmt(DWIN_DATA_FMT_UV8Y8);
-     
-     MS_U8 captureFBId = 0xff;
-     captureFBId = MApi_GOP_GWIN_GetFreeFBID();
-     if (captureFBId == 0xff)
+     //Interlaced video, 'dwinProperty.u16h' is set to 1/2 of video height
+     //If the scan type is DWIN_SCAN_MODE_PROGRESSIVE, the dwin buffer size should be also set to 1/2
+     //If the scan type is DWIN_SCAN_MODE_extern, the dwin buffer size should not change
+     if (info.u8Interlace == 1)
      {
-         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "There is no free frame buffer to capture video"));
-         return;
+         u16DWinBufHeight = u16DWinBufHeight>>1;
      }
-     
-     if (MApi_GOP_GWIN_CreateFB(captureFBId, 0, 0, u16DWinBufWidth, u16DWinBufHeight, E_MS_FMT_YUV422) != GOP_API_SUCCESS)
-     {
-         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failed to create frame buffer for capture!"));
-         return;
-     }
+    }
+    else
+    {
+     printf("This source number is not supported now.\n");
+    }
+    //(1)SCAN type: DWIN_SCAN_MODE_PROGRESSIVE
+    // - Contiguous captured/Auto stop captured: In each vsync, capture the top or bottom field
+    //(2)SCAN type: DWIN_SCAN_MODE_extern
+    // - Contiguous captured: contiguously captured top and bottom field
+    // - Auto stop captured: Hardware will auto stop once the bottom field is captured.    
+    MApi_GOP_DWIN_SelectSourceScanType(DWIN_SCAN_MODE_PROGRESSIVE);
+    //Data format only YUV; Set data format to YUV422
+    MApi_GOP_DWIN_SetDataFmt(DWIN_DATA_FMT_UV8Y8);
 
-     MApi_GOP_GWIN_GetFBInfo(captureFBId, &bufAttr);
-     MApi_GFX_ClearFrameBuffer(bufAttr.addr, bufAttr.size, 0x00);
-     MApi_GFX_FlushQueue();
+    MS_U8 captureFBId = 0xff;
+    captureFBId = MApi_GOP_GWIN_GetFreeFBID();
+    if (captureFBId == 0xff)
+    {
+     mTBOX_TRACE((kTBOX_NIV_CRITICAL, "There is no free frame buffer to capture video"));
+     return;
+    }
 
-     phyDWinBufAddr = bufAttr.addr;
+    if (MApi_GOP_GWIN_CreateFB(captureFBId, 0, 0, u16DWinBufWidth, u16DWinBufHeight, E_MS_FMT_YUV422) != GOP_API_SUCCESS)
+    {
+     mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failed to create frame buffer for capture!"));
+     return;
+    }
 
-     // Set DWin property
-     dwinProperty.u16x          = 0;
-     dwinProperty.u16y          = 0;
-     dwinProperty.u16fbw        = u16DWinBufWidth;
-     dwinProperty.u16w          = u16DWinBufWidth;
-     dwinProperty.u16h          = u16DWinBufHeight;
-     dwinProperty.u32fbaddr0    = phyDWinBufAddr;
-     dwinProperty.u32fbaddr1    = phyDWinBufAddr + bufAttr.size;
+    MApi_GOP_GWIN_GetFBInfo(captureFBId, &bufAttr);
+    MApi_GFX_ClearFrameBuffer(bufAttr.addr, bufAttr.size, 0x00);
+    MApi_GFX_FlushQueue();
 
-     MApi_GOP_DWIN_SetWinProperty(&dwinProperty);
+    phyDWinBufAddr = bufAttr.addr;
 
-     //Enable Dwin to capture each frame if CaptureOneFrame is 0
-     MApi_GOP_DWIN_Enable(TRUE);
-     MApi_GOP_DWIN_CaptureOneFrame();
-     
-     MS_U8 dstFBId = 0xff;
-     dstFBId = MApi_GOP_GWIN_GetFreeFBID();
-     if (dstFBId == 0xff)
-     {
-         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "There is no free frame buffer to capture video"));
-         return;
-     }
-     
-     if (MApi_GOP_GWIN_CreateFB(dstFBId, 0, 0, (uint16_t) width, (uint16_t) height, E_MS_FMT_ARGB8888) != GOP_API_SUCCESS)
-     {
-         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failed to create frame buffer for capture!"));
-         return;
-     }
-     MApi_GOP_GWIN_GetFBInfo(dstFBId, &bufAttr);
-     MApi_GFX_ClearFrameBuffer(bufAttr.addr, bufAttr.size, 0x00);
-     MApi_GFX_FlushQueue();
-     //set dst buffer
+    // Set DWin property
+    dwinProperty.u16x          = u16DWinBufX;
+    dwinProperty.u16y          = u16DWinBufY;
+    dwinProperty.u16fbw        = u16DWinBufWidth;
+    dwinProperty.u16w          = u16DWinBufWidth;
+    dwinProperty.u16h          = u16DWinBufHeight;
+    dwinProperty.u32fbaddr0    = phyDWinBufAddr;
+    dwinProperty.u32fbaddr1    = phyDWinBufAddr + bufAttr.size;
 
-     // Bliting the captured bitmap to DRAM of GE
-     srcbufInfo.u32ColorFmt = GFX_FMT_YUV422;
-     srcbufInfo.u32Addr     = phyDWinBufAddr;
-     srcbufInfo.u32Width    = u16DWinBufWidth;
-     srcbufInfo.u32Height   = u16DWinBufHeight;
-     srcbufInfo.u32Pitch    = u16DWinBufWidth<<1;
-     MApi_GFX_SetSrcBufferInfo(&srcbufInfo, 0);
-     
-     dstbufInfo.u32ColorFmt = bufAttr.fbFmt;
-     dstbufInfo.u32Addr     = bufAttr.addr;
-     dstbufInfo.u32Width    = (uint16_t) width;
-     dstbufInfo.u32Height   = (uint16_t) height;
-     dstbufInfo.u32Pitch    = bufAttr.pitch;     
-     MApi_GFX_SetDstBufferInfo(&dstbufInfo, 0);
+    MApi_GOP_DWIN_SetWinProperty(&dwinProperty);
 
-     drawrectInfo.srcblk.x      = 0;
-     drawrectInfo.srcblk.y      = 0;
-     drawrectInfo.srcblk.width  = u16DWinBufWidth;
-     drawrectInfo.srcblk.height = u16DWinBufHeight;
+    //Enable Dwin to capture each frame if CaptureOneFrame is 0
+    MApi_GOP_DWIN_Enable(TRUE);
+    MApi_GOP_DWIN_CaptureOneFrame();
 
-     drawrectInfo.dstblk.x      = 0;
-     drawrectInfo.dstblk.y      = 0;
-     drawrectInfo.dstblk.width  = (uint16_t) width;
-     drawrectInfo.dstblk.height = (uint16_t) height;
+    MS_U8 dstFBId = 0xff;
+    dstFBId = MApi_GOP_GWIN_GetFreeFBID();
+    if (dstFBId == 0xff)
+    {
+     mTBOX_TRACE((kTBOX_NIV_CRITICAL, "There is no free frame buffer to capture video"));
+     return;
+    }
 
-     MApi_GFX_BitBlt(&drawrectInfo, u32Flag);
-     MApi_GFX_FlushQueue();
-     MApi_GOP_GWIN_DeleteFB(captureFBId);
-     
-     char screenNamePath[128] = {0};
-     screenNamePath[0] = '/';
-     strncpy(&screenNamePath[1], filename, strlen(filename));
-     strncpy(strchr(screenNamePath, '.'), ".tmb", 4);
+    if (MApi_GOP_GWIN_CreateFB(dstFBId, 0, 0, (uint16_t) width, (uint16_t) height, E_MS_FMT_ARGB8888) != GOP_API_SUCCESS)
+    {
+     mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_CreateFB: failed to create frame buffer for capture!"));
+     return;
+    }
+    MApi_GOP_GWIN_GetFBInfo(dstFBId, &bufAttr);
+    MApi_GFX_ClearFrameBuffer(bufAttr.addr, bufAttr.size, 0x00);
+    MApi_GFX_FlushQueue();
+    //set dst buffer
+
+    // Bliting the captured bitmap to DRAM of GE
+    srcbufInfo.u32ColorFmt = GFX_FMT_YUV422;
+    srcbufInfo.u32Addr     = phyDWinBufAddr;
+    srcbufInfo.u32Width    = u16DWinBufWidth;
+    srcbufInfo.u32Height   = u16DWinBufHeight;
+    srcbufInfo.u32Pitch    = u16DWinBufWidth<<1;
+    MApi_GFX_SetSrcBufferInfo(&srcbufInfo, 0);
+
+    dstbufInfo.u32ColorFmt = bufAttr.fbFmt;
+    dstbufInfo.u32Addr     = bufAttr.addr;
+    dstbufInfo.u32Width    = (uint16_t) width;
+    dstbufInfo.u32Height   = (uint16_t) height;
+    dstbufInfo.u32Pitch    = bufAttr.pitch;     
+    MApi_GFX_SetDstBufferInfo(&dstbufInfo, 0);
+
+    drawrectInfo.srcblk.x      = 0;
+    drawrectInfo.srcblk.y      = 0;
+    drawrectInfo.srcblk.width  = u16DWinBufWidth;
+    drawrectInfo.srcblk.height = u16DWinBufHeight;
+
+    drawrectInfo.dstblk.x      = 0;
+    drawrectInfo.dstblk.y      = 0;
+    drawrectInfo.dstblk.width  = (uint16_t) width;
+    drawrectInfo.dstblk.height = (uint16_t) height;
+
+    MApi_GFX_BitBlt(&drawrectInfo, u32Flag);
+    MApi_GFX_FlushQueue();
+    MApi_GOP_GWIN_DeleteFB(captureFBId);
+
+    char screenNamePath[128] = {0};
+    screenNamePath[0] = '/';
+    strncpy(&screenNamePath[1], filename, strlen(filename));
+    strncpy(strchr(screenNamePath, '.'), ".tmb", 4);
 #if defined (TDAL_PVR_POSIX)
-     int file = open(screenNamePath, O_CREAT | O_WRONLY);
-     if(file < 0)
-     {
-         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_PVRi_CaptureWin: Creating file %s failed.\n", screenNamePath));
-         MApi_GOP_GWIN_DestroyFB(dstFBId);
-     }
-     else
-     {
-         write(file, (void *)&width, sizeof(width));
-         write(file, (void *)&height, sizeof(height));
-         write(file, (void *)MsOS_PA2KSEG1(bufAttr.addr), bufAttr.pitch*bufAttr.height);
-         close(file);
-     }
+    int file = open(screenNamePath, O_CREAT | O_WRONLY);
+    if(file < 0)
+    {
+     mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_PVRi_CaptureWin: Creating file %s failed.\n", screenNamePath));
+     MApi_GOP_GWIN_DestroyFB(dstFBId);
+    }
+    else
+    {
+     write(file, (void *)&width, sizeof(width));
+     write(file, (void *)&height, sizeof(height));
+     write(file, (void *)MsOS_PA2KSEG1(bufAttr.addr), bufAttr.pitch*bufAttr.height);
+     close(file);
+    }
 #else
-     FILE *filePointer = MsFS_Fopen(screenNamePath, "w");
-     if(filePointer == NULL)
-     {
-         printf("can't open file\n");
-         MApi_GOP_GWIN_DestroyFB(dstFBId);
-     }
-     else
-     {
-         //MsFS_Fwrite((void *)&u32Timestamp, sizeof(u32Timestamp), 1, filePointer);
-         //MsFS_Fwrite((void *)&u32capturepts, sizeof(u32capturepts), 1, filePointer);
-         MsFS_Fwrite((void *)&width, sizeof(width), 1, filePointer);
-         MsFS_Fwrite((void *)&height, sizeof(height), 1, filePointer);
-         MsFS_Fwrite((void *)MsOS_PA2KSEG1(bufAttr.addr), 1, bufAttr.pitch*bufAttr.height, filePointer);
-     }
-     MsFS_Fflush(filePointer);
-     MsFS_Fclose(filePointer);
+    FILE *filePointer = MsFS_Fopen(screenNamePath, "w");
+    if(filePointer == NULL)
+    {
+     printf("can't open file\n");
+     MApi_GOP_GWIN_DestroyFB(dstFBId);
+    }
+    else
+    {
+     //MsFS_Fwrite((void *)&u32Timestamp, sizeof(u32Timestamp), 1, filePointer);
+     //MsFS_Fwrite((void *)&u32capturepts, sizeof(u32capturepts), 1, filePointer);
+     MsFS_Fwrite((void *)&width, sizeof(width), 1, filePointer);
+     MsFS_Fwrite((void *)&height, sizeof(height), 1, filePointer);
+     MsFS_Fwrite((void *)MsOS_PA2KSEG1(bufAttr.addr), 1, bufAttr.pitch*bufAttr.height, filePointer);
+    }
+    MsFS_Fflush(filePointer);
+    MsFS_Fclose(filePointer);
 #endif
-     //Before leaving this function, FB has been created must delete
-     MApi_GOP_GWIN_DeleteFB( dstFBId );
+    //Before leaving this function, FB has been created must delete
+    MApi_GOP_GWIN_DeleteFB( dstFBId );
+
 }
 
 uint32_t TDAL_PVR_Record_GetDuration(tTDAL_PVR_Handle pvrHandle)
 {
     tTDAL_PVR_Desc  *pPVRDesc = (tTDAL_PVR_Desc *)pvrHandle;
-
+    uint32_t u32duration = 0;
+    
     if (pPVRDesc == NULL)
     {
         return 0;
     }
+
+    u32duration = pPVRDesc->u32FullRecDuration + MApi_PVR_GetRecordTime(pPVRDesc->pvrRecHandle, pPVRDesc->progIdx);
+
+    if (bIsSeamlessPlayback)
+    {
+        if (_u32SeamlessStartTime > u32duration)
+        {
+            _u32SeamlessStartTime = u32duration;
+        }
+        u32duration -= _u32SeamlessStartTime;
+    }
     
-    return pPVRDesc->u32FullRecDuration + MApi_PVR_GetRecordTime(pPVRDesc->pvrRecHandle, pPVRDesc->progIdx);
+    return u32duration;
 }
 
 void TDAL_PVRi_GetDurationAndSizeContent(tTDAL_PVR_Desc *pPVRDesc, char *FullRecordedFileName)
@@ -3194,7 +3782,7 @@ void TDAL_PVRi_GetDurationAndSizeContent(tTDAL_PVR_Desc *pPVRDesc, char *FullRec
     {
         return;
     }
-    int i;
+    int i = 0;
     uint32_t duration = 0;
     uint64_t size = 0;
     char *ext = NULL;
@@ -3209,7 +3797,6 @@ void TDAL_PVRi_GetDurationAndSizeContent(tTDAL_PVR_Desc *pPVRDesc, char *FullRec
         {
             mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_GetProgramInfo: failure\n"));
         }
-        //printf("\e[31m RecordedFileName:%s, Duration:%lu, Size:%llu \n\e[0m",FullRecordedFileName,pPVRDesc->pPVRProgInfo->u32Duration,pPVRDesc->pPVRProgInfo->u64FileLength);
         duration    += pPVRDesc->pPVRProgInfo->u32Duration;
         size        += pPVRDesc->pPVRProgInfo->u64FileLength;
     }
@@ -3223,7 +3810,7 @@ uint32_t TDAL_PVRi_GetDurationOfContent(tTDAL_PVR_Desc *pPVRDesc, char *FullReco
     {
         return 0;
     }
-    int i;
+    int i = 0;
     uint32_t duration = 0;
     char *ext = NULL;
     ext = strchr(FullRecordedFileName,'.');
@@ -3250,7 +3837,7 @@ uint64_t TDAL_PVRi_GetSizeOfContent(tTDAL_PVR_Desc *pPVRDesc, char *FullRecorded
     {
         return 0;
     }
-    int i;
+    int i = 0;
     uint64_t size = 0;
     char *ext = NULL;
     ext = strchr(FullRecordedFileName,'.');
@@ -3275,10 +3862,10 @@ void TDAL_PVRm_UsbRemoved()
 {
     tTDAL_PVR_Handle pvrHandle = NULL;
     /*TODO */
-    int i;
+    int i = 0;
     for(i=0; i<PVR_MAX_RECORDING_FILE; i++)
     {
-        if (TDAL_PVR_Desc[i].bUsed==true && TDAL_PVR_Desc[i].bIsTimeshift==FALSE && TDAL_PVR_Desc[i].pvrPlyHandle!=0xFF)
+        if (TDAL_PVR_Desc[i].bUsed==TRUE && TDAL_PVR_Desc[i].bIsTimeshift==FALSE && TDAL_PVR_Desc[i].pvrPlyHandle!=0xFF)
         {
             pvrHandle = (tTDAL_PVR_Handle)&TDAL_PVR_Desc[i];
             if (TDAL_PVR_Notification != NULL)
@@ -3286,4 +3873,183 @@ void TDAL_PVRm_UsbRemoved()
             break;
         }
     }
+}
+
+LOCAL void TDAL_PVRi_ControlChannel_TDAL_DMX(bool enable)
+{
+    tTDAL_DMX_Error dmx_err;
+    MS_U16 videopid = 0;
+    MS_U16 pcrpid = 0;
+    MS_U16 audiopid = 0;
+    
+    videopid = TDAL_PVRi_FindPidInFilter(TDAL_PVR_livePromInfo.Filters, DMX_FILTER_TYPE_VIDEO);
+    pcrpid = TDAL_PVRi_FindPidInFilter(TDAL_PVR_livePromInfo.Filters, DMX_FILTER_TYPE_PCR);
+    audiopid = TDAL_PVR_livePromInfo.u16AudioPid;
+
+    printf("[%s][%d] VideoPid=%d AudioPid=%d PCRPid =%d\n",__FUNCTION__,__LINE__,videopid,audiopid,pcrpid);
+    
+    if(enable == TRUE)
+    {
+        dmx_err = TDAL_DMX_Set_Channel_PID(VideoChannel, videopid);
+        //TestManager_AssertEqual(dmx_err, kTDAL_DMX_NO_ERROR, "dmx set pid on video channel");
+        mTBOX_PRINT((kTBOX_LF, "pid on video channel = %d\n", videopid));
+
+        dmx_err = TDAL_DMX_Control_Channel(VideoChannel, eTDAL_DMX_CTRL_ENABLE);
+        //TestManager_AssertEqual(dmx_err, kTDAL_DMX_NO_ERROR, "dmx control video channel");
+
+        dmx_err = TDAL_DMX_Set_Channel_PID(AudioChannel, audiopid);
+        //TestManager_AssertEqual(dmx_err, kTDAL_DMX_NO_ERROR, "dmx set pid on audio channel");
+        mTBOX_PRINT((kTBOX_LF, "pid on audio channel = %d\n", audiopid));
+
+        dmx_err = TDAL_DMX_Control_Channel(AudioChannel, eTDAL_DMX_CTRL_ENABLE);
+        //TestManager_AssertEqual(dmx_err, kTDAL_DMX_NO_ERROR, "dmx control audio channel");
+
+        dmx_err = TDAL_DMX_Set_Channel_PID(PCRChannel, pcrpid);
+        //TestManager_AssertEqual(dmx_err, kTDAL_DMX_NO_ERROR, "dmx set pid on pcr channel");
+        mTBOX_PRINT((kTBOX_LF, "pid on pcr channel = %d\n", pcrpid));
+
+        dmx_err = TDAL_DMX_Control_Channel(PCRChannel, eTDAL_DMX_CTRL_ENABLE);
+        //TestManager_AssertEqual(dmx_err, kTDAL_DMX_NO_ERROR, "dmx control pcr channel");
+
+    }
+    else
+    {
+        dmx_err = TDAL_DMX_Control_Channel(VideoChannel, eTDAL_DMX_CTRL_DISABLE);
+        //TestManager_AssertEqual(dmx_err, kTDAL_DMX_NO_ERROR, "dmx control video channel");
+
+        dmx_err = TDAL_DMX_Set_Channel_PID(VideoChannel, 0x1FFF);
+        //TestManager_AssertEqual(dmx_err, kTDAL_DMX_NO_ERROR, "dmx set pid on video channel");
+        mTBOX_PRINT((kTBOX_LF, "pid on video channel = 0x1FFF\n"));
+
+        dmx_err = TDAL_DMX_Control_Channel(AudioChannel, eTDAL_DMX_CTRL_DISABLE);
+        //TestManager_AssertEqual(dmx_err, kTDAL_DMX_NO_ERROR, "dmx control audio channel");
+
+        dmx_err = TDAL_DMX_Set_Channel_PID(AudioChannel, 0x1FFF);
+        //TestManager_AssertEqual(dmx_err, kTDAL_DMX_NO_ERROR, "dmx set pid on audio channel");
+        mTBOX_PRINT((kTBOX_LF, "pid on audio channel = 0x1FFF\n"));
+
+        dmx_err = TDAL_DMX_Control_Channel(PCRChannel, eTDAL_DMX_CTRL_DISABLE);
+        //TestManager_AssertEqual(dmx_err, kTDAL_DMX_NO_ERROR, "dmx control pcr channel");
+
+        dmx_err = TDAL_DMX_Set_Channel_PID(PCRChannel, 0x1FFF);
+        //TestManager_AssertEqual(dmx_err, kTDAL_DMX_NO_ERROR, "dmx set pid on pcr channel");
+        mTBOX_PRINT((kTBOX_LF, "pid on pcr channel = 0x1FFF\n"));
+    }    
+}
+bool TDAL_PVRm_ResetPVRRecFilters(void)
+{
+    int i = 0;
+    for (i = 0 ; i < 128 ; i++)
+    {
+        PVRRecFilters[i].u8FilterID = INVALID_FILTER_ID;
+        PVRRecFilters[i].u32PID = INVALID_PID;
+    }
+    return TRUE;
+}
+
+tTDAL_PVR_Rec_Filters *TDAL_PVRm_GetPVRRecFilters(void)
+{
+    int i = 0;
+    PVRPL_Rec_Filters *filters = NULL;
+    
+    filters = PVRPL_Record_GetFilters();
+
+    for (i = 0 ; i < 128 ; i++)
+    {
+        if (filters[i].u8FilterID == INVALID_FILTER_ID 
+            && filters[i].u32PID == INVALID_PID)
+        {
+            break;
+        }
+        PVRRecFilters[i].u8FilterID = filters[i].u8FilterID;
+        PVRRecFilters[i].u32PID = filters[i].u32PID;
+    }
+    return PVRRecFilters;
+}
+tTDAL_PVR_Error TDAL_PVRi_SetBGRecProgramInfo(void)
+{
+    int32_t VideoPid = 0,PCRPid = 0,AudioPid = 0;
+
+    TDAL_DMXi_GetLiveChannelPID(&VideoPid, &AudioPid, &PCRPid);
+    TDAL_PVRi_InsertFilter(&TDAL_PVR_bgrecPromInfo.Filters[0], (MS_U16)VideoPid, (MS_U32)DMX_FILTER_TYPE_VIDEO);
+    TDAL_PVRi_InsertFilter(&TDAL_PVR_bgrecPromInfo.Filters[0], (MS_U16)PCRPid, (MS_U32)DMX_FILTER_TYPE_PCR);
+    TDAL_PVRi_InsertFilter(&TDAL_PVR_bgrecPromInfo.Filters[0], (MS_U16)0x00, (MS_U32)DMX_FILTER_TYPE_SECTION);
+
+    TDAL_PVR_bgrecPromInfo.enVCodec = TDAL_PVRi_VDEC_TDAL2MS(TDAL_AV_VideoGetStreamType());
+    TDAL_PVR_bgrecPromInfo.u32ACodec = TDAL_PVRi_ADEC_TDAL2MS(TDAL_AV_Audio_StreamType());
+    TDAL_PVR_bgrecPromInfo.u16AudioPid = AudioPid;
+    TDAL_PVR_bgrecPromInfo.u16CCPid = 0x1FFF;
+    TDAL_PVR_bgrecPromInfo.u32LCN = 1;
+    TDAL_PVR_bgrecPromInfo.enServiceType = EN_APIPVR_SERVICETYPE_DTV;
+    TDAL_PVR_bgrecPromInfo.bIsEncrypted = TRUE;
+    TDAL_PVR_bgrecPromInfo.enEncryptionType = EN_APIPVR_ENCRYPTION_SMARTCARD;
+    TDAL_PVRi_ProgIdx = 0;
+}
+tTDAL_PVR_Error TDAL_PVRi_BackGround_Record_Start(void)
+{
+    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
+    PVR_AV_ID_t AVStreamID;
+    
+    mTBOX_FCT_ENTER("TDAL_PVRi_BackGround_Record_Start");
+    
+    if (bIsSeamlessPlayback)
+    {
+        mTBOX_TRACE((kTBOX_NIV_WARNING, "BackGround Recordingl!!\n"));
+        TDAL_PVRi_BackGround_Record_Stop();
+    }
+    
+    TDAL_PVRi_SetBGRecProgramInfo();
+
+    if(!MApi_PVR_SetBackRecordMetaData(&TDAL_PVR_bgrecPromInfo, progbgIdx,0,0,0,0))
+    {        
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Set MetaData Fail!!\n"));
+        error = eTDAL_PVR_ERROR_NOT_DONE;
+        mTBOX_RETURN(error);
+    }
+    
+    AVStreamID.vstreamID = (void *)(&_NullVidStreamID);
+    AVStreamID.astreamID = (void *)(&_NullAudStreamID);
+    
+    if (!MApi_PVR_EX_BackRecordEngSet(&pvrbgRecHandle, (void *)(&AVStreamID), progbgIdx, APIPVR_FILE_CIRCULAR, 0,0))
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_EX_BackRecordEngSet Fail!!\n"));
+        error = eTDAL_PVR_ERROR_NOT_DONE;
+        mTBOX_RETURN(error);        
+    }
+    
+    if (!MApi_PVR_EX_RecordEngEnable(&pvrbgRecHandle, FALSE))
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_EX_RecordEngEnable Fail!!\n"));
+        error = eTDAL_PVR_ERROR_NOT_DONE;
+        mTBOX_RETURN(error);       
+    }
+
+    bIsSeamlessPlayback = TRUE;
+    _u32SeamlessStartTime = MsOS_GetSystemTime();
+    mTBOX_RETURN(error); 
+}
+tTDAL_PVR_Error TDAL_PVRi_BackGround_Record_Stop(void)
+{
+    tTDAL_PVR_Error error = eTDAL_PVR_NO_ERROR;
+
+    mTBOX_FCT_ENTER("TDAL_PVRi_BackGround_Record_Stop");
+
+    if (!MApi_PVR_BackRecordStop(&pvrbgRecHandle, progbgIdx))
+    {
+        error = eTDAL_PVR_ERROR_BAD_ARG;
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_BackRecordStop Fail!!\n"));
+        mTBOX_RETURN(error);
+    }
+    bIsSeamlessPlayback = FALSE;
+    _u32SeamlessStartTime = 0;
+    memset(&TDAL_PVR_bgrecPromInfo, 0, sizeof(PVRProgramInfo_t));
+    mTBOX_RETURN(error); 
+}
+MS_BOOL TDAL_PVRi_PlaybackSwitchChunk(void)
+{
+    return _bIsPlaySwitchChunk;
+}
+MS_BOOL TDAL_PVRi_SeamlessPlayback(void)
+{
+    return bIsSeamlessPlayback;
 }

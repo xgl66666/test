@@ -31,6 +31,8 @@ extern   "C"   {
 /*------------------------------------------*/
 
 extern bool TDAL_AVm_GetDecoderStatus(VDEC_DispInfo * pVidStatus);
+extern tTDAL_AV_AudioType TDAL_AV_Audio_StreamType(void);
+extern bool TDAL_AVm_SetAudioNeedUnmute(bool NeedUnmute);
 
 #ifdef   __cplusplus
 }

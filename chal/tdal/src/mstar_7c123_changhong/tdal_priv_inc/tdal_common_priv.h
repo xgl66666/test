@@ -27,10 +27,10 @@ typedef uint32_t    TDAL_queue_id;   /* TDAL queue ID */
 typedef int16_t     TDAL_qdepth;     /* TDAL queue depth */
 typedef uint32_t    TDAL_qwidth;   /* TDAL queue width */
 
-bool TDAL_CreateQueue(TDAL_qdepth maxNumber, TDAL_qwidth msgSize, TDAL_queue_id *qid);
-bool TDAL_Enqueue(TDAL_queue_id qid, void *msg);
-bool TDAL_Dequeue(TDAL_queue_id qid, void *msg_buf);
-bool TDAL_DeleteQueue(TDAL_queue_id qid);
+//bool TDAL_CreateQueue(TDAL_qdepth maxNumber, TDAL_qwidth msgSize, TDAL_queue_id *qid);
+//bool TDAL_Enqueue(TDAL_queue_id qid, void *msg);
+//bool TDAL_Dequeue(TDAL_queue_id qid, void *msg_buf);
+//bool TDAL_DeleteQueue(TDAL_queue_id qid);
 
 typedef struct
 {

@@ -28,21 +28,6 @@
 /********************************************************
  *              Defines                                 *
  ********************************************************/
-#define TDAL_NVM_REDUNDANCY_LEVEL 2
-#define TDAL_NVM_CRC32_SIZE sizeof(uint32_t)
-#define TDAL_NVM_VERSION_AGE_SIZE sizeof(uint8_t)
-#define TDAL_NVM_VERSION_MINIMAL 0x01
-#define TDAL_NVM_VERSION_MAXIMAL 0xFF
-#define TDAL_NVM_MAX_SIZE_INBYTES 0x10000
-#define TDAL_ABS(a,b) (((a)>(b))?((a)-(b)):((b)-(a)))
-
-typedef struct _tFlashNVMArea
-{
-    uint32_t            uiFlashOffset;
-    uint32_t            uiByteSize;
-    uint32_t            uiCRC32;
-    uint8_t             ucVersion;
-} tFlashNVMArea;
 
 /********************************************************
  *              Local File Variables (LOCAL)            *
@@ -51,18 +36,251 @@ mTBOX_SET_MODULE(eTDAL_NVM);
 LOCAL   bool               TDAL_NVM_Initialized = FALSE;
 LOCAL   bool               TDAL_NVM_Opened = FALSE;
 LOCAL   TDAL_mutex_id         TDAL_NVM_Mutex;
-LOCAL   tFlashNVMArea   stAreaArray[TDAL_NVM_REDUNDANCY_LEVEL] = {{0}, {0}};
+LOCAL   tFLASH_CFG_Location   TDAL_NVM_Location;
 
-/********************************************************
- *          Local functions                             *
- ********************************************************/
-LOCAL bool TDALi_NVM_InitValidArea();
-LOCAL bool TDALi_NVM_GetValidReadProps(tFLASH_CFG_Location *pstArea, uint32_t Address, uint32_t uiReadBytes);
-LOCAL bool TDALi_NVM_GetValidWriteProps(tFLASH_CFG_Location *pstArea, uint32_t Address, uint32_t uiWriteBytes);
-LOCAL void TDALi_NVM_ValidateWriteBuffer(uint8_t *pucBuffer, uint32_t uiSize);
-LOCAL void TDALi_NVM_UpdateValidWriteProp(uint8_t *pucBuffer);
-LOCAL uint8_t TDALi_NVM_GetAreaIdx(const bool bOld);
+LOCAL   bool TDAL_NVM_has_backup_block = FALSE;
+LOCAL   uint32_t TDAL_NVM_BK_Location = 0;
 
+#define NVM_BLOCK_SIZE (0x10000)
+#define NVM_DATA_SIZE (NVM_BLOCK_SIZE - sizeof(uint32_t))
+#define SUPPORT_BACKUP_BLOCK 0 
+
+typedef struct
+{
+    uint8_t data[NVM_DATA_SIZE];
+    uint32_t u32crc;       //CRC32 over data bytes
+ 
+}SPI_NVMInfo;
+
+
+static uint32_t _crc32 (uint32_t crc, const uint8_t *buf, uint32_t len)
+{                 
+#define DO1(buf) crc = crc_table[((int)crc ^ (*buf++)) & 0xff] ^ (crc >> 8);
+#define DO2(buf)  DO1(buf); DO1(buf);
+#define DO4(buf)  DO2(buf); DO2(buf);
+#define DO8(buf)  DO4(buf); DO4(buf);
+                  
+    const static uint32_t  crc_table[] =
+    {             
+        0x00000000L, 0x77073096L, 0xee0e612cL, 0x990951baL, 0x076dc419L,
+        0x706af48fL, 0xe963a535L, 0x9e6495a3L, 0x0edb8832L, 0x79dcb8a4L,
+        0xe0d5e91eL, 0x97d2d988L, 0x09b64c2bL, 0x7eb17cbdL, 0xe7b82d07L,
+        0x90bf1d91L, 0x1db71064L, 0x6ab020f2L, 0xf3b97148L, 0x84be41deL,
+        0x1adad47dL, 0x6ddde4ebL, 0xf4d4b551L, 0x83d385c7L, 0x136c9856L,
+        0x646ba8c0L, 0xfd62f97aL, 0x8a65c9ecL, 0x14015c4fL, 0x63066cd9L,
+        0xfa0f3d63L, 0x8d080df5L, 0x3b6e20c8L, 0x4c69105eL, 0xd56041e4L,
+        0xa2677172L, 0x3c03e4d1L, 0x4b04d447L, 0xd20d85fdL, 0xa50ab56bL,
+        0x35b5a8faL, 0x42b2986cL, 0xdbbbc9d6L, 0xacbcf940L, 0x32d86ce3L,
+        0x45df5c75L, 0xdcd60dcfL, 0xabd13d59L, 0x26d930acL, 0x51de003aL,
+        0xc8d75180L, 0xbfd06116L, 0x21b4f4b5L, 0x56b3c423L, 0xcfba9599L,
+        0xb8bda50fL, 0x2802b89eL, 0x5f058808L, 0xc60cd9b2L, 0xb10be924L,
+        0x2f6f7c87L, 0x58684c11L, 0xc1611dabL, 0xb6662d3dL, 0x76dc4190L,
+        0x01db7106L, 0x98d220bcL, 0xefd5102aL, 0x71b18589L, 0x06b6b51fL,
+        0x9fbfe4a5L, 0xe8b8d433L, 0x7807c9a2L, 0x0f00f934L, 0x9609a88eL,
+        0xe10e9818L, 0x7f6a0dbbL, 0x086d3d2dL, 0x91646c97L, 0xe6635c01L,
+        0x6b6b51f4L, 0x1c6c6162L, 0x856530d8L, 0xf262004eL, 0x6c0695edL,
+        0x1b01a57bL, 0x8208f4c1L, 0xf50fc457L, 0x65b0d9c6L, 0x12b7e950L,
+        0x8bbeb8eaL, 0xfcb9887cL, 0x62dd1ddfL, 0x15da2d49L, 0x8cd37cf3L,
+        0xfbd44c65L, 0x4db26158L, 0x3ab551ceL, 0xa3bc0074L, 0xd4bb30e2L,
+        0x4adfa541L, 0x3dd895d7L, 0xa4d1c46dL, 0xd3d6f4fbL, 0x4369e96aL,
+        0x346ed9fcL, 0xad678846L, 0xda60b8d0L, 0x44042d73L, 0x33031de5L,
+        0xaa0a4c5fL, 0xdd0d7cc9L, 0x5005713cL, 0x270241aaL, 0xbe0b1010L,
+        0xc90c2086L, 0x5768b525L, 0x206f85b3L, 0xb966d409L, 0xce61e49fL,
+        0x5edef90eL, 0x29d9c998L, 0xb0d09822L, 0xc7d7a8b4L, 0x59b33d17L,
+        0x2eb40d81L, 0xb7bd5c3bL, 0xc0ba6cadL, 0xedb88320L, 0x9abfb3b6L,
+        0x03b6e20cL, 0x74b1d29aL, 0xead54739L, 0x9dd277afL, 0x04db2615L,
+        0x73dc1683L, 0xe3630b12L, 0x94643b84L, 0x0d6d6a3eL, 0x7a6a5aa8L,
+        0xe40ecf0bL, 0x9309ff9dL, 0x0a00ae27L, 0x7d079eb1L, 0xf00f9344L,
+        0x8708a3d2L, 0x1e01f268L, 0x6906c2feL, 0xf762575dL, 0x806567cbL,
+        0x196c3671L, 0x6e6b06e7L, 0xfed41b76L, 0x89d32be0L, 0x10da7a5aL,
+        0x67dd4accL, 0xf9b9df6fL, 0x8ebeeff9L, 0x17b7be43L, 0x60b08ed5L,
+        0xd6d6a3e8L, 0xa1d1937eL, 0x38d8c2c4L, 0x4fdff252L, 0xd1bb67f1L,
+        0xa6bc5767L, 0x3fb506ddL, 0x48b2364bL, 0xd80d2bdaL, 0xaf0a1b4cL,
+        0x36034af6L, 0x41047a60L, 0xdf60efc3L, 0xa867df55L, 0x316e8eefL,
+        0x4669be79L, 0xcb61b38cL, 0xbc66831aL, 0x256fd2a0L, 0x5268e236L,
+        0xcc0c7795L, 0xbb0b4703L, 0x220216b9L, 0x5505262fL, 0xc5ba3bbeL,
+        0xb2bd0b28L, 0x2bb45a92L, 0x5cb36a04L, 0xc2d7ffa7L, 0xb5d0cf31L,
+        0x2cd99e8bL, 0x5bdeae1dL, 0x9b64c2b0L, 0xec63f226L, 0x756aa39cL,    
+        0x026d930aL, 0x9c0906a9L, 0xeb0e363fL, 0x72076785L, 0x05005713L,
+        0x95bf4a82L, 0xe2b87a14L, 0x7bb12baeL, 0x0cb61b38L, 0x92d28e9bL,
+        0xe5d5be0dL, 0x7cdcefb7L, 0x0bdbdf21L, 0x86d3d2d4L, 0xf1d4e242L,
+        0x68ddb3f8L, 0x1fda836eL, 0x81be16cdL, 0xf6b9265bL, 0x6fb077e1L,
+        0x18b74777L, 0x88085ae6L, 0xff0f6a70L, 0x66063bcaL, 0x11010b5cL,
+        0x8f659effL, 0xf862ae69L, 0x616bffd3L, 0x166ccf45L, 0xa00ae278L,
+        0xd70dd2eeL, 0x4e048354L, 0x3903b3c2L, 0xa7672661L, 0xd06016f7L,
+        0x4969474dL, 0x3e6e77dbL, 0xaed16a4aL, 0xd9d65adcL, 0x40df0b66L,
+        0x37d83bf0L, 0xa9bcae53L, 0xdebb9ec5L, 0x47b2cf7fL, 0x30b5ffe9L,
+        0xbdbdf21cL, 0xcabac28aL, 0x53b39330L, 0x24b4a3a6L, 0xbad03605L,
+        0xcdd70693L, 0x54de5729L, 0x23d967bfL, 0xb3667a2eL, 0xc4614ab8L,
+        0x5d681b02L, 0x2a6f2b94L, 0xb40bbe37L, 0xc30c8ea1L, 0x5a05df1bL,
+        0x2d02ef8dL
+    };
+    
+    crc = crc ^ 0xffffffffL;
+    while(len >= 8)
+    {    
+        DO8(buf);
+        len -= 8;
+    }    
+    
+    if(len)
+    {    
+        do       
+        {        
+            DO1(buf);
+        }        
+        while(--len);
+    }
+    return crc ^ 0xffffffffL;
+}
+
+bool _TDAL_NVM_CheckCRC( uint8_t* p_BlockBuffer, bool overWriteCRC)
+{
+    SPI_NVMInfo *pNVMInfo = (SPI_NVMInfo *)p_BlockBuffer;
+    if(TDAL_NVM_has_backup_block == false)
+    {
+        //mTBOX_TRACE((kTBOX_NIV_CRITICAL, "_TDAL_NVM_CheckBKBlock:   No   Backup   NVM   exist\n"));
+        return false;
+    }
+
+    uint32_t crc_value = _crc32 (0, p_BlockBuffer, NVM_BLOCK_SIZE-sizeof(uint32_t));
+    
+
+    if(pNVMInfo->u32crc != crc_value)
+    {
+        if(overWriteCRC)
+        {
+            pNVMInfo->u32crc = crc_value;
+        }
+   
+        return false;
+    }
+    else
+    {
+        return true;
+    }
+}
+
+bool _TDAL_NVM_CheckBKBlock(void)
+{
+    bool _ret = false;
+    uint8_t * p_BlockBuffer;
+    SPI_NVMInfo *pNVMInfo = (SPI_NVMInfo *)p_BlockBuffer;
+    uint32_t   NumberRead;
+
+    if(TDAL_NVM_has_backup_block == false)
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "_TDAL_NVM_CheckBKBlock:   No   Backup   NVM   exist\n"));
+        return false;
+    }
+
+    p_BlockBuffer = TDAL_Malloc(NVM_BLOCK_SIZE);
+
+    if(p_BlockBuffer == NULL)
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "_TDAL_NVM_CheckBKBlock:   cannot   allocate   internal   buffer\n"));
+        return false;
+    }
+
+    NumberRead = TDAL_FLA_Read(TDAL_NVM_BK_Location, p_BlockBuffer, NVM_BLOCK_SIZE); 
+    if(NumberRead != NVM_BLOCK_SIZE)
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "_TDAL_NVM_CheckBKBlock:   TDAL_FLA_Read   failed\n"));
+        TDAL_Free(p_BlockBuffer);
+        return false; 
+    }
+
+    _ret = _TDAL_NVM_CheckCRC(p_BlockBuffer, false);
+
+    if(_ret == false)
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "_TDAL_NVM_CheckBKBlock:   NVM   Backup   Block   CRC   CHECK   FAIL\n"));
+    }
+
+    /*   free   p_BlockBuffer   */
+    TDAL_Free(p_BlockBuffer);
+    return _ret;
+}
+
+bool _TDAL_NVM_Recovery(bool fromBackupBlock)
+{
+    uint8_t * p_BlockBuffer;
+    uint32_t crc_value = 0;
+    SPI_NVMInfo *pNVMInfo = (SPI_NVMInfo *)p_BlockBuffer;
+    uint32_t read_addr = TDAL_NVM_Location.addressOffset;
+    uint32_t temp_size = 0;
+    uint32_t temp_count = 0;
+    tTDAL_FLA_ErrorCode      FlashError;
+    uint32_t            NumberWritten;
+    uint32_t   NumberRead;
+    bool _ret = true;
+
+    if(TDAL_NVM_has_backup_block == false)
+    {
+        return false;
+    }
+
+   /*   allocate   a   p_BlockBuffer   with   block   size   for   reading   */
+   p_BlockBuffer = TDAL_Malloc(NVM_BLOCK_SIZE);
+   if(p_BlockBuffer == NULL)
+   {
+      mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_NVM_Write:   cannot   allocate   internal   buffer\n"));
+      return false;
+   }
+
+    while(read_addr != TDAL_NVM_BK_Location)
+    {
+        NumberRead = TDAL_FLA_Read(read_addr, p_BlockBuffer, NVM_BLOCK_SIZE); 
+        if   (NumberRead != NVM_BLOCK_SIZE)
+        {
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "_TDAL_NVM_Recovery:   TDAL_FLA_Read   failed\n"));
+            _ret = false;
+            break;
+        }
+        if( _TDAL_NVM_CheckCRC(p_BlockBuffer, true) == false)
+        {
+            if(fromBackupBlock)
+            {
+                //recover from backup
+                NumberRead = TDAL_FLA_Read(TDAL_NVM_BK_Location, p_BlockBuffer, NVM_BLOCK_SIZE); 
+                if(NumberRead != NVM_BLOCK_SIZE)
+                {
+                    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "_TDAL_NVM_Recovery:   TDAL_FLA_Read   failed\n"));
+                    _ret = false;
+                    break;
+                }
+            }
+
+            /*   erase   the   block   before   write   */ //For Backup Block
+            FlashError = TDAL_FLA_Erase( read_addr, NVM_BLOCK_SIZE);
+            if(FlashError != eTDAL_FLA_NO_ERROR)
+            {
+                mTBOX_TRACE((kTBOX_NIV_CRITICAL, "_TDAL_NVM_Recovery:   TDAL_FLA_Erase   failed\n"));
+                _ret = false;
+                break;
+            }
+
+            NumberWritten = TDAL_FLA_Write(read_addr, p_BlockBuffer, NVM_BLOCK_SIZE);
+            if(NumberWritten != NVM_BLOCK_SIZE)
+            {
+                mTBOX_TRACE((kTBOX_NIV_CRITICAL, "_TDAL_NVM_Recovery:   TDAL_FLA_Write   failed\n"));
+                _ret = false;
+                break;
+            }
+            //break; // recovery all block? 
+        }
+        read_addr += NVM_BLOCK_SIZE;
+        temp_size += NVM_BLOCK_SIZE;
+        if(temp_size >= TDAL_NVM_Location.size)
+        {
+            break;
+        }
+    }
+   
+    /*   free   p_BlockBuffer   */
+    TDAL_Free(p_BlockBuffer);
+    return _ret;
+}
 /*===========================================================================
  *
  * TDAL_NVM_Init
@@ -80,7 +298,6 @@ LOCAL uint8_t TDALi_NVM_GetAreaIdx(const bool bOld);
 tTDAL_NVM_ErrorCode   TDAL_NVM_Init   (void)
 {
    bool ret;
-   tFLASH_CFG_Location TDAL_FLASH_Location;
 
    mTBOX_FCT_ENTER("TDAL_NVM_Init");
 
@@ -100,35 +317,32 @@ tTDAL_NVM_ErrorCode   TDAL_NVM_Init   (void)
    /*   set   flag   "Initialized"   to   TRUE   */
    TDAL_NVM_Initialized = TRUE;
 
-   /* Get area from flash configuration for kind of NVRAM reserved area */
-   ret = FLASH_CFG_GetNvmLocation(&TDAL_FLASH_Location);
-   stAreaArray[0].uiFlashOffset = TDAL_FLASH_Location.addressOffset;
-   if (TDAL_NVM_MAX_SIZE_INBYTES < TDAL_FLASH_Location.size)
-   {
-       stAreaArray[0].uiByteSize    = TDAL_NVM_MAX_SIZE_INBYTES;
-   }
-   else
-   {
-       stAreaArray[0].uiByteSize    = TDAL_FLASH_Location.size;
-   }
-   /* Get spare NVRAM area from flash configuration in this case it will be one block before
-    * application read only resources start address */
-   FLASH_CFG_GetFlashAreaLocation(eFLASH_CFG_FLASH_AREA_RESOURCES_PARTITION_MIRROR_1, &TDAL_FLASH_Location);
-   stAreaArray[1].uiFlashOffset = TDAL_FLASH_Location.addressOffset - TDAL_NVM_MAX_SIZE_INBYTES;
-   if (TDAL_NVM_MAX_SIZE_INBYTES < TDAL_FLASH_Location.size)
-   {
-       stAreaArray[1].uiByteSize    = TDAL_NVM_MAX_SIZE_INBYTES;
-   }
-   else
-   {
-       stAreaArray[1].uiByteSize    = TDAL_FLASH_Location.size;
-   }
+   ret = FLASH_CFG_GetNvmLocation(&TDAL_NVM_Location);
    mTBOX_ASSERTm(ret != FALSE, "FLASH_CFG_GetNVMLocation should return a valid value");
 
-   TDALi_NVM_InitValidArea();
+    if(TDAL_NVM_Location.size / NVM_BLOCK_SIZE >= 2 )
+    {
+#if SUPPORT_BACKUP_BLOCK 
+        TDAL_NVM_has_backup_block = TRUE;
+        TDAL_NVM_BK_Location = TDAL_NVM_Location.addressOffset + TDAL_NVM_Location.size - NVM_BLOCK_SIZE;
+#endif
+    }
+    else
+    {
+        TDAL_NVM_has_backup_block = FALSE;
+        TDAL_NVM_BK_Location = 0; 
+    }
 
-   mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_NVM_Init   succeed\n"));
-   mTBOX_RETURN(eTDAL_NVM_NO_ERROR);
+    if( _TDAL_NVM_CheckBKBlock())
+    {
+        _TDAL_NVM_Recovery(true);
+    }
+    else
+    {
+        _TDAL_NVM_Recovery(false);
+    }
+    mTBOX_TRACE((kTBOX_NIV_1, "TDAL_NVM_Init   succeed\n"));
+    mTBOX_RETURN(eTDAL_NVM_NO_ERROR);
 }
 
 /*===========================================================================
@@ -272,12 +486,12 @@ uint32_t   TDAL_NVM_Read   (
 )
 {
    uint32_t   NumberRead;
-   tFLASH_CFG_Location  stValidFlash;
 
    mTBOX_FCT_ENTER("TDAL_NVM_Read");
    
    /*   Test   if   good   parameters   */
-   if (Buffer == NULL || NumberToRead == 0)
+   if   (   (Buffer == NULL)   ||
+         (NumberToRead == 0)   )
    {
       mTBOX_RETURN(0);
    }
@@ -289,8 +503,8 @@ uint32_t   TDAL_NVM_Read   (
       mTBOX_RETURN(0);
    }
    
-   /* Prepare valid area properties for read */
-   if (TDALi_NVM_GetValidReadProps(&stValidFlash, Address, NumberToRead) == false)
+   /*   test   input   values   */
+   if   (Address+NumberToRead > TDAL_NVM_Location.size   ||   Address > TDAL_NVM_Location.size)
    {
       mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_NVM_Read:   out   of   range\n"));
       mTBOX_RETURN(0);
@@ -299,7 +513,7 @@ uint32_t   TDAL_NVM_Read   (
    /*   acquire   the   mutex   used   to   protect   access   to   the   flash   memory   */
    TDAL_LockMutex(TDAL_NVM_Mutex);
 
-   NumberRead = TDAL_FLA_Read(Address + stValidFlash.addressOffset, Buffer, NumberToRead);
+   NumberRead = TDAL_FLA_Read(Address + TDAL_NVM_Location.addressOffset, Buffer, NumberToRead);
 
    /*   release   the   mutex   */
    TDAL_UnlockMutex(TDAL_NVM_Mutex);
@@ -328,16 +542,19 @@ uint32_t   TDAL_NVM_Write(
    uint8_t*   Buffer         /*   I:   Buffer   where   to   get   data   */
 )
 {
-    uint32_t            NumberWritten = 0;
-    uint8_t*            p_BlockBuffer = NULL;
-    uint32_t            NumberRead = 0;
-    uint32_t            Offset = 0;
-    tTDAL_FLA_ErrorCode FlashError = eTDAL_FLA_NO_ERROR;
-    tFLASH_CFG_Location stValidFlash = {0};
+   uint32_t            NumberWritten = 0;
+   uint16_t               BlockNumber;
+   uint32_t            BaseAddress;
+   uint32_t            BlockSize;
+   uint8_t   *            p_BlockBuffer;
+   uint32_t            NumberRead;
+   tTDAL_FLA_ErrorCode      FlashError;
+   uint32_t            Offset;
 
    mTBOX_FCT_ENTER("TDAL_NVM_Write");
 
-    mTBOX_TRACE((kTBOX_NIV_CRITICAL, "[TDAL_NVM_Write] Address = %x, NumberOfBytes = %x, Buffer = %p\n", Address, NumberToWrite, Buffer));
+   mTBOX_TRACE((kTBOX_NIV_1, "[TDAL_NVM_Write] Address = %x, NumberOfBytes = %x, Buffer = %p", Address, NumberToWrite, Buffer));
+
 
    /*   Test   if   TDAL_NVM   is   open   */
    if   (TDAL_NVM_Opened == FALSE)
@@ -346,21 +563,49 @@ uint32_t   TDAL_NVM_Write(
       mTBOX_RETURN(0);
    }
 
+   /*   test   input   values   */
+   if   (Address+NumberToWrite > TDAL_NVM_Location.size   ||   Address > TDAL_NVM_Location.size)
+   {
+      mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_NVM_Write:   out   of   range\n"));
+      mTBOX_RETURN(0);
+   }
+   /*   test   input   values   */
+   if   (NumberToWrite == 0)
+   {
+      mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_NVM_Write:   NumberToWrite    0\n"));
+      mTBOX_RETURN(0);
+   }     
+
    if (Buffer == NULL)
    {
 	   mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Buffer is null"));
 	   mTBOX_RETURN(0);
    }
 
-    /* Prepare valid area properties for read */
-    if (TDALi_NVM_GetValidReadProps(&stValidFlash, Address, NumberToWrite) == false)
-    {
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_NVM_Write: out of range\n"));
-        mTBOX_RETURN(0);
-    }
+   Address   +=   TDAL_NVM_Location.addressOffset;
    
+   /*   get   the   block   number   from   the   address   */
+   BlockNumber = TDAL_FLA_GetBlockNumber(   Address   );
+   
+   /*   get   the   base   address   of   the   BlockNumber   */
+   BaseAddress = TDAL_FLA_GetBlockAddress(   BlockNumber   );
+   
+   /*   get   the   block   size   */
+   BlockSize = TDAL_FLA_GetBlockSize(   BlockNumber   );
+   
+   Offset = (Address   -   BaseAddress)%NVM_BLOCK_SIZE;
+
+   if(NumberToWrite > NVM_BLOCK_SIZE)
+   {
+        NumberWritten += TDAL_NVM_Write( Address+(NVM_BLOCK_SIZE-Offset)-TDAL_NVM_Location.addressOffset, NumberToWrite - (NVM_BLOCK_SIZE-Offset), Buffer+(NVM_BLOCK_SIZE-Offset));
+   }  
+   NumberToWrite = NumberToWrite%NVM_BLOCK_SIZE;
+   if(NumberToWrite == 0)
+   {
+        NumberToWrite = NVM_BLOCK_SIZE;   
+   }
    /*   allocate   a   p_BlockBuffer   with   block   size   for   reading   */
-    p_BlockBuffer = TDAL_Malloc(stValidFlash.size);
+   p_BlockBuffer = TDAL_Malloc(   BlockSize   );
    if   (p_BlockBuffer == NULL)
    {
       mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_NVM_Write:   cannot   allocate   internal   buffer\n"));
@@ -368,524 +613,85 @@ uint32_t   TDAL_NVM_Write(
    }
    
    /*   acquire   the   mutex   used   to   protect   access   to   the   flash   memory   */
-    TDAL_LockMutex(TDAL_NVM_Mutex);
+   TDAL_LockMutex(   TDAL_NVM_Mutex   );
 
    /*   read   current   block   and   saved   it   in   the   p_BlockBuffer   */
-    NumberRead = TDAL_FLA_Read(stValidFlash.addressOffset,
-                               p_BlockBuffer,
-                               stValidFlash.size);
-    if (NumberRead != stValidFlash.size)
+   NumberRead = TDAL_FLA_Read(BaseAddress, p_BlockBuffer, BlockSize);
+   if   (NumberRead != BlockSize)
    {
       mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_NVM_Write:   TDAL_FLA_Read   failed\n"));
-        TDAL_Free(p_BlockBuffer);
-        TDAL_UnlockMutex(TDAL_NVM_Mutex);
+      TDAL_Free(   p_BlockBuffer   );
+      TDAL_UnlockMutex(   TDAL_NVM_Mutex   );
       mTBOX_RETURN(0);
    }
-    /* Check whether write operation is needed, we want to spare flash from writing */
-    if (memcmp((uint8_t *) (p_BlockBuffer+Address), Buffer, NumberToWrite) == 0)
-    {
-        TDAL_Free(p_BlockBuffer);
-        TDAL_UnlockMutex(TDAL_NVM_Mutex);
-      mTBOX_RETURN(NumberToWrite);
-   }
-    /* Prepare valid area properties for write */
-    if (TDALi_NVM_GetValidWriteProps(&stValidFlash, Address, NumberToWrite) == false)
-    {
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_NVM_Write: out of range\n"));
-        mTBOX_RETURN(0);
-    }
 
-    /* Prepare flash block before write in it */
-    FlashError = TDAL_FLA_Erase(stValidFlash.addressOffset, stValidFlash.size);
-   if   (FlashError != eTDAL_FLA_NO_ERROR)
+
+   if(memcmp(   (uint8_t   *)   (p_BlockBuffer+Offset)   ,
+            (uint8_t   *)   (Buffer)   ,
+            NumberToWrite   )==0)
    {
-      mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_NVM_Write:   TDAL_FLA_Erase   failed\n"));
-        TDAL_Free(p_BlockBuffer);
-        TDAL_UnlockMutex(TDAL_NVM_Mutex);
-      mTBOX_RETURN(0);
+      TDAL_Free(   p_BlockBuffer   );
+      TDAL_UnlockMutex(   TDAL_NVM_Mutex   );
+      mTBOX_RETURN(NumberToWrite);
    }
    
    /*   copy   data   from   Buffer   to   p_BlockBuffer   */
-    memcpy((uint8_t*)(p_BlockBuffer+Address), Buffer, NumberToWrite);
+   memcpy(   (uint8_t   *)   (p_BlockBuffer+Offset)   ,
+         (uint8_t   *)   (Buffer)   ,
+         NumberToWrite   );
+  
+   // append CRC
+   _TDAL_NVM_CheckCRC(p_BlockBuffer, true);
 
-    /* Whole block buffer to validate with CRC and version */
-    TDALi_NVM_ValidateWriteBuffer(p_BlockBuffer, stValidFlash.size);
-   
-   /*   copy   data   from   p_BlockBuffer   to   the   flash   */
-    NumberWritten = TDAL_FLA_Write(stValidFlash.addressOffset, p_BlockBuffer, stValidFlash.size);
-    if   (NumberWritten != stValidFlash.size)
+   if(TDAL_NVM_has_backup_block == true)
    {
-      mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_NVM_Write:   TDAL_FLA_Write   failed\n"));
-        TDAL_Free(p_BlockBuffer);
-        TDAL_UnlockMutex(TDAL_NVM_Mutex);
-      mTBOX_RETURN(0);
+       /*   erase   the   block   before   write   */ //For Backup Block
+       FlashError = TDAL_FLA_Erase( TDAL_NVM_BK_Location , BlockSize   );
+       if   (FlashError != eTDAL_FLA_NO_ERROR)
+       {
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_NVM_Write:   TDAL_FLA_Erase   failed\n"));
+            TDAL_Free(   p_BlockBuffer   );
+            TDAL_UnlockMutex(   TDAL_NVM_Mutex   );
+            mTBOX_RETURN(0);
+       }
+
+       /*   copy   data   from   p_BlockBuffer   to   the   flash   */ //For Backup Block
+       if(TDAL_FLA_Write(TDAL_NVM_BK_Location, p_BlockBuffer, BlockSize) != BlockSize)
+       {
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_NVM_Write:   TDAL_FLA_Write   failed\n"));
+            TDAL_Free(   p_BlockBuffer   );
+            TDAL_UnlockMutex(   TDAL_NVM_Mutex   );
+            mTBOX_RETURN(0);
+       }
    }
 
-    /* Update write properties */
-    TDALi_NVM_UpdateValidWriteProp(p_BlockBuffer);
-
+   if(TDAL_NVM_BK_Location != BaseAddress)
+   {
+     /*   erase   the   block   before   write   */
+     FlashError = TDAL_FLA_Erase(   BaseAddress   , BlockSize   );
+     if   (FlashError != eTDAL_FLA_NO_ERROR)
+     {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_NVM_Write:   TDAL_FLA_Erase   failed\n"));
+        TDAL_Free(   p_BlockBuffer   );
+        TDAL_UnlockMutex(   TDAL_NVM_Mutex   );
+        mTBOX_RETURN(0);
+     }
+   
+     /*   copy   data   from   p_BlockBuffer   to   the   flash   */
+     if(TDAL_FLA_Write(BaseAddress, p_BlockBuffer, BlockSize) != BlockSize) 
+     {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_NVM_Write:   TDAL_FLA_Write   failed\n"));
+        TDAL_Free(   p_BlockBuffer   );
+        TDAL_UnlockMutex(   TDAL_NVM_Mutex   );
+        mTBOX_RETURN(0);
+     } 
+   }
+   NumberWritten += NumberToWrite;
    /*   free   p_BlockBuffer   */
-    TDAL_Free(p_BlockBuffer);
+   TDAL_Free(   p_BlockBuffer   );
 
    /*   release   the   mutex   */
-    TDAL_UnlockMutex(TDAL_NVM_Mutex);
+   TDAL_UnlockMutex(   TDAL_NVM_Mutex   );
 
-   mTBOX_RETURN(NumberToWrite);
-}
-
-/*===========================================================================
- *
- * TDALi_NVM_InitValidArea
- *
- * Parameters:
- *
- * Description:
- *      Initialization of all NVM areas based on available flash blocks
- *      where should reside the data which are versioned(latest/oldest) and
- *      validated by CRC32
- *
- * Returns:
- *
- *===========================================================================*/
-bool TDALi_NVM_InitValidArea()
-{
-    uint8_t     ucCntArea;
-    uint8_t     *pucBuffer = NULL;
-    uint32_t    uiCRCOffset = 0;
-    uint32_t    uiCRC32 = 0;
-    uint32_t    uiVersionOffset = 0;
-    uint8_t     ucMaxVersion = 0;
-    struct{uint8_t bValid; uint8_t ucVersion;} stCheckArray[TDAL_NVM_REDUNDANCY_LEVEL];
-    bool        bValid = TRUE;
-
-    mTBOX_FCT_ENTER("TDALi_NVM_GetInitValidArea");
-
-    for(ucCntArea = 0; ucCntArea < TDAL_NVM_REDUNDANCY_LEVEL; ucCntArea++)
-    {
-        if (pucBuffer == NULL)
-        {
-            pucBuffer = TDAL_Malloc(stAreaArray[ucCntArea].uiByteSize);
-        }
-        /* Read one NVM entity */
-        memset(pucBuffer, 0, stAreaArray[ucCntArea].uiByteSize);
-        TDAL_FLA_Read(stAreaArray[ucCntArea].uiFlashOffset,
-                      pucBuffer,
-                      stAreaArray[ucCntArea].uiByteSize);
-        uiCRCOffset     = stAreaArray[ucCntArea].uiByteSize - TDAL_NVM_CRC32_SIZE;
-        uiVersionOffset = uiCRCOffset - TDAL_NVM_VERSION_AGE_SIZE;
-        /* Validate NVM entity */
-        memcpy(&uiCRC32, &pucBuffer[uiCRCOffset], sizeof(uiCRC32));
-        bValid      = TDALm_CRC32_Check(pucBuffer,
-                                        stAreaArray[ucCntArea].uiByteSize - TDAL_NVM_CRC32_SIZE,
-                                        uiCRC32);
-
-        stAreaArray[ucCntArea].ucVersion    = pucBuffer[uiVersionOffset];
-        stCheckArray[ucCntArea].bValid      = bValid;
-        stCheckArray[ucCntArea].ucVersion   = pucBuffer[uiVersionOffset];
-        if (bValid)
-        {
-            stAreaArray[ucCntArea].uiCRC32      = uiCRC32;
-
-            if (stAreaArray[ucCntArea].ucVersion > ucMaxVersion)
-            {
-                ucMaxVersion = stAreaArray[ucCntArea].ucVersion;
-            }
-        }
-    }
-
-    /* If invalid NVM area reset it to default */
-    for (ucCntArea = 0; ucCntArea < TDAL_NVM_REDUNDANCY_LEVEL; ucCntArea++)
-    {
-        if (!stCheckArray[ucCntArea].bValid)
-        {
-            memset(pucBuffer, 0, stAreaArray[ucCntArea].uiByteSize);
-            if (ucMaxVersion == TDAL_NVM_VERSION_MAXIMAL)
-            {
-                pucBuffer[uiVersionOffset] = TDAL_NVM_VERSION_MINIMAL;
-            }
-            else if (ucMaxVersion == TDAL_NVM_VERSION_MINIMAL)
-            {
-                pucBuffer[uiVersionOffset] = TDAL_NVM_VERSION_MAXIMAL;
-            }
-            else
-            {
-                pucBuffer[uiVersionOffset] = ucMaxVersion - 1;
-            }
-            uiCRC32 = TDALm_CRC32_Calculate(pucBuffer, stAreaArray[ucCntArea].uiByteSize - TDAL_NVM_CRC32_SIZE);
-            memcpy(&pucBuffer[uiCRCOffset], &uiCRC32, sizeof(uiCRC32));
-
-            mTBOX_TRACE((kTBOX_NIV_1, "%s ucVersion=%03d\n", __FUNCTION__, ucCntArea, pucBuffer[uiVersionOffset]));
-            mTBOX_TRACE((kTBOX_NIV_1, "%s uiCRC32=0x%02X\n", __FUNCTION__, pucBuffer[uiCRCOffset]));
-            mTBOX_TRACE((kTBOX_NIV_1, "%s uiCRC32=0x%02X\n", __FUNCTION__, pucBuffer[uiCRCOffset + 1]));
-            mTBOX_TRACE((kTBOX_NIV_1, "%s uiCRC32=0x%02X\n", __FUNCTION__, pucBuffer[uiCRCOffset + 2]));
-            mTBOX_TRACE((kTBOX_NIV_1, "%s uiCRC32=0x%02X\n", __FUNCTION__, pucBuffer[uiCRCOffset + 3]));
-
-            TDAL_FLA_Erase(stAreaArray[ucCntArea].uiFlashOffset, stAreaArray[ucCntArea].uiByteSize);
-            TDAL_FLA_Write(stAreaArray[ucCntArea].uiFlashOffset, pucBuffer, stAreaArray[ucCntArea].uiByteSize);
-        }
-    }
-
-    if (pucBuffer)
-    {
-        TDAL_Free(pucBuffer);
-    }
-    mTBOX_RETURN(true);
-}
-/*===========================================================================
- *
- * TDALi_NVM_GetValidReadProps
- *
- * Parameters:
- *      pointer of read area properties
- *      address of data in NVM(relative to beginning of NVM)
- *      size in bytes to be written
- * Description:
- *      Getting valid read parameters for write operation to NVM by finding
- *      the area(NVM) with latest data
- *
- *
- * Returns:
- *
- *===========================================================================*/
-bool TDALi_NVM_GetValidReadProps(
-        tFLASH_CFG_Location *pstArea,
-        uint32_t Address,
-        uint32_t uiReadBytes)
-{
-    uint8_t     ucCntArea;
-    uint8_t     ucVersion = 0;
-    uint32_t    uiCRC32Offset = 0;
-    uint32_t    uiVersionOffset = 0;
-    uint32_t    uiFlashAddress = 0;
-    uint32_t    uiBlockAddress = 0;
-    uint16_t    usBlockIdx = 0;
-    bool        bRead = true;
-    uint8_t     ucIdx = 0;
-
-    mTBOX_FCT_ENTER("TDALi_NVM_GetValidReadProps");
-
-    if (pstArea == 0)
-    {
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Bad parameter pstArea\n"));
-        mTBOX_RETURN(false);
-    }
-    memset(pstArea, 0, sizeof(tFLASH_CFG_Location));
-
-    /* Get valid area index */
-    ucIdx = TDALi_NVM_GetAreaIdx(bRead);
-
-    /* When valid check age and choose older */
-    pstArea->addressOffset  = stAreaArray[ucIdx].uiFlashOffset;
-
-    /* Calculate final validity indicators */
-    uiVersionOffset = stAreaArray[ucIdx].uiByteSize - TDAL_NVM_CRC32_SIZE - TDAL_NVM_VERSION_AGE_SIZE;
-
-    /* Check whether address and size of bytes to read exceed valid area */
-    if (uiReadBytes + Address > uiVersionOffset)
-    {
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Reading parameters exceed valid area\n"));
-        mTBOX_RETURN(false);
-    }
-
-    /* Compute real FLASH address and size of block */
-    uiFlashAddress = Address + pstArea->addressOffset;
-
-    /* get the block number from the address */
-    usBlockIdx = TDAL_FLA_GetBlockNumber(uiFlashAddress);
-
-    /* get the base address of the BlockNumber */
-    uiBlockAddress = TDAL_FLA_GetBlockAddress(usBlockIdx);
-    if (uiBlockAddress != pstArea->addressOffset)
-    {
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Something really went wrong\n"));
-    }
-    else
-    {
-        /* get the block size */
-        pstArea->size = TDAL_FLA_GetBlockSize(usBlockIdx);
-    }
-
-    mTBOX_RETURN(true);
-}
-/*===========================================================================
- *
- * TDALi_NVM_GetValidWriteProps
- *
- * Parameters:
- *      pointer of write area properties
- *      address of data in NVM(relative to beginning of NVM)
- *      size in bytes to be written
- * Description:
- *      Getting valid write parameters for write operation to NVM by finding
- *      the area(NVM) with oldest data
- *
- *
- * Returns:
- *
- *===========================================================================*/
-bool TDALi_NVM_GetValidWriteProps(
-        tFLASH_CFG_Location *pstArea,
-        uint32_t Address,
-        uint32_t uiWriteBytes)
-{
-    uint8_t     ucCntArea;
-    uint8_t     ucVersion = 0xFF;
-    uint32_t    uiCRC32Offset = 0;
-    uint32_t    uiVersionOffset = 0;
-    uint32_t    uiFlashAddress = 0;
-    uint32_t    uiBlockAddress = 0;
-    uint16_t    usBlockIdx = 0;
-    bool        bRead = false;
-    uint8_t     ucIdx = 0;
-
-    mTBOX_FCT_ENTER("TDALi_NVM_GetValidWriteProps");
-
-    if (pstArea == 0)
-    {
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Bad parameter pstArea\n"));
-        mTBOX_RETURN(true);
-    }
-    memset(pstArea, 0, sizeof(tFLASH_CFG_Location));
-
-    /* Get valid area index */
-    ucIdx = TDALi_NVM_GetAreaIdx(bRead);
-
-    /* When valid check age and choose older */
-    pstArea->addressOffset  = stAreaArray[ucIdx].uiFlashOffset;
-
-    /* Calculate final validity indicators */
-    uiVersionOffset = stAreaArray[ucIdx].uiByteSize - TDAL_NVM_CRC32_SIZE - TDAL_NVM_VERSION_AGE_SIZE;
-
-    /* Check whether address and size of bytes to read exceed valid area */
-    if (uiWriteBytes + Address > uiVersionOffset)
-    {
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Reading parameters exceed valid area\n"));
-        mTBOX_RETURN(false);
-    }
-
-    /* Compute real FLASH address and size of block */
-    uiFlashAddress = Address + pstArea->addressOffset;
-
-    /* get the block number from the address */
-    usBlockIdx = TDAL_FLA_GetBlockNumber(uiFlashAddress);
-
-    /* get the base address of the BlockNumber */
-    uiBlockAddress = TDAL_FLA_GetBlockAddress(usBlockIdx);
-    if (uiBlockAddress != pstArea->addressOffset)
-    {
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Something really went wrong\n"));
-    }
-    else
-    {
-        /* get the block size */
-        pstArea->size = TDAL_FLA_GetBlockSize(usBlockIdx);
-    }
-
-    mTBOX_RETURN(true);
-}
-/*===========================================================================
- *
- * TDALi_NVM_ValidateWriteBuffer
- *
- * Parameters:
- *      pointer of write buffer before storing in NVM
- *      size of data
- * Description:
- *      Validates buffer data after setting the proper version by CRC32
- *      Stamps CRC32 as last 4-bytes
- * Returns:
- *
- *===========================================================================*/
-
-void TDALi_NVM_ValidateWriteBuffer(
-        uint8_t *pucBuffer,
-        uint32_t uiSize)
-{
-    uint8_t     ucCntArea;
-    uint32_t    uiCRC32 = 0;
-    uint8_t     ucVersion = 0xFF;
-    uint32_t    uiCRC32Offset = 0;
-    uint32_t    uiVersionOffset = 0;
-    uint8_t     ucYoungestIdx = 0;
-    uint8_t     ucOldestIdx = 0;
-    bool        bRead = true;
-
-    mTBOX_FCT_ENTER("TDALi_NVM_ValidateWriteBuffer");
-
-    /* Get valid area index */
-    ucYoungestIdx   = TDALi_NVM_GetAreaIdx(bRead);
-    ucOldestIdx     = TDALi_NVM_GetAreaIdx(!bRead);
-
-    /* Calculate final validity indicators' address offsets */
-    uiCRC32Offset   = stAreaArray[ucOldestIdx].uiByteSize - TDAL_NVM_CRC32_SIZE;
-    uiVersionOffset = uiCRC32Offset - TDAL_NVM_VERSION_AGE_SIZE;
-
-    if (stAreaArray[ucYoungestIdx].ucVersion >= stAreaArray[ucOldestIdx].ucVersion &&
-        stAreaArray[ucYoungestIdx].ucVersion + 1 >= TDAL_NVM_VERSION_MAXIMAL)
-    {
-        ucVersion = TDAL_NVM_VERSION_MINIMAL;
-    }
-    else
-    {
-        ucVersion = stAreaArray[ucYoungestIdx].ucVersion + 1;
-    }
-    pucBuffer[uiVersionOffset] = ucVersion;
-    /* Calculate CRC on data buffer */
-    uiCRC32 = TDALm_CRC32_Calculate(pucBuffer, uiSize - TDAL_NVM_CRC32_SIZE);
-    if (uiCRC32 == 0xFFFFFFFF || 0x0)
-    {
-        if (++ucVersion == TDAL_NVM_VERSION_MAXIMAL)
-        {
-            ucVersion = TDAL_NVM_VERSION_MINIMAL;
-        }
-        pucBuffer[uiVersionOffset] = ucVersion;
-        uiCRC32 = TDALm_CRC32_Calculate(pucBuffer, uiSize - TDAL_NVM_CRC32_SIZE);
-    }
-    /* Set valid data CRC */
-    memcpy(&pucBuffer[uiCRC32Offset], &uiCRC32, sizeof(uiCRC32));
-
-    mTBOX_RETURN;
-}
-
-/*===========================================================================
- *
- * TDALi_NVM_UpdateValidWriteProp
- *
- * Parameters:
- *      pointer of written buffer over NVM
- * Description:
- *      Updates operative properties of area over which the latest NVM write
- *      operation was successfully finished
- *
- * Returns:
- *
- *===========================================================================*/
-void TDALi_NVM_UpdateValidWriteProp(uint8_t *pucBuffer)
-{
-    uint8_t     ucVersion = 0xFF;
-    uint32_t    uiCRC32Offset = 0;
-    uint32_t    uiVersionOffset = 0;
-    uint8_t     ucIdx = 0;
-    bool        bOld = false;
-
-    mTBOX_FCT_ENTER("TDALi_NVM_UpdateValidWriteProp");
-
-    ucIdx = TDALi_NVM_GetAreaIdx(bOld);
-
-    /* Check validity of current area */
-    if (stAreaArray[ucIdx].uiCRC32 > 0)
-    {
-        mTBOX_TRACE((kTBOX_NIV_WARNING, "In RAM CRC32 indicator for NVM area is unset\n"));
-    }
-    /* Calculate final validity indicators' address offsets */
-    uiCRC32Offset   = stAreaArray[ucIdx].uiByteSize - TDAL_NVM_CRC32_SIZE;
-    uiVersionOffset = uiCRC32Offset - TDAL_NVM_VERSION_AGE_SIZE;
-    stAreaArray[ucIdx].ucVersion = pucBuffer[uiVersionOffset];
-    memcpy(&stAreaArray[ucIdx].uiCRC32, &pucBuffer[uiCRC32Offset], TDAL_NVM_CRC32_SIZE);
-
-    mTBOX_TRACE((kTBOX_NIV_1, "Actual NVM stAreaArray[%d] uiCRC32=%d ucVersion=%d\n",
-                ucIdx,
-                stAreaArray[ucIdx].uiCRC32,
-                stAreaArray[ucIdx].ucVersion));
-
-    mTBOX_RETURN;
-}
-/*===========================================================================
- *
- * TDALi_NVM_GetAreaIdx
- *
- * Parameters:
- *
- * Description:
- *      Gets valid area index depending on bRead parameter if it is for
- *      reading(bRead=true) the index should point to area(NVM) parameters with
- *      latest data, otherwise in case of writing the index should point to
- *      area(NVM) parameters with oldest data.
- *
- * Returns:
- *      uint8_t index of area
- *
- *===========================================================================*/
-
-uint8_t TDALi_NVM_GetAreaIdx(const bool bRead)
-{
-    uint8_t ucIdx = 0;
-    uint8_t ucCntArea;
-    uint8_t ucVersionMin = 0xFF;
-    uint8_t ucVersionMax = 0x00;
-    uint8_t ucVersionDiff = 0x00;
-    uint8_t ucYoungestIdx = 0;
-    uint8_t ucOldestIdx = 0;
-
-    mTBOX_FCT_ENTER("TDALi_NVM_GetAreaIdx");
-
-    for(ucCntArea = 0; ucCntArea < TDAL_NVM_REDUNDANCY_LEVEL; ucCntArea++)
-    {
-        if (stAreaArray[ucCntArea].ucVersion == 0xFF ||
-            stAreaArray[ucCntArea].ucVersion == 0x00)
-        {
-            if (bRead)
-            {
-                continue;
-            }
-            else
-            {
-                ucOldestIdx = ucCntArea;
-                ucVersionMin = 0xFF;
-                ucVersionMax = 0x00;
-                break;
-            }
-        }
-
-        if (stAreaArray[ucCntArea].ucVersion > ucVersionMax)
-        {
-            ucVersionMax = stAreaArray[ucCntArea].ucVersion;
-            ucYoungestIdx = ucCntArea;
-        }
-
-        if (stAreaArray[ucCntArea].ucVersion < ucVersionMin)
-        {
-            ucVersionMin = stAreaArray[ucCntArea].ucVersion;
-            ucOldestIdx = ucCntArea;
-        }
-    }
-    ucVersionDiff = TDAL_ABS(ucVersionMax,ucVersionMin);
-
-    if (ucVersionDiff == TDAL_NVM_VERSION_MAXIMAL)
-    {
-        if (bRead)
-        {
-            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "No valid area to read\n"));
-        }
-        else
-        {
-            ucIdx = ucOldestIdx;
-        }
-    }
-    else if (ucVersionDiff > TDAL_NVM_REDUNDANCY_LEVEL + 1)
-    {
-        if (bRead)
-        {
-            mTBOX_TRACE((kTBOX_NIV_1, "Version cycle reached choose minimal valid version for read\n"));
-            ucIdx = ucOldestIdx;
-        }
-        else
-        {
-            mTBOX_TRACE((kTBOX_NIV_1, "Version cycle reached choose maximal valid version for write\n"));
-            ucIdx = ucYoungestIdx;
-        }
-    }
-    else
-    {
-        if (bRead)
-        {
-            ucIdx = ucYoungestIdx;
-        }
-        else
-        {
-            ucIdx = ucOldestIdx;
-        }
-    }
-
-    mTBOX_RETURN(ucIdx);
+   mTBOX_RETURN(NumberWritten);
 }

@@ -41,7 +41,7 @@
 /********************************************************
    *   Defines                        *
 ********************************************************/
-#define PVR_ALLOC_FROM_VD
+//#define PVR_ALLOC_FROM_VD
 
 /********************************************************
    *   Macros                        *
@@ -50,8 +50,10 @@ mTBOX_SET_MODULE(eTDAL_PVR_EM);
 /********************************************************
    *   Local   File   Variables   (LOCAL)            *
 ********************************************************/
+#define ENABLE_STATICMEM_PVR
 #if(defined(ENABLE_STATICMEM_PVR) && (MEMORY_MAP == MMAP_128MB))
-
+#define PVR_DOWNLOAD_LEN                                0x0000360000*4         /* 3.375 M*/
+#define PVR_UPLOAD_LEN                                  0x0000120000         /* 1.125 M*/
 #else
 /* VDPLAYER_MEM   */
 #define PVR_DOWNLOAD_LEN                                0x0000360000         /* 3.375 M*/
@@ -61,8 +63,8 @@ mTBOX_SET_MODULE(eTDAL_PVR_EM);
 #define PVR_MN_AUDIO_BUFFER_LEN                         (0x00010000)
 #define PVR_TSR_VIDEO_BUFFER_LEN                        (0x000360000)
 #define PVR_TSR_AUDIO_BUFFER_LEN                        (0x00020000)
-
 #endif
+
 LOCAL void *  pTDAL_PVR_Rec = NULL;
 LOCAL void *  pTDAL_PVR_Play = NULL;
 LOCAL void *  pTDAL_PVR_AudioBuf = NULL;
@@ -104,51 +106,13 @@ void TDAL_PVRm_MEMFLUSH_FUNC(MS_U32 u32Adr,MS_U32 u32Len)
     MsOS_FlushMemory();
 }
 
-#if 0  //non CA chip (mstar demo board)
-MS_BOOL TDAL_PVRm_KLADDER_FUNC(void)
-{
-    MS_BOOL ret = FALSE;
-    MS_U8 u8KLInputKey[48]={0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f,
-                            0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,0x28,0x29,0x2a,0x2b,0x2c,0x2d,0x2e,0x2f,
-                            0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x3a,0x3b,0x3c,0x3d,0x3e,0x3f};
-    MS_U8 key[16] = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF};
-    DSCMB_KL_Status KL_Status = 0;
-    MS_U8 ACPU_Out[16] = {0x00};
-
-    DSCMB_KLCfg_All KLConfigAll = {
-        .eAlgo = E_DSCMB_KL_AES,
-        .eSrc = E_DSCMB_KL_SRC_ACPU,
-        .eDst = E_DSCMB_KL_DST_DMA_AES,
-        .eOutsize = E_DSCMB_KL_128_BITS,
-        .eKeyType = E_DSCMB_KEY_CLEAR,      // Don't care when dst is Crypto DMA
-        .u32Level = 3,
-        .u32EngID = 0,                      // Don't care when dst is Crypto DMA
-        .u32DscID = 0,                      // Don't care when dst is Crypto DMA
-        .u8KeyACPU = key,                   // Don't care when src is NOT ACPU
-        .pu8KeyKLIn = u8KLInputKey,
-        .bDecrypt = TRUE,
-        .bInverse = FALSE,
-    };
-
-    // Key Ladder
-    ret = MDrv_DSCMB_KLadder_AtomicExec(&KLConfigAll , ACPU_Out, &KL_Status );
-    if(ret == FALSE)
-    {
-        printf("Key Ladder: Fail!!!\n");
-        return FALSE;
-    }
-
-    return TRUE;
-}
-#else  //for 5c35 Nagra chip
+#if( defined(NAGRA_CHIP_5C35) && (NAGRA_CHIP_5C35 == 1))
 MS_BOOL TDAL_PVRm_KLADDER_FUNC(void)
 {
     MS_U8 u8KLInputKey[32]={0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f,
                             0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,0x28,0x29,0x2a,0x2b,0x2c,0x2d,0x2e,0x2f};
-    MS_U8 *u8KeyPattern = NULL;
     DSCMB_KL_Status KL_Status = 0;
     MS_U8 ACPU_Out[16] = {0x00};
-    MS_BOOL ret = FALSE;
 
 	DSCMB_KLCfg_All KLConfigAll = {
 		.eAlgo = E_DSCMB_KL_TDES,
@@ -185,7 +149,71 @@ MS_BOOL TDAL_PVRm_KLADDER_FUNC(void)
 
     return TRUE;
 }
+#elif( defined(NAGRA_CHIP_5029) && (NAGRA_CHIP_5029 == 1))
+MS_BOOL TDAL_PVRm_KLADDER_FUNC(void)
+{
+    MS_U8 u8Key[48]={0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f,
+                     0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,0x28,0x29,0x2a,0x2b,0x2c,0x2d,0x2e,0x2f,
+                     0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x3a,0x3b,0x3c,0x3d,0x3e,0x3f};
+
+    MS_BOOL bRet=FALSE;
+    DSCMB_KL_Status u32Status;
+    DSCMB_KLCfg_All KLCfg;
+
+    KLCfg.bDecrypt   = TRUE;
+    KLCfg.bInverse   = FALSE;
+    // Key ladder running level, support level 0 ~ 3 // [NOTE] Level 0 is only supported by  CryptoDMA
+    KLCfg.u32Level   = 3;
+    KLCfg.eAlgo      = E_DSCMB_KL_AES;           // Select Key ladder key generation algorithm //
+    KLCfg.eSrc       = E_DSCMB_KL_SRC_SECRET_2;   // Select root key source //
+    KLCfg.eDst       = E_DSCMB_KL_DST_DMA_AES;    // Select output Key destination //
+    KLCfg.eOutsize   = E_DSCMB_KL_128_BITS;   // Select ouput Key size //
+    KLCfg.u8KeyACPU  = NULL;                 // ACPU key as KL root key //
+    KLCfg.pu8KeyKLIn = u8Key;
+
+    bRet = MDrv_DSCMB_KLadder_AtomicExec(&KLCfg , NULL, &u32Status );
+
+    return bRet;
+
+}
+#else  //non CA chip (mstar demo board)
+MS_BOOL TDAL_PVRm_KLADDER_FUNC(void)
+{
+    MS_BOOL ret = FALSE;
+    MS_U8 u8KLInputKey[48]={0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f,
+                            0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,0x28,0x29,0x2a,0x2b,0x2c,0x2d,0x2e,0x2f,
+                            0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x3a,0x3b,0x3c,0x3d,0x3e,0x3f};
+    MS_U8 key[16] = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF};
+    DSCMB_KL_Status KL_Status = 0;
+    MS_U8 ACPU_Out[16] = {0x00};
+
+    DSCMB_KLCfg_All KLConfigAll = {
+        .eAlgo = E_DSCMB_KL_AES,
+        .eSrc = E_DSCMB_KL_SRC_ACPU,
+        .eDst = E_DSCMB_KL_DST_DMA_AES,
+        .eOutsize = E_DSCMB_KL_128_BITS,
+        .eKeyType = E_DSCMB_KEY_CLEAR,      // Don't care when dst is Crypto DMA
+        .u32Level = 3,
+        .u32EngID = 0,                      // Don't care when dst is Crypto DMA
+        .u32DscID = 0,                      // Don't care when dst is Crypto DMA
+        .u8KeyACPU = key,                   // Don't care when src is NOT ACPU
+        .pu8KeyKLIn = u8KLInputKey,
+        .bDecrypt = TRUE,
+        .bInverse = FALSE,
+    };
+
+    // Key Ladder
+    ret = MDrv_DSCMB_KLadder_AtomicExec(&KLConfigAll , ACPU_Out, &KL_Status );
+    if(ret == FALSE)
+    {
+        printf("Key Ladder: Fail!!!\n");
+        return FALSE;
+    }
+
+    return TRUE;
+}
 #endif
+
 void TDAL_PVRm_FreezeScreen(MS_BOOL bFrezon)
 {
     MApi_VDEC_SetFreezeDisp(bFrezon);
@@ -197,6 +225,7 @@ MS_BOOL TDAL_PVRm_BatchFreeMem()
     if (TDAL_PVRm_FreeMem(PVR_ID_DOWNLOAD) == FALSE) result++;
     if (TDAL_PVRm_FreeMem(PVR_ID_UPLOAD) == FALSE) result++;
     if (TDAL_PVRm_FreeMem(PVR_ID_BUFFER) == FALSE) result++;
+#if 0
 
     if(eTDAL_PVR_PlayType == EN_APIPVR_PLAYBACK_TYPE_ESPLAYER)
     {
@@ -207,7 +236,7 @@ MS_BOOL TDAL_PVRm_BatchFreeMem()
         if (TDAL_PVRm_FreeMem(PVR_ID_TSR_VIDEO_BUFFER) == FALSE) result++;
         if (TDAL_PVRm_FreeMem(PVR_ID_TSR_AUDIO_BUFFER) == FALSE) result++;
     }
-
+ #endif   
     return ((result == 0) ? TRUE: FALSE);
 }
 
@@ -362,7 +391,7 @@ MS_BOOL TDAL_PVRm_FreeMem(int pvrId)
             return FALSE;
             break;
     }
-
+    
     return MApi_PVR_ResetMmap(pvrId);
 }
 
@@ -377,11 +406,11 @@ MS_BOOL TDAL_PVRm_BatchAllocateMem()
     {
         return FALSE;
     }
-
     if(!TDAL_PVRm_AllocateMem(PVR_ID_BUFFER))
     {
         return FALSE;
     }
+#if 0
 
     if(eTDAL_PVR_PlayType==EN_APIPVR_PLAYBACK_TYPE_ESPLAYER)
     {
@@ -412,23 +441,25 @@ MS_BOOL TDAL_PVRm_BatchAllocateMem()
             return FALSE;
         }
     }
-
-    return TRUE;
+#endif
+    return TRUE;    
 }
 
 MS_BOOL TDAL_PVRm_AllocateMem(int pvrId)
 {
+#if 1
     MS_U32 u32PhyStartAdr=0;
     MS_U32 u32Size=0;
     switch(pvrId)
     {
         case PVR_ID_DOWNLOAD:
-            #if(defined(ENABLE_STATICMEM_PVR) && (MEMORY_MAP == MMAP_128MB))
-            u32PhyStartAdr = PVR_DOWNLOAD_ADR;
-            #else
+#if(defined(ENABLE_STATICMEM_PVR) && (MEMORY_MAP == MMAP_128MB))
+            u32PhyStartAdr = PVR_DOWNLOAD_STATIC_ADR;
+            memset((void *)MsOS_MPool_PA2KSEG0(u32PhyStartAdr), 0, PVR_DOWNLOAD_LEN);
+#else
 #ifdef PVR_ALLOC_FROM_VD
             u32PhyStartAdr=VDPLAYER_DATA_ADR;
-            mTBOX_ASSERTm(PVR_DOWNLOAD_LEN < VDPLAYER_DATA_LEN, "PVR_DOWNLOAD_LEN greater than VDPLAYER_DATA_LEN. This can cause random crashes!!!!");
+//            mTBOX_ASSERTm(PVR_DOWNLOAD_LEN < VDPLAYER_DATA_LEN, "PVR_DOWNLOAD_LEN greater than VDPLAYER_DATA_LEN. This can cause random crashes!!!!");
 #else
             if(pTDAL_PVR_Rec == NULL)
             {
@@ -449,12 +480,13 @@ MS_BOOL TDAL_PVRm_AllocateMem(int pvrId)
 
             break;
         case PVR_ID_UPLOAD:
-           #if(defined(ENABLE_STATICMEM_PVR) && (MEMORY_MAP == MMAP_128MB))
-            u32PhyStartAdr = PVR_UPLOAD_ADR;
-            #else
+#if(defined(ENABLE_STATICMEM_PVR) && (MEMORY_MAP == MMAP_128MB))
+            u32PhyStartAdr = PVR_UPLOAD_STATIC_ADR;
+            memset((void *)MsOS_MPool_PA2KSEG0(u32PhyStartAdr), 0, PVR_UPLOAD_LEN);
+#else
 #ifdef PVR_ALLOC_FROM_VD
             u32PhyStartAdr=(VDPLAYER_DATA_ADR+PVR_DOWNLOAD_LEN);//VDPLAYER_BS_ADR;
- //           mTBOX_ASSERTm(PVR_UPLOAD_LEN < VDPLAYER_BS_LEN, "PVR_UPLOAD_LEN greater than VDPLAYER_BS_LEN. This can cause random crashes!!!!");
+//            mTBOX_ASSERTm(PVR_UPLOAD_LEN < VDPLAYER_BS_LEN, "PVR_UPLOAD_LEN greater than VDPLAYER_BS_LEN. This can cause random crashes!!!!");
 #else
             if(pTDAL_PVR_Play == NULL)
             {
@@ -467,7 +499,7 @@ MS_BOOL TDAL_PVRm_AllocateMem(int pvrId)
             }
             u32PhyStartAdr=MsOS_MPool_VA2PA((MS_U32)pTDAL_PVR_Play);
 #endif
-            #endif
+#endif
             u32Size = PVR_UPLOAD_LEN;
             mTBOX_TRACE((kTBOX_NIV_1, "[%s][%d] PVR_ID_UPLOAD %8lX (0x%8lX+0x%8lX=0x%8lX) \n",__FUNCTION__,__LINE__,pTDAL_PVR_Play,u32PhyStartAdr,u32Size,(u32PhyStartAdr+u32Size)));
             break;
@@ -491,7 +523,7 @@ MS_BOOL TDAL_PVRm_AllocateMem(int pvrId)
             u32Size = PVR_AESBUFFER_LEN;
             mTBOX_TRACE((kTBOX_NIV_1, "[%s][%d] PVR_ID_BUFFER %8lX (0x%8lX+0x%8lX=0x%8lX)\n",__FUNCTION__,__LINE__,pTDAL_PVR_AesBuf,u32PhyStartAdr,u32Size,(u32PhyStartAdr+u32Size)));
             break;
-
+#if 0
         case PVR_ID_ES_VIDEO_BUFFER:
 #if ENABLE_MIU_1
             u32PhyStartAdr = VDEC_BIT_STREAM_ADR + MIU_INTERVAL;
@@ -595,6 +627,7 @@ MS_BOOL TDAL_PVRm_AllocateMem(int pvrId)
             u32Size = PVR_TSR_AUDIO_BUFFER_LEN;
             mTBOX_TRACE((kTBOX_NIV_1, "[%s][%d] PVR_ID_TSR_AUDIO_BUFFER %8lX (0x%8lX+0x%8lX=0x%8lX)\n",__FUNCTION__,__LINE__,pTDAL_PVR_TsrAud,u32PhyStartAdr,u32Size,(u32PhyStartAdr+u32Size)));
             break;
+#endif
         default:
             printf("[%s][%d] Should not be here. pvrId=%d\n",__FUNCTION__,__LINE__,pvrId);
             return FALSE;
@@ -606,7 +639,7 @@ MS_BOOL TDAL_PVRm_AllocateMem(int pvrId)
         printf("[%s][%d] PVR Mmap failed\n",__FUNCTION__,__LINE__);
         return FALSE;
     }
-
+#endif
     return TRUE;
 }
 
@@ -924,7 +957,7 @@ APIPVR_ENCRYPTION_TYPE TDAL_PVRm_ConvEncrType(uint8_t eEncrType)
         break;
     case eTDAL_PVR_ENCR_DEFAULT:
         mstar_EncrType = EN_APIPVR_ENCRYPTION_DEFAULT;
-        break;
+        break;        
     case eTDAL_PVR_ENCR_USER:
         mstar_EncrType = EN_APIPVR_ENCRYPTION_USER;
         break;
@@ -933,9 +966,9 @@ APIPVR_ENCRYPTION_TYPE TDAL_PVRm_ConvEncrType(uint8_t eEncrType)
         break;
     case eTDAL_PVR_ENCR_SMARTCARD:
         mstar_EncrType = EN_APIPVR_ENCRYPTION_SMARTCARD;
-        break;
+        break;         
     }
-    return mstar_EncrType;
+    return mstar_EncrType; 
 }
 
 void    TDAL_PVRm_SetCryptKey(uint8_t *u8Crypt)
@@ -996,6 +1029,9 @@ tTDAL_PVR_Error TDAL_PVR_RemoveFile(char *fileName, int filesCount)
 		TDAL_FS_Remove(&fullFileName);
 
 		fullFileName[strlen(fullFileName) - strlen(".meta")] = '\0';
+        strcat(fullFileName, ".idx");
+        TDAL_FS_Remove(&fullFileName);
+        fullFileName[strlen(fullFileName) - strlen(".meta")] = '\0';
 
 		i++;
 

@@ -65,7 +65,7 @@ TDAL_queue_id  TDAL_DMXi_SectionQueue = -1;
 
 tTDAL_DMXi_SectionTask      TDAL_DMXi_SectionTaskArr[kTDAL_DMXi_SECTION_RECEIVE_THREAD_COUNT];
 
-MS_U8 u8TSPFirmware[] = {
+MS_U8 _u8TSPFirmware[] = {
     #include "fwTSP.dat"
 };
 
@@ -107,7 +107,6 @@ tTDAL_DMX_Error   TDAL_DMX_Init(   void   )
 	int i;
 	DMX_FILTER_STATUS bRet;
     MS_BOOL bfRet;
-
 	mTBOX_FCT_ENTER("TDAL_DMX_Init");
 
 	   /*--------------------------------------------*/
@@ -127,45 +126,30 @@ tTDAL_DMX_Error   TDAL_DMX_Init(   void   )
 	{   // set VQ for TSP, set FW/VQ for TSP2
 		DMX_TSPParam    param;
 		memset(&param,0,sizeof(param));
-		memcpy((void*)MS_PA2KSEG1((MS_U32)TSP_FW_BUF_ADR/*u8TSPFirmware*/) , u8TSPFirmware, sizeof(u8TSPFirmware));
-		bRet = MApi_DMX_SetFW(((MS_PHYADDR)TSP_FW_BUF_ADR/*u8TSPFirmware*/), sizeof(u8TSPFirmware));
-        if (DMX_FILTER_STATUS_OK != bRet)
-        {
-            printf("\n""\033[1;31m""[FUN][%s()@%04d] MApi_DMX_SetFW fail:%x   ""\033[m""\n", __FUNCTION__, __LINE__, bRet);
-        }
-		param.phyFWAddr = (MS_PHYADDR) TSP_FW_BUF_ADR;
-		param.u32FWSize = sizeof(u8TSPFirmware);
-		param.phyVQAddr = (MS_PHYADDR)(TSP_VQ_BUF_ADR);
-		param.u32VQSize = TSP_FW_BUF_LEN;
+        memcpy((void*)MS_PA2KSEG1((MS_U32)MEM_ADR_BY_MIU(TSP_FW_BUF_ADR, TSP_FW_BUF_MEMORY_TYPE)/*u8TSPFirmware*/) , _u8TSPFirmware, sizeof(_u8TSPFirmware));
+		bRet = MApi_DMX_SetFW(((MS_PHYADDR)TSP_FW_BUF_ADR/*_u8TSPFirmware*/), sizeof(_u8TSPFirmware));
+		param.phyFWAddr = (MS_PHYADDR) MEM_ADR_BY_MIU(TSP_FW_BUF_ADR, TSP_FW_BUF_MEMORY_TYPE);
+		param.u32FWSize = sizeof(_u8TSPFirmware);
+		param.phyVQAddr = (MS_PHYADDR)MEM_ADR_BY_MIU(TSP_VQ_BUF_ADR, TSP_VQ_BUF_MEMORY_TYPE);
+        param.u32VQSize = TSP_VQ_BUF_LEN;
 		mTBOX_TRACE((kTBOX_NIV_1, "FWAddr = %08lX , Size = %08lX , VQAddr = %08lX , VQSize = %08lX \n",param.phyFWAddr,param.u32FWSize,param.phyVQAddr,param.u32VQSize));
 		if (MApi_DMX_TSPInit(&param) != DMX_FILTER_STATUS_OK )
 		{
-            printf("\n""\033[1;31m""[FUN][%s()@%04d] MApi_DMX_TSPInit fail""\033[m""\n", __FUNCTION__, __LINE__);
 		   return kTDAL_DMX_ERROR_MUTEX ;
 		}
 	}
 	bRet = MApi_DMX_AVFifo_Reset(DMX_FILTER_TYPE_VIDEO, TRUE);
-    if (DMX_FILTER_STATUS_OK != bRet)
-    {
-        printf("\n""\033[1;31m""[FUN][%s()@%04d]  MApi_DMX_AVFifo_Reset fail:%x  ""\033[m""\n", __FUNCTION__, __LINE__, bRet);    
-    }
+
 	bRet = MApi_DMX_AVFifo_Reset(DMX_FILTER_TYPE_AUDIO, TRUE);
-    if (DMX_FILTER_STATUS_OK != bRet)
-    {
-        printf("\n""\033[1;31m""[FUN][%s()@%04d]  MApi_DMX_AVFifo_Reset fail:%x  ""\033[m""\n", __FUNCTION__, __LINE__, bRet);    
-    }
+
 	bRet = MApi_DMX_AVFifo_Reset(DMX_FILTER_TYPE_AUDIO2, TRUE);
-    if (DMX_FILTER_STATUS_OK != bRet)
-    {
-        printf("\n""\033[1;31m""[FUN][%s()@%04d]  MApi_DMX_AVFifo_Reset fail:%x  ""\033[m""\n", __FUNCTION__, __LINE__, bRet);    
-    }
+
 	bfRet = MDrv_DSCMB_Init();
-    if ( TRUE != bfRet)
-    {
-        printf("\n""\033[1;31m""[FUN][%s()@%04d] MDrv_DSCMB_Init fail:%d   ""\033[m""\n", __FUNCTION__, __LINE__, bfRet);       
-    }
-    MDrv_DSCMB2_SetDefaultCAVid(0,0x02);
-    MDrv_AESDMA_SetDefaultCAVid(0x02);
+
+#if( defined(NAGRA_CHIP_5C35) && (NAGRA_CHIP_5C35 == 1))
+    MDrv_DSCMB2_SetDefaultCAVid(0,0x02); // 0x02 Nagra Chip
+    MDrv_AESDMA_SetDefaultCAVid(0x02);   // 0x02 Nagra Chip
+#endif
 	if (TDAL_DMXm_SetDmxFlow() == false)
 	{
 	    mTBOX_RETURN(kTDAL_DMX_ERROR_MUTEX);
@@ -401,8 +385,8 @@ tTDAL_DMX_Error   TDAL_DMX_Terminate(   void   )
 	/*-----------------------------------------------------*/
 	/*   Protection   table   semaphore   deletion            */
 	/*-----------------------------------------------------*/
+
 	mUnLockAccess(TDAL_DMXi_pSectionTableAccess);
-	
 	if (TDAL_DMXi_pSectionTableAccess != NULL)
 	{
 	TDAL_DeleteMutex(TDAL_DMXi_pSectionTableAccess);
@@ -412,6 +396,7 @@ tTDAL_DMX_Error   TDAL_DMX_Terminate(   void   )
 	/*----------------------------------------------*/
 	/*   the   module   is   closed.   Update   global   variable   */
 	/*----------------------------------------------*/
+
 	TDAL_DMXi_initialized = FALSE;
 
 	mTBOX_TRACE((kTBOX_NIV_1,"Terminate:   End   SUCCEED\n"));

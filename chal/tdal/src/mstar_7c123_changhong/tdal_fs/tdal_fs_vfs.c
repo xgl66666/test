@@ -104,6 +104,7 @@ char   *        TDAL_FS_VFS_FsName[] = { "e3fs" , "fatfs" , "fatfs" , "fatfs" ,"
 /*****************************************************************************
  *  Local File Variables (LOCAL)                              *
  *****************************************************************************/
+ LOCAL MS_U8 tdal_mp_filename[1024] = {0};
 LOCAL   char   *TDAL_FS_DirNameTable[kTDAL_FS_MAX_DIR_OPENED];
 LOCAL   DIR   *      TDAL_FS_DirTable[kTDAL_FS_MAX_DIR_OPENED];
 LOCAL   TDAL_mutex_id      TDAL_FS_DirMutex;
@@ -175,11 +176,9 @@ tTDAL_FS_Error      pTDAL_FS_VFS_Init(   void   )
    int                 error;
    uint8_t             index;
 
-   mTBOX_FCT_ENTER("TDAL_FS_Init");
+   mTBOX_FCT_ENTER("TDAL_VFS_Init");
 
    TDAL_CreateMutex(&TDAL_FS_DirMutex);
-
-
    TDAL_CreateMutex(&TDAL_FS_OpsMutex);
 
    TDAL_FS_OpsCounter = 0;
@@ -280,7 +279,7 @@ tTDAL_FS_Error      pTDAL_FS_VFS_Term(   void   )
 {
    tTDAL_FS_Error   result = eTDAL_FS_NO_ERROR;
 
-   mTBOX_FCT_ENTER("TDAL_FS_Term");
+   mTBOX_FCT_ENTER("TDAL_VFS_Term");
 
    TDAL_DeleteTask(&TDAL_FS_VFS_UpdateTaskId);
 
@@ -290,6 +289,9 @@ tTDAL_FS_Error      pTDAL_FS_VFS_Term(   void   )
    TDAL_DeleteQueue(TDAL_FS_VFS_UpdateQueue);
 #endif
    TDAL_DeleteMutex(TDAL_FS_VFS_CachedInfoMutex);
+   TDAL_DeleteMutex(TDAL_FS_DirMutex);
+   TDAL_DeleteMutex(TDAL_FS_OpsMutex);
+
 
    mTBOX_RETURN(result);
 }
@@ -726,7 +728,11 @@ tTDAL_FS_File      TDAL_FS_Open(   const   char   *   pFilename   ,
 		pTDAL_FS_IncreaseOpsCounter();
 		result = (tTDAL_FS_File) fileDes;
 	}
-
+        memset(tdal_mp_filename,0,sizeof(tdal_mp_filename));
+        if (strlen(tdal_mp_filename)<= 1024)
+        {
+            strcpy(tdal_mp_filename,pFilename);
+        }
 	mTBOX_RETURN(result);
 }
 
@@ -2096,3 +2102,12 @@ tTDAL_FS_Error mTDAL_FS_PVR_NotifyRecordedContent(uint8_t *pMountPoint, uint32_t
 
     return eTDAL_FS_NO_ERROR;
 }
+
+tTDAL_FS_Error mTDAL_FS_MP_GetFileName(uint8_t*  pFileName)
+{
+    if (strlen(tdal_mp_filename) > 0)
+    {
+        memcpy(pFileName,tdal_mp_filename,sizeof(tdal_mp_filename));
+    }
+}
+

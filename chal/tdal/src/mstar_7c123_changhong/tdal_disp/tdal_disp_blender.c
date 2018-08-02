@@ -33,12 +33,15 @@
 #include "drvMVOP.h"
 #include "apiVDEC.h"
 #include "apiXC.h"
+#include "apiVDEC_EX.h"
+#include "apiXC_EX.h"
 #include "drvTVEncoder.h"
 #include "apiDAC.h"
 #include "apiVDEC_EX.h"
 //MApi
 #include "xc/Panel.h"
 #include "xc/msAPI_XC.h"
+#include "xc/msAPI_XC_EX.h"
 #include "xc/msAPI_VE.h"
 /****************************************************************************
    *   DEFINES                                    *
@@ -62,6 +65,9 @@ IMPORT MS_S32 gs32CachedPoolID;
 bool TDAL_DISPm_GetOutputWindow(tTDAL_DISP_BlenderId   Id, tTDAL_DISP_BlenderWindow   *pstOutputWindow);
 void TDAL_DISPm_XCInit();
 GLOBAL void TDAL_OUTPUTm_VEInit();
+
+MSAPI_XC_DEVICE_ID G_stXC_DeviceId[2] = {{0, E_MSAPI_XC_DEVICE0}, {0, E_MSAPI_XC_DEVICE1}};
+MSAPI_XC_DEVICE_ID g_stXC_DeviceId[2];
 /****************************************************************************
    *   LOCAL   FILE   VARIABLES   (LOCAL)                         *
    ****************************************************************************/
@@ -160,18 +166,16 @@ tTDAL_DISP_Error   TDAL_DISP_BlenderCapabilityGet(tTDAL_DISP_BlenderId   Id, tTD
 
 void   TDAL_DISP_BlenderInit(void)
 {
-    mTBOX_TRACE(( kTBOX_NIV_WARNING, "[%s %d]enter: \n",__FUNCTION__,__LINE__));
     // XC Init
     TDAL_DISPm_XCInit();
-    
+
     //VE Init
     TDAL_OUTPUTm_VEInit();
-    mTBOX_TRACE(( kTBOX_NIV_WARNING, "[%s %d]success: \n",__FUNCTION__,__LINE__));
 }
 
 void   TDAL_DISP_BlenderTerminate(void)
 {
-    
+
 }
 
 /**========================================================================**
@@ -380,13 +384,13 @@ TDAL_DISP_BlenderDimensionsOutputSet(
 tTDAL_DISP_Error
 TDAL_DISPm_ForceBlenderMainDimensionOutputSet(void)
 {
-    return eTDAL_DISP_NO_ERROR; 
+    return eTDAL_DISP_NO_ERROR;
 }
 
 tTDAL_DISP_Error
 TDAL_DISPm_RestoreBlenderMainDimensionOutputSet(void)
 {
-    return eTDAL_DISP_NO_ERROR; 
+    return eTDAL_DISP_NO_ERROR;
 }
 
 
@@ -599,7 +603,7 @@ bool TDAL_DISPm_GetOutputWindow(tTDAL_DISP_BlenderId   Id, tTDAL_DISP_BlenderWin
         break;
         }
       }
-   
+
       if(!IdFound)
       {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL,"TDAL_DISP_BlenderEnable: Unknown   Id[%d]   \n", Id   ));
@@ -618,17 +622,27 @@ void TDAL_DISPm_XCInit()
 {
     if (isXCInitialized)
         return;
-    
+
     MSAPI_XC_INITDATA msAPI_XC_InitData;
+    MSAPI_XC_HDMITX_BOARD_INFO stHDMITxInfo =
+    {
+        HDMITX_ANALOG_TUNING_SD,
+        HDMITX_ANALOG_TUNING_HD,
+        HDMITX_ANALOG_TUNING_DEEP_HD,
+    };
+
+    //msAPI_XC_SetDebugLevel(E_MSAPI_XC_DBG_LEVEL_PQ);
 
     /* Parameter Initialization */
     memset(&msAPI_XC_InitData, 0, sizeof(MSAPI_XC_INITDATA));
 
     msAPI_XC_InitData.u32XCMemAddress       = SC0_MAIN_FB_ADR;
     msAPI_XC_InitData.u32XCMemSize          = SC0_MAIN_FB_LEN;
-
+#ifdef HD_ENABLE
+    msAPI_XC_InitData.eTimingType           = E_MSAPI_XC_RES_1920x1080I_50Hz;
+#else
     msAPI_XC_InitData.eTimingType           = E_MSAPI_XC_RES_720x576I_50Hz;
-    
+#endif
     msAPI_XC_InitData.s32CachedPoolID       = gs32CachedPoolID;
 
     msAPI_XC_InitData.bBootLogoEnable       = FALSE;
@@ -637,19 +651,77 @@ void TDAL_DISPm_XCInit()
     msAPI_XC_InitData.bMenuLoadEnable       = TRUE;
     msAPI_XC_InitData.u32XCMenuLoadAddress  = SC0_MENULOAD_BUF_ADR;
     msAPI_XC_InitData.u32XCMenuLoadSize     = SC0_MENULOAD_BUF_LEN;
-    msAPI_XC_InitData.bDisableDacSD         = TRUE;
 
     //For Bandwidth Table selection and to MIU configuration
     msAPI_XC_InitData.eBWTBLType = E_MSAPI_XC_BW_TBL_MIU_128;
-    
-//For HDMITx Configuration
-//msAPI_XC_InitData.u16HdmitxHpdPin = HDMITX_HPD_PM_GPIO;
-//msAPI_XC_InitData.eHdmitxOutputMode = E_MSAPI_XC_HDMITX_OUTPUT_HDMI;
-//msAPI_XC_InitData.eHdmitxCDType = E_MSAPI_XC_HDMITX_CD_8BITS;
-//memcpy(&msAPI_XC_InitData.stHdmitxBoardInfo, &stHDMITxInfo, sizeof(MSAPI_XC_HDMITX_BOARD_INFO));
 
-    msAPI_XC_Init(msAPI_XC_InitData);
+    //For HDMITx Configuration
+    msAPI_XC_InitData.u16HdmitxHpdPin = HDMITX_HPD_PM_GPIO;
+    msAPI_XC_InitData.eHdmitxOutputMode = E_MSAPI_XC_HDMITX_OUTPUT_HDMI;
+    msAPI_XC_InitData.eHdmitxCDType = E_MSAPI_XC_HDMITX_CD_8BITS;
+    memcpy(&msAPI_XC_InitData.stHdmitxBoardInfo, &stHDMITxInfo, sizeof(MSAPI_XC_HDMITX_BOARD_INFO));
+
+    //For Output Control
+    msAPI_XC_InitData.bDisableHDMI = FALSE;
+    msAPI_XC_InitData.bDisableDacHD = FALSE;
+    msAPI_XC_InitData.bDisableDacSD = TRUE;
+
+    msAPI_XC_Init_EX(&g_stXC_DeviceId[0], msAPI_XC_InitData);
 
     //Set DTV path to Scaler
-    msAPI_XC_SetConnect(INPUT_SOURCE_DTV);
+   msAPI_XC_SetConnect_EX(&g_stXC_DeviceId[0], E_MSAPI_XC_INPUT_SOURCE_DTV, E_MSAPI_XC_MAIN_WINDOW);
+    isXCInitialized = TRUE;
 }
+
+MS_BOOL Demo_XC_EnableWindow(MS_U32 *pu32XCDevice, MS_U32 *pu32XCWindow, MS_U32 *pu32Enable,
+                                    MS_U32 *pu32X, MS_U32 *pu32Y, MS_U32 *pu32Width, MS_U32 *pu32Height)
+{
+    MSAPI_XC_WINDOW_TYPE stWindowType = {(MS_U16)*pu32X, (MS_U16)*pu32Y, (MS_U16)*pu32Width, (MS_U16)*pu32Height};
+
+
+    if ((*pu32X == 0) && (*pu32Y == 0) && (*pu32Width == 0) && (*pu32Height == 0))
+    {
+        msAPI_XC_EnableWindow_EX(&g_stXC_DeviceId[*pu32XCDevice], (E_MSAPI_XC_WINDOW)*pu32XCWindow, (MS_BOOL)*pu32Enable, NULL);
+    }
+    else
+    {
+        msAPI_XC_EnableWindow_EX(&g_stXC_DeviceId[*pu32XCDevice], (E_MSAPI_XC_WINDOW)*pu32XCWindow, (MS_BOOL)*pu32Enable, &stWindowType);
+    }
+
+    return TRUE;
+}
+
+MS_BOOL Demo_VE_SetVideoMute(MS_U32 *pu32Enable)
+{
+    if ( msAPI_VE_GetSourceType() == E_MSAPI_VE_SOURCE_SCALER_OP2)
+    {
+        return TRUE;
+    }
+    msAPI_VE_SetVideoMute((MS_BOOL)*pu32Enable);
+
+    return TRUE;
+}
+
+MS_BOOL Demo_XC_SetVideoMute(MS_U32 *pu32XCDevice, MS_U32 *pu32XCWindow, MS_U32 *pu32Enable)
+{
+
+    if (*pu32XCDevice == E_MSAPI_XC_DEVICE1)
+    {
+        // If device is XC1 and its source is OP, do not mute XC1 to keep UI on SD output
+        E_MSAPI_XC_INPUT_SRC eXCInputSrc = E_MSAPI_XC_INPUT_SOURCE_NONE;
+        eXCInputSrc = msAPI_XC_GetConnect_EX(&g_stXC_DeviceId[*pu32XCDevice], *pu32XCWindow);
+        if (eXCInputSrc == E_MSAPI_XC_INPUT_SOURCE_SCALER_OP)
+        {
+           return TRUE;
+        }
+    }
+    msAPI_XC_SetVideoMute_EX(&g_stXC_DeviceId[*pu32XCDevice], *pu32Enable, *pu32XCWindow);
+    return TRUE;
+}
+
+MS_BOOL Demo_Zapping_GetZappingType(int* peZappingType)
+{
+    *peZappingType = 0x0; // NORMAL_ZAPPING
+    return TRUE;
+}
+

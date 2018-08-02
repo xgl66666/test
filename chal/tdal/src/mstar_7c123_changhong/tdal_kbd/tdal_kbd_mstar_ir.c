@@ -104,10 +104,19 @@
 //-------------------------------------------------------------------------------------------------
 #include "MsCommon.h"
 #include "string.h"
-#include "IR_MSTAR_DTV.h"
+
+	#define __IR_DEN_RCMM__	 // byKOR, kaon
+
+#if defined(__IR_DEN_RCMM__)
+	#include "IR_RCMM.h"
+#else
+	#include "IR_MSTAR_DTV.h"
+#endif
+
 #include "Board.h"
 #include "mdrv_ir.h"
 #include "mhal_ir_reg.h"
+
 //-------------------------------------------------------------------------------------------------
 // Macros
 //-------------------------------------------------------------------------------------------------
@@ -148,11 +157,28 @@ static MS_U32  _u32_2ndDelayTimeMs;
 static IRKeyProperty _ePrevKeyProperty;
 //static MS_U8   _u8PrevKeyCode;
 static MS_IR_KeyInfo _KeyReceived;   //temporary solution
+
 static unsigned long  _ulPrevKeyTime;
 static unsigned long  _ulPrevKeyRepeatTime;
 static BOOL  _bCheckQuickRepeat;
 static unsigned long  _ulLastKeyPresentTime;
+
 static IR_Callback _pfIRCallback = NULL;
+
+#if defined(__IR_DEN_RCMM__)
+	#define RCMM_CUSTOMER_ID 0x0092 // DEN RCMM
+	#define MAX_RCBYTE_LEN  4
+
+		static MS_U8	u8repeat_count = 0;
+		static BOOL		StartDecodeFlag = FALSE;
+		static U32		tgbits = 0;
+		static U8		RCByte[MAX_RCBYTE_LEN];
+		static U8		_u8IrPreRcmmData[MAX_RCBYTE_LEN];
+		static U16		u16CustomerID;
+		static BOOL		UpDataFlage = FALSE;
+		static U8		RCMode;
+		static U8		RCBitsCnt;
+#endif
 
 #if (IR_MODE_SEL == IR_TYPE_SWDECODE_MODE)
 //static MS_U8   _u8PrevSystemCode;
@@ -199,8 +225,61 @@ static void _MDrv_IR_ClearFIFO(void)
 /// @return TRUE:  Success
 /// @return FALSE: No key or repeat key is faster than the specified period
 //-------------------------------------------------------------------------------------------------
+#if defined(__IR_DEN_RCMM__)
+	#define TIME_DIFF(x, y)  ((x > y) ? (x-y) : (y-x))
+static BOOL _MDrv_IR_GetKey(U32 *pu32Key, /*U8 *pu8Key, U8 *pu8System,*/ U8 *pu8Flag, unsigned long itime )
+{
+    BOOL bRet = FALSE;
 
-#if (IR_MODE_SEL == IR_TYPE_SWDECODE_MODE)
+    if(UpDataFlage)
+    {
+        UpDataFlage = FALSE;
+
+        switch(RCMode)
+		{
+		case RCMMOEM_LONGID_MODE | RC_MODE:
+		{
+			if((_u8IrPreRcmmData[0] == RCByte[0]) && (_u8IrPreRcmmData[1] == RCByte[1]) && (_u8IrPreRcmmData[2] == RCByte[2]) && (_u8IrPreRcmmData[3] == RCByte[3]))
+			{
+				*pu8Flag = TRUE;
+			}
+			u16CustomerID = ((RCByte[0] & 0x1F) << 4) | ((RCByte[1] & 0xF0) >> 4);
+
+			if(u16CustomerID == RCMM_CUSTOMER_ID)
+			{
+				//*pu8Key = RCByte[3];
+				//*pu8System = (RCByte[2] & 0x7F);
+				*pu32Key = (RCByte[0] << 24)|(RCByte[1] << 16)|(RCByte[2] << 8)|(RCByte[3] << 0);
+
+				if( (_u8IrPreRcmmData[3] != RCByte[3]) && ( (RCByte[3]&0x80) == 0x26)) // re-pressed key
+					*pu8Flag = FALSE; // first pressed
+
+				_u8IrPreRcmmData[0] = RCByte[0];
+				_u8IrPreRcmmData[1] = RCByte[1];
+				_u8IrPreRcmmData[2] = RCByte[2];
+				_u8IrPreRcmmData[3] = RCByte[3];
+
+				RCByte[0] = 0x0000;
+				RCByte[1] = 0x0000;
+				RCByte[2] = 0x0000;
+				RCByte[3] = 0x0000;
+
+				RCMode = 0;
+				RCBitsCnt = 0;
+				bRet = TRUE;
+			}
+
+			break;
+		}
+		default:
+			bRet = FALSE;
+			break;
+		}
+    }
+    return bRet;
+}
+
+#elif (IR_MODE_SEL == IR_TYPE_SWDECODE_MODE)
 static MS_BOOL _MDrv_IR_GetKey(U32 *pu32IRkey, /*MS_U8 *pu8Key, MS_U8 *pu8System,*/ U8 *pu8Flag)
 {
     static int count=0;
@@ -237,7 +316,7 @@ static MS_BOOL _MDrv_IR_GetKey(U32 *pu32IRkey, /*MS_U8 *pu8Key, MS_U8 *pu8System
         {
            // *pu8Key = _u8PrevKeyCode;
 		   //*pu8System = _u8PrevSystemCode;
-			*pu32IRkey = _u32PrevIRKeyCode;		
+			*pu32IRkey = _u32PrevIRKeyCode;
             *pu8Flag = 1;
             _u32IRCount = 0;
             if( _ePrevKeyProperty == E_IR_KEY_PROPERTY_INIT)
@@ -314,14 +393,14 @@ static MS_BOOL _MDrv_IR_GetKey(U32 *pu32IRkey, /*MS_U8 *pu8Key, MS_U8 *pu8System
     {
         //*pu8Key = u8IRSwModeBuf[2];
 		//*pu8System = u8IRSwModeBuf[0];
-		*pu32IRkey = ((MS_U32)u8IRSwModeBuf[3]<<24) | ((MS_U32)u8IRSwModeBuf[2]<<16) 
+		*pu32IRkey = ((MS_U32)u8IRSwModeBuf[3]<<24) | ((MS_U32)u8IRSwModeBuf[2]<<16)
 			          | ((MS_U32)u8IRSwModeBuf[1]<<8) | ((MS_U32)u8IRSwModeBuf[0]);
         _ePrevKeyProperty = E_IR_KEY_PROPERTY_INIT;
         _bCheckQuickRepeat = 0;
         _ulPrevKeyRepeatTime = MsOS_GetSystemTime();
         //_u8PrevKeyCode = *pu8Key;
 		//_u8PrevSystemCode = *pu8System;
-		_u32PrevIRKeyCode = *pu32IRkey ;		
+		_u32PrevIRKeyCode = *pu32IRkey ;
         *pu8Flag = 0;
         bRet = TRUE;
         goto done;
@@ -411,10 +490,171 @@ static BOOL _MDrv_IR_GetKey(U8 *pu8Key, U8 *pu8System, U8 *pu8Flag)
 
 }
 #endif
+
+
+#if defined(__IR_DEN_RCMM__)
+//-------------------------------------------------------------------------------------------------
+/// decide continuous IR key.
+/// @return value
+//-------------------------------------------------------------------------------------------------
+MS_U8	_IR_CheckContiKey(MS_U8 iKey)
+{
+	if( iKey == IRKEY_CHANNEL_PLUS || iKey == IRKEY_CHANNEL_MINUS		// channel key
+	 || iKey == IRKEY_UP ||iKey == IRKEY_DOWN || iKey == IRKEY_LEFT ||iKey == IRKEY_RIGHT // direction key
+	 || iKey == IRKEY_VOLUME_PLUS ||iKey == IRKEY_VOLUME_MINUS 			// volume key
+	 || iKey ==IRKEY_PAGE_DOWN ||iKey== IRKEY_PAGE_UP					// page key
+	)
+	{
+		return 1;
+	}
+	return 0;
+}
+#endif
+
 //-------------------------------------------------------------------------------------------------
 /// ISR when receive IR key.
 /// @return None
 //-------------------------------------------------------------------------------------------------
+#if defined(__IR_DEN_RCMM__)
+void _MDrv_IR_ISR(InterruptNum irq)
+{
+	static unsigned long PreTime;
+
+    BOOL bHaveKey = FALSE;
+    U32 u32Key = 0;
+    U8 u8Key=0,u8RepeatFlag=0;
+    U8 u8System = 0;
+    U16 u16IrCounter;
+
+    u16IrCounter = ((REG(REG_IR_SHOT_CNT_H_FIFO_STATUS)&0xF) << 16) | ((REG(REG_IR_SHOT_CNT_L))&0xFFFF);
+
+	// RCMM process
+    if(u16IrCounter > P25_MIN && u16IrCounter < P25_MAX) // lead pulse
+    {
+        tgbits = 0x00;
+        RCByte[0] = 0x00;
+        RCByte[1] = 0x00;
+        RCByte[2] = 0x00;
+        RCByte[3] = 0x00;
+        RCBitsCnt = 0;
+        RCMode = 0;
+        StartDecodeFlag = TRUE;
+    }
+    else if( (P16_MIN < u16IrCounter && u16IrCounter < P16_MAX) && StartDecodeFlag) //! it is 00 bit sequence
+    {
+        tgbits = 0x00;
+        RCByte[RCBitsCnt>>3] <<= 2;
+        RCByte[RCBitsCnt>>3] |= tgbits;
+        RCBitsCnt += 2;
+    }
+    else if( (P22_MIN < u16IrCounter && u16IrCounter< P22_MAX) && StartDecodeFlag) //! it is 01 bit sequence
+    {
+        tgbits = 0x01;
+        RCByte[RCBitsCnt>>3] <<= 2;
+        RCByte[RCBitsCnt>>3] |= tgbits;
+        RCBitsCnt += 2;
+    }
+    else if( (P28_MIN < u16IrCounter && u16IrCounter < P28_MAX) && StartDecodeFlag) //! it is 10 bit sequence
+    {
+        tgbits = 0x02;
+        RCByte[RCBitsCnt>>3] <<= 2;
+        RCByte[RCBitsCnt>>3] |= tgbits;
+        RCBitsCnt += 2;
+
+    }
+    else if( (P34_MIN < u16IrCounter && u16IrCounter < P34_MAX) && StartDecodeFlag) //! it is 11 bit sequence
+    {
+        tgbits = 0x03;
+        RCByte[RCBitsCnt>>3] <<= 2;
+        RCByte[RCBitsCnt>>3] |= tgbits;
+        RCBitsCnt += 2;
+    }
+    else
+    {
+        StartDecodeFlag	= FALSE;
+        RCBitsCnt		= 0;
+        UpDataFlage		= FALSE;
+        tgbits = 0x00;
+        RCByte[0] = 0x00;
+        RCByte[1] = 0x00;
+        RCByte[2] = 0x00;
+        RCByte[3] = 0x00;
+    }
+
+    if(RCBitsCnt == 24)
+    {
+		RCMode |= RCMMOEM_LONGID_MODE;
+		tgbits = (RCByte[1]&0x0C) >> 2;
+		RCMode |= 1<<tgbits; //OEM_LONGID_RC, //OEM_LONGID_Mouse, //OEM_LONGID_keyboard, //OEM_LONGID_joystick
+    }
+    else if(RCBitsCnt >= 32)
+    {
+        if( (RCMode & RC_MODE) || (RCMode & JOYSTICK_MODE) )
+        {
+            StartDecodeFlag = FALSE;
+            UpDataFlage		= TRUE;
+        }
+        else
+        {
+            RCBitsCnt 		= 0;
+            u16CustomerID	= 0;
+            RCMode			= 0;
+            UpDataFlage		= FALSE;
+            tgbits = 0x00;
+            RCByte[0] = 0x00;
+            RCByte[1] = 0x00;
+            RCByte[2] = 0x00;
+            RCByte[3] = 0x00;
+        }
+    }
+
+	if(UpDataFlage==TRUE) PreTime = MsOS_GetSystemTime(); // time key pressed
+
+    if ((bHaveKey=_MDrv_IR_GetKey(&u32Key, /*&u8Key, &u8System,*/ &u8RepeatFlag, PreTime)) != FALSE)
+	{
+		u8Key = (U8)(u32Key & 0xFF); // filter just key data value.
+		_ulLastKeyPresentTime	= PreTime;//MsOS_GetSystemTime();
+//		_KeyReceived.u8Key		= u8Key;
+//		_KeyReceived.u8System	= u8System;
+//		_KeyReceived.u32IRKey	= u32Key;
+//		_KeyReceived.u8Flag		= u8RepeatFlag;
+//		_KeyReceived.u8Valid	= 1;
+//printf("RMC:0x%08X, DATA:0x%02X, flag:%d\n", u32Key, u8Key, u8RepeatFlag);
+#if 0	// repeat key process
+		if(_pfIRCallback)
+		{
+			_pfIRCallback(u32Key, u8RepeatFlag);
+		}
+#else
+		if(u8RepeatFlag == 1) {
+			if(_IR_CheckContiKey(u8Key)) {
+				u8repeat_count++;
+				if( u8repeat_count > 3 ) { // ? Protect Key-Buffering by just key press.
+					if(_pfIRCallback)
+						_pfIRCallback(u32Key, u8RepeatFlag);
+					if(u8repeat_count >= 200) u8repeat_count = 100;
+				}
+			}
+		}
+		else
+		{
+			u8repeat_count = 0;
+			/* Map to Key and Send Key to Core */
+			/* if no key map, just do nothing */
+			if(_pfIRCallback)
+			{
+				_pfIRCallback(u32Key, u8RepeatFlag);
+			}
+		}
+#endif
+	}
+    MsOS_EnableInterrupt(E_INT_FIQ_IR);
+
+
+    return;
+}
+
+#else
 
 void _MDrv_IR_ISR(InterruptNum irq)
 //irqreturn_t _MDrv_IR_ISR(int irq, void *dev_id, struct pt_regs *regs)
@@ -449,7 +689,7 @@ void _MDrv_IR_ISR(InterruptNum irq)
     return;
 }
 
-
+#endif
 
 //-------------------------------------------------------------------------------------------------
 /// Set the timing of IrDa at BOOT stage.
@@ -590,7 +830,12 @@ void MDrv_IR_HK_Init(void)
     REG(REG_IR_SEPR_BIT_FIFO_CTRL) = 0xF00;
     REG(REG_IR_GLHRM_NUM) = 0x804;
 
-#if (IR_MODE_SEL == IR_TYPE_SWDECODE_MODE)    
+#if defined(__IR_DEN_RCMM__)
+
+    REG(REG_IR_GLHRM_NUM) |= (0x1 <<12);
+    REG(REG_IR_SEPR_BIT_FIFO_CTRL) |= 0x1 <<12;
+
+#elif (IR_MODE_SEL == IR_TYPE_SWDECODE_MODE)
     REG(REG_IR_GLHRM_NUM) |= (0x1 <<12);
     REG(REG_IR_SEPR_BIT_FIFO_CTRL) |= 0x2 <<12;
 #else

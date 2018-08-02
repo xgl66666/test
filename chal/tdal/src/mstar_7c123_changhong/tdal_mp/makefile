@@ -35,7 +35,8 @@ LIBOBJS = 	tdal_mp_generic.$(OBJ_SUFFIX) \
 			tdal_mp_control.$(OBJ_SUFFIX) \
 			tdal_mp_subrender.$(OBJ_SUFFIX) \
 			tdal_mp_status.$(OBJ_SUFFIX) \
-			tdal_mp_windowing.$(OBJ_SUFFIX)
+			tdal_mp_windowing.$(OBJ_SUFFIX) \
+			tdal_mp_priv.$(OBJ_SUFFIX)
 
 # ****************************************
 # List of dependencies
@@ -45,6 +46,7 @@ tdal_mp_control.$(OBJ_SUFFIX): $(TDAL_FS_INCLUDE)/tdal_mp.h tdal_mp_control.c td
 tdal_mp_subrender.$(OBJ_SUFFIX): $(TDAL_FS_INCLUDE)/tdal_mp.h tdal_mp_subrender.c tdal_mp_p.h makefile
 tdal_mp_status.$(OBJ_SUFFIX): $(TDAL_MP_INCLUDE)/tdal_mp.h tdal_mp_status.c tdal_mp_p.h makefile
 tdal_mp_windowing.$(OBJ_SUFFIX): $(TDAL_MP_INCLUDE)/tdal_mp.h tdal_mp_windowing.c tdal_mp_p.h makefile
+tdal_mp_priv.$(OBJ_SUFFIX): $(TDAL_MP_INCLUDE)/tdal_mp.h tdal_mp_p.h makefile
 
 # ****************************************
 # Always include crules.mak

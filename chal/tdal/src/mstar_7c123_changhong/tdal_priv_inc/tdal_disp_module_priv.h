@@ -79,6 +79,17 @@ bool TDAL_DISPm_GetOutputWindow(tTDAL_DISP_BlenderId Id, tTDAL_DISP_BlenderWindo
 
 tTDAL_DISP_Error TDAL_DISPm_ReconfigureAndUnmuteVideoLayer(bool useMultimedia, tTDAL_DISPm_Window * sourceWindow, tTDAL_DISPm_Window * destWindow, bool resetVideoLayer);
 
+typedef enum
+{
+   eTDAL_DISP_GFXScale_720x576,
+   eTDAL_DISP_GFXScale_1280_720,
+   eTDAL_DISP_GFXScale_1920_1080,
+} tTDAL_DISP_GFXScale;
+
+typedef void (*tTDAL_DISP_ScaledNotifyCb)(tTDAL_DISP_GFXScale eFlag);
+
+IMPORT tTDAL_DISP_Error TDAL_DISPm_SetNotifyEvent(tTDAL_DISP_ScaledNotifyCb pfn);
+
 #ifdef   __cplusplus
 }
 #endif

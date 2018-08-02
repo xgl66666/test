@@ -56,15 +56,22 @@
 #include "xc/msAPI_VE.h"
 #include "xc/msAPI_GEGOP.h"
 
+#include "PVRPL_Video.h"
+
 //#define kTDAL_DISP_ACTIVE_WIDTH 624
 //#define kTDAL_DISP_ACTIVE_HEIGHT 518
+#ifdef HD_ENABLE
+#define kTDAL_DISP_ACTIVE_WIDTH 1280
+#define kTDAL_DISP_ACTIVE_HEIGHT 720
+#else
 #define kTDAL_DISP_ACTIVE_WIDTH 720
 #define kTDAL_DISP_ACTIVE_HEIGHT 576
-#define kTDAL_DISP_ACTIVE_X_OFFSET ((720 - kTDAL_DISP_ACTIVE_WIDTH) / 2)
-#define kTDAL_DISP_ACTIVE_Y_OFFSET ((576 - kTDAL_DISP_ACTIVE_HEIGHT) / 2)
+#endif
+#define kTDAL_DISP_ACTIVE_X_OFFSET ((1280 - kTDAL_DISP_ACTIVE_WIDTH) / 2)
+#define kTDAL_DISP_ACTIVE_Y_OFFSET ((720 - kTDAL_DISP_ACTIVE_HEIGHT) / 2)
 
-#define MAX_WINDOW_WIDTH 720//2000
-#define MAX_WINDOW_HEIGHT 576//1100
+#define MAX_WINDOW_WIDTH 2000
+#define MAX_WINDOW_HEIGHT 1100
 
 /****************************************************************************
  *  MACROS                                                            *
@@ -93,10 +100,14 @@ void TDAL_DISPm_VE_CalculateAspectRatio(E_MSAPI_VE_ASPECT_RATIO_TYPE enVideoScre
                                        MS_VE_WINDOW_TYPE *pstCapWin,
                                        MS_VE_WINDOW_TYPE *pstDstWin);
 LOCAL void TDAL_DISPi_GFXLayer(tTDAL_DISP_LayerId id);
-GLOBAL void TDAL_GFXm_LayerDisable(tTDAL_DISP_LayerId Id);
-GLOBAL void TDAL_GFXm_LayerEnable(tTDAL_DISP_LayerId Id);
+GLOBAL void TDAL_GFXm_LayerDisable(uint32_t LayerId);
+GLOBAL void TDAL_GFXm_LayerEnable(uint32_t LayerId);
 
 bool TDAL_DISPm_VideoLayerEnabled(void);
+bool TDAL_DISPm_VideoLayerNeedToBeEnabled(void);
+GLOBAL void TDAL_DISPi_GFXLayerScale(tTDAL_DISP_LayerId id, tTDAL_DISP_GFXScale scale);
+tTDAL_DISP_ScaledNotifyCb         pTDAL_DISP_ScaledCb = NULL;
+LOCAL bool TDAL_DISPm_VideoLayerEnableCB(bool bStart);
 /****************************************************************************
  *  TYPEDEFS                                                         *
  ****************************************************************************/
@@ -122,7 +133,6 @@ enum
 void TDAL_DISP_LayerInit(void)
 {
     mTBOX_FCT_ENTER("TDAL_DISP_LayerInit");
-	mTBOX_TRACE(( kTBOX_NIV_WARNING, "[%s %d]enter: \n",__FUNCTION__,__LINE__));
     //E_GOP_API_Result gop_result;
     TDAL_DISPi_GFXLayer(eTDAL_DISP_LAYER_GFX_ID_0); // graphic layer for OSD
     TDAL_DISPi_GFXLayer(eTDAL_DISP_LAYER_GFX_ID_2); // graphic layer for subtitles and media viewer
@@ -139,8 +149,10 @@ void TDAL_DISP_LayerInit(void)
     
     TDAL_CreateMutex(&TDAL_DISPi_LayerMutex);
     mTBOX_ASSERT(TDAL_DISPi_LayerMutex != NULL);
-	mTBOX_TRACE(( kTBOX_NIV_WARNING, "[%s %d]success: \n",__FUNCTION__,__LINE__));
-
+    
+#ifdef PACKAGE_PVR
+    PVRPL_Disp_RegisterEnableCB((DISP_CB_ENABLE)TDAL_DISPm_VideoLayerEnableCB);
+#endif
     mTBOX_RETURN;
 }
 
@@ -419,8 +431,6 @@ tTDAL_DISP_Error TDAL_DISP_LayerIOWindowsAspectRatioParamsSet(tTDAL_DISP_LayerId
 
     mTBOX_FCT_ENTER("TDAL_DISP_LayerIOWindowsAspectRatioParamsSet");
 
- /*printf("TDAL_DISP_LayerIOWindowsAspectRatioParamsSet YP TODO  ?? %s %d\r\n", __FILE__, __LINE__);*/
-
     mTBOX_TRACE((kTBOX_NIV_WARNING,"TDAL_DISP_LayerIOWindowsAspectRatioParamsSet: function not implemented\n" ));
     error = eTDAL_DISP_NOT_AVAILABLE_ERROR;
 
@@ -543,11 +553,7 @@ tTDAL_DISP_Error TDAL_DISP_LayerIOWindowsSet(tTDAL_DISP_LayerId Id, tTDAL_DISP_L
 {
     tTDAL_DISP_Error        error = eTDAL_DISP_NO_ERROR;
     int                     Index=0;
-    bool            IdFound;
-    
-    tTDAL_DISP_BlenderWindow    stBlenderOutputWindow;
-    U32                         DisplayOutputWidth = 0;
-    U32                         DisplayOutputHeight = 0;
+    bool            IdFound = FALSE;
     
     mTBOX_FCT_ENTER("TDAL_DISP_LayerIOWindowsSet");
 
@@ -578,7 +584,6 @@ tTDAL_DISP_Error TDAL_DISP_LayerIOWindowsSet(tTDAL_DISP_LayerId Id, tTDAL_DISP_L
         {
             switch(TDAL_DISP_LayerDescriptor[Index].Id)
             {
-                case eTDAL_DISP_LAYER_GFX_ID_2:
                 case eTDAL_DISP_LAYER_STILL_ID_0:
                 case eTDAL_DISP_LAYER_STILL_ID_1:
                 case eTDAL_DISP_LAYER_CURSOR_ID_0:
@@ -762,26 +767,25 @@ tTDAL_DISP_Error TDAL_DISP_LayerIOWindowsSet(tTDAL_DISP_LayerId Id, tTDAL_DISP_L
         }
         else if(Id == eTDAL_DISP_LAYER_VIDEO_ID_0)
         {
-            memcpy(&TDAL_DISP_LayerDescriptor[Index].stInputWindow, pstInputWindow, sizeof(tTDAL_DISP_LayerWindow));
-            memcpy(&TDAL_DISP_LayerDescriptor[Index].stRequestedOutputWindow, pstOutputWindow, sizeof(tTDAL_DISP_LayerWindow));
+                memcpy(&TDAL_DISP_LayerDescriptor[Index].stInputWindow, pstInputWindow, sizeof(tTDAL_DISP_LayerWindow));
+                memcpy(&TDAL_DISP_LayerDescriptor[Index].stRequestedOutputWindow, pstOutputWindow, sizeof(tTDAL_DISP_LayerWindow));
+            if(TDAL_DISPm_VideoLayerEnabled() || TDAL_DISPm_VideoLayerNeedToBeEnabled())
+                {
+                    tTDAL_DISPm_Window srcWindow, dstWindow;
 
-            if(TDAL_DISPm_VideoLayerEnabled())
-            {
-                tTDAL_DISPm_Window srcWindow, dstWindow;
+                    srcWindow.x = pstInputWindow->Left;
+                    srcWindow.y = pstInputWindow->Top;
+                    srcWindow.width = pstInputWindow->Right - pstInputWindow->Left + 1;
+                    srcWindow.heigth = pstInputWindow->Bottom - pstInputWindow->Top + 1;
 
-                srcWindow.x = pstInputWindow->Left;
-            	srcWindow.y = pstInputWindow->Top;
-            	srcWindow.width = pstInputWindow->Right - pstInputWindow->Left + 1;
-            	srcWindow.heigth = pstInputWindow->Bottom - pstInputWindow->Top + 1;
+                    dstWindow.x = pstOutputWindow->Left;
+                    dstWindow.y = pstOutputWindow->Top;
+                    dstWindow.width = pstOutputWindow->Right - pstOutputWindow->Left + 1;
+                    dstWindow.heigth = pstOutputWindow->Bottom - pstOutputWindow->Top + 1;
 
-            	dstWindow.x = pstOutputWindow->Left;
-            	dstWindow.y = pstOutputWindow->Top;
-            	dstWindow.width = pstOutputWindow->Right - pstOutputWindow->Left + 1;
-            	dstWindow.heigth = pstOutputWindow->Bottom - pstOutputWindow->Top + 1;
-
-                   if (TDAL_AVm_IsDecoderRunning()) TDAL_DISPm_ReconfigureAndUnmuteVideoLayer(false, &srcWindow, &dstWindow, FALSE);
+                error = TDAL_DISPm_ReconfigureAndUnmuteVideoLayer(false, &srcWindow, &dstWindow, FALSE);
+                }
             }
-        }
         else
         {
         	mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Unsupported layer %d\n", Id));
@@ -810,6 +814,7 @@ tTDAL_DISP_Error TDAL_DISP_LayerIOWindowsSet(tTDAL_DISP_LayerId Id, tTDAL_DISP_L
  * Comment      :
  *
  **========================================================================**/
+
 tTDAL_DISP_Error TDAL_DISP_LayerDisable(tTDAL_DISP_LayerId Id)
 {
     tTDAL_DISP_Error       error = eTDAL_DISP_NO_ERROR;
@@ -838,37 +843,38 @@ tTDAL_DISP_Error TDAL_DISP_LayerDisable(tTDAL_DISP_LayerId Id)
 
     if(IdFound)
     {
-		/*check if enable is true*/
-		if(TDAL_DISP_LayerDescriptor[Index].IsEnabled)
-		{
-			switch(Id)
-			{
-				case eTDAL_DISP_LAYER_GFX_ID_0:
-				case eTDAL_DISP_LAYER_GFX_ID_2:
-					TDAL_GFXm_LayerDisable(Id/*TDAL_DISP_LayerDescriptor[Index].GFXLayerDesc*/);
-					break;
-				case eTDAL_DISP_LAYER_VIDEO_ID_0:
-					/*TBD*/ 
-					//MApi_XC_EnableWindow(FALSE, MAIN_WINDOW);
+        /*check if enable is true*/
+        if(TDAL_DISP_LayerDescriptor[Index].IsEnabled)
+        {
+           switch(Id)
+           {
+               case eTDAL_DISP_LAYER_GFX_ID_0:
+               case eTDAL_DISP_LAYER_GFX_ID_2:
+                   TDAL_GFXm_LayerDisable(TDAL_DISP_LayerDescriptor[Index].GFXLayerDesc);
+                   break;
+           case eTDAL_DISP_LAYER_VIDEO_ID_0:
+               /*TBD*/ 
+               //MApi_XC_EnableWindow(FALSE, MAIN_WINDOW);
+               TDAL_DISP_LayerDescriptor[Index].bReadyToEnable = FALSE;
 
-					//msAPI_VE_SetVideoMute(TRUE);
-					msAPI_XC_SetVideoMute(TRUE, MAIN_WINDOW);
-					/* TBD: so these are the functions from lower layer, 
-					* MApi_XC_EnableWindow(MS_BOOL bEnable, SCALER_WIN eWindow),
-					* MApi_XC_GenerateBlackVideo(MS_BOOL bEnable, SCALER_WIN eWindow)
-					* should we use those, then
-					*/
-					//MApi_XC_EnableWindow(FALSE, MAIN_WINDOW);
-					break;
-				default:
-					mTBOX_TRACE((kTBOX_NIV_WARNING,"TDAL_DISP_LayerDisable: Layer ID[%d] not supported \n", Id));
-					TDAL_UnlockMutex(TDAL_DISPi_LayerMutex);
-					mTBOX_RETURN(eTDAL_DISP_NOT_AVAILABLE_ERROR);
-					break;
-			}
+               //msAPI_VE_SetVideoMute(TRUE);
+               msAPI_XC_SetVideoMute(TRUE, MAIN_WINDOW);
+               /* TBD: so these are the functions from lower layer, 
+                * MApi_XC_EnableWindow(MS_BOOL bEnable, SCALER_WIN eWindow),
+                * MApi_XC_GenerateBlackVideo(MS_BOOL bEnable, SCALER_WIN eWindow)
+                * should we use those, then
+                */
+               //MApi_XC_EnableWindow(FALSE, MAIN_WINDOW);
+               break;
+           default:
+                   mTBOX_TRACE((kTBOX_NIV_WARNING,"TDAL_DISP_LayerDisable: Layer ID[%d] not supported \n", Id));
+                   TDAL_UnlockMutex(TDAL_DISPi_LayerMutex);
+                   mTBOX_RETURN(eTDAL_DISP_NOT_AVAILABLE_ERROR);
+                   break;
+           }
 
-			TDAL_DISP_LayerDescriptor[Index].IsEnabled = FALSE;
-		} /* if enable*/
+           TDAL_DISP_LayerDescriptor[Index].IsEnabled = FALSE;
+        } /* if enable*/
     }
     else
     {
@@ -909,6 +915,34 @@ bool TDAL_DISPm_VideoLayerEnabled(void)
     mTBOX_RETURN(enabled);
 }
 
+bool TDAL_DISPm_VideoLayerNeedToBeEnabled(void)
+{
+    int Index;
+    bool IdFound = FALSE;
+    bool enabled = false;
+
+    mTBOX_FCT_ENTER("TDAL_DISPm_VideoLayerNeedToBeEnabled");
+
+    /* Check the Id and fill-it */
+    for(Index=0; Index<kTDAL_DISPi_TOTAL_BLENDER_NB_LAYER; Index++)
+    {
+        if(eTDAL_DISP_LAYER_VIDEO_ID_0 == TDAL_DISP_LayerDescriptor[Index].Id)
+        {
+           IdFound = TRUE;
+           break;
+        }
+    }
+
+    mTBOX_ASSERTm(IdFound == TRUE, "eTDAL_DISP_LAYER_VIDEO_ID_0 must exist");
+    if (IdFound)
+    {
+        enabled = TDAL_DISP_LayerDescriptor[Index].bReadyToEnable;
+    }
+
+    mTBOX_TRACE((kTBOX_NIV_1, "[TDAL_DISPm_VideoNeedToBeEnabled] layer enabled = %s\n", enabled ? "TRUE" : "FALSE"));
+
+    mTBOX_RETURN(enabled);
+}
 
 LOCAL bool TDAL_DISPi_CheckWindow(tTDAL_DISPm_Window * window)
 {
@@ -969,11 +1003,6 @@ tTDAL_DISP_Error TDAL_DISPm_ReconfigureAndUnmuteVideoLayer(bool useMultimedia, t
 		MS_WINDOW_TYPE * pMs_SrcWin = NULL;
 		MS_WINDOW_TYPE * pMs_DstWin = NULL;
 
-		if (sourceWindow) printf("=========sourceWindow %d %d %d %d\n", sourceWindow->x, sourceWindow->y, sourceWindow->width, sourceWindow->heigth);
-		else printf("=========sourceWindow NULL\n");
-		if (destWindow) printf("=========destWindow %d %d %d %d\n", destWindow->x, destWindow->y, destWindow->width, destWindow->heigth);
-		else printf("=========destWindow NULL\n");
-		
 		if (sourceWindow != NULL)
 		{
 		    if (TDAL_DISPi_CheckWindow(sourceWindow))
@@ -981,6 +1010,10 @@ tTDAL_DISP_Error TDAL_DISPm_ReconfigureAndUnmuteVideoLayer(bool useMultimedia, t
 		        ms_SrcWin = TDAL_DISPi_GetMStarWindow(sourceWindow);
 		        pMs_SrcWin = &ms_SrcWin;
 		    }
+            else
+            {
+                mTBOX_RETURN (eTDAL_DISP_BAD_PARAMETER_ERROR);
+            }
 		}
 
 		if (destWindow != NULL)
@@ -990,6 +1023,10 @@ tTDAL_DISP_Error TDAL_DISPm_ReconfigureAndUnmuteVideoLayer(bool useMultimedia, t
 		        ms_DstWin = TDAL_DISPi_GetMStarWindow(destWindow);
 		        pMs_DstWin = &ms_DstWin;
 		    }
+            else
+            {
+                mTBOX_RETURN (eTDAL_DISP_BAD_PARAMETER_ERROR);
+            }
 		}
 
         //Enable Blue Screen to avoid garbage video
@@ -997,34 +1034,22 @@ tTDAL_DISP_Error TDAL_DISPm_ReconfigureAndUnmuteVideoLayer(bool useMultimedia, t
 		{
 		    //msAPI_VE_SetVideoMute(ENABLE);
 		    msAPI_XC_SetVideoMute(ENABLE, MAIN_WINDOW);
-		}
 
-		msAPI_XC_EnableCCIRInput(0, DISABLE);
+		if(msAPI_XC_EnableCCIRInput(0, DISABLE) != E_MSAPI_XC_OK)
+                {
+                   mTBOX_TRACE((kTBOX_NIV_WARNING,"\n [FUN][%s()@%04d][number = %d] \n", __FUNCTION__, __LINE__,msAPI_XC_EnableCCIRInput(0, DISABLE)));
+                }
 
 #ifdef USE_TDAL_MP
 	    if (useMultimedia)
 	    {
 	        TDAL_MPi_GetDecoderStatus();
 	    }
-	    else
+
 #endif
-	    {
-	        if (TDAL_AVm_GetDecoderStatus(NULL) == false)
-	        {
-	            mTBOX_TRACE((kTBOX_NIV_1, "Decoder not running\n"));
-	        }
-	    }
 
 	    msAPI_XC_DTV_SetMode();
 
-		if (pMs_SrcWin) printf("=========pMs_SrcWin %d %d %d %d\n", pMs_SrcWin->x, pMs_SrcWin->y, pMs_SrcWin->width, pMs_SrcWin->height);
-		else printf("=========pMs_SrcWin NULL\n");
-		if (pMs_DstWin) printf("=========pMs_DstWin %d %d %d %d\n", pMs_DstWin->x, pMs_DstWin->y, pMs_DstWin->width, pMs_DstWin->height);
-		else printf("=========pMs_DstWin NULL\n");
-
-		if ((pMs_SrcWin) && (pMs_SrcWin->width == MAX_WINDOW_WIDTH) && (pMs_SrcWin->height == MAX_WINDOW_HEIGHT))
-		msAPI_XC_SetWin(NULL, NULL, pMs_DstWin, MAIN_WINDOW);
-		else
 		msAPI_XC_SetWin(pMs_SrcWin, NULL, pMs_DstWin, MAIN_WINDOW);
 
 	    //Wait at least 4 V-syncs(VE setting time + wait 2 VSync) for SCALER to fill frame buffer
@@ -1037,48 +1062,17 @@ tTDAL_DISP_Error TDAL_DISPm_ReconfigureAndUnmuteVideoLayer(bool useMultimedia, t
 
 		mTBOX_TRACE((kTBOX_NIV_1, "TDAL_DISPm_ReconfigureAndUnmuteVideoLayer: video layer enabled\n"));
 
+        }
+        else
+        {
+            msAPI_XC_SetWin(pMs_SrcWin, NULL, pMs_DstWin, MAIN_WINDOW);
+        }
 		mTBOX_RETURN(eTDAL_DISP_NO_ERROR);
     }
     else
     {
     	mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Could not find video layer descriptor\n"));
     	mTBOX_RETURN(eTDAL_DISP_DRIVER_ERROR);
-    }
-}
-
-void TDAL_DISPm_ReconfigureVideoLayer(void)
-{
-    int Index;
-    bool IdFound = FALSE;
-
-    mTBOX_FCT_ENTER("TDAL_DISPm_ReconfigureVideoLayer");
-
-    for(Index=0; Index<kTDAL_DISPi_TOTAL_BLENDER_NB_LAYER; Index++)
-    {
-        if(eTDAL_DISP_LAYER_VIDEO_ID_0 == TDAL_DISP_LayerDescriptor[Index].Id)
-        {
-           IdFound = TRUE;
-           break;
-        }
-    }
-
-    if (IdFound)
-    {
-        if (TDAL_DISP_LayerDescriptor[Index].IsEnabled)
-        {
-            tTDAL_DISPm_Window srcWindow, dstWindow;
-            
-            srcWindow.x = TDAL_DISP_LayerDescriptor[Index].stInputWindow.Left;
-            srcWindow.y = TDAL_DISP_LayerDescriptor[Index].stInputWindow.Top;
-            srcWindow.width = TDAL_DISP_LayerDescriptor[Index].stInputWindow.Right - TDAL_DISP_LayerDescriptor[Index].stInputWindow.Left + 1;
-            srcWindow.heigth = TDAL_DISP_LayerDescriptor[Index].stInputWindow.Bottom - TDAL_DISP_LayerDescriptor[Index].stInputWindow.Top + 1;
-            
-            dstWindow.x = TDAL_DISP_LayerDescriptor[Index].stRequestedOutputWindow.Left;
-            dstWindow.y = TDAL_DISP_LayerDescriptor[Index].stRequestedOutputWindow.Top;
-            dstWindow.width = TDAL_DISP_LayerDescriptor[Index].stRequestedOutputWindow.Right - TDAL_DISP_LayerDescriptor[Index].stRequestedOutputWindow.Left + 1;
-            dstWindow.heigth = TDAL_DISP_LayerDescriptor[Index].stRequestedOutputWindow.Bottom - TDAL_DISP_LayerDescriptor[Index].stRequestedOutputWindow.Top + 1;
-            TDAL_DISPm_ReconfigureAndUnmuteVideoLayer(false, &srcWindow, &dstWindow, true);
-        }
     }
 }
 
@@ -1104,7 +1098,6 @@ tTDAL_DISP_Error TDAL_DISP_LayerEnable(tTDAL_DISP_LayerId Id)
 
     mTBOX_TRACE((kTBOX_NIV_1,"TDAL_DISP_LayerEnable: Layer[0x%x]\n",Id ));
 
-
     if (!TDAL_DISP_AlreadyInitialized)
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL,"TDAL_DISP_LayerEnable: DISP not initialise \n" ));
@@ -1126,13 +1119,13 @@ tTDAL_DISP_Error TDAL_DISP_LayerEnable(tTDAL_DISP_LayerId Id)
     if(IdFound)
     {
         /*check if enable is true*/
-        if(!TDAL_DISP_LayerDescriptor[Index].IsEnabled)
+        if(!TDAL_DISP_LayerDescriptor[Index].IsEnabled || ((eTDAL_DISP_LAYER_VIDEO_ID_0 == TDAL_DISP_LayerDescriptor[Index].Id) && TDAL_DISPm_VideoLayerNeedToBeEnabled()))
         {
            switch(Id)
            {
                case eTDAL_DISP_LAYER_GFX_ID_0:
                case eTDAL_DISP_LAYER_GFX_ID_2:
-                   TDAL_GFXm_LayerEnable(Id/*TDAL_DISP_LayerDescriptor[Index].GFXLayerDesc*/);
+                   TDAL_GFXm_LayerEnable(TDAL_DISP_LayerDescriptor[Index].GFXLayerDesc);
                    break;
                case eTDAL_DISP_LAYER_VIDEO_ID_0:
                {
@@ -1149,10 +1142,16 @@ tTDAL_DISP_Error TDAL_DISP_LayerEnable(tTDAL_DISP_LayerId Id)
                    dstWindow.width = TDAL_DISP_LayerDescriptor[Index].stRequestedOutputWindow.Right - TDAL_DISP_LayerDescriptor[Index].stRequestedOutputWindow.Left + 1;
                    dstWindow.heigth = TDAL_DISP_LayerDescriptor[Index].stRequestedOutputWindow.Bottom - TDAL_DISP_LayerDescriptor[Index].stRequestedOutputWindow.Top + 1;
 
-                   if (TDAL_AVm_IsDecoderRunning())
-                   {
-                       error = TDAL_DISPm_ReconfigureAndUnmuteVideoLayer(false, &srcWindow, &dstWindow, TRUE);
-                   }
+                    if(TDAL_AV_VideoDecoding())
+                    {
+                        error = TDAL_DISPm_ReconfigureAndUnmuteVideoLayer(false, &srcWindow, &dstWindow, TRUE);
+                        TDAL_DISP_LayerDescriptor[Index].bReadyToEnable = FALSE;
+                    }
+                    else
+                    {
+                        mTBOX_TRACE((kTBOX_NIV_CRITICAL,"TDAL_DISP_LayerEnable: Ready to be Eanbled but decoder not started yet\n"));
+                        TDAL_DISP_LayerDescriptor[Index].bReadyToEnable = TRUE;
+                    }
                }
                break;
                default:
@@ -1298,9 +1297,9 @@ void TDAL_DISPm_WaitVSync(tTDAL_DISP_LayerId layerId)
 {
 }
 
-bool TDAL_DISPm_IsGFXLayerEnable(uint32_t layerHandle/*tTDAL_DISP_LayerId Id*/)
+bool TDAL_DISPm_IsGFXLayerEnable(tTDAL_DISP_LayerId Id)
 {
-	return ((tTDAL_DISPi_LayerDescriptorElements*)layerHandle)->IsEnabled;
+    return FALSE;
 }
 
 
@@ -1317,15 +1316,117 @@ void TDAL_DISPm_ReadyToEnableVideo(bool State)
 {
 }
 
+void TDAL_DISPi_GFXLayerScale(tTDAL_DISP_LayerId id, tTDAL_DISP_GFXScale scale)
+{
+    E_GOP_API_Result        gop_result = GOP_API_SUCCESS;
+    int                     Index;
+    bool                    IdFound = FALSE;
+
+    for(Index=0; Index<kTDAL_DISPi_TOTAL_BLENDER_NB_LAYER; Index++)
+    {
+        if(id == TDAL_DISP_LayerDescriptor[Index].Id)
+        {
+            switch(TDAL_DISP_LayerDescriptor[Index].Id)
+            {
+                case eTDAL_DISP_LAYER_STILL_ID_0:
+                case eTDAL_DISP_LAYER_STILL_ID_1:
+                case eTDAL_DISP_LAYER_CURSOR_ID_0:
+                case eTDAL_DISP_LAYER_CURSOR_ID_1:
+                case eTDAL_DISP_LAYER_VIDEO_ID_2:
+                case eTDAL_DISP_LAYER_VIDEO_ID_0:
+                    mTBOX_TRACE((kTBOX_NIV_WARNING,"TDAL_DISP_LayerIOWindowsGet: Layer Graphic not supported \n"));
+                    return;
+                    break;
+                default:
+                    break;
+            }
+            IdFound = TRUE;
+            break;
+        }
+    }
+    
+    if (IdFound == TRUE)
+    {
+        MS_U8 gopId;
+
+        if (eTDAL_DISP_LAYER_GFX_ID_0 == id)
+        {
+            /* GOP1(graphical output processor) have 4 GWINs(graphical window) maximum
+             * with 4-7 IDs. 
+             */  
+            gopId = LAYER_OSD1;
+
+        }
+        else if (eTDAL_DISP_LAYER_GFX_ID_2 == id)
+        {
+            /* GOP0(graphical output processor) have 4 GWINs(graphical window) maximum
+             * with 0-3 IDs. 
+             */            
+            gopId = LAYER_OSD2;
+
+        }
+        else
+        {
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_DISPi_GFXLayer: failure, wrong layer ID %d\n", id));
+            return;
+        }
+        
+        TDAL_DISP_LayerDescriptor[Index].GFXLayerDesc = gopId;
+        gop_result = MApi_GOP_GWIN_SwitchGOP(gopId);
+        if (gop_result != GOP_API_SUCCESS)
+        {
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_GOP_GWIN_SwitchGOP: failure %d\n", gop_result));
+        }
+
+        switch(scale)
+        {
+            case eTDAL_DISP_GFXScale_720x576:
+                MApi_GOP_GWIN_Set_HSCALE(TRUE, 1, 1);
+                MApi_GOP_GWIN_Set_VSCALE(TRUE, 1, 1);
+                MApi_GOP_GWIN_Set_STRETCHWIN(gopId, E_GOP_DST_OP0, 0, 0, 720, 576);
+                if (pTDAL_DISP_ScaledCb != NULL)
+                {
+                    pTDAL_DISP_ScaledCb(eTDAL_DISP_GFXScale_720x576);
+                }
+                break;
+            case eTDAL_DISP_GFXScale_1280_720:
+                MApi_GOP_GWIN_Set_HSCALE(TRUE, 1280, 1280);
+                MApi_GOP_GWIN_Set_VSCALE(TRUE, 720, 720);
+                MApi_GOP_GWIN_Set_STRETCHWIN(gopId, E_GOP_DST_OP0, 0, 0, 1280, 720);
+                if (pTDAL_DISP_ScaledCb != NULL)
+                {
+                    pTDAL_DISP_ScaledCb(eTDAL_DISP_GFXScale_1280_720);
+                }
+                break;
+            case eTDAL_DISP_GFXScale_1920_1080:
+                MApi_GOP_GWIN_Set_HSCALE(TRUE, 1280, 1920);
+                MApi_GOP_GWIN_Set_VSCALE(TRUE, 720, 1080);            
+                gop_result = MApi_GOP_GWIN_Set_STRETCHWIN(gopId, E_GOP_DST_OP0, 0, 0, 1280, 720);
+                if (pTDAL_DISP_ScaledCb != NULL)
+                {
+                    pTDAL_DISP_ScaledCb(eTDAL_DISP_GFXScale_1920_1080);
+                }
+                break;
+            default:
+                MApi_GOP_GWIN_Set_HSCALE(TRUE, 1280, 1280);
+                MApi_GOP_GWIN_Set_VSCALE(TRUE, 720, 720);
+                MApi_GOP_GWIN_Set_STRETCHWIN(gopId, E_GOP_DST_OP0, 0, 0, 1280, 720);
+                if (pTDAL_DISP_ScaledCb != NULL)
+                {
+                    pTDAL_DISP_ScaledCb(eTDAL_DISP_GFXScale_1280_720);
+                }
+        }
+
+        
+        gop_result = MApi_GOP_SetGOPHStart(gopId,g_IPanel.HStart());
+
+        gop_result = MApi_GOP_GWIN_EnableProgressive(TRUE); //FIXME
+    } 
+}
+
 LOCAL void TDAL_DISPi_GFXLayer(tTDAL_DISP_LayerId id)
 {
     E_GOP_API_Result        gop_result = GOP_API_SUCCESS;
-    GOP_MIXER_TIMINGTYPE    gopMixerTimingType;
-    GOP_MixerTiming         gopMixerTiming;
-    VE_DrvStatus            DrvStatus;
-    MS_VE_DST_DispInfo      DrvVEDispInfo;
-    MS_U16                  GOPSC_width;
-    MS_BOOL                 VE_PAL;
     int                     Index;
     bool                    IdFound = FALSE;
     
@@ -1373,35 +1474,28 @@ LOCAL void TDAL_DISPi_GFXLayer(tTDAL_DISP_LayerId id)
 
         }
         else
+        {
             mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_DISPi_GFXLayer: failure, wrong layer ID %d\n", id));
+            return;
+        }
         
         TDAL_DISP_LayerDescriptor[Index].GFXLayerDesc = gopId;
         gop_result = MApi_GOP_GWIN_SwitchGOP(gopId);
-        if (gop_result != GOP_API_SUCCESS)
-        {
-            printf("MApi_GOP_GWIN_SwitchGOP: failure %d\n", gop_result);
-        }
 
-        gop_result = MApi_GOP_GWIN_Set_STRETCHWIN(gopId, E_GOP_DST_OP0, kTDAL_DISP_ACTIVE_X_OFFSET, kTDAL_DISP_ACTIVE_Y_OFFSET, 720, 576);
-        if (gop_result != GOP_API_SUCCESS)
-        {
-            printf("MApi_GOP_GWIN_Set_STRETCHWIN: failure %d\n", gop_result);
-        }
-        printf("#####\n\n\nMApi_GOP_SetGOPHStart HStart=%d\n\n\n", g_IPanel.HStart());
+#ifdef HD_ENABLE
+        MApi_GOP_GWIN_Set_HSCALE(TRUE, 1280, 1920);
+        MApi_GOP_GWIN_Set_VSCALE(TRUE, 720, 1080);
+#endif
+        gop_result = MApi_GOP_GWIN_Set_STRETCHWIN(gopId, E_GOP_DST_OP0, 0, 0, kTDAL_DISP_ACTIVE_WIDTH, kTDAL_DISP_ACTIVE_HEIGHT);
         
         gop_result = MApi_GOP_SetGOPHStart(gopId,g_IPanel.HStart());
-        if (gop_result != GOP_API_SUCCESS)
-        {
-            printf("MApi_GOP_SetGOPHStart: failure %d\n", gop_result);
-        }
+
         gop_result = MApi_GOP_GWIN_EnableProgressive(TRUE); //FIXME
-        if (gop_result != GOP_API_SUCCESS)
-        {
-            printf("MApi_GOP_GWIN_EnableProgressive: failure %d\n", gop_result);
-        }
-        
-        //winId = MApi_GOP_GWIN_CreateWin(720, 576, 3855);
-        //TDAL_DISP_LayerDescriptor[Index].gwinID = winId;
+
+#if 0  // why need to create gwin here
+        winId = MApi_GOP_GWIN_CreateWin(720, 576, 0x0f);
+        TDAL_DISP_LayerDescriptor[Index].gwinID = winId;
+#endif
     } 
 }
 
@@ -1539,9 +1633,64 @@ uint8_t TDAL_DISPm_LayerGWINDesc(uint32_t layerHandle)
 {
     return ((tTDAL_DISPi_LayerDescriptorElements*)layerHandle)->gwinID;
 }
-
-uint8_t TDAL_DISPm_LayerId(uint32_t layerHandle)
+/***********************************************************************
+ * Function Name : TDAL_OUTPUT_SetEvent
+ *
+ * Description   :
+ *
+ * Side effects  :
+ *
+ * Comment      :
+ *
+ **********************************************************************/
+tTDAL_DISP_Error TDAL_DISPm_SetNotifyEvent(tTDAL_DISP_ScaledNotifyCb pfn)
 {
-    return ((tTDAL_DISPi_LayerDescriptorElements*)layerHandle)->Id;
+    mTBOX_FCT_ENTER("TDAL_DISPm_SetNotifyEvent");
+
+    if (pfn == NULL)
+    {
+         mTBOX_RETURN(eTDAL_DISP_BAD_PARAMETER_ERROR);
+    }
+
+    pTDAL_DISP_ScaledCb = pfn;
+   
+    mTBOX_RETURN(eTDAL_DISP_NO_ERROR);
 }
 
+/********************************************************
+   *   Demo Functions   Definitions   (LOCAL/CALLBACK)        *
+********************************************************/
+LOCAL bool TDAL_DISPm_VideoLayerEnableCB(bool bStart)
+{
+    tTDAL_DISP_Error error = eTDAL_DISP_NO_ERROR;
+#ifdef PACKAGE_PVR    
+    if (bStart)
+    {        
+        if (TDAL_PVRi_PlaybackSwitchChunk())
+        {
+            TDAL_AV_VideoUnFreeze(eTDAL_AV_DECODER_VIDEO_1);
+        }
+        else
+        {
+            error = TDAL_DISP_LayerEnable(eTDAL_DISP_LAYER_VIDEO_ID_0);
+        }           
+    }
+    else
+    {
+        if (TDAL_PVRi_PlaybackSwitchChunk())
+        {
+            TDAL_AV_VideoFreeze(eTDAL_AV_DECODER_VIDEO_1);
+        }
+        else
+        {
+            error = TDAL_DISP_LayerDisable(eTDAL_DISP_LAYER_VIDEO_ID_0);
+        }
+    }
+
+    if (error != eTDAL_DISP_NO_ERROR)
+    {
+        return FALSE;
+    }
+#endif
+    return TRUE;
+}

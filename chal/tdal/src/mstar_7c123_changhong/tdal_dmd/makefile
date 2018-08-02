@@ -40,7 +40,7 @@ LIBOBJS = 	tdal_dmd.$(OBJ_SUFFIX)
 # ****************************************
 # List of dependencies
 # ****************************************
-tdal_dmd.$(OBJ_SUFFIX): tdal_dmd.h makefile tdal_dmd.c tdal_dmd_priv.h
+tdal_dmd.$(OBJ_SUFFIX):             tdal_dmd.h makefile tdal_dmd.c tdal_dmd_priv.h
 
 # ****************************************
 # Always include crules.mak

@@ -478,12 +478,10 @@ tTDAL_AVS_Error   p_TDAL_AVS_WriteRegister(U8   driverRegister, U8   value)
       
       if(STerror != ST_NO_ERROR)
       {
-        printf("AVS   I2C   Write   Failed\r\n");
         mTBOX_TRACE((kTBOX_NIV_WARNING, "ERR:   STI2C_Write   failed :   [%s]\n", TBOX_GetDriverErrorText(STerror)));
         Error = eTDAL_AVS_NOT_DONE;
       }
    }
-/*   printf("I2C: 0x%x 0x%x\n", Data[0], Data[1]);*/
 
    STOS_SemaphoreSignal(I2CAccessSemaphore);
 

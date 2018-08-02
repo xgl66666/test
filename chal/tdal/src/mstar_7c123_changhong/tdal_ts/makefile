@@ -34,8 +34,8 @@ DIR_INCLUDE = \
 # List of object files needed to create library
 # ***************************************************
 LIBOBJS = tdal_ts_route.$(OBJ_SUFFIX) \
-          tdal_ts_sink.$(OBJ_SUFFIX) \
-	      tdal_ts_source.$(OBJ_SUFFIX)
+	tdal_ts_sink.$(OBJ_SUFFIX) \
+	        tdal_ts_source.$(OBJ_SUFFIX)
 
 
 # ****************************************

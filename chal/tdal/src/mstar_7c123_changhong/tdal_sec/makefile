@@ -28,18 +28,19 @@ DIR_INCLUDE = \
     $(INCLUDE_PREFIX)$(TDAL_SEC_INCLUDE) \
     $(INCLUDE_PREFIX)$(TDAL_COMMON_INCLUDE) \
     $(INCLUDE_PREFIX)$(TBOX_INCLUDE) \
-    $(INCLUDE_PREFIX)$(NAGRALIB_ROOT) 
+    $(INCLUDE_PREFIX)$(NAGRALIB_ROOT)
 
 # ***************************************************
 # List of object files needed to create library
 # ***************************************************
-LIBOBJS = 	tdal_sec.$(OBJ_SUFFIX)
+LIBOBJS = tdal_sec.$(OBJ_SUFFIX) tdal_sec_chal.$(OBJ_SUFFIX)
 
 
 # ****************************************
 # List of dependencies
 # ****************************************
 tdal_sec.$(OBJ_SUFFIX): $(TDAL_SEC_INCLUDE)/tdal_sec.h tdal_sec.c makefile
+tdal_sec_chal.$(OBJ_SUFFIX): tdal_sec_chal.h tdal_sec_chal.c makefile
 
 # ****************************************
 # Always include crules.mak

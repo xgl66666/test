@@ -27,8 +27,7 @@
 #include "MsCommon.h"
 #include "apiAUDIO.h"
 #include "MsMemory.h"
-
-
+#include "apiDMX.h"
 /********************************************************/
 /*   Defines   */
 /********************************************************/
@@ -69,7 +68,10 @@ LOCAL MS_U16 TvVolumeTable[] =
     0x0E30, 0x0E20, 0x0E10, 0x0E00, 0x0D70, 0x0D60, 0x0D50, 0x0D40, 0x0D30, 0x0D20, //  90
     0x0D10, 0x0D00, 0x0C70, 0x0C60, 0x0C50, 0x0C40, 0x0C30, 0x0C20, 0x0C10, 0x0C00  //  100
 };
-
+#define AUDIO_VOL_HDMI_COMPENSATION (-0x140)
+#define AUDIO_VOL_LR_COMPENSATION (-0x140)
+#define AUDIO_VOL_SPDIF_COMPENSATION (-0x140)
+#define AUDIO_SYNC_TIMEOUT_THRESHOLD 200
 /********************************************************/
 /*   Local   File   Variables   (LOCAL)   */
 /********************************************************/
@@ -78,7 +80,7 @@ LOCAL MS_U16 TvVolumeTable[] =
 /*   Local   Functions   Declarations   (LOCAL)   */
 /********************************************************/
 
-LOCAL tTDAL_OUTPUT_Error p_TDAL_OUTPUTi_Audio_SetVolume(MS_U8 VolumePercent);
+tTDAL_OUTPUT_Error p_TDAL_OUTPUTi_Audio_SetVolume(MS_U8 VolumePercent);
 
 /********************************************************/
 /*   Functions   Definitions   (LOCAL/GLOBAL)   */
@@ -335,20 +337,17 @@ GLOBAL   tTDAL_OUTPUT_Error   TDAL_OUTPUT_AudioAnaSpeakerAdjustSet(tTDAL_OUTPUT_
 
 GLOBAL  tTDAL_OUTPUT_Error TDAL_OUTPUTi_AudioAnaEnable(bool enable)
 {
-	MS_BOOL mute;
+    MS_BOOL mute;
+    static MS_BOOL FirstBoot = TRUE;
 
-	mTBOX_FCT_ENTER("TDAL_OUTPUTi_AudioAnaEnable");
+    mTBOX_FCT_ENTER("TDAL_OUTPUTi_AudioAnaEnable");
 
-	mute = enable? FALSE: TRUE;
+    mute = enable? FALSE: TRUE;
 
-	mTBOX_TRACE((kTBOX_NIV_1, "[TDAL_OUTPUTi_AudioAnaEnable]   enable = %s\n", enable == true ? "TRUE" : "FALSE"));
 
-	MApi_AUDIO_SetMute(AUDIO_PATH_MAIN, mute);
-    MApi_AUDIO_SetMute(AUDIO_T3_PATH_HDMI, mute);
-    MApi_AUDIO_SPDIF_SetMute(mute);
-    MApi_AUDIO_HDMI_Tx_SetMute(mute);
+    mTBOX_TRACE((kTBOX_NIV_1, "[TDAL_OUTPUTi_AudioAnaEnable]   enable = %s\n", enable == true ? "TRUE" : "FALSE"));
 
-#ifdef AUDIO_MUTE_GPIO 
+#ifdef AUDIO_MUTE_GPIO
     if (mute)
     {
         AUDIO_MUTE_SET_GPIO_DOWN(AUDIO_MUTE_GPIO);
@@ -359,87 +358,168 @@ GLOBAL  tTDAL_OUTPUT_Error TDAL_OUTPUTi_AudioAnaEnable(bool enable)
     }
 #endif
 
+    if (FirstBoot == TRUE)
+    {
+        FirstBoot = FALSE;
+        p_TDAL_OUTPUTi_Audio_SetVolume(0);
+        TDAL_AVm_SetAudioNeedUnmute(TRUE);
+        mTBOX_RETURN(eTDAL_OUTPUT_NO_ERROR);
+    }
+
     if (!mute)
     {
-		mTBOX_TRACE((kTBOX_NIV_1, "[TDAL_OUTPUTi_AudioAnaEnable] Configuring HDMI audio\n"));
-	    int volume;
-		/* TODO START:  HDMITx Audio*/
-		/* Ivica: Disabled because of crash */
-		//MApi_HDMITx_SetAudioOnOff((MS_BOOL)TRUE);
-		//MApi_HDMITx_SetAudioFrequency(HDMITX_AUDIO_48K);
-		//MApi_HDMITx_SetAudioConfiguration(HDMITX_AUDIO_48K, HDMITX_AUDIO_CH_2, HDMITX_AUDIO_PCM);
-		/* TODO END:    HDMITx Audio*/
+        mTBOX_TRACE((kTBOX_NIV_1, "[TDAL_OUTPUTi_AudioAnaEnable] Configuring HDMI audio\n"));
+        int volume;
 
-		for(volume=0;volume<=TDAL_OUTPUT_ANA_volume;volume+=10)
-		{
-			// printf("volume: %d\n",volume);
-			p_TDAL_OUTPUTi_Audio_SetVolume(volume);
-			MsOS_DelayTask(10);
-		}
-		p_TDAL_OUTPUTi_Audio_SetVolume(TDAL_OUTPUT_ANA_volume);
+
+        /* TODO END:    HDMITx Audio*/
+        /*
+        for(volume=0;volume<=TDAL_OUTPUT_ANA_volume;volume+=10)
+        {
+            // printf("volume: %d\n",volume);
+            p_TDAL_OUTPUTi_Audio_SetVolume(volume);
+            MsOS_DelayTask(10);
+        }
+        */
+        p_TDAL_OUTPUTi_Audio_SetVolume(TDAL_OUTPUT_ANA_volume);
+    }
+    else
+    {
+        MApi_AUDIO_SetMute(AUDIO_PATH_MAIN_SPEAKER, mute);
+        MApi_AUDIO_SetMute(AUDIO_T3_PATH_HDMI, mute);
+        MApi_AUDIO_SPDIF_SetMute(mute);
+        MApi_AUDIO_HDMI_Tx_SetMute(mute);
+        TDAL_AVm_SetAudioNeedUnmute(FALSE);
     }
 
     mTBOX_RETURN(eTDAL_OUTPUT_NO_ERROR);
+
 }
 
-LOCAL tTDAL_OUTPUT_Error p_TDAL_OUTPUTi_Audio_SetVolume(MS_U8 VolumePercent)
+static void checksync(void)
 {
-	tTDAL_OUTPUT_Error Error = eTDAL_OUTPUT_NO_ERROR;
 
-    MS_U8 value1, value2;
-    MS_U16 VolumeValue;
-
-    mTBOX_FCT_ENTER("p_TDAL_OUTPUTi_Audio_SetVolume");
-
-    mTBOX_TRACE((kTBOX_NIV_1, "[p_TDAL_OUTPUTi_Audio_SetVolume] Volume = %d\n", (int) VolumePercent));
-
-    if( VolumePercent > kTDAL_OUTPUT_AUDIO_VOLUME_MAX )
+    MS_U64 u64TD = 0xFFFFFFFF;
+    MS_U32 TimeOut = MsOS_GetSystemTime();
+    while ((u64TD>66))
     {
-        VolumePercent= kTDAL_OUTPUT_AUDIO_VOLUME_MAX;
+        u64TD = MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_33Bit_STCPTS_DIFF);
+        MsOS_DelayTask(30);
+        if (MsOS_GetSystemTime() -TimeOut > AUDIO_SYNC_TIMEOUT_THRESHOLD)
+        {
+            printf("AUDIO_SYNC_TIMEOUT\n");
+            break;
+        }
     }
-
-    if(VolumePercent== 0)
-    {
-    	mTBOX_TRACE((kTBOX_NIV_1, "[p_TDAL_OUTPUTi_Audio_SetVolume] Muting everything\n"));
-    	MApi_AUDIO_SetMute(AUDIO_PATH_MAIN_SPEAKER, TRUE);
-        MApi_AUDIO_SetMute(AUDIO_T3_PATH_HDMI, TRUE );
-        MApi_AUDIO_SPDIF_SetMute(TRUE);
-        MApi_AUDIO_HDMI_Tx_SetMute(TRUE);
-    }
-    else
-    {
-    	mTBOX_TRACE((kTBOX_NIV_1, "[p_TDAL_OUTPUTi_Audio_SetVolume] Unmuting everything\n"));
-    	MApi_AUDIO_SetMute(AUDIO_PATH_MAIN_SPEAKER, FALSE);
-        MApi_AUDIO_SetMute(AUDIO_T3_PATH_HDMI, FALSE);
-        MApi_AUDIO_SPDIF_SetMute(FALSE);
-        MApi_AUDIO_HDMI_Tx_SetMute(FALSE);
-    }
-
-
-//#if(ENABLE_SOUND_NONLINEAR_CURVE)
-    //VolumePercent = MApp_NonLinearCalculate(MApp_GetNonLinearCurve(NONLINEAR_CURVE_VOLUME),VolumePercent);
-//#endif
-
-    VolumeValue = TvVolumeTable[VolumePercent];
-    value1 = (MS_U8)(VolumeValue>>8);
-    value2 = (MS_U8)((VolumeValue&0x00FF)>>4);
-
-    mTBOX_TRACE((kTBOX_NIV_1, "[p_TDAL_OUTPUTi_Audio_SetVolume] MApi_AUDIO_SetAbsoluteVolume\n"));
-    MApi_AUDIO_SetAbsoluteVolume(AUDIO_PATH_MAIN_SPEAKER, value1, value2);
-    MApi_AUDIO_SetAbsoluteVolume(AUDIO_T3_PATH_HDMI, value1, value2);
-
-#ifdef AUDIO_MUTE_GPIO
-    if (VolumePercent == 0)
-    {
-        AUDIO_MUTE_SET_GPIO_DOWN(AUDIO_MUTE_GPIO);
-    }
-    else
-    {
-        AUDIO_MUTE_SET_GPIO_UP(AUDIO_MUTE_GPIO);
-    }
-#endif
-
-    mTBOX_RETURN(Error);
 }
 
+tTDAL_OUTPUT_Error p_TDAL_OUTPUTi_Audio_SetVolume(MS_U8 VolumePercent)
+{
+        tTDAL_OUTPUT_Error Error = eTDAL_OUTPUT_NO_ERROR;
+    
+        MS_U8 value1, value2;
+        MS_U16 VolumeValue;
+    
+        mTBOX_FCT_ENTER("p_TDAL_OUTPUTi_Audio_SetVolume");
+        if(!TDAL_AV_VideoDecoding() && TDAL_AV_VideoStarted() && VolumePercent > 0)
+        {
+            TDAL_AVm_SetAudioNeedUnmute(TRUE);
+            mTBOX_RETURN(Error);
+        }
+
+        mTBOX_TRACE((kTBOX_NIV_1, "[p_TDAL_OUTPUTi_Audio_SetVolume] Volume = %d\n", (int) VolumePercent));
+    
+        if( VolumePercent > kTDAL_OUTPUT_AUDIO_VOLUME_MAX )
+        {
+            VolumePercent= kTDAL_OUTPUT_AUDIO_VOLUME_MAX;
+        }
+    
+        if(VolumePercent== 0)
+        {
+            mTBOX_TRACE((kTBOX_NIV_1, "[p_TDAL_OUTPUTi_Audio_SetVolume] Muting everything\n"));
+            MApi_AUDIO_SetMute(AUDIO_PATH_MAIN_SPEAKER, TRUE);
+            MApi_AUDIO_SetMute(AUDIO_T3_PATH_HDMI, TRUE );
+            MApi_AUDIO_SPDIF_SetMute(TRUE);
+            MApi_AUDIO_HDMI_Tx_SetMute(TRUE);
+        }
+        else
+        {
+            checksync();
+            mTBOX_TRACE((kTBOX_NIV_1, "[p_TDAL_OUTPUTi_Audio_SetVolume] Unmuting everything\n"));
+            MApi_AUDIO_SetMute(AUDIO_PATH_MAIN_SPEAKER, FALSE);
+            MApi_AUDIO_SetMute(AUDIO_T3_PATH_HDMI, FALSE);
+            MApi_AUDIO_SPDIF_SetMute(FALSE);
+            MApi_AUDIO_HDMI_Tx_SetMute(FALSE);
+        }
+    
+    
+    //#if(ENABLE_SOUND_NONLINEAR_CURVE)
+        //VolumePercent = MApp_NonLinearCalculate(MApp_GetNonLinearCurve(NONLINEAR_CURVE_VOLUME),VolumePercent);
+    //#endif
+    
+        mTBOX_TRACE((kTBOX_NIV_1, "[p_TDAL_OUTPUTi_Audio_SetVolume] MApi_AUDIO_SetAbsoluteVolume\n"));
+        //MApi_AUDIO_SetAbsoluteVolume(AUDIO_PATH_MAIN_SPEAKER, value1, value2);
+       // MApi_AUDIO_SetAbsoluteVolume(AUDIO_T3_PATH_HDMI, value1, value2
+    
+        MS_U16 u16VolumeValue = TvVolumeTable[VolumePercent];
+    
+        MS_U16 u16VolumeValue_LR = u16VolumeValue + AUDIO_VOL_LR_COMPENSATION;
+    
+        //check if the volume value overflow (larger than 0x7f00)
+        if( u16VolumeValue_LR > 0x7f00 )
+        {
+            value1 = 0x7f;
+            value2 = 0x00;
+        }
+        else
+        {
+            value1 = (MS_U8)(u16VolumeValue_LR>>8);
+            value2 = (MS_U8)((u16VolumeValue_LR&0x00FF)>>5);
+        }
+        MApi_AUDIO_SetAbsoluteVolume(AUDIO_PATH_MAIN_SPEAKER, value1, value2);
+    
+        MS_U16 u16VolumeValue_HDMI=u16VolumeValue + AUDIO_VOL_HDMI_COMPENSATION;
+    
+        if( u16VolumeValue_HDMI > 0x7f00 )
+        {
+            value1 = 0x7f;
+            value2 = 0x00;
+        }
+        else
+        {
+            value1 = (MS_U8)(u16VolumeValue_HDMI>>8);
+            value2 = (MS_U8)((u16VolumeValue_HDMI&0x00FF)>>5);
+        }
+        MApi_AUDIO_SetAbsoluteVolume(AUDIO_T3_PATH_HDMI, value1, value2);
+    
+        //SPDIF vol + compensation
+        MS_U16 u16VolumeValue_SPDIF = u16VolumeValue + AUDIO_VOL_SPDIF_COMPENSATION;
+    
+        //check if the volume value overflow (larger than 0x7f00)
+        if( u16VolumeValue_SPDIF > 0x7f00 )
+        {
+            value1 = 0x7f;
+            value2 = 0x00;
+        }
+        else
+        {
+            value1 = (MS_U8)(u16VolumeValue_SPDIF>>8);
+            value2 = (MS_U8)((u16VolumeValue_SPDIF&0x00FF)>>5);
+        }
+        MApi_AUDIO_SetAbsoluteVolume(AUDIO_T3_PATH_SPDIF, value1, value2);
+    
+#ifdef AUDIO_MUTE_GPIO
+        if (VolumePercent == 0)
+        {
+            AUDIO_MUTE_SET_GPIO_DOWN(AUDIO_MUTE_GPIO);
+        }
+        else
+        {
+            AUDIO_MUTE_SET_GPIO_UP(AUDIO_MUTE_GPIO);
+        }
+#endif
+        TDAL_AVm_SetAudioNeedUnmute(FALSE);
+        mTBOX_RETURN(Error);
+
+}
 

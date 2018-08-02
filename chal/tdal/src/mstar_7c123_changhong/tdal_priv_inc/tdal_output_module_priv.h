@@ -26,9 +26,9 @@ extern   "C"   {
 
 #define   kTDAL_OUTPUTi_NB_VIDEO_DENC   (1)
 #define   kTDAL_OUTPUTi_NB_AUDIO_ANA    (1)
-#define   kTDAL_OUTPUTi_NB_AUDIO_SPDIF  (0)
+#define   kTDAL_OUTPUTi_NB_AUDIO_SPDIF  (1)
 #define   kTDAL_OUTPUTi_NB_VIDEO_HD_DAC (0)
-#define   kTDAL_OUTPUTi_NB_HDMI         (0)
+#define   kTDAL_OUTPUTi_NB_HDMI         (1)
 #define   kTDAL_OUTPUTi_NB_RFMOD        (0)
 #define   kTDAL_OUTPUTi_NB_OUTPUT       (kTDAL_OUTPUTi_NB_VIDEO_DENC + \
                                          kTDAL_OUTPUTi_NB_AUDIO_ANA + \
@@ -75,7 +75,11 @@ typedef   struct
 
 typedef   struct
 {
-   uint32_t   uiAudioFrequency;
+    tTDAL_OUTPUT_VideoHDStandard  videoMode;
+    tTDAL_OUTPUT_AudioDigitalMode audioMode;
+    uint32_t         uiAudioDelay;
+    uint8_t         uiAudioAdjust;
+    uint32_t   uiAudioFrequency;
 }tTDAL_OUTPUTi_HDMIDescriptor;
 
 typedef struct

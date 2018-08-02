@@ -13,8 +13,19 @@
 #include "MsTypes2.h"
 #include "apiVDEC.h"
 
-#include "msAPI_MM.h"
-#include "MSrv_ZmplayerSubtitleDecoder.h"
+#include "mmsdk_interface_def.h"
+#include "mmsdk_interface.h"
+#include "msapi_MM_Common.h"
+#include "msapi_MM_Display.h"
+
+#include "porting_sysinfo.h"
+#include <sys/stat.h>
+#include "MsFS.h"
+#include <pthread.h>
+#include <assert.h>
+#include "MM_Player_Def.h"
+#include "MApi_MEMConfig_Interface.h"
+
 #include "tdal_mp_p.h"
 #include "apiGFX.h"
 #include "apiGOP.h"
@@ -24,6 +35,7 @@
 #include "apiVDEC.h"
 
 #include "crules.h"
+#if 0 //wait porting
 
 #define ST_PRPT_FLAG_NONE 0
 #define ST_PRPT_FLAG_SHOW 1
@@ -1031,4 +1043,4 @@ void MM_SubRender_Unshow(void *arg)
     }
     MApi_GOP_GWIN_Enable(pWin->u8GWinId, FALSE);
 }
-
+#endif

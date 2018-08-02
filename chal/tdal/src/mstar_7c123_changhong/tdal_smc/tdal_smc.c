@@ -13,48 +13,44 @@
  *****************************************************************************/
 
 /********************************************************/
-/*            Includes                        */
+/*            Includes                                  */
 /********************************************************/
 #include "crules.h"
 #include "tdal_common.h"
 #include "MsTypes.h"
+#include "MsOS.h"
 #include "drvSC.h"
 #include "tdal_smc.h"
 #include "tdal_smc_priv.h"
 #include "tbox.h"
 #include "tkel.h"
 
-
-
-#define SC_USE_IO_51
-
 #ifdef SC_USE_IO_51
-//#include "MsMemory.h"
 #include "drvPM.h"
 #include "drvMBX.h"
 #include "MsOS.h"
 #endif
 
 /********************************************************/
-/*            Defines                           */
+/*            Defines                                   */
 /********************************************************/
-#define kTDAL_SMC_NB_SLOTS 1
+#define kTDAL_SMC_NB_SLOTS      1
+#define USE_SMC_DAUGHTER_BOARD  1
+
 /********************************************************/
-/*            Macros                           */
+/*            Macros                                    */
 /********************************************************/
 mTBOX_SET_MODULE(eTDAL_SMC);
 
-//#define __LOCAL_SMC_DEBUG__ 
-#if defined (__LOCAL_SMC_DEBUG__)
-#define mSMC_DEBUG  printf 
-LOCAL char *SMCi_StrError (SC_Result errCode);
 
+#if defined (__LOCAL_SMC_DEBUG__)
+#define mSMC_DEBUG(x) printf x
 #else
-#define mSMC_DEBUG(...) 
+#define mSMC_DEBUG(x)
 #endif
 
-#define SC_T1_SEND_TIMEOUT             70// 1.5 //50
-#define SC_T1_RECV_TIMEOUT             70// 1.5 //80
+#define SC_T1_SEND_TIMEOUT             70   // 1.5 //50
+#define SC_T1_RECV_TIMEOUT             70   // 1.5 //80
 
 #define PM51_LITE_AVAILABLE                                    0x0003030000
 #define PM51_LITE_ADR                                          0x0003030000  //Alignment 0x01000
@@ -62,8 +58,69 @@ LOCAL char *SMCi_StrError (SC_Result errCode);
 #define PM51_LITE_LEN                                          0x0000008000
 #define PM51_MEM_ADR                                           0x0003038000  //Alignment 0x01000
 
+#if USE_SMC_DAUGHTER_BOARD
+#define BIT(_bit_)  (1 << (_bit_))
+#define GBIT0       BIT(0)
+#define GBIT1       BIT(1)
+#define GBIT2       BIT(2)
+#define GBIT3       BIT(3)
+#define GBIT4       BIT(4)
+#define GBIT5       BIT(5)
+#define GBIT6       BIT(6)
+#define GBIT7       BIT(7)
+
+#define RIU_MAP     _gMIO_MapBase
+
+#define RIU         ((unsigned short volatile *) RIU_MAP)
+#define RIU8        ((unsigned char  volatile *) RIU_MAP)
+
+#define MST_MACRO_START     do {
+#define MST_MACRO_END       } while (0)
+
+#define MDrv_ReadRegBit( u32Reg, u8Mask )                                               \
+        (RIU8[(u32Reg) * 2 - ((u32Reg) & 1)] & (u8Mask))
+
+#define MDrv_WriteRegBit( u32Reg, bEnable, u8Mask )                                     \
+    MST_MACRO_START                                                                     \
+    MS_U32 u32Reg8 = ((u32Reg) * 2) - ((u32Reg) & 1);                                   \
+    RIU8[u32Reg8] = (bEnable) ? (RIU8[u32Reg8] |  (u8Mask)) :                           \
+                                (RIU8[u32Reg8] & ~(u8Mask));                            \
+    MST_MACRO_END
+
+#define MDrv_WriteByte( u32Reg, u8Val )                                                 \
+    MST_MACRO_START                                                                     \
+    RIU8[((u32Reg) * 2) - ((u32Reg) & 1)] = u8Val;                                      \
+    MST_MACRO_END
+
+#define MDrv_ReadByte( u32Reg )                                                         \
+        (RIU8[(u32Reg) * 2 - ((u32Reg) & 1)])
+
+#define MDrv_Write2Byte( u32Reg, u16Val )                                               \
+    MST_MACRO_START                                                                     \
+    if ((u32Reg) & 0x01)                                                                \
+    {                                                                                   \
+        RIU8[((u32Reg) * 2) - 1] = (MS_U8)((u16Val));                                   \
+        RIU8[((u32Reg) + 1) * 2] = (MS_U8)((u16Val) >> 8);                              \
+    }                                                                                   \
+    else                                                                                \
+    {                                                                                   \
+        RIU[u32Reg] = u16Val;                                                           \
+    }                                                                                   \
+    MST_MACRO_END
+
+typedef struct
+{
+    MS_U32 r_oen;
+    MS_U8  m_oen;
+    MS_U32 r_out;
+    MS_U8  m_out;
+    MS_U32 r_in;
+    MS_U8  m_in;
+} gpio_setting;
+#endif
+
 /********************************************************/
-/*            Typedefs                        */
+/*            Typedefs                                  */
 /********************************************************/
 
 /********************************************************/
@@ -71,11 +128,11 @@ LOCAL char *SMCi_StrError (SC_Result errCode);
 /********************************************************/
 
 /********************************************************/
-/*            Local   Module   Variables   (MODULE)         */
+/*            Local   Module   Variables   (MODULE)     */
 /********************************************************/
 
 /********************************************************/
-/*            Local   File   Variables   (LOCAL)         */
+/*            Local   File   Variables   (LOCAL)        */
 /********************************************************/
 LOCAL tTDAL_SMC_status           TDAL_SMC_status[kTDAL_SMC_NB_SLOTS];
 LOCAL tTDAL_SMC_Clients          TDAL_SMC_Clients[kTDAL_SMC_MAX_CLIENTS];
@@ -84,17 +141,18 @@ LOCAL TKEL_task_id               TDAL_SMC_TaskId;
 LOCAL MS_U8                      u8SCID;
 LOCAL TDAL_mutex_id TdalSMCMutexID = NULL;
 
-static MS_U8    u8Protocol = 0x01;
-static MS_U8    u8Fi = 0x01;
-static MS_U8    u8Di = 0x01;
-MS_U8  _u8AtrBuf[SC_ATR_LEN_MAX];
+static MS_U8 u8Protocol = 0x01;
+static MS_U8 u8Fi = 0x01;
+static MS_U8 u8Di = 0x01;
+MS_U8 _u8AtrBuf[SC_ATR_LEN_MAX];
 MS_U16 _u16AtrLen = 0;
-SC_Param      sInitParams;
+SC_Param sInitParams;
 #ifdef SC_USE_IO_51
 MS_U8   u8SCFirmware[] = {
     #include "fwSC.dat"
-}; 
+};
 #endif
+
 /********************************************************/
 /*            Functions   Definitions   (LOCAL/GLOBAL)   */
 /********************************************************/
@@ -104,14 +162,113 @@ LOCAL void SMC_Task(void *arg);
 LOCAL tTDAL_SMC_ErrorCode SMCi_OpenSlot  (tTDAL_SMC_Slot slot);
 /* Callback function to notify about Smart Card driver events (Read/Write/Reset/...) */
 LOCAL void SMC_Callback(tTDAL_SMC_Slot  slot, tTDAL_SMC_Event Event, uint8_t* Buffer, uint32_t BufferLength, uint8_t  SW1, uint8_t  SW2);
-//MARIJA DEBUG
-LOCAL void SMCi_GetInfo ();
-LOCAL void SMC_PrintData(MS_U8 *pu8Data, MS_U16 u16DataLen);
 
 LOCAL tTDAL_SMC_ErrorCode SMCi_CloseSlot (tTDAL_SMC_Slot slot);
 #ifdef SC_USE_IO_51
 MS_BOOL SMC_Load_Fw(MS_U32 u32FwSCAddr);
 #endif
+
+#if USE_SMC_DAUGHTER_BOARD
+static MS_U32 _gMIO_MapBase = 0xBF000000;
+
+#if 0
+static void HAL_Gpio_Set_Output(gpio_setting *gpio)
+{
+    MDrv_WriteRegBit(gpio->r_oen, 0, gpio->m_oen);
+}
+
+static void HAL_Gpio_Set_Low(gpio_setting *gpio)
+{
+    MDrv_WriteRegBit(gpio->r_out, 0, gpio->m_out);
+}
+
+static void HAL_Gpio_Set_High(gpio_setting *gpio)
+{
+    MDrv_WriteRegBit(gpio->r_out, 1, gpio->m_out);
+}
+#endif
+
+static void HAL_Gpio_Set_Input(gpio_setting *gpio)
+{
+    MDrv_WriteRegBit(gpio->r_oen, 1, gpio->m_oen);
+}
+
+static int HAL_Gpio_Get_Level(gpio_setting *gpio)
+{
+    int r;
+
+    r = MDrv_ReadRegBit(gpio->r_in, gpio->m_in);
+
+    return (r != 0);
+}
+
+static MS_BOOL is_sc_board_connected(void)
+{
+    static MS_BOOL already_checked = FALSE, connected;
+    gpio_setting sm0_c8;
+    char byte[9] = {0x01, 0x40, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x00};
+    int val;
+
+    if (already_checked == TRUE)
+    {
+        return connected;
+    }
+    already_checked = TRUE;
+
+    /* set to SC function */
+    MDrv_WriteByte(0x101e51, byte[0]);
+    MDrv_WriteByte(0x102958, byte[1]);
+    MDrv_WriteByte(0x101ea1, byte[2]);
+    MDrv_WriteByte(0x101e24, byte[3]);
+    MDrv_WriteByte(0x101e1c, byte[4]);
+    MDrv_WriteByte(0x101e18, byte[5]);
+    MDrv_WriteByte(0x101e19, byte[6]);
+    MDrv_WriteByte(0x101e08, byte[7]);
+    MDrv_WriteByte(0x101e46, byte[8]);
+
+    /* set to GPIO function */
+    MDrv_WriteRegBit(0x101e51, 1, GBIT0);   // reg_sm0_gpio_en=1
+    MDrv_WriteRegBit(0x102958, 0, GBIT6);   // reg_pd_smc_pad=0
+    MDrv_WriteRegBit(0x101ea1, 0, GBIT7);   // reg_all_pad_in=0
+    MDrv_WriteRegBit(0x101e24, 0, GBIT1);   // reg_test_in_mode=0
+    MDrv_WriteRegBit(0x101e24, 0, GBIT0);   //
+    MDrv_WriteRegBit(0x101e24, 0, GBIT5);   // reg_test_out_mode=0
+    MDrv_WriteRegBit(0x101e24, 0, GBIT4);   //
+    MDrv_WriteRegBit(0x101e1c, 0, GBIT0);   // reg_ocp0_en=0
+    MDrv_WriteRegBit(0x101e18, 0, GBIT5);   // reg_sm0_c48=0
+    MDrv_WriteRegBit(0x101e18, 0, GBIT4);   //
+    MDrv_WriteRegBit(0x101e19, 0, GBIT4);   // reg_sm0_io=0
+    MDrv_WriteRegBit(0x101e08, 0, GBIT5);   // reg_mcu_jtag_mode=0
+    MDrv_WriteRegBit(0x101e08, 0, GBIT4);   //
+    MDrv_WriteRegBit(0x101e46, 0, GBIT1);   // reg_chiptop_dummy_3_0=0
+    MDrv_WriteRegBit(0x101e46, 0, GBIT0);   //
+    sm0_c8.r_oen = 0x10250c;                // output enable (0:output, 1=input)
+    sm0_c8.m_oen = GBIT5;
+    sm0_c8.r_in  = 0x10250c;                // in
+    sm0_c8.m_in  = GBIT0;
+    sm0_c8.r_out = 0x10250c;                // out
+    sm0_c8.m_out = GBIT4;
+
+    /* read C8 value */
+    HAL_Gpio_Set_Input(&sm0_c8);
+    val = HAL_Gpio_Get_Level(&sm0_c8);
+
+    /* set to SC function */
+    MDrv_WriteByte(0x101e51, byte[0]);
+    MDrv_WriteByte(0x102958, byte[1]);
+    MDrv_WriteByte(0x101ea1, byte[2]);
+    MDrv_WriteByte(0x101e24, byte[3]);
+    MDrv_WriteByte(0x101e1c, byte[4]);
+    MDrv_WriteByte(0x101e18, byte[5]);
+    MDrv_WriteByte(0x101e19, byte[6]);
+    MDrv_WriteByte(0x101e08, byte[7]);
+    MDrv_WriteByte(0x101e46, byte[8]);
+
+    connected = (val == 0) ? FALSE : TRUE;
+    return connected;
+}
+#endif
+
 /*===================================================================
  *
  * TDAL_SMC_Init
@@ -128,32 +285,32 @@ MS_BOOL SMC_Load_Fw(MS_U32 u32FwSCAddr);
  *    eTDAL_SMC_ERROR if an error has occurred.
  *
  *==================================================================*/
-tTDAL_SMC_ErrorCode   TDAL_SMC_Init()
+tTDAL_SMC_ErrorCode TDAL_SMC_Init(void)
 {
-    SC_Result    errCode;
-    tTDAL_SMC_ErrorCode rc;
-    unsigned char    i;
+    SC_Result errCode;
+    unsigned char i;
 
     mTBOX_FCT_ENTER("TDAL_SMC_Init");
 
+#if USE_SMC_DAUGHTER_BOARD
+    is_sc_board_connected();
+#endif
+
     TDAL_CreateMutex(&TdalSMCMutexID);
 
-    //disable makeup source 
-    *(volatile unsigned int*)(0xBF001C00 + (0x08 << 2)) |= 0x00FF; //mark for irq
-    
 #ifdef SC_USE_IO_51    
     SMC_Load_Fw(PM51_LITE_ADR);
-#endif 
+#endif
 
     u8SCID = eTDAL_SMC_SLOT1;
     /*  Init the smart card driver */
     if ((errCode = MDrv_SC_Init(u8SCID)) != E_SC_OK)
     {
         mTBOX_TRACE(( kTBOX_NIV_1, "[%s] MDrv_SC_Init failed with error code=%d !!!!\n", __FUNCTION__, errCode));
-        return (eTDAL_SMC_ERROR);
+        mTBOX_RETURN(eTDAL_SMC_ERROR);
     }
     /* Initialize Global Structures */
-   for(i=0; i<kTDAL_SMC_NB_SLOTS; i++)
+    for(i=0; i<kTDAL_SMC_NB_SLOTS; i++)
     {
         TDAL_SMC_status[i].is_open	= FALSE;
         TDAL_SMC_status[i].statusCard = eTDAL_SMC_EXTRACTED;
@@ -169,6 +326,9 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_Init()
         TDAL_SMC_Clients[i].ca_type = eTDAL_SMC_NO_CA;
         TDAL_SMC_Clients[i].callback = NULL;
     }
+
+    /* Set driver debug level */
+    MDrv_SC_SetDbgLevel(E_SC_DBGLV_NONE);
 
     /* Create Main Message Queue */
     TKEL_CreateQueue(kTDAL_SMC_MAX_MSG, sizeof(tTDAL_SMC_msg), &TDAL_SMC_QueueId);
@@ -190,26 +350,8 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_Init()
         mTBOX_RETURN(eTDAL_SMC_ERROR);
     }
 
-    rc = SMCi_OpenSlot(eTDAL_SMC_SLOT1);
-    if (rc != eTDAL_SMC_NO_ERROR)
-    {
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL,
-                     "ERROR : Open slot 1 failure\n"));
-                     mTBOX_RETURN(eTDAL_SMC_ERROR);
-    }
-
-#if (kTDAL_SMC_NB_SLOTS == 2)
-    rc = SMCi_OpenSlot(eTDAL_SMC_SLOT2);
-    if (rc != eTDAL_SMC_NO_ERROR)
-    {
-        mTBOX_TRACE((kTBOX_NIV_CRITICAL,
-                    "ERROR : Open slot 2 failure\n"));
-                    mTBOX_RETURN(eTDAL_SMC_ERROR);
-    }
-#endif
-//printf("\n****************************************MARIJA       SMC INIT DONE\n");
-    return (eTDAL_SMC_NO_ERROR);
-
+    //printf("\n****************************************MARIJA       SMC INIT DONE\n");
+    mTBOX_RETURN(eTDAL_SMC_NO_ERROR);
 }
 
 
@@ -228,10 +370,12 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_Init()
  *    eTDAL_SMC_NO_ERROR in case of success.
  *
  *==================================================================*/
-tTDAL_SMC_ErrorCode   TDAL_SMC_Open(tTDAL_SMC_CA_Type   ca_type, tTDAL_SMC_CBF   callback)
+tTDAL_SMC_ErrorCode TDAL_SMC_Open(tTDAL_SMC_CA_Type ca_type, tTDAL_SMC_CBF callback)
 {
     unsigned char i;
     mTBOX_FCT_ENTER("TDAL_SMC_Open");
+    tTDAL_SMC_ErrorCode rc;
+
     if (callback == NULL)
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL,"ERROR : CA Client passed a NULL pointer to TDAL_SMC_Open() !\r\n"));
@@ -254,6 +398,8 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_Open(tTDAL_SMC_CA_Type   ca_type, tTDAL_SMC_CBF  
             break;
         }
     }
+    TDAL_SMC_Clients[i].ca_type = ca_type;
+    TDAL_SMC_Clients[i].callback = callback;
 
     if(i == kTDAL_SMC_MAX_CLIENTS)
     {
@@ -261,11 +407,25 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_Open(tTDAL_SMC_CA_Type   ca_type, tTDAL_SMC_CBF  
         mTBOX_RETURN(eTDAL_SMC_ERROR);
     }
 
-    TDAL_SMC_Clients[i].ca_type = ca_type;
-    TDAL_SMC_Clients[i].callback = callback;
+    rc = SMCi_OpenSlot(eTDAL_SMC_SLOT1);
+    if (rc != eTDAL_SMC_NO_ERROR)
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL,
+                     "ERROR : Open slot 1 failure\n"));
+                     mTBOX_RETURN(eTDAL_SMC_ERROR);
+    }
+
+#if (kTDAL_SMC_NB_SLOTS == 2)
+    rc = SMCi_OpenSlot(eTDAL_SMC_SLOT2);
+    if (rc != eTDAL_SMC_NO_ERROR)
+    {
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL,
+                    "ERROR : Open slot 2 failure\n"));
+                    mTBOX_RETURN(eTDAL_SMC_ERROR);
+    }
+#endif
 
     mTBOX_RETURN(eTDAL_SMC_NO_ERROR);
-
 }
 
 
@@ -283,12 +443,14 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_Open(tTDAL_SMC_CA_Type   ca_type, tTDAL_SMC_CBF  
  *    eTDAL_SMC_NO_ERROR in case of success.
  *
  *==================================================================*/
-tTDAL_SMC_ErrorCode   TDAL_SMC_Close(tTDAL_SMC_CA_Type   ca_type)
+tTDAL_SMC_ErrorCode TDAL_SMC_Close(tTDAL_SMC_CA_Type ca_type)
 {
     unsigned char i;
     unsigned char nb_register=0;
     unsigned char nb_unregister=0;
+
     mTBOX_FCT_ENTER("TDAL_SMC_Close");
+
     for(i=0; i<kTDAL_SMC_MAX_CLIENTS; i++)
     {
         if(TDAL_SMC_Clients[i].ca_type == ca_type)
@@ -299,9 +461,11 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_Close(tTDAL_SMC_CA_Type   ca_type)
         }
         if(TDAL_SMC_Clients[i].callback!=NULL)nb_register++;
     }
+
     if(nb_register==0)
     {
         MDrv_SC_Deactivate(u8SCID);
+        SMCi_CloseSlot(u8SCID);
     }
     if(nb_unregister!=0)
     {
@@ -330,22 +494,31 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_Close(tTDAL_SMC_CA_Type   ca_type)
  *    eTDAL_SMC_ERROR    if error driver
  *
  *==================================================================*/
-tTDAL_SMC_ErrorCode TDAL_SMC_GetState (tTDAL_SMC_Slot slot,
-                                       tTDAL_SMC_State *pState)
+tTDAL_SMC_ErrorCode TDAL_SMC_GetState(tTDAL_SMC_Slot slot, tTDAL_SMC_State *pState)
 {
-    SC_Result	   rc;
-    SC_Status    last_status;
-    tTDAL_SMC_State	   state;
-    tTDAL_SMC_msg	  msg;
-    
+    SC_Result rc;
+    SC_Status last_status;
+    tTDAL_SMC_State state;
+    tTDAL_SMC_msg msg;
+
     mTBOX_FCT_ENTER("TDAL_SMC_GetState");
-//   printf("\n\n\n********************TDAL_SMC_GetState    ENTER ******************\n");
+    //printf("\n\n\n********************TDAL_SMC_GetState    ENTER ******************\n");
 
-    if (pState != NULL) *pState = eTDAL_SMC_STATE_UNKNOWN;
+    if (pState != NULL)
+    {
+        *pState = eTDAL_SMC_STATE_UNKNOWN;
+    }
 
-    rc = MDrv_SC_GetStatus(u8SCID,&last_status);
+    rc = MDrv_SC_GetStatus(u8SCID, &last_status);
+#if USE_SMC_DAUGHTER_BOARD
+    if (is_sc_board_connected() == FALSE)
+    {
+        last_status.bCardIn = FALSE;
+        rc = E_SC_CARDOUT;
+    }
+#endif
 
-    switch(rc)
+    switch (rc)
     {
     case E_SC_OK: 
         /* No error: the card is inserted and the last operation succeeded */
@@ -368,12 +541,13 @@ tTDAL_SMC_ErrorCode TDAL_SMC_GetState (tTDAL_SMC_Slot slot,
         mTBOX_TRACE((kTBOX_NIV_1,"TDAL_SMC_GetState(slot %d): NOT INSERTED => EXTRACTED\r\n",slot));
         state = eTDAL_SMC_EXTRACTED;
         break;
+
     default:
         /* Unwaiting error code => indicated INSERTED !!! */
         mTBOX_TRACE((kTBOX_NIV_1,"TDAL_SMC_GetState(slot %d): code=%d => UNKNOWN\r\n",slot,rc));
         state = eTDAL_SMC_STATE_UNKNOWN;
     }
-     //printf("MARIJA GET STATE     returns %d\n",rc);
+
     if (pState != NULL)
     {
         *pState = state;
@@ -382,16 +556,14 @@ tTDAL_SMC_ErrorCode TDAL_SMC_GetState (tTDAL_SMC_Slot slot,
     {
         /* Asynchronous state notification */
         TDAL_LockMutex(TdalSMCMutexID);
-//        printf("\n\n\n********************TDAL_SMC_GetState    %d           TDAL_SMC_status[slot].statusCard  %d******************\n",last_status.bCardIn,TDAL_SMC_status[slot].statusCard );
         msg.slotID = slot;
-        if((last_status.bCardIn == TRUE)&& ((TDAL_SMC_status[slot].statusCard == eTDAL_SMC_INSERTED) || (TDAL_SMC_status[slot].statusCard == eTDAL_SMC_OPERATIONAL)))
+        if ((last_status.bCardIn == TRUE) && ((TDAL_SMC_status[slot].statusCard == eTDAL_SMC_INSERTED) || (TDAL_SMC_status[slot].statusCard == eTDAL_SMC_OPERATIONAL)))
         {
             msg.type = eTDAL_SMC_CARD_INSERTED;
-//           printf("********************TDAL_SMC_GetState    SEND INSERTED EVENT******************\n\n\n");
             TKEL_Enqueue(TDAL_SMC_QueueId, (void *)&msg);
         }
             
-        if((last_status.bCardIn == FALSE) && (TDAL_SMC_status[slot].statusCard == eTDAL_SMC_EXTRACTED))
+        if ((last_status.bCardIn == FALSE) && (TDAL_SMC_status[slot].statusCard == eTDAL_SMC_EXTRACTED))
         {
             msg.type = eTDAL_SMC_CARD_REMOVED;
             TKEL_Enqueue(TDAL_SMC_QueueId, (void *)&msg);
@@ -400,6 +572,7 @@ tTDAL_SMC_ErrorCode TDAL_SMC_GetState (tTDAL_SMC_Slot slot,
     }
     mTBOX_RETURN(eTDAL_SMC_NO_ERROR);
 }
+
 /*===================================================================
  *
  * TDAL_SMC_Reset
@@ -414,38 +587,24 @@ tTDAL_SMC_ErrorCode TDAL_SMC_GetState (tTDAL_SMC_Slot slot,
  *    eTDAL_SMC_NO_ERROR in case of success.
  *
  *==================================================================*/
-tTDAL_SMC_ErrorCode   TDAL_SMC_Reset(tTDAL_SMC_Slot   slot, bool isCold)
+tTDAL_SMC_ErrorCode TDAL_SMC_Reset(tTDAL_SMC_Slot slot, bool isCold)
 {
-    bool       	   ok  = TRUE;
-    SC_Result	   rc  = E_SC_OK;
-    tTDAL_SMC_msg	   msg;
-    tTDAL_SMC_msg_type  msgType;
-    MS_U8               history[SC_HIST_LEN_MAX];
-    MS_U16              history_len = 200;
+    bool ok  = TRUE;
+    SC_Result rc  = E_SC_OK;
+    tTDAL_SMC_msg msg;
+    tTDAL_SMC_msg_type msgType;
+    MS_U8 history[SC_HIST_LEN_MAX];
+    MS_U16 history_len = 200;
     MS_U8 guardTime;
-    SC_Info * pInfo;
-    SC_Status scStaus;
+
     mTBOX_FCT_ENTER("TDAL_SMC_Reset");
-    MS_U8 i;
+
     _u16AtrLen = 0;
     memset(_u8AtrBuf,0x00,SC_ATR_LEN_MAX);
-    
-    mSMC_DEBUG("[%s][%d]TDAL_SMC_Reset\n",__FUNCTION__,__LINE__);
-
-    //fix Get ATR WT,by danielle for  conax test
-    MDrv_SC_EnableTimeout(FALSE);
-    memset(&scStaus, 0, sizeof(SC_Status));
-    if(MDrv_SC_GetStatus(u8SCID, &scStaus) != E_SC_OK)
-    {
-        mSMC_DEBUG("Fail to MDrv_SC_GetStatus()!\n");
-        
-        mTBOX_RETURN(eTDAL_SMC_ERROR);
-    }
-    
     /* 
-        * Init message to send if not OK at RESET_ERROR 
-         * when no card detected set RESET_NO_CARD
-    */
+     * Init message to send if not OK at RESET_ERROR
+     * when no card detected set RESET_NO_CARD
+     */
     /* COLD Reset: Deactivate card */
     if (isCold)
     {
@@ -461,50 +620,29 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_Reset(tTDAL_SMC_Slot   slot, bool isCold)
         rc = MDrv_SC_Deactivate(u8SCID);
         MsOS_DelayTask(50);
         rc = MDrv_SC_Activate(u8SCID);
+        MsOS_DelayTask(50);
 
         if (rc != E_SC_OK)
         {
             ok = FALSE;
-            mSMC_DEBUG("[SMC DBG] TDAL_SMC_Reset(slot %d,COLD) ERROR: "
+            mSMC_DEBUG(("[SMC DBG] TDAL_SMC_Reset(slot %d,COLD) ERROR: "
                         "Deactivate failure (%s)\n",
-                        slot,SMCi_StrError(rc));
-        }
-        else
-        {
-            mSMC_DEBUG("[SMC DBG] TDAL_SMC_Reset, Cold reset OK!\n");
+                        slot,SMCi_StrError(rc)));
         }
     }
 
-
     /* The reset */
     if (ok)
-   {
-        /* Init params */
-        sInitParams.eCardClk = E_SC_CLK_4P5M;
-        sInitParams.u8UartMode = SC_UART_CHAR_8 | SC_UART_STOP_2 | SC_UART_PARITY_NO;
-        sInitParams.u16ClkDiv = 372;
-        sInitParams.eVccCtrl	 = E_SC_VCC_CTRL_8024_ON;
-        sInitParams.pfOCPControl = NULL;
-        sInitParams.u8Convention = 0;
-        rc = MDrv_SC_Reset(u8SCID, &sInitParams);
-//        MsOS_DelayTask(50);
+    {
+        MDrv_SC_ClearState(u8SCID);
 
+        rc = MDrv_SC_Reset(u8SCID, &sInitParams);
         if(rc == E_SC_OK)
         {
-//            rc = MDrv_SC_ClearState(u8SCID);
+            rc = MDrv_SC_GetATR(u8SCID, 30000, _u8AtrBuf, &_u16AtrLen, history, &history_len);
 
-            rc = MDrv_SC_GetATR(u8SCID, 1000, _u8AtrBuf, &_u16AtrLen, history, &history_len);
-
-	        mSMC_DEBUG("rc:%X\n",rc);		
-	        mSMC_DEBUG("ATR RAW DATA:%d\n",_u16AtrLen);
-	        for(i = 0;i<_u16AtrLen;i++)
-	        {
-                mSMC_DEBUG("%02X ",_u8AtrBuf[i]);
-	      
-	        }
-       mSMC_DEBUG("END\n\n\n\n");
-       if(rc==E_SC_OK)
-       {
+            if (rc == E_SC_OK)
+            {
                 if (_u8AtrBuf[0] == 0x3b)
                 {
                     sInitParams.u8UartMode = SC_UART_CHAR_8 | SC_UART_STOP_2 | SC_UART_PARITY_EVEN;
@@ -515,7 +653,7 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_Reset(tTDAL_SMC_Slot   slot, bool isCold)
                 }
                 else
                 {
-                     ok = FALSE;
+                    ok = FALSE;
                 }
 
                 // Parsing the protocol from ATR
@@ -527,114 +665,113 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_Reset(tTDAL_SMC_Slot   slot, bool isCold)
                     i = 1;
                     while (u8T0)
                     {
-                       if (u8T0 & 1)
-                           i++;
-                      u8T0 >>= 1;
+                        if (u8T0 & 1)
+                            i++;
+                        u8T0 >>= 1;
                     }
-                   u8Protocol = _u8AtrBuf[i] & 0xF;
+                    u8Protocol = _u8AtrBuf[i] & 0xF;
                 }
                 else
                 {
                     u8Protocol = 0;
                 }
-    
+
                 if (MDrv_SC_Config(u8SCID, &sInitParams) != E_SC_OK)
                 {
                     ok = FALSE;
                 }
-  /*  pInfo = MDrv_SC_GetInfo(u8SCID);
-        printf("Get Info after MDrv_SC_Config    clkdiv=%d;\n",pInfo->u16ClkDiv); */
-		    i=0;
-		    if (_u8AtrBuf[1] & 0x10 ) /* TA1 present */
-		    {
-		        i=1;
-		        u8Fi = (_u8AtrBuf[2] >> 4) & 0x0f;
-		        u8Di =_u8AtrBuf[2] & 0x0f;
+                i=0;
+                if (_u8AtrBuf[1] & 0x10 ) /* TA1 present */
+                {
+                    i=1;
+                    u8Fi = (_u8AtrBuf[2] >> 4) & 0x0f;
+                    u8Di =_u8AtrBuf[2] & 0x0f;
+                    /*rc = MDrv_SC_SetPPS(u8SCID,u8Protocol,u8Di,u8Fi);*/
+                }
+                if(_u8AtrBuf[1] & 0x40) /* TC1 present */
+                {
+                    if(_u8AtrBuf[1] & 0x20) /* TB1 present */
+                    {
+                        i++;
+                    }
+                    guardTime = _u8AtrBuf[2+i];
+                    if(guardTime != 0xFF)
+                    {
+                        /*MDrv_SC_SetGuardTime(u8SCID, guardTime);*/
+                    }
+                }
 
-				if ((u8Fi > 0x0D)||(u8Di > 0x0A))
-				{
-				    ok = FALSE;
-				}
-		   /*     rc = MDrv_SC_SetPPS(u8SCID,u8Protocol,u8Di,u8Fi); */
-		    }
-		    if(_u8AtrBuf[1] & 0x40) /* TC1 present */
-		    {  
-		        if(_u8AtrBuf[1] & 0x20) /* TB1 present */
-		        {
-		            i++;
-		        }
-		        guardTime = _u8AtrBuf[2+i];
-		        if(guardTime != 0xFF)
-		        {
-		          /*  MDrv_SC_SetGuardTime(u8SCID, guardTime); */
-		        }
-		    }
-
-
-	        rc = MDrv_SC_PPS(u8SCID);
-	        if (rc!=E_SC_OK)
-	        {
-	              ok = FALSE;
-	        }
-	        }/* GetATR ok */
-	        else
-	        {
-	             ok = FALSE;
-	        }
-	             msgType = eTDAL_SMC_CARD_RESET;
-	        }/*  Reset OK*/
-	        else if (rc == E_SC_CARDOUT)
-	        {
-	            msgType = eTDAL_SMC_RESET_NO_CARD;
-	        }
+                rc = MDrv_SC_PPS(u8SCID);
+                if (rc!=E_SC_OK)
+                {
+                    ok = FALSE;
+                }
+            }/* GetATR ok */
+            else
+            {
+                ok = FALSE;
+            }
+            msgType = eTDAL_SMC_CARD_RESET;
+        }/*  Reset OK*/
+        else if (rc == E_SC_CARDOUT)
+        {
+            msgType = eTDAL_SMC_RESET_NO_CARD;
+        }
     }/* Cold Reset OK*/
 
     if (!ok)
     {
         msgType = eTDAL_SMC_RESET_ERROR;
-           mSMC_DEBUG("[SMC DBG] TDAL_SMC_Reset(slot %d,%s) ERROR: Reset failure (%s)\n",
-             slot,(isCold)?"COLD":"WARM",SMCi_StrError(rc));
-
-
-		   printf("[SMC DBG] TDAL_SMC_Reset(slot %d,%s) ERROR: Reset failure (%d)\n",
-             slot,(isCold)?"COLD":"WARM",rc);
-             	        /* Asynchronous error or no card notification */
+        mSMC_DEBUG(("[SMC DBG] TDAL_SMC_Reset(slot %d,%s) ERROR: Reset failure (%s)\n",
+                         slot,(isCold)?"COLD":"WARM",SMCi_StrError(rc)));
+        /* Asynchronous error or no card notification */
         msg.type = msgType;
         msg.slotID = slot;
         TKEL_Enqueue(TDAL_SMC_QueueId, (void *)&msg);
         mTBOX_RETURN(eTDAL_SMC_ERROR);
     }else{
-
         /* Asynchronous error or no card notification */
         msg.type = msgType;
         msg.slotID = slot;
         TKEL_Enqueue(TDAL_SMC_QueueId, (void *)&msg);
         mTBOX_RETURN(eTDAL_SMC_NO_ERROR);
     }
-
 }
 
 
 /*===================================================================
-   *
-   *   TDAL_SMC_ATR
-   *
-   *   Parameters:
-   *   slot   :   Specifies   the   smart   card   slot   identifier.
-   *   ATRBuffer   :   pointer   to   a   buffer   to   fill   with   the   ATR.
-   *   ATRBufferLength   :   pointer   to   the   length   available   for   this   buffer.
-   *
-   *   Description:
-   *   This   function   fills   the   buffer   passed   in   parameter   with
-   *   the   Answer   To   Reset.
-   *
-   *   Returns:   UINT8
-   *   eTDAL_SMC_NO_ERROR   in   case   of   success.
-   *
-   *==================================================================*/
-tTDAL_SMC_ErrorCode   TDAL_SMC_ATR(tTDAL_SMC_Slot   slot, uint8_t   *ATRBuffer, uint32_t   *ATRBufferLength)
+ *
+ *   TDAL_SMC_ATR
+ *
+ *   Parameters:
+ *    slot : Specifies the smart card slot identifier.
+ *    ATRBuffer : pointer to a buffer to fill with the ATR.
+ *    ATRBufferLength : pointer to the length available for this buffer.
+ *
+ *   Description:
+ *    This function fills the buffer passed in parameter with
+ *    the Answer To Reset.
+ *
+ *   Returns: UINT8
+ *     eTDAL_SMC_NO_ERROR   in case of success.
+ *
+ *==================================================================*/
+tTDAL_SMC_ErrorCode TDAL_SMC_ATR(tTDAL_SMC_Slot slot, uint8_t *ATRBuffer, uint32_t *ATRBufferLength)
 {
-    return (eTDAL_SMC_NO_ERROR);
+    mTBOX_FCT_ENTER("TDAL_SMC_ATR");
+
+    if (ATRBuffer == NULL || ATRBufferLength == NULL)
+    {
+        mTBOX_RETURN(eTDAL_SMC_NULL_POINTER);
+    }
+    if (TDAL_SMC_status[slot].statusCard == eTDAL_SMC_EXTRACTED)
+    {
+        mTBOX_RETURN(eTDAL_SMC_NOT_INSERTED);
+    }
+
+    memcpy(ATRBuffer, _u8AtrBuf, _u16AtrLen);
+    *ATRBufferLength = (uint32_t)_u16AtrLen;
+    mTBOX_RETURN(eTDAL_SMC_NO_ERROR);
 }
 
 
@@ -657,8 +794,8 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_ATR(tTDAL_SMC_Slot   slot, uint8_t   *ATRBuffer, 
  *    eTDAL_SMC_OPERATIONNAL if one Card has been detected and ATR is OK.
  *
  *==================================================================*/
-tTDAL_SMC_State   TDAL_SMC_State(tTDAL_SMC_Slot   slot, tTDAL_SMC_CA_Type   ca_type)
-{   
+tTDAL_SMC_State TDAL_SMC_State(tTDAL_SMC_Slot slot, tTDAL_SMC_CA_Type ca_type)
+{
     mTBOX_FCT_ENTER("TDAL_SMC_State");
     mTBOX_RETURN(TDAL_SMC_status[slot].statusCard);
 }
@@ -679,17 +816,22 @@ tTDAL_SMC_State   TDAL_SMC_State(tTDAL_SMC_Slot   slot, tTDAL_SMC_CA_Type   ca_t
  *    eTDAL_SMC_NO_ERROR in case of success.
  *
  *==================================================================*/
-tTDAL_SMC_ErrorCode   TDAL_SMC_GetClockFrequency(tTDAL_SMC_Slot   slot, uint32_t*   pFreq)
+tTDAL_SMC_ErrorCode TDAL_SMC_GetClockFrequency(tTDAL_SMC_Slot slot, uint32_t* pFreq)
 {
     const SC_Info *pParams;
-	*pFreq = 4500000;
+
     mTBOX_FCT_ENTER("TDAL_SMC_GetClockFrequency");
-    
+    if (pFreq == NULL)
+    {
+        mTBOX_RETURN(eTDAL_SMC_NULL_POINTER);
+    }
+
+    *pFreq = 4500000;
     pParams = MDrv_SC_GetInfo(u8SCID);
-	if(pParams->eCardClk == E_SC_CLK_4P5M)
-	{
-		*pFreq = 4500000;
-	}
+    if(pParams->eCardClk == E_SC_CLK_4P5M)
+    {
+        *pFreq = 4500000;
+    }
 
     mTBOX_RETURN(eTDAL_SMC_NO_ERROR);
 }
@@ -718,22 +860,19 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_GetClockFrequency(tTDAL_SMC_Slot   slot, uint32_t
  *    eTDAL_SMC_ERROR otherwise.
  *
  *==================================================================*/
-
-tTDAL_SMC_ErrorCode TDAL_SMC_RawReadWrite(tTDAL_SMC_Slot slot, uint8_t *data, uint8_t expectedLength,uint32_t *pNumberExchanged, bool is_write)
+tTDAL_SMC_ErrorCode TDAL_SMC_RawReadWrite(tTDAL_SMC_Slot slot, uint8_t *data, uint8_t expectedLength, uint32_t *pNumberExchanged, bool is_write)
 {
-    SC_Result rc=E_SC_FAIL;
-    tTDAL_SMC_msg    msg;
-	uint8_t loops, i;
+    SC_Result rc = E_SC_FAIL;
+    tTDAL_SMC_msg msg;
+
     mTBOX_FCT_ENTER("TDAL_SMC_RawReadWrite");
 
-#if 1
     MS_U16 len = expectedLength;
     if (is_write)
     {
-
         TDAL_SMC_status[slot].RW_Request = eTDAL_SMC_WRITE;
         /* Write data to the smart card  */
-         MsOS_DelayTask(300);	
+         MsOS_DelayTask(300);
         rc  = MDrv_SC_Send(u8SCID, data, len, SC_T1_SEND_TIMEOUT);
         *pNumberExchanged = len;
         mTBOX_TRACE((kTBOX_NIV_1,"rc:%d\n",rc));
@@ -742,7 +881,7 @@ tTDAL_SMC_ErrorCode TDAL_SMC_RawReadWrite(tTDAL_SMC_Slot slot, uint8_t *data, ui
     {
         TDAL_SMC_status[slot].RW_Request = eTDAL_SMC_READ;
         mTBOX_TRACE((kTBOX_NIV_1,">>> expectedLength %d\n", expectedLength));
-        MsOS_DelayTask(100);	 
+        MsOS_DelayTask(300);	
         rc  = MDrv_SC_Recv(u8SCID, data, &len, 15000);
         memcpy(TDAL_SMC_status[slot].Answer,data,len);
         TDAL_SMC_status[slot].numRead = len;       
@@ -750,14 +889,14 @@ tTDAL_SMC_ErrorCode TDAL_SMC_RawReadWrite(tTDAL_SMC_Slot slot, uint8_t *data, ui
     }
     if((rc == E_SC_OK) || (rc == E_SC_TIMEOUT))
     {
-            msg.type = eTDAL_SMC_TRANSFER_COMPLETED;
-            msg.slotID = slot;
-            TKEL_Enqueue(TDAL_SMC_QueueId, (void *)&msg);
+        msg.type = eTDAL_SMC_TRANSFER_COMPLETED;
+        msg.slotID = slot;
+        TKEL_Enqueue(TDAL_SMC_QueueId, (void *)&msg);
     }
 
-#endif	
-    mTBOX_RETURN( eTDAL_SMC_NO_ERROR);
+    mTBOX_RETURN(eTDAL_SMC_NO_ERROR);
 }
+
 /*===================================================================
  *
  * TDAL_SMC_ReadWrite
@@ -783,7 +922,7 @@ tTDAL_SMC_ErrorCode TDAL_SMC_RawReadWrite(tTDAL_SMC_Slot slot, uint8_t *data, ui
  *    eTDAL_SMC_ERROR otherwise.
  *
  *==================================================================*/
-tTDAL_SMC_ErrorCode   TDAL_SMC_ReadWrite(tTDAL_SMC_Slot   slot, uint8_t   *command, uint8_t   *data, bool   direction)
+tTDAL_SMC_ErrorCode TDAL_SMC_ReadWrite(tTDAL_SMC_Slot slot, uint8_t *command, uint8_t *data, bool direction)
 {
     return (eTDAL_SMC_NO_ERROR);
 }
@@ -805,7 +944,7 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_ReadWrite(tTDAL_SMC_Slot   slot, uint8_t   *comma
  *    eTDAL_SMC_ERROR otherwise.
  *
  *===========================================================================*/
-tTDAL_SMC_ErrorCode   TDAL_SMC_PPS_Negociation(tTDAL_SMC_Slot   slot, uint8_t   PPS_Request[5])
+tTDAL_SMC_ErrorCode TDAL_SMC_PPS_Negociation(tTDAL_SMC_Slot slot, uint8_t PPS_Request[5])
 {
     return (eTDAL_SMC_NO_ERROR);
 }
@@ -827,7 +966,7 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_PPS_Negociation(tTDAL_SMC_Slot   slot, uint8_t   
  *    eTDAL_SMC_ERROR otherwise.
  *
  *===========================================================================*/
-tTDAL_SMC_ErrorCode   TDAL_SMC_CA_Autho_Register(tTDAL_SMC_AccessType_Notif   Notif_fct)
+tTDAL_SMC_ErrorCode TDAL_SMC_CA_Autho_Register(tTDAL_SMC_AccessType_Notif Notif_fct)
 {
     return (eTDAL_SMC_NO_ERROR);
 }
@@ -848,129 +987,100 @@ tTDAL_SMC_ErrorCode   TDAL_SMC_CA_Autho_Register(tTDAL_SMC_AccessType_Notif   No
  *===========================================================================*/
 LOCAL void SMC_Task(void *arg)
 {
-    tTDAL_SMC_msg    msg;
-//    SC_Status        status;
-//    SC_Param         params;
-//    unsigned char    sw1,sw2;
-    SC_Result     error = 0;
+    tTDAL_SMC_msg msg;
+    SC_Result error = 0;
 
     mTBOX_FCT_ENTER("SMC_Task");
 
     while(1)
     {
-
-      //  printf("MARIJA SMC TASK IS RUNNING \n");
+        //printf("MARIJA SMC TASK IS RUNNING \n");
         TKEL_Dequeue(TDAL_SMC_QueueId, (tTDAL_SMC_msg *)&msg);
-	//	printf("MARIJA        receive message type %d\n",msg.type);
+        //printf("MARIJA receive message type %d\n",msg.type);
 
         if (&msg != NULL)
         {
             switch (msg.type)
             {
-         case eTDAL_SMC_CARD_RESET :
-            /* Card reset */
-               {
-               mSMC_DEBUG("[%s][%d]eTDAL_SMC_CARD_RESET \n",__FUNCTION__,__LINE__);
-			   mSMC_DEBUG("[%s][%d]_u16AtrLen:%d \n",__FUNCTION__,__LINE__,_u16AtrLen);
-               TDAL_SMC_status[msg.slotID].statusCard = eTDAL_SMC_OPERATIONAL;
-               TDAL_SMC_status[msg.slotID].reset_Ok = TRUE;
+            case eTDAL_SMC_CARD_RESET :
+                TDAL_SMC_status[msg.slotID].statusCard = eTDAL_SMC_OPERATIONAL;
+                TDAL_SMC_status[msg.slotID].reset_Ok = TRUE;
 
-               memcpy(TDAL_SMC_status[msg.slotID].ATR, _u8AtrBuf, (size_t)_u16AtrLen);
-               TDAL_SMC_status[msg.slotID].ATR_len = _u16AtrLen;
+                memcpy(TDAL_SMC_status[msg.slotID].ATR, _u8AtrBuf, (size_t)_u16AtrLen);
+                TDAL_SMC_status[msg.slotID].ATR_len = _u16AtrLen;
 
-               /* Reset succeeded */
-               SMC_Callback(msg.slotID,eTDAL_SMC_CBF_RESET,
-                            TDAL_SMC_status[msg.slotID].ATR,
-                            TDAL_SMC_status[msg.slotID].ATR_len,
-                            0,0); /* SW1, SW2 */
-              
-            }
-            break;
-			
+                /* Reset succeeded */
+                SMC_Callback(msg.slotID,eTDAL_SMC_CBF_RESET,
+                    TDAL_SMC_status[msg.slotID].ATR,
+                    TDAL_SMC_status[msg.slotID].ATR_len,
+                    0,0); /* SW1, SW2 */
+                break;
+
             case eTDAL_SMC_CARD_INSERTED :
-				mSMC_DEBUG("[%s][%d]eTDAL_SMC_CARD_INSERTED \n",__FUNCTION__,__LINE__);
-                TDAL_LockMutex(TdalSMCMutexID);
                 TDAL_SMC_status[msg.slotID].statusCard = eTDAL_SMC_INSERTED;
                 SMC_Callback(msg.slotID,eTDAL_SMC_CBF_INSERT,NULL,0,0,0);
-				//printf("@@@@@@@@@@@@@@@@@@@@@@@@@@ SMC TASK  send CALLBACK eTDAL_SMC_CBF_INSERT @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-                TDAL_UnlockMutex(TdalSMCMutexID);
                 break;
 
             case eTDAL_SMC_CARD_REMOVED :
-				mSMC_DEBUG("[%s][%d]eTDAL_SMC_CARD_REMOVED \n",__FUNCTION__,__LINE__);
                 TDAL_SMC_status[msg.slotID].statusCard = eTDAL_SMC_EXTRACTED;
                 TDAL_SMC_status[msg.slotID].reset_Ok   = FALSE;
                 SMC_Callback(msg.slotID, eTDAL_SMC_CBF_EXTRACT,NULL,0,0,0);
                 break;
 
+            case eTDAL_SMC_TRANSFER_COMPLETED :
+                error = msg.slotID	&  0x7;
+                msg.slotID = (msg.slotID & 0x8) >> 3;
 
-                case eTDAL_SMC_TRANSFER_COMPLETED :
-	    		{
-					mSMC_DEBUG("[%s][%d]eTDAL_SMC_TRANSFER_COMPLETED \n",__FUNCTION__,__LINE__);
-			     error = msg.slotID	&  0x7;
-				 msg.slotID = (msg.slotID & 0x8) >> 3;		   
-				 
+                switch(TDAL_SMC_status[msg.slotID].RW_Request)
+                {
+                case eTDAL_SMC_READ :
+                    SMC_Callback(msg.slotID,eTDAL_SMC_CBF_READ,
+                        TDAL_SMC_status[msg.slotID].Answer,
+                        TDAL_SMC_status[msg.slotID].numRead,
+                        0,error);
+                    error = 0;
+                    break;
 
-               switch(TDAL_SMC_status[msg.slotID].RW_Request)
-               {
-               case eTDAL_SMC_READ :
-			   	mSMC_DEBUG("[%s][%d]eTDAL_SMC_READ \n",__FUNCTION__,__LINE__);
-                  SMC_Callback(msg.slotID,eTDAL_SMC_CBF_READ,
-                               TDAL_SMC_status[msg.slotID].Answer,
-                               TDAL_SMC_status[msg.slotID].numRead,
-                               0,error);
-				  error = 0;
-                  break;
+                case eTDAL_SMC_WRITE :
+                    SMC_Callback(msg.slotID,eTDAL_SMC_CBF_WRITE,NULL,0,0,0);
+                    break;
 
-               case eTDAL_SMC_WRITE :
-			   	mSMC_DEBUG("[%s][%d]eTDAL_SMC_WRITE \n",__FUNCTION__,__LINE__);
-                  SMC_Callback(msg.slotID,eTDAL_SMC_CBF_WRITE,
-                               NULL,0,0,0);
-                  break;
+                case eTDAL_SMC_PPS :
+                    SMC_Callback(msg.slotID,eTDAL_SMC_CBF_PPS,
+                        TDAL_SMC_status[msg.slotID].Answer,
+                        TDAL_SMC_status[msg.slotID].numRead,
+                        0,0);
+                    break;
 
-               case eTDAL_SMC_PPS :
-			   	mSMC_DEBUG("[%s][%d]eTDAL_SMC_PPS \n",__FUNCTION__,__LINE__);
-                  SMC_Callback(msg.slotID,eTDAL_SMC_CBF_PPS,
-                               TDAL_SMC_status[msg.slotID].Answer,
-                               TDAL_SMC_status[msg.slotID].numRead,
-                               0,0);
-                  break;
-    
-               default :
-                  /* Houlala !!! Programmation ERROR ? Ze coder is a clown !!!! */
-                  mTBOX_TRACE((kTBOX_NIV_CRITICAL,
-                               "[SMC_Task] Card automate on slot %d in ze choux "
-                               "(R/W request %d unsupported)\n",
-                               msg.slotID,TDAL_SMC_status[msg.slotID].RW_Request));
-                  mSMC_DEBUG("[SMC DBG] Card automate on slot %d in ze choux "
-                               "(R/W request %d unsupported)\n",
-                               msg.slotID,TDAL_SMC_status[msg.slotID].RW_Request);
-                  SMC_Callback(msg.slotID,eTDAL_SMC_CBF_TRANSFERT_ERROR,NULL,0,0,0);
-               }
-            }
-            break;
+                default :
+                    /* Houlala !!! Programmation ERROR ? Ze coder is a clown !!!! */
+                    mTBOX_TRACE((kTBOX_NIV_CRITICAL,
+                        "[SMC_Task] Card automate on slot %d in ze choux "
+                        "(R/W request %d unsupported)\n",
+                        msg.slotID,TDAL_SMC_status[msg.slotID].RW_Request));
+                    mSMC_DEBUG(("[SMC DBG] Card automate on slot %d in ze choux "
+                        "(R/W request %d unsupported)\n",
+                        msg.slotID,TDAL_SMC_status[msg.slotID].RW_Request));
+                    SMC_Callback(msg.slotID,eTDAL_SMC_CBF_TRANSFERT_ERROR,NULL,0,0,0);
+                }
+                break;
 
             case eTDAL_SMC_RESET_NO_CARD:
-				mSMC_DEBUG("[%s][%d]eTDAL_SMC_RESET_NO_CARD \n",__FUNCTION__,__LINE__);
                 /* Asynchronous notification RESET return no card detected */
                 SMC_Callback(msg.slotID, eTDAL_SMC_CBF_EXTRACT,NULL,0,0,0);
                 break;
 
             case eTDAL_SMC_RESET_ERROR:
-				mSMC_DEBUG("[%s][%d]eTDAL_SMC_RESET_ERROR \n",__FUNCTION__,__LINE__);
                 /* Asynchronous notification RESET return ERROR */
                 TDAL_SMC_status[msg.slotID].statusCard = eTDAL_SMC_INSERTED;
                 TDAL_SMC_status[msg.slotID].reset_Ok = FALSE;
                 SMC_Callback(msg.slotID, eTDAL_SMC_CBF_RESET,NULL,0,0,0);
                 break;
-       /*     case eTDAL_SMC_TRANSFER_ERROR:
-              SMC_Callback(msg.slotID, eTDAL_SMC_CBF_TRANSFERT_ERROR,NULL,0,0,0);
-                break;*/
 
             default :
                 mTBOX_TRACE((kTBOX_NIV_CRITICAL,
-                            "ERROR : Request can't be identified 0x%x on Slot 0x%x\r\n", 
-                             msg.type, msg.slotID));
+                    "ERROR : Request can't be identified 0x%x on Slot 0x%x\r\n",
+                    msg.type, msg.slotID));
             }
         }
     }
@@ -992,10 +1102,9 @@ LOCAL void SMC_Task(void *arg)
  *          eTDAL_SMC_ERROR    Open failed
  *
  *===========================================================================*/
-LOCAL tTDAL_SMC_ErrorCode SMCi_OpenSlot (tTDAL_SMC_Slot slot)
+LOCAL tTDAL_SMC_ErrorCode SMCi_OpenSlot(tTDAL_SMC_Slot slot)
 {
-
-    SC_Result       rc;
+    SC_Result rc;
 
     if (TDAL_SMC_status[slot].is_open)
     {
@@ -1013,24 +1122,33 @@ LOCAL tTDAL_SMC_ErrorCode SMCi_OpenSlot (tTDAL_SMC_Slot slot)
     TDAL_SMC_status[slot].numRead    = 0;
 
     sInitParams.eCardClk = E_SC_CLK_4P5M;
-    sInitParams.u8UartMode = SC_UART_CHAR_8 | SC_UART_STOP_2 | SC_UART_PARITY_NO;
+    sInitParams.u8UartMode = SC_UART_CHAR_8 | SC_UART_STOP_2 | SC_UART_PARITY_ODD;
     sInitParams.u16ClkDiv = 372;
-    sInitParams.eVccCtrl	= E_SC_VCC_CTRL_8024_ON;
+    sInitParams.eVccCtrl = E_SC_VCC_CTRL_8024_ON;
     sInitParams.pfOCPControl = NULL;
     sInitParams.u8Convention = 0;
+    sInitParams.eVoltage = E_SC_VOLTAGE_5V;
 
     mTBOX_TRACE((kTBOX_NIV_1, "SMCi_OpenSlot(%d): Calling STSMART_Open()...\n", u8SCID));
-    if((rc = MDrv_SC_Open(u8SCID, 0, &sInitParams, Notify_Slot_0)) != E_SC_OK)
+#if USE_SMC_DAUGHTER_BOARD
+    if (is_sc_board_connected() == FALSE)
+    {
+        goto init_status_open;
+    }
+#endif
+    if ((rc = MDrv_SC_Open(u8SCID, u8Protocol, &sInitParams, Notify_Slot_0)) != E_SC_OK)
     {
         mTBOX_TRACE((kTBOX_NIV_1, "[%s] MDrv_SC_Open failed with error code = %d!!!!\n", __FUNCTION__, rc));
         return(eTDAL_SMC_ERROR);
     }
-	mdrv_gpio_set_high(57);
-//     printf("MARIJA      slot %d is opened\n",slot);
+
+init_status_open:
+    MsOS_DelayTask(300);
+    //printf("MARIJA slot %d is opened\n",slot);
     TDAL_SMC_status[slot].is_open = TRUE;
 
     mTBOX_TRACE((kTBOX_NIV_1, "SMCi_OpenSlot(%d): STSMART_Open() DONE \n", u8SCID));
-    mSMC_DEBUG("[SMC DBG] SMCi_OpenSlot(%d): STSMART Open DONE on handle \n", u8SCID);
+    mSMC_DEBUG(("[SMC DBG] SMCi_OpenSlot(%d): STSMART Open DONE on handle \n", u8SCID));
     return(eTDAL_SMC_NO_ERROR);
 }
 
@@ -1045,14 +1163,13 @@ LOCAL tTDAL_SMC_ErrorCode SMCi_OpenSlot (tTDAL_SMC_Slot slot)
  * Returns: nothing.
  *
  *===========================================================================*/
-LOCAL void SMC_Callback(tTDAL_SMC_Slot  slot, tTDAL_SMC_Event Event, uint8_t* Buffer, uint32_t BufferLength, uint8_t SW1, uint8_t  SW2)
+LOCAL void SMC_Callback(tTDAL_SMC_Slot slot, tTDAL_SMC_Event Event, uint8_t* Buffer, uint32_t BufferLength, uint8_t SW1, uint8_t SW2)
 {
     unsigned char i;
-    for(i=0; i<kTDAL_SMC_MAX_CLIENTS; i++)
+    for (i=0; i<kTDAL_SMC_MAX_CLIENTS; i++)
     {
-        if(TDAL_SMC_Clients[i].callback != NULL)
+        if (TDAL_SMC_Clients[i].callback != NULL)
         {
-            mSMC_DEBUG("SMC_Callback Event:%d\n", Event);
             TDAL_SMC_Clients[i].callback(slot, Event, Buffer, BufferLength, SW1, SW2);
         }
     }
@@ -1072,9 +1189,9 @@ LOCAL void SMC_Callback(tTDAL_SMC_Slot  slot, tTDAL_SMC_Event Event, uint8_t* Bu
  *          eTDAL_SMC_ERROR    Close failed
  *
  *===========================================================================*/
-LOCAL tTDAL_SMC_ErrorCode SMCi_CloseSlot (tTDAL_SMC_Slot slot)
+LOCAL tTDAL_SMC_ErrorCode SMCi_CloseSlot(tTDAL_SMC_Slot slot)
 {
-    SC_Result       rc;
+    SC_Result rc;
 
     if (!TDAL_SMC_status[slot].is_open)
     {
@@ -1083,16 +1200,22 @@ LOCAL tTDAL_SMC_ErrorCode SMCi_CloseSlot (tTDAL_SMC_Slot slot)
     }
 
     mTBOX_TRACE((kTBOX_NIV_1, "SMCi_CloseSlot(%d): Calling STSMART_Close...\n", u8SCID));
-
+#if USE_SMC_DAUGHTER_BOARD
+    if (is_sc_board_connected() == FALSE)
+    {
+        goto init_status_close;
+    }
+#endif
     if ((rc = MDrv_SC_Close(u8SCID)) != E_SC_OK)
     {
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "SMCi_CloseSlot(%d) ERROR: STSMART_Close() failed \n",u8SCID));
-        mSMC_DEBUG("[SMC DBG] SMCi_CloseSlot(%d) ERROR: STSMART Close failure \n", u8SCID);
+        mSMC_DEBUG(("[SMC DBG] SMCi_CloseSlot(%d) ERROR: STSMART Close failure \n", u8SCID));
         return(eTDAL_SMC_ERROR);
     }
 
+init_status_close:
     mTBOX_TRACE((kTBOX_NIV_1, "SMCi_CloseSlot(%d): STSMART_Close() DONE\n", u8SCID));
-    mSMC_DEBUG("[SMC DBG] SMCi_CloseSlot(%d): STSMART Close handle DONE\n", u8SCID);
+    mSMC_DEBUG(("[SMC DBG] SMCi_CloseSlot(%d): STSMART Close handle DONE\n", u8SCID));
 
     TDAL_SMC_status[slot].is_open      = FALSE;
     TDAL_SMC_status[slot].statusCard   = eTDAL_SMC_EXTRACTED;
@@ -1117,34 +1240,32 @@ LOCAL tTDAL_SMC_ErrorCode SMCi_CloseSlot (tTDAL_SMC_Slot slot)
  *===========================================================================*/
 LOCAL void Notify_Slot_0(MS_U8 u8SCID, SC_Event eEvent)
 {
-    tTDAL_SMC_msg  msg;
-    MS_U32 u32Mask, u32Evt;
+    tTDAL_SMC_msg msg;
     mTBOX_FCT_ENTER("Notify_Slot_0");
 
     msg.slotID = u8SCID;
 
-    switch(eEvent)
+    switch (eEvent)
     {
-        case E_SC_EVENT_IN :
-            mTBOX_TRACE((kTBOX_NIV_1,"SMC%d: Card In\n", u8SCID));
-            msg.type = eTDAL_SMC_CARD_INSERTED;
-//            printf("\n\n\n^^^^^^^^^^^^^^^^^^^^^^^^ Notify_Slot_0    %d^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n\n",msg.type);
-            break;
+    case E_SC_EVENT_IN :
+        mTBOX_TRACE((kTBOX_NIV_1,"SMC%d: Card In\n", u8SCID));
+        msg.type = eTDAL_SMC_CARD_INSERTED;
+        break;
 
-        case E_SC_EVENT_OUT :
-            mTBOX_TRACE((kTBOX_NIV_1,"SMC%d: Card Out\n", u8SCID));
-            msg.type = eTDAL_SMC_CARD_REMOVED;
-            break;
+    case E_SC_EVENT_OUT :
+        mTBOX_TRACE((kTBOX_NIV_1,"SMC%d: Card Out\n", u8SCID));
+        msg.type = eTDAL_SMC_CARD_REMOVED;
+        break;
 
-        case E_SC_EVENT_DATA :
-            mTBOX_TRACE((kTBOX_NIV_1,"SMC%d: Incoming Data\n", u8SCID));
-            msg.type = eTDAL_SMC_TRANSFER_COMPLETED;
-            break;
+    case E_SC_EVENT_DATA :
+        mTBOX_TRACE((kTBOX_NIV_1,"SMC%d: Incoming Data\n", u8SCID));
+        msg.type = eTDAL_SMC_TRANSFER_COMPLETED;
+        break;
 
-        default :
-            mTBOX_TRACE((kTBOX_NIV_CRITICAL,"SMC%d: Unknown Event\n", u8SCID));
-            mTBOX_RETURN;
-            break;
+    default :
+        mTBOX_TRACE((kTBOX_NIV_CRITICAL,"SMC%d: Unknown Event\n", u8SCID));
+        mTBOX_RETURN;
+        break;
     }
 
     TKEL_Enqueue(TDAL_SMC_QueueId, (void *)&msg);
@@ -1154,6 +1275,7 @@ LOCAL void Notify_Slot_0(MS_U8 u8SCID, SC_Event eEvent)
 
 
 #if defined (__LOCAL_SMC_DEBUG__)
+
 LOCAL char *SMCi_StrError (SC_Result errCode)
 {
     static char __str_error__[50];
@@ -1180,268 +1302,153 @@ LOCAL char *SMCi_StrError (SC_Result errCode)
 }
 #endif
 
-
-LOCAL void SMCi_GetInfo ()
-{
-	/*	MARIJA DEBUG */
-	    const SC_Info *pInfo;
-		pInfo = MDrv_SC_GetInfo(u8SCID);
-	
-		printf("				   MARIJA\n SmsartCard Protocol:\n"
-				"u8Protocol  %d               "
-				"bSpecMode  %d               "
-				"pu8Atr[SC_ATR_LEN_MAX]  %s               "
-				"u16AtrLen  %d               \n"
-				"pu8Hist[SC_HIST_LEN_MAX]  %s               "
-				"u16HistLen  %d               "
-				"u8Fi  %d                "
-				"u8Di  %d               \n\n"
-				"Device Setting:\n"
-				"bInited  %d               "
-				"bOpened  %d               "
-				"bCardIn  %d               "
-				"blast_cardin  %d               \n"
-				"eCardClk  %d               "
-				"u8UartMode  %d               "
-				"eVccCtrl  %d               "
-				"u16ClkDiv %d               \n"
-				"u16Bonding %d               "
-				"pfEn5V %d               "
-				"u8Convention %d               \n\n"
-				"bLastCardIn  %d               "
-				"s32DevFd %d\n",pInfo->u8Protocol, pInfo->bSpecMode, pInfo->pu8Atr, pInfo->u16AtrLen, pInfo->pu8Hist, pInfo->u16HistLen, pInfo->u8Fi, pInfo->u8Di, pInfo->bInited, pInfo->bOpened, pInfo->bCardIn, pInfo->blast_cardin,
-							   pInfo->eCardClk, pInfo->u8UartMode, pInfo->eVccCtrl, pInfo->u16ClkDiv, pInfo->u16Bonding, pInfo->pfEn5V, pInfo->u8Convention, pInfo->bLastCardIn, pInfo->s32DevFd);
-	
-	/*	if (MDrv_SC_Activate(u8SCID) != E_SC_OK)
-			{
-				printf("	   MARIJA	   ACTIVATE    FAILUREEE  \n");
-			}
-		else
-						printf("	   MARIJA	   ACTIVATE    SUCCEEDED  \n");*/
-	/* marija debug */
-
-
-}
-LOCAL void SMC_PrintData(MS_U8 *pu8Data, MS_U16 u16DataLen)
-{
-    int i;
-
-    printf("Rx :\n         ");
-    for (i = 0; i < u16DataLen; i++)
-    {
-        printf("%02x ", pu8Data[i]);
-        if (((i+1) % 16) == 0)
-        {
-            printf("\n         ");
-        }
-    }
-    printf("\n");
-}
-
 tTDAL_SMC_ErrorCode TDAL_T1RawExchange(uint32_t u32SendLen, const uint8_t *pu8SendBlock, uint32_t u32ReplyMaxLen,uint32_t *pu32ReplyLen, uint8_t *pu8ReplyBlock)
 {
+    SC_Result rc;
+    tTDAL_SMC_msg msg;
 
-    SC_Result       rc;
-	tTDAL_SMC_msg    msg;
-	int i; 
-
-    mSMC_DEBUG("TDAL_*pu32ReplyLen:%X\n",*pu32ReplyLen);
-    mSMC_DEBUG("TDAL_u32SendLen%X\n",u32SendLen);
-
-#if 1
-     *pu32ReplyLen = u32ReplyMaxLen;
-	   mSMC_DEBUG("Send DATA\n");
-	   for(i = 0;i<u32SendLen;i++)
-	   {
-           mSMC_DEBUG("%X ",pu8SendBlock[i]);
-	      
-	   }
-       mSMC_DEBUG("END\n\n\n\n");
-	   
-     rc =  MDrv_SC_RawExchange(u8SCID, pu8SendBlock, &u32SendLen, pu8ReplyBlock, pu32ReplyLen);
-       mSMC_DEBUG("DONE  MDrv_SC_RawExchange   *pu32ReplyLen   %d               returns %d\n",*pu32ReplyLen,rc);
-	   mSMC_DEBUG("RAW DATA\n");
-	   for(i = 0;i<*pu32ReplyLen;i++)
-	   {
-           mSMC_DEBUG("%X ",pu8ReplyBlock[i]);
-	      
-	   }
-       mSMC_DEBUG("END\n\n\n\n");
-	   
-
-     TDAL_SMC_status[0].RW_Request = eTDAL_SMC_READ;
-	 memcpy(TDAL_SMC_status[0].Answer,pu8ReplyBlock,*pu32ReplyLen);
-         TDAL_SMC_status[0].numRead = *pu32ReplyLen; 
-	 if((rc == E_SC_OK) || (rc == E_SC_TIMEOUT) || (rc == E_SC_NODATA))
-    {
-            msg.type = eTDAL_SMC_TRANSFER_COMPLETED;
-            msg.slotID = 0;
-			if((rc == E_SC_TIMEOUT) || (rc == E_SC_NODATA))
-			{
-			    /* since only one slot has been supported, instead of slot id status error will be provided */
-                msg.slotID = rc;			
-			}
-            TKEL_Enqueue(TDAL_SMC_QueueId, (void *)&msg);
-    }
-#endif
-	return eTDAL_SMC_NO_ERROR;
-
-#if 0
-      MsOS_DelayTask(300);
-    //send data
-    rc = MDrv_SC_Send(u8SCID, pu8SendBlock, u32SendLen, SC_T1_SEND_TIMEOUT);
-    if (rc != E_SC_OK)
-    {
-       printf("send data error returns %d\n",rc);
-        return eTDAL_SMC_ERROR;
-    }
-    //block waiting time
-    MsOS_DelayTask(300);
-
-    //receive data
     *pu32ReplyLen = u32ReplyMaxLen;
-    rc = MDrv_SC_Recv(u8SCID, pu8ReplyBlock, pu32ReplyLen, SC_T1_RECV_TIMEOUT);
-    
-    if (rc != E_SC_OK)
+    rc = MDrv_SC_RawExchange(u8SCID, (MS_U8 *)pu8SendBlock, (MS_U16 *)&u32SendLen, pu8ReplyBlock, (MS_U16 *)pu32ReplyLen);
+    mTBOX_TRACE((kTBOX_NIV_1, "TDAL_T1RawExchange(): DONE MDrv_SC_RawExchange, *pu32ReplyLen=%d, rc=%d\n", *pu32ReplyLen,rc));
+
+    TDAL_SMC_status[0].RW_Request = eTDAL_SMC_READ;
+	memcpy(TDAL_SMC_status[0].Answer,pu8ReplyBlock,*pu32ReplyLen);
+	TDAL_SMC_status[0].numRead = *pu32ReplyLen;
+
+    if ((rc == E_SC_TIMEOUT) || (rc == E_SC_FAIL))
     {
-               printf("receive data error, return %d\n",rc);
         return eTDAL_SMC_ERROR;
     }
-     TDAL_SMC_status[0].RW_Request = eTDAL_SMC_READ;
-	 memcpy(TDAL_SMC_status[0].Answer,pu8ReplyBlock,*pu32ReplyLen);
-         TDAL_SMC_status[0].numRead = *pu32ReplyLen; 
-	 msg.type = eTDAL_SMC_TRANSFER_COMPLETED;    
-    
-	        msg.slotID = 0;
-            TKEL_Enqueue(TDAL_SMC_QueueId, (void *)&msg);
+    else if (rc == E_SC_OK)
+    {
+        msg.type = eTDAL_SMC_TRANSFER_COMPLETED;
+        msg.slotID = 0;
+        TKEL_Enqueue(TDAL_SMC_QueueId, (void *)&msg);
+    }
+
 	return eTDAL_SMC_NO_ERROR;
-#endif
 }
 
 #if 0
 tTDAL_SMC_ErrorCode TDAL_SC_T1_Parse_Atr(MS_U8 u8SCID, MS_U8 *pu8AtrData, MS_U16 u16AtrLen)
 {
+    MS_U8 u8TS, u8T0, u8TAx, u8TBx, u8TCx, u8TDx, u8Len, u8TA2;
+    MS_U8 u8Ch, u8Crc = 0;
+    MS_U8 iu8Protocol;
+    int ii, x;
 
- MS_U8				u8TS, u8T0, u8TAx, u8TBx, u8TCx, u8TDx, u8Len, u8TA2;
- MS_U8				u8Ch, u8Crc = 0;
- MS_U8				iu8Protocol;
+    ii = 0;
+    u8TS = pu8AtrData[ii++];
+    u8T0 = pu8AtrData[ii++];
 
- int 				ii, x;
- ii = 0;
- u8TS = pu8AtrData[ii++];
- u8T0 = pu8AtrData[ii++];
+    u8Crc = u8Crc ^ u8T0;
+    u8Len = u8T0 & 0x0F;
+    u8TDx = u8T0 & 0xF0;
 
- u8Crc = u8Crc ^ u8T0;
- u8Len = u8T0 & 0x0F;
- u8TDx = u8T0 & 0xF0;
+    x = 1;
+    //_scInfo[u8SCID].bSpecMode = FALSE;
+    //_scInfo[u8SCID].u8Di = _scInfo[u8SCID].u8Fi = 0;
+    iu8Protocol = 0;
+    while (u8TDx & 0xF0)
+    {
+        if (ii >= u16AtrLen)
+        {
+            return eTDAL_SMC_ERROR;
+        }
 
-x = 1;
-//_scInfo[u8SCID].bSpecMode = FALSE;
-//_scInfo[u8SCID].u8Di = _scInfo[u8SCID].u8Fi = 0;
- iu8Protocol = 0;
- while (u8TDx & 0xF0)
- {
-	if (ii >= u16AtrLen)
-	{
-		return eTDAL_SMC_ERROR;
-	}
+        if (u8TDx & 0x10) // TA
+        {
+            u8TAx = pu8AtrData[ii++];
+            u8Crc = u8Crc ^ u8TAx;
+            if (x == 1)
+            {
+                //_scInfo[u8SCID].u8Fi = u8TAx >> 4;
+                //_scInfo[u8SCID].u8Di = u8TAx & 0xF;
+            }
+            if (x == 2)
+            {
+                //_scInfo[u8SCID].bSpecMode = TRUE; // specific mode
+                u8TA2 = u8TAx;
+            }
+            if (x == 3)
+            {
+                // TA3 is for encoding T1 IFSC
+                if ( (u8TAx != 0x00) && (u8TAx != 0xFF) )
+                {
+                    T1State[u8SCID].u8IFSC = u8TAx;
+                }
+            }
+        }
+        if (u8TDx & 0x20) // TB
+        {
+            u8TBx = pu8AtrData[ii++];
+            u8Crc = u8Crc ^ u8TBx;
+            // TB3 is for encoding T1 BWI and CWI
 
-	if (u8TDx & 0x10) // TA
-	{
-		u8TAx = pu8AtrData[ii++];
-		u8Crc = u8Crc ^ u8TAx;
-		if (x == 1)
-		{
-			//_scInfo[u8SCID].u8Fi = u8TAx >> 4;
-			//_scInfo[u8SCID].u8Di = u8TAx & 0xF;
-		}
-		if (x == 2)
-		{
-			//_scInfo[u8SCID].bSpecMode = TRUE; // specific mode
-			u8TA2 = u8TAx;
-		}
-		if (x == 3)
-		{
-	// TA3 is for encoding T1 IFSC
-	if ( (u8TAx != 0x00) && (u8TAx != 0xFF) )
-		{
-		T1State[u8SCID].u8IFSC = u8TAx;
-	}
-		}
-	}
-	if (u8TDx & 0x20) // TB
-	{
-		u8TBx = pu8AtrData[ii++];
-		u8Crc = u8Crc ^ u8TBx;
-	// TB3 is for encoding T1 BWI and CWI
+        }
+        if (u8TDx & 0x40) // TC
+        {
+            u8TCx = pu8AtrData[ii++];
+            u8Crc = u8Crc ^ u8TCx;
+            if (x == 3)
+            {
+                // TC3 is for encoding T1 CRC type
+                T1State[u8SCID].u8RCType = u8TCx & 0x1;
+            }
+        }
+        if ((u8TDx & 0x80))
+        {
+            u8TDx = pu8AtrData[ii++];
+            if ((u8TDx & 0xF) != 0)
+            {
+                iu8Protocol = u8TDx & 0xF;
+            }
+            u8Crc = u8Crc ^ u8TDx;
+            x++;
+        }
+        else
+        {
+            break;
+        }
+    }
 
-	}
-	if (u8TDx & 0x40) // TC
-	{
-		u8TCx = pu8AtrData[ii++];
-		u8Crc = u8Crc ^ u8TCx;
-		if (x == 3)
-		{
-	// TC3 is for encoding T1 CRC type
-			T1State[u8SCID].u8RCType = u8TCx & 0x1;
-		}
-	}
-	if ((u8TDx & 0x80))
-	{
-		u8TDx = pu8AtrData[ii++];
-		if ((u8TDx & 0xF) != 0)
-		{
-			iu8Protocol = u8TDx & 0xF;
-		}
-		u8Crc = u8Crc ^ u8TDx;
+    // Get ATR history
+    //_scInfo[u8SCID].u16HistLen = u8Len;
+    for (x = 0; x < u8Len; x++)
+    {
+        if (ii >= u16AtrLen)
+        {
+            return eTDAL_SMC_ERROR;
+        }
+        u8Ch = pu8AtrData[ii++];
+        u8Crc = u8Crc ^ u8Ch;
 
-		
-		x++;
-	}
-	else
-	{
-		break;
-	}
-}
+        //_scInfo[u8SCID].pu8Hist[x] = u8Ch;
+    }
 
-// Get ATR history
-//_scInfo[u8SCID].u16HistLen = u8Len;
-for (x = 0; x < u8Len; x++)
-{
-	if (ii >= u16AtrLen)
-	{
-		return eTDAL_SMC_ERROR;
-	}
-	u8Ch = pu8AtrData[ii++];
-	u8Crc = u8Crc ^ u8Ch;
+    // Check ATR checksum
+    if ((iu8Protocol != 0x00) && (iu8Protocol != 0xFF)) // If not T=0
+    {
+        if (ii >= u16AtrLen)
+        {
+            return eTDAL_SMC_ERROR;
+        }
+        if (u8Crc != pu8AtrData[ii++])
+        {
+            // CRC error
+            return eTDAL_SMC_ERROR;
+        }
+    }
 
-	//_scInfo[u8SCID].pu8Hist[x] = u8Ch;
-}
+    // Check ATR length
+    if (ii != u16AtrLen)
+    {
+        return eTDAL_SMC_ERROR; // len error
+    }
 
-// Check ATR checksum
-if ((iu8Protocol != 0x00) && (iu8Protocol != 0xFF)) // If not T=0
-{
-	if (ii >= u16AtrLen)
-	{
-		return eTDAL_SMC_ERROR;
-	}
-	if (u8Crc != pu8AtrData[ii++])
-	{
-	// CRC error
-		return eTDAL_SMC_ERROR;
-	}
-}
+    T1State[u8SCID].bInit = TRUE;
 
-// Check ATR length
- if (ii != u16AtrLen)
-{
-	return eTDAL_SMC_ERROR; // len error
-}
-
- T1State[u8SCID].bInit = TRUE;
-
-
- return eTDAL_SMC_NO_ERROR;
+    return eTDAL_SMC_NO_ERROR;
 }
 #endif
 
@@ -1449,57 +1456,38 @@ if ((iu8Protocol != 0x00) && (iu8Protocol != 0xFF)) // If not T=0
 MS_BOOL SMC_Load_Fw(MS_U32 u32FwSCAddr)
 {
     MBX_Result mbxResult;
-    MBX_DrvStatus stMbxStatus;
     SC_BuffAddr ScBuffAddr;
+
     ScBuffAddr.u32DataBuffAddr = PM51_MEM_ADR;
     ScBuffAddr.u32FwBuffAddr   = u32FwSCAddr;
     
-    if(MDrv_SC_SetBuffAddr(&ScBuffAddr)==E_SC_OK)
-    {
-        mSMC_DEBUG("MDrv_SC_SetBuffAddr OK!\n");
-    }
-    else
-    {
-        mSMC_DEBUG("MDrv_SC_SetBuffAddr failed!\n");
-        return FALSE;
-    }
+    MDrv_SC_SetBuffAddr(&ScBuffAddr);
 
-    mSMC_DEBUG("load fw to u32FwSCAddr %lx, FWSize:%lx\n", u32FwSCAddr, sizeof(u8SCFirmware));
+    printf("load fw to u32FwSCAddr %lx\n", u32FwSCAddr);
     memcpy((void*)MS_PA2KSEG1((MS_U32)u32FwSCAddr/*u8SCFirmware*/) , u8SCFirmware, sizeof(u8SCFirmware));
-    MsOS_Dcache_Flush(MS_PA2KSEG1((MS_U32)u32FwSCAddr), sizeof(u8SCFirmware));
-    MsOS_FlushMemory();
-
     MDrv_PM_SetDRAMOffsetForMCU(u32FwSCAddr >> 16); //64K unit
+
     MDrv_MBX_SetDbgLevel(MBX_DBG_LEVEL_NONE);
-
-    memset(&stMbxStatus, 0, sizeof(stMbxStatus));
-    MDrv_MBX_GetStatus(&stMbxStatus);
-    if(stMbxStatus.bEnabled == TRUE)
-    {
-        mSMC_DEBUG("MBX is enabled,don't need to init again!\n");
-        return TRUE;
-
-    }
-        
     mbxResult = MDrv_MBX_Init(E_MBX_CPU_MIPS, E_MBX_ROLE_HK, 1500);
     if(E_MBX_SUCCESS != mbxResult)
     {
-        mSMC_DEBUG("MBX init error\n");
+        printf("MBX init error\n");
         return FALSE;
     }
     MDrv_MBX_Enable(TRUE);    
 
-    mSMC_DEBUG("E_MBX_CLASS_PM_WAIT - MBX register msg\n");    
+    printf("E_MBX_CLASS_PM_WAIT - MBX register msg\n");    
     mbxResult = MDrv_MBX_RegisterMSG(E_MBX_CLASS_PM_WAIT, 6);
     if(E_MBX_SUCCESS != mbxResult)
     {
-        mSMC_DEBUG("E_MBX_CLASS_PM_WAIT - MBX register msg error\n");
+        printf("E_MBX_CLASS_PM_WAIT - MBX register msg error\n");
         return FALSE;
     }
     else
     {
-        mSMC_DEBUG("E_MBX_CLASS_PM_WAIT - MBX register msg success\n");
+        printf("E_MBX_CLASS_PM_WAIT - MBX register msg success\n");
         return TRUE;
     }
 }
 #endif
+

@@ -37,7 +37,6 @@
 //#include "xc/msAPI_XC.h"
 #include "apiPNL.h"
 
-
 /********************************************************/
 /*   Defines   */
 /********************************************************/
@@ -144,11 +143,8 @@ void TDAL_OUTPUTm_VEInit()
     msAPI_VE_InitData.bEnableDacSD = TRUE;
     msAPI_VE_InitData.bBootLogoEnable   = FALSE;
 
-    if(FALSE == msAPI_VE_Init(msAPI_VE_InitData))
-    {
-        printf("msAPI_VE_Init resturn FALSE\n");
-    }
-
+    msAPI_VE_Init(msAPI_VE_InitData);
+    msAPI_VE_SetDebugLevel(E_MSAPI_VE_DBG_LEVEL_DRV); //walter.hsiao 20161020
     //turn off SD OSD at initial step and turn on it after GOP is initialized
     MDrv_VE_SetOSD(FALSE);
 
@@ -174,9 +170,9 @@ GLOBAL   tTDAL_OUTPUT_Error   TDAL_OUTPUT_VideoDencCapabilityGet(tTDAL_OUTPUT_Ou
     tTDAL_OUTPUT_Error   OutErrorCode = eTDAL_OUTPUT_NO_ERROR;
     bool   desc_found = FALSE;
     uint32_t   i;
-    
+
     mTBOX_FCT_ENTER("TDAL_OUTPUT_VideoDencCapabilityGet");
-    
+
     /*   check   if   not   initialized   */
     if   (TDAL_OUTPUT_AlreadyInitialized == FALSE)
     {
@@ -235,14 +231,10 @@ GLOBAL   tTDAL_OUTPUT_Error   TDAL_OUTPUT_VideoDencStandardSet(tTDAL_OUTPUT_Outp
     MS_BOOL                 msAPI_err = 0;
     VE_DrvStatus            MSCurrentVeStatus;
     VE_DrvStatus            MSNewCurrentVeStatus;
-    VE_Result               msDRV_err = E_VE_FAIL;
     MS_VE_WINDOW_TYPE       dispWin = { 0, 0, 0, 0};
-    MS_VE_WINDOW_TYPE       xc_dispWin = { 0, 0, 0, 0};
-    bool                    bStandardChanged = FALSE;
-    uint32_t                eResType; //E_MSAPI_XC_OUTPUT_TIMING_TYPE eResType;
 
     mTBOX_FCT_ENTER("TDAL_OUTPUT_VideoDencStandardSet");
-    
+
     mTBOX_TRACE((kTBOX_NIV_1, "[TDAL_OUTPUT_VideoDencStandardSet] videoStandard = %d\n", Std));
     /*   check   if   not   initialized   */
     if   (TDAL_OUTPUT_AlreadyInitialized == FALSE)
@@ -259,10 +251,7 @@ GLOBAL   tTDAL_OUTPUT_Error   TDAL_OUTPUT_VideoDencStandardSet(tTDAL_OUTPUT_Outp
             break;
         }
     }
-    
-    msDRV_err = MDrv_VE_GetStatus(&MSCurrentVeStatus);
-    mTBOX_ASSERT(msDRV_err == E_VE_OK);
-    
+
     if (desc_found == TRUE)
     {
         switch   (Id)
@@ -274,70 +263,37 @@ GLOBAL   tTDAL_OUTPUT_Error   TDAL_OUTPUT_VideoDencStandardSet(tTDAL_OUTPUT_Outp
                     case eTDAL_OUTPUT_VIDEO_SD_STD_PAL_BG:
                     {
                         MSNewCurrentVeStatus.VideoSystem = MS_VE_PAL;
-                        eResType = 2; //E_MSAPI_XC_RES_720x576I_50Hz
-                        //eResType = 3; //E_MSAPI_XC_RES_720x576P_50Hz;
                         break;
                     }
                     case eTDAL_OUTPUT_VIDEO_SD_STD_PAL_I:
                     {
                         MSNewCurrentVeStatus.VideoSystem = MS_VE_PAL;
-                        eResType = 2; //E_MSAPI_XC_RES_720x576I_50Hz
-                        //eResType = 3; //E_MSAPI_XC_RES_720x576P_50Hz;
                         break;
                     }
                     case eTDAL_OUTPUT_VIDEO_SD_STD_PAL_M:
                     {
                         MSNewCurrentVeStatus.VideoSystem = MS_VE_PAL_M;
-                        eResType = 0; //E_MSAPI_XC_RES_720x480I_60Hz;
-                        //eResType = 1; //E_MSAPI_XC_RES_720x480P_60Hz;
                         break;
                     }
                     case eTDAL_OUTPUT_VIDEO_SD_STD_PAL_N:
                     {
                         MSNewCurrentVeStatus.VideoSystem = MS_VE_PAL_N;
-                        eResType = 2; //E_MSAPI_XC_RES_720x576I_50Hz
-                        //eResType = 3; //E_MSAPI_XC_RES_720x576P_50Hz;
                         break;
                     }
                     case eTDAL_OUTPUT_VIDEO_SD_STD_SECAM :
                     {
                         MSNewCurrentVeStatus.VideoSystem = MS_VE_SECAM;
-                        eResType = 2; //E_MSAPI_XC_RES_720x576I_50Hz
-                        //eResType = 3; //E_MSAPI_XC_RES_720x576P_50Hz;
                         break;
                     }
                     case eTDAL_OUTPUT_VIDEO_SD_STD_NTSC_M :
                     {
                         MSNewCurrentVeStatus.VideoSystem = MS_VE_NTSC; /* should be checked( MS_VE_NTSC, MS_VE_NTSC_443, MS_VE_NTSC_J)*/
-                        eResType = 0; //E_MSAPI_XC_RES_720x480I_60Hz;
-                        //eResType = 1; //E_MSAPI_XC_RES_720x480P_60Hz;
                         break;
                     }
                     default:
                     {
                         OutErrorCode = eTDAL_OUTPUT_NOT_AVAILABLE_ERROR;
                         break;
-                    }
-                }
-                
-                if (TDAL_OUTPUTi_DescriptorTable[i].pstVideoDencDesc->Standard == NULL || 
-                        MSNewCurrentVeStatus.VideoSystem != MSCurrentVeStatus.VideoSystem)
-                {
-                    bStandardChanged = TRUE;
-                }
-
-                if (TDAL_OUTPUTi_DescriptorTable[i].pstVideoDencDesc->Standard != Std)
-                {  
-                    if (!bStandardChanged)
-                    {
-                        mTBOX_TRACE((kTBOX_NIV_5,"Something messy in Output Standard Set bookkeeping\n"));
-                    }
-                }
-                else
-                {
-                    if (bStandardChanged)
-                    {
-                        mTBOX_TRACE((kTBOX_NIV_5,"Something messy in Output Standard Set bookkeeping\n"));
                     }
                 }
                 TDAL_OUTPUTi_DescriptorTable[i].pstVideoDencDesc->Standard = Std;
@@ -349,107 +305,16 @@ GLOBAL   tTDAL_OUTPUT_Error   TDAL_OUTPUT_VideoDencStandardSet(tTDAL_OUTPUT_Outp
                 break;
             }
         }
-        
-        if (bStandardChanged)
-        {
-            bool VE_Enabled = false;
-            DAC_ApiStatus dacStatus;
 
-            if (msAPI_VE_CheckInitStatus() == FALSE)
-            {
-                mTBOX_TRACE((kTBOX_NIV_5,"VE is not initialized\n"));
-            }
-            
-            if (MApi_DAC_GetStatus(&dacStatus))
-            {
-                VE_Enabled = dacStatus.bDac_VE_enabled;
-                if (VE_Enabled)
-                {
-                    msAPI_err = msAPI_VE_EnableMiscOutput(DISABLE);
-                    mTBOX_ASSERT(msAPI_err == TRUE);
+        msAPI_VE_EnableMiscOutput(DISABLE);
+        msAPI_VE_SetOutputVideoStd(MSNewCurrentVeStatus.VideoSystem);
+        msAPI_VE_SetMode();
+        msAPI_VE_SetWin(NULL, NULL);
+        msAPI_VE_SetVideoMute(ENABLE);
+        msAPI_VE_EnableMiscOutput(ENABLE);
+        msAPI_VE_SetVideoMute(DISABLE);
 
-                    msAPI_err = msAPI_XC_EnableMiscOutput(DISABLE);
-                    mTBOX_ASSERT(msAPI_err == TRUE);
-                }
-            }
-
-            /*************************************/
-            /*   Set   the   requested   encoding   mode   */
-            /*************************************/
-            /* TBD */
-
-            switch(MSNewCurrentVeStatus.VideoSystem)
-            {
-                case MS_VE_NTSC:
-                case MS_VE_NTSC_443:
-                case MS_VE_NTSC_J:
-                case MS_VE_PAL_M:
-                    dispWin.height = 480;
-                    dispWin.width = 720;
-                    xc_dispWin.x = 0 + g_IPanel.HStart();
-                    xc_dispWin.y = 0 + g_IPanel.VStart();
-                    xc_dispWin.height = 480;
-                    xc_dispWin.width = 720;
-                    break;
-                case MS_VE_SECAM:
-                //case MS_VE_PAL_M:
-                case MS_VE_PAL_N:
-                case MS_VE_PAL_NC:
-                case MS_VE_PAL:
-                    dispWin.height = 576;
-                    dispWin.width = 720;
-                    xc_dispWin.x = 0 + g_IPanel.HStart();
-                    xc_dispWin.y = 0 + g_IPanel.VStart();
-                    xc_dispWin.height = 576;
-                    xc_dispWin.width = 720;
-                    break;
-                default:
-                    dispWin.height = 576;
-                    dispWin.width = 720;
-                    xc_dispWin.x = 0 + g_IPanel.HStart();
-                    xc_dispWin.y = 0 + g_IPanel.VStart();
-                    xc_dispWin.height = 576;
-                    xc_dispWin.width = 720;
-                    mTBOX_ASSERT(FALSE);
-                    break;
-            }
-
-            //Reset XC Timing
-            msAPI_XC_ChangeOutputResolution(eResType);
-
-            //Set Display Window
-            MApi_XC_SetDispWinToReg(&xc_dispWin, 0/*MAIN_WINDOW*/);
-
-            msAPI_err = msAPI_XC_EnableMiscOutput(ENABLE);
-            mTBOX_ASSERT(msAPI_err == TRUE);
-
-            msAPI_err = msAPI_VE_SetOutputVideoStd(MSNewCurrentVeStatus.VideoSystem);
-            mTBOX_ASSERT(msAPI_err == TRUE);
-            msAPI_err = msAPI_VE_SetMode();
-            mTBOX_ASSERT(msAPI_err == TRUE);
-
-            mTBOX_TRACE((kTBOX_NIV_1, "[TDAL_OUTPUT_VideoDencStandardSet] msAPI_VE_SetWin(%d, %d, %d, %d) = %d\n", dispWin.x, dispWin.y, dispWin.width, dispWin.height, Std));
-            msAPI_err = msAPI_VE_SetWin(NULL, &dispWin);
-            mTBOX_ASSERT(msAPI_err == TRUE);
-            if (VE_Enabled)
-            {
-                msAPI_err = msAPI_VE_EnableMiscOutput(ENABLE);
-                mTBOX_ASSERT(msAPI_err == TRUE);
-
-                //Set VDEC FRC
-                msAPI_err = msAPI_XC_DTV_SetMode();
-                mTBOX_ASSERT(msAPI_err == TRUE);
-                //Set Scaler(HD PATH)
-                msAPI_XC_SetWin(NULL, NULL, NULL, 0/*MAIN_WINDOW*/);
-
-                msAPI_err = msAPI_VE_SetMode();
-                mTBOX_ASSERT(msAPI_err == TRUE);
-
-                //Wait at least 4 V-syncs(VE setting time + wait 2 VSync) for SCALER to fill frame buffer
-                MApi_XC_WaitOutputVSync(2, 100, 0/*MAIN_WINDOW*/);
-            }
-            TDAL_OUTPUTi_SetMacrovision(TDAL_OUTPUTi_DescriptorTable[i].pstVideoDencDesc->IsMacrovisionActive);
-        }
+        TDAL_OUTPUTi_SetMacrovision(TDAL_OUTPUTi_DescriptorTable[i].pstVideoDencDesc->IsMacrovisionActive);
 
     }
     else
@@ -476,15 +341,15 @@ GLOBAL   tTDAL_OUTPUT_Error   TDAL_OUTPUT_VideoDencFormatSet(tTDAL_OUTPUT_Output
     tTDAL_OUTPUT_Error   OutErrorCode = eTDAL_OUTPUT_NO_ERROR;
     bool        desc_found = FALSE;
     uint32_t      i;
-    
+
     mTBOX_FCT_ENTER("TDAL_OUTPUT_VideoDencFormatSet");
-    
+
     /*   check   if   not   initialized   */
     if   (TDAL_OUTPUT_AlreadyInitialized == FALSE)
     {
         mTBOX_RETURN(eTDAL_OUTPUT_NOT_INIT_ERROR);
     }
-    
+
     /*   find   the   output   descriptor   */
     for   (i=0; i<kTDAL_OUTPUTi_NB_OUTPUT && desc_found==FALSE; i++)
     {
@@ -525,7 +390,7 @@ GLOBAL   tTDAL_OUTPUT_Error   TDAL_OUTPUT_VideoDencFormatSet(tTDAL_OUTPUT_Output
                         /*printf("VideoFormatSet   =>   TO   BE   DONE   With   the   scart   ??");*/
                         /*nothing   to   do*/
                     }
-        
+
                     if ((!(TDAL_OUTPUTi_DescriptorTable[i].pstVideoDencDesc->FormatMask & eTDAL_OUTPUT_VIDEO_DENC_FORMAT_YUV))   &&
                     (FormatMask & eTDAL_OUTPUT_VIDEO_DENC_FORMAT_YUV))
                     {
@@ -576,9 +441,9 @@ GLOBAL   tTDAL_OUTPUT_Error   TDAL_OUTPUT_VideoDencColorBarControl(tTDAL_OUTPUT_
     tTDAL_OUTPUT_Error   OutErrorCode = eTDAL_OUTPUT_NO_ERROR;
     bool        desc_found = FALSE;
     uint32_t      i;
-    
+
     mTBOX_FCT_ENTER("TDAL_OUTPUT_VideoDencColorBarControl");
-    
+
     /*   check   if   not   initialized   */
     if   (TDAL_OUTPUT_AlreadyInitialized == FALSE)
     {
@@ -640,9 +505,9 @@ GLOBAL   tTDAL_OUTPUT_Error   TDAL_OUTPUT_VideoDencColorBarControl(tTDAL_OUTPUT_
 GLOBAL   tTDAL_OUTPUT_Error   TDAL_OUTPUT_VideoDencBCSParamsSet(tTDAL_OUTPUT_OutputId   Id,   tTDAL_OUTPUT_VideoDencBCSParams   *pstBcs)
 {
     tTDAL_OUTPUT_Error   Error = eTDAL_OUTPUT_NO_ERROR;
-    
+
     mTBOX_FCT_ENTER("TDAL_OUTPUT_VideoDencBCSParamsSet");
-    
+
     /*   not   supported   */
     mTBOX_RETURN(Error);
 }

@@ -24,24 +24,22 @@
 #include "tdal_common.h"
 #include "tdal_common_priv.h"
 #include "tdal_kbd.h"
-#include "tdal_kbd_module_priv.h"
 
 #include "MsCommon.h"
 #include "drvMMIO.h"
 #include "mdrv_ir.h"
 #include "MsOS.h"
-#include "IR_MSTAR_DTV.h"
-#define KBD_GTPL 
+#if 1 // byKOR, kaon
+ #include "IR_RCMM.h"
+#else
+ #include "IR_MSTAR_DTV.h"
+#endif
 /********************************************************/
 /*           Defines                        */
 /********************************************************/
 #define TDAL_KBD_TASK_STACK         (2*4096)
 
-#ifdef CUSTOMIZATION_GTPL
-#define CHANNEL_NEXT_KEY 133
-#define CHANNEL_PREV_KEY 134
-#endif
-#define HELD_DOWN_INTERVAL (600)
+#define HELD_DOWN_INTERVAL (200)
 
 #define KEY_RELEASED_TIMEOUT ((IR_TIMEOUT_CYC/1000)+20)
 
@@ -50,18 +48,15 @@
 #define KEY_EXIT            0x16
 #endif
 
-#ifdef KBD_MSTAR
+#ifdef KBD_DEN_SKYWORTH
 #define KEY_EXIT            0x1b
 #endif
 
-#ifdef KBD_GTPL
-#define KEY_EXIT            0xC5
-#endif
 
 //#define _DEBUG_AUTO_ZAPPING_
 #ifdef _DEBUG_AUTO_ZAPPING_
-#define _DEBUG_AUTO_ZAPPING_START_KEY    0x84   /* green key */
-#define _DEBUG_AUTO_ZAPPING_PROG_PLUS   0x85
+#define _DEBUG_AUTO_ZAPPING_START_KEY    0x4b   /* green key */
+#define _DEBUG_AUTO_ZAPPING_PROG_PLUS   0x1f
 #define _DEBUG_AUTO_ZAPPING_DELAY       1       /* seconds */
 #endif /* _DEBUG_AUTO_ZAPPING_ */
 
@@ -114,34 +109,14 @@ LOCAL bool gAutoZap = FALSE;
 //LOCAL unsigned   short   NbKeys=64;
 //LOCAL tTDAL_KBD_KeyCode   KeyCode[64];
 
-#ifdef KBD_MSTAR
-#define KBD_MASK 0x7f80
+#ifdef KBD_DEN_SKYWORTH
+#define KBD_MASK 0x7F80
 #endif
 
 #ifdef KBD_NEWLAND
 #define KBD_MASK 0xfe02
 #endif
 
-#ifdef KBD_GTPL
-#define KBD_MASK 0xFD01
-#ifdef TDAL_MULTI_RCUS
-    /* CPRC-250 GTPL NEW RCU
-     * We have 2 RCUs with same code map and different
-     * mask(0xfe01, 0xe31c), so we will use one mask for both RCUs.
-     * In this way we do not have to have two same maps
-     * implemented. Finally, we have 3 RCUs but 2 concurrent RCUS.
-    */
-    #define KBD_MASK1 0xe31c
-    #define KBD_MASK2 0xfe01 /* This mask should stand for default controller i.e. Comedia physical RC*/
-    #define KBD_MASK3 0xfd01
-    bool bIsCMPhysicalCode = true;
-    uint8_t nNativeCodeIdx = 0;
-    extern tNativeCode TDAL_KBD_NativePhysicalCodes[TDAL_KBD_CONCURRENT_NUM][TDAL_KBD_ADDRESS_NUMBER_MAX];
-
-    extern void SortCMKeyCodeArray(tNativeCode *Array, uint8_t length);
-    extern uint16_t QSearch_CM_PhysicalCode(uint16_t keyCode, tNativeCode * nativeCodeArray, uint8_t startIdx, uint8_t endIdx, uint8_t nativeCodeIdx);
-#endif
-#endif
 /********************************************************/
 /*           Local Functions Declarations (LOCAL)   */
 /********************************************************/
@@ -161,40 +136,23 @@ LOCAL void _Input_IRCallback(MS_U32 u32IRKey, MS_U8 u8RepeatFlag)
 {
 	tdal_kbd_RCKey rckey_local;
 	MS_BOOL status;
-#ifdef TDAL_MULTI_RCUS
-    /* Extend the mask checking to number of concurrently supported RCUs*/
-    if ((u32IRKey & 0xFFFF) != (KBD_MASK1 & 0xFFFF)
-     && (u32IRKey & 0xFFFF) != (KBD_MASK2 & 0xFFFF)
-     && (u32IRKey & 0xFFFF) != (KBD_MASK3 & 0xFFFF))
-#else
-    if ((u32IRKey & 0xFFFF) != KBD_MASK)
-#endif
+/* byKOR, kaon remove
+	if ((u32IRKey & 0xFFFF) != KBD_MASK)
     {
 	    mTBOX_TRACE((kTBOX_NIV_3, "Unsupported key 0x%x\n", u32IRKey));
 	    return;
     }
+*/
+	rckey_local.keyCode 	= (u32IRKey) & 0xFF; //	byKOR, kaon rckey_local.keyCode 	= (u32IRKey >> 16) & 0xFF;
+	rckey_local.repeatFleg 	= u8RepeatFlag;
+	rckey_local.shouldExit 	= false;
 
-#ifdef TDAL_MULTI_RCUS
-	if ((u32IRKey & 0xFFFF)==(KBD_MASK1 & 0xFFFF))
-	{
-			nNativeCodeIdx = 0;
-	}
-	else if ((u32IRKey & 0xFFFF)==(KBD_MASK2 & 0xFFFF))
-	{
-		  nNativeCodeIdx = 1;
-	}
-	else
-	{
-	    nNativeCodeIdx = 2;
-	}
-#endif
-
-	rckey_local.keyCode=(u32IRKey >> 16) & 0xFF;
-	rckey_local.repeatFleg=u8RepeatFlag;
-	rckey_local.shouldExit=false;
-
-	mTBOX_TRACE((kTBOX_NIV_3, "%04d %s u8Key = 0x%02x, u8RepeatFlag = 0x%02x ------- from IRCallBack\n", __LINE__, __FUNCTION__, u32IRKey, u8RepeatFlag));
-	status = MsOS_SendToQueue (tdalKbdQueueID, (MS_U8 *)&rckey_local, sizeof(tdal_kbd_RCKey), 0);
+	mTBOX_TRACE((kTBOX_NIV_3, "%04d %s u8Key = 0x%x, u8RepeatFlag = 0x%x ------- from IRCallBack\n", __LINE__, __FUNCTION__, u32IRKey, u8RepeatFlag));
+    #if 1 // can't use mutex in isr
+    status = MsOS_SendToQueue (tdalKbdQueueID, (MS_U8 *)&rckey_local, sizeof(tdal_kbd_RCKey), 0);
+    #else
+	status = TDAL_Enqueue(tdalKbdQueueID, &rckey_local);
+    #endif
 	if (status == FALSE)
 	{
 		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MsOS_SendToQueue   failed\n"));
@@ -265,7 +223,7 @@ LOCAL void TDAL_KBDKeyboardProcess(void *argv)
             if   (PrevKey   !=   -1)
             {
                 mTBOX_TRACE((kTBOX_NIV_1, "eTDAL_KBD_KEY_RELEASED\n"));
-            //  lastHeldDown = 0;
+                lastHeldDown = 0;
                 TDAL_KBD_CallClientsCallbackFct((PrevKey), eTDAL_KBD_KEY_RELEASED);
             }
 
@@ -282,20 +240,10 @@ LOCAL void TDAL_KBDKeyboardProcess(void *argv)
                 //if   (KeyRead == PrevKey)
                 if   (rckey.repeatFleg==TRUE)
                 {
-#ifdef CUSTOMIZATION_GTPL
-                    if((CHANNEL_NEXT_KEY == rckey.keyCode) || (CHANNEL_PREV_KEY == rckey.keyCode))
+                    if ((MsOS_GetSystemTime() - lastHeldDown) > HELD_DOWN_INTERVAL)
                     {
-
-                        if (((MsOS_GetSystemTime() - lastHeldDown) > HELD_DOWN_INTERVAL))
-                        {
-                            /*   the   same   key   has   been   pressed   */
-                            TDAL_KBD_CallClientsCallbackFct(KeyRead, eTDAL_KBD_KEY_HELD_DOWN);
-                            lastHeldDown = MsOS_GetSystemTime();
-                        }
-                    }
-                    else
-#endif
-                    {
+                        /*   the   same   key   has   been   pressed   */
+                        mTBOX_TRACE((kTBOX_NIV_1, "eTDAL_KBD_KEY_HELD_DOWN\n"));
                         TDAL_KBD_CallClientsCallbackFct(KeyRead, eTDAL_KBD_KEY_HELD_DOWN);
                         lastHeldDown = MsOS_GetSystemTime();
                     }
@@ -348,7 +296,6 @@ LOCAL void TDAL_KBDKeyboardProcess(void *argv)
 
     mTBOX_RETURN;
 }
-
 
 /********************************************************/
 /*           Functions Definitions (GLOBAL)       */
@@ -403,7 +350,6 @@ tTDAL_KBD_ErrorCode   TDAL_KBD_Init()
 	{
 		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Creating task failed\n"));
 	}
-	mTBOX_TRACE((kTBOX_NIV_CRITICAL, "==============zg test keyboard init start\n"));
 
 	MDrv_IR_HK_Init();
 	MDrv_IR_HK_SetCallback(_Input_IRCallback);
@@ -418,12 +364,6 @@ tTDAL_KBD_ErrorCode   TDAL_KBD_Init()
 	}
 
 	gTDAL_kbdInitialized = TRUE;
-
-#ifdef TDAL_MULTI_RCUS
-    i = 0;
-    while (i < TDAL_KBD_CONCURRENT_NUM)
-        SortCMKeyCodeArray(TDAL_KBD_NativePhysicalCodes[i++], TDAL_KBD_ADDRESS_NUMBER_MAX);
-#endif
 
 	mTBOX_RETURN(eTDAL_KBD_NO_ERROR);
 }
@@ -598,8 +538,8 @@ void   TDAL_KBD_CallClientsCallbackFct(   tTDAL_KBD_KeyCode   KeyCode,
 	{
 		if   (gTDAL_kbdClientFctArray[i]   !=   NULL)
 		{
-			mTBOX_TRACE((kTBOX_NIV_1, "Call   function   @0x%x\n", gTDAL_kbdClientFctArray[i]));
-			gTDAL_kbdClientFctArray[i](TDAL_KBDi_Phy2PhyMapping(KeyCode), KeyStatus);
+			mTBOX_TRACE((kTBOX_NIV_1, "Call   function   @0x%x\n",gTDAL_kbdClientFctArray[i]));
+			gTDAL_kbdClientFctArray[i](KeyCode, KeyStatus);
 		}
 	}
 
@@ -659,10 +599,10 @@ LOCAL   void   TDAL_KBD_AutoZapTask(void*   unused)
     mTBOX_FCT_ENTER("TDAL_KBD_AutoZapTask");
 
     if(unused)   {}   /*   keep   compiler   happy   */
-    
+
     while(   gAutoZap   )
     {
-        printf("zapping   %d\n", ++counter);
+		++counter;
 /*
         if(counter %10 == 0)
         {
@@ -693,49 +633,18 @@ LOCAL   void   TDAL_KBD_AutoZapTask(void*   unused)
 LOCAL   void   TDAL_KBD_StopAutoZap(void)
 {
     mTBOX_FCT_ENTER("TDAL_KBD_StopAutoZap");
-    
+
     mTBOX_TRACE((kTBOX_NIV_CRITICAL, "stopping   zap   stress   test\n"   ));
     if   (gTDAL_kbdpAutoZapTaskId   !=   NULL)
     {
        MsOS_DeleteTask(gTDAL_kbdpAutoZapTaskId);
        gTDAL_kbdpAutoZapTaskId = NULL;
     }
-    
+
     mTBOX_RETURN;
 
 }
 #endif   /*   _DEBUG_AUTO_ZAPPING_   */
 
 
-/*===========================================================================
- *
- * TDAL_KBD_ExitKeyPress
- *
- * Parameters: none
- *
- *
- * Description:
- *      Sends Exit key
- * Returns:
- *===========================================================================*/
-void   TDAL_KBD_ExitKeyPress(void)
-{
-    mTBOX_FCT_ENTER("TDAL_KBD_ExitKeyPress");
-
-    printf("\n\n\n ################### TDAL_KBD_ExitKeyPress \n\n\n\n");
-
-    TDAL_KBD_CallClientsCallbackFct(KEY_EXIT, eTDAL_KBD_KEY_PRESSED); 
-    TDAL_KBD_CallClientsCallbackFct(KEY_EXIT, eTDAL_KBD_KEY_RELEASED);
-}
-
-tTDAL_KBD_KeyCode TDAL_KBDi_Phy2PhyMapping(tTDAL_KBD_KeyCode keyCode)
-{
-    tTDAL_KBD_KeyCode cmKeyCode = keyCode;
-#ifdef TDAL_MULTI_RCUS
-    cmKeyCode = (tTDAL_KBD_KeyCode)QSearch_CM_PhysicalCode((uint16_t)keyCode, TDAL_KBD_NativePhysicalCodes[nNativeCodeIdx],
-                                                        0, TDAL_KBD_ADDRESS_NUMBER_MAX - 1, nNativeCodeIdx);
-#endif
-
-    return cmKeyCode;
-}
 

@@ -1,3 +1,9 @@
+#ifndef _TDAL_GFX_P_H_
+#define _TDAL_GFX_P_H_
+
+
+#define   GOP_WordUnit    16
+
 typedef struct
 {
     MS_U32 u32BmpDramRblkStart;
@@ -81,11 +87,9 @@ typedef struct
     uint8_t                 alpha;
     GWINID                  GeWinId;
     bool                    used;
-    bool visible;
     tTDAL_GFX_Point         offSet;
     tTDAL_GFX_Size          size;
-    bool                    deletableWin;   
-    MS_U16 fbFmt;
+    bool                    deletableWin;
 }tTDAL_RegionDesc;
 
 typedef struct
@@ -106,10 +110,12 @@ typedef struct
     GFX_Buffer_Format BmpClrFmt;
 }BmpInfo;
 
-#define kTDAL_GFX_REGCOUNT 4 /*32*/
+#define kTDAL_GFX_REGCOUNT 32
 #define BITMAP_DESCRIPTOR_COUNT     32
 
 IMPORT tTDAL_RegionDesc    TDAL_GFX_RgnDesc[kTDAL_GFX_REGCOUNT];
+IMPORT tTDAL_RegionDesc    TDAL_GFX_Scaled_RgnDesc;
+
 IMPORT tTDAL_GFXi_BitmapDescriptor TDAL_GFXi_BitmapDescriptor[BITMAP_DESCRIPTOR_COUNT];
 
 IMPORT GFX_PaletteEntry    _gePalette[GOP_PALETTE_ENTRY_NUM];;
@@ -121,7 +127,7 @@ __INLINE uint8_t TDAL_GFX_ycrcb2B(uint8_t bY, uint8_t bCr, uint8_t bCb);
 int32_t TDAL_GFXm_FindAvailableRegionDescription(void);
 tTDAL_GFX_Error TDAL_GFXm_CreateFB(uint8_t *frameBufferId, uint32_t regionDescriptor, tTDAL_GFX_Size *size, tTDAL_GFX_Point *offset, uint16_t fbFmt);
 void TDAL_GFXm_InitBitmapDescriptors(void);
-
+IMPORT tTDAL_GFX_Error TDAL_GFXm_Blit_GIF(void);
 enum
 {
     LAYER_OSD1 = 0,
@@ -131,7 +137,6 @@ enum
 
 #define kTDAL_GFX_RESOLUTION_COLUMNS_NUM 720
 #define kTDAL_GFX_RESOLUTION_ROWS_NUM 576
-
 #define SCALEX(x) (MS_U16)(((int)(x)*(660)+kTDAL_GFX_RESOLUTION_COLUMNS_NUM/2)/kTDAL_GFX_RESOLUTION_COLUMNS_NUM)
 #define SCALEY(y) (MS_U16)(((int)(y)*(556)+kTDAL_GFX_RESOLUTION_ROWS_NUM/2)/kTDAL_GFX_RESOLUTION_ROWS_NUM)
 
@@ -150,3 +155,5 @@ enum
 #define BMPRGB8888H    400ul
 #define BMPRGBI8W    400ul
 #define BMPRGBI8H    400ul
+
+#endif /*_TDAL_GFX_P_H_*/
