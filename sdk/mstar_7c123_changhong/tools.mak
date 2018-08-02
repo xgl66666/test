@@ -8,10 +8,10 @@ else
     UNAME := $(shell uname -s)
     ifeq ($(UNAME),Linux)
         PRODUCT_ENV ?= unix
-    endif
+endif
     ifeq ($(UNAME),Darwin)
         PRODUCT_ENV ?= android
-    endif
+endif
 endif
 
 UNIX_SLASH = /
@@ -48,18 +48,21 @@ AS = mipsisa32-elf-as
 AR = mipsisa32-elf-ar
 STRIP = mipsisa32-elf-strip
 OBJ_COPY = mipsisa32-elf-objcopy
-TOOLCHAIN_PATH:=/tools/mstar/mipsisa32-elf-3.4.4/bin/
+TOOLCHAIN_PATH:=/tools/mstar/gnutools/mipsisa32-elf-3.4.4/bin/
 export PATH:=$(TOOLCHAIN_PATH):$(PATH)
 endif
 
 # ***********************************
 #     DEFINE C COMPILING OPTIONS
 # ***********************************
-CC_OPTIONS = -EL -mips32 -mhard-float -Wpointer-arith -Winline -G0 -mlong-calls \
+CC_OPTIONS = -EL -mips32 -mhard-float -Wpointer-arith -Winline -G0 -mlong-calls\
              -Wundef -fno-strict-aliasing -fno-optimize-sibling-calls -DMS_C_STDLIB -fno-builtin -c
 
 CXX_FLAGS=   -mips32 -mhard-float -Wpointer-arith -Winline -mlong-calls -EL -G0 \
               -Wno-undef -fno-strict-aliasing -fno-optimize-sibling-calls -fno-builtin
+#
+# -G 0 -mlong-calls
+#
 
 # *****************************
 #    DEFINE DEBUG options
@@ -82,7 +85,7 @@ AR_DELETE_OPTIONS = -d
 #     DEFINE ASSEMBLY COMPILING OPTIONS
 # ****************************************
 AS_OPTIONS = \
-    -EL -mips32 \
+    -EL -mips32  \
     -I. \
     -o \
     $@ \

@@ -16,6 +16,9 @@
 /** @brief Max number of SerDes downstream lanes */
 #define MXL_HRCLS_SERDES_DS_LANES_CNT 2
 
+/** @brief Covey Upstream band frequency edge to firmware */ 
+#define MAILBOX_REG_DOCSIS_US_BAND_EDGE_IN_MHZ  (0xF1E2)
+
 /*****************************************************************************************
     User-Defined Types (Typedefs)
 *****************************************************************************************/
@@ -101,6 +104,37 @@ typedef enum
   MXL_HRCLS_TXDAC_OUT_DEFAULT,              //!< Swing 400mVp-p
   MXL_HRCLS_TXDAC_OUT_MAX,                  //!< Swing 433mVp-p
 } MXL_HRCLS_TXDAC_OUT_SWING_E;
+
+typedef enum
+{
+  MXL_HRCLS_SERDES_RCAL_CODE_0 = 0,
+  MXL_HRCLS_SERDES_RCAL_CODE_1,
+  MXL_HRCLS_SERDES_RCAL_CODE_2,
+  MXL_HRCLS_SERDES_RCAL_CODE_3,
+  MXL_HRCLS_SERDES_RCAL_CODE_4,
+  MXL_HRCLS_SERDES_RCAL_CODE_5,
+  MXL_HRCLS_SERDES_RCAL_CODE_6,
+  MXL_HRCLS_SERDES_RCAL_CODE_7,
+  MXL_HRCLS_SERDES_RCAL_CODE_8,
+  MXL_HRCLS_SERDES_RCAL_CODE_9,
+  MXL_HRCLS_SERDES_RCAL_CODE_10,
+  MXL_HRCLS_SERDES_RCAL_CODE_11,
+  MXL_HRCLS_SERDES_RCAL_CODE_12,
+  MXL_HRCLS_SERDES_RCAL_CODE_13,
+  MXL_HRCLS_SERDES_RCAL_CODE_14,
+  MXL_HRCLS_SERDES_RCAL_CODE_15,
+  MXL_HRCLS_SERDES_RCAL_CODE_MAX
+} MXL_HRCLS_SERDES_RCAL_CODE_E;
+
+/** @brief Upstream Frequency Band Edge */
+typedef enum
+{
+  MXL_HRCLS_UPSTREAM_BANDEDGE_42MHZ = 42,               
+  MXL_HRCLS_UPSTREAM_BANDEDGE_65MHZ = 65,             
+  MXL_HRCLS_UPSTREAM_BANDEDGE_85MHZ = 85,
+  MXL_HRCLS_UPSTREAM_BANDEDGE_MAX 
+} MXL_HRCLS_UPSTREAM_BANDEDGE_E;
+
 
 /*****************************************************************************************
     Prototypes
@@ -658,5 +692,36 @@ MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_CfgDevUpStreamParams(
  ****************************************************************************************/
 
 MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_CfgSerDesPhyReset(UINT8 devId, MXL_HRCLS_SERDES_LANE_ID_E serDesId);
+
+/**
+ *****************************************************************************************
+ *  @param[in]  devId MxL device id
+ *  @param[in]  serDesId MxL serdes lane id
+ *  @param[in]  rcalCode an entry index of RCAL table.
+ *
+ *  @apibrief   This API sets Output driver and Input termination with the passed in value.
+ *
+ *  @usage      This should be called with Serdes type 2 or 3 only.
+ *
+ *  @return     MXL_SUCCESS, MXL_FAILURE, MXL_NOT_INITIALIZED, MXL_INVALID_PARAMETER
+ ****************************************************************************************/
+
+MXL_STATUS_E MxLWare_HRCLS_API_CfgSerdesIOTermination(UINT8 devId,  MXL_HRCLS_SERDES_LANE_ID_E serDesId, MXL_HRCLS_SERDES_RCAL_CODE_E rcalCode);
+
+
+/**
+ *****************************************************************************************
+ *  @param[in]  devId MxL device id
+ *  @param[in]  usBandEdge - Specified the upstream band edge frequency.
+ *
+ *  @apibrief   This API sets the Upstream band frequency edge used for optimal AGC performance.
+ *
+ *  @usage      This should be called any time after firmware download before channel tune.
+ *
+ *  @return     MXL_SUCCESS, MXL_FAILURE, MXL_NOT_INITIALIZED, MXL_INVALID_PARAMETER
+ ****************************************************************************************/
+
+MXL_STATUS_E MxLWare_HRCLS_API_CfgUsBandEdge(UINT8 devId,  MXL_HRCLS_UPSTREAM_BANDEDGE_E usBandEdge);
+
 
 #endif

@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (¡§MStar Confidential Information¡¨) by the recipient.
+// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -388,12 +388,12 @@ MS_BOOL MDrv_Demod_null_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTIO
     return TRUE;
 }
 
-MS_BOOL MDrv_Demod_null_CheckExist(MS_U8 u8DemodIndex)
+MS_BOOL MDrv_Demod_null_CheckExist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
 {
     DMD_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
     return TRUE;
 }
-#ifdef DDI_MISC_INUSE
+
 MS_BOOL MDrv_Demod_null_SetScanTypeStatus(MS_U8 u8DemodIndex, MS_U8 status)
 {
     DMD_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
@@ -411,7 +411,19 @@ MS_BOOL MDrv_Demod_null_GetNextPLPID(MS_U8 u8DemodIndex, MS_U8 Index, MS_U8* pu8
     DMD_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
     return TRUE;
 }
-#endif
+
+MS_BOOL MDrv_Demod_null_GetPLPType(MS_U8 u8DemodIndex, DEMOD_DVBT2_PLP_TYPE* ePLPTYPE)
+{
+    DMD_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
+    return TRUE;
+}
+
+MS_BOOL MDrv_Demod_null_Get_Packet_Error(MS_U8 u8DemodIndex, MS_U16 *u16PktErr)
+{
+    DMD_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
+    return TRUE;
+}
+
 
 DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_NULL) DDI_DRV_TABLE_ENTRY(demodtab) =
 {
@@ -434,11 +446,10 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_NULL) DDI_DRV_TABLE_ENTRY(demodt
      .GetPlpBitMap                 = MDrv_Demod_null_GetPlpBitMap,
      .GetPlpGroupID                = MDrv_Demod_null_GetPlpGroupID,
      .SetPlpGroupID                = MDrv_Demod_null_SetPlpGroupID,
-#ifdef DDI_MISC_INUSE
      .SetScanTypeStatus            = MDrv_Demod_null_SetScanTypeStatus,
      .GetScanTypeStatus            = MDrv_Demod_null_GetScanTypeStatus,
      .GetNextPLPID                 = MDrv_Demod_null_GetNextPLPID,
-#endif
+     .GetPLPType                   = MDrv_Demod_null_GetPLPType,
 #endif
 #if MS_DVBS_INUSE
      .BlindScanStart               = MDrv_Demod_null_BlindScan_Start,
@@ -453,8 +464,10 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_NULL) DDI_DRV_TABLE_ENTRY(demodt
      .DiSEqCGetLNBOut              = MDrv_Demod_null_DiSEqC_GetLNBOut,
      .DiSEqCSet22kOnOff            = MDrv_Demod_null_DiSEqC_Set22kOnOff,
      .DiSEqCGet22kOnOff            = MDrv_Demod_null_DiSEqC_Get22kOnOff,
-     .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd
+     .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd,
 #endif
+     .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error
+
 };
 
 #endif

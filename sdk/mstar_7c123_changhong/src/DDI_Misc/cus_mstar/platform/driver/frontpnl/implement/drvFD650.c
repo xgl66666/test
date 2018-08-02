@@ -54,7 +54,7 @@ void Delay1(void)
  *
  *  Parameter:
  *
- *  return：
+ *  return拢潞
 ****************************************************************/
 void FD650_Start( void )
 {
@@ -75,7 +75,7 @@ void FD650_Start( void )
  *
  *  Parameter:
  *
- *  return：
+ *  return拢潞
 ****************************************************************/
 void FD650_Stop( void )
 {
@@ -97,7 +97,7 @@ void FD650_Stop( void )
  *
  *  Parameter: data
  *
- *  return：
+ *  return拢潞
 ****************************************************************/
 void FD650_WrByte( MS_U8 dat )
 {
@@ -134,7 +134,7 @@ void FD650_WrByte( MS_U8 dat )
  *
  *  Parameter:
  *
- *  return：data
+ *  return拢潞data
 ****************************************************************/
 MS_U8 FD650_RdByte( void )
 {
@@ -169,7 +169,7 @@ MS_U8 FD650_RdByte( void )
  *
  *  Parameter: cmd FD650.H
  *
- *  return：
+ *  return拢潞
 ****************************************************************/
 void FD650_Write( MS_U16 cmd )  //write cmd
 {
@@ -189,7 +189,7 @@ void FD650_Write( MS_U16 cmd )  //write cmd
  *
  *  Parameter:
  *
- *  return：key value
+ *  return拢潞key value
 ****************************************************************/
 MS_U8 FD650_Read( void )
 {
@@ -286,11 +286,11 @@ MS_BOOL MDrv_FD650_Term(void)
  *
  *  Function Name:Led_Get_Code
  *
- *  Description:转换字符为数码管的显示码，如遇到无法转换的字符返回0
+ *  Description:脳陋禄禄脳脰路没脦陋脢媒脗毛鹿脺碌脛脧脭脢戮脗毛拢卢脠莽脫枚碌陆脦脼路篓脳陋禄禄碌脛脳脰路没路碌禄脴0
  *
- *  Parameter: cTemp  待转换为显示码的字符
+ *  Parameter: cTemp  麓媒脳陋禄禄脦陋脧脭脢戮脗毛碌脛脳脰路没
  *
- *  return：显示码值
+ *  return拢潞脧脭脢戮脗毛脰碌
 ****************************************************************/
 static MS_U8 Led_Get_Code(char cTemp)
 {
@@ -312,11 +312,11 @@ static MS_U8 Led_Get_Code(char cTemp)
 /// initialze Front Panel display control.
 /// Function Name:MDrv_FrontPnl_DisPlay1
 ///
-///  Description:简单的数码管显示应用示例
+///  Description:录貌碌楼碌脛脢媒脗毛鹿脺脧脭脢戮脫娄脫脙脢戮脌媒
 ///
-/// Parameter:  FPStr          显示的字符串；
-///                        sec_flag      开启小数点标志位；
-/// return：无
+/// Parameter:  FPStr          脧脭脢戮碌脛脳脰路没麓庐拢禄
+///                        sec_flag      驴陋脝么脨隆脢媒碌茫卤锚脰戮脦禄拢禄
+/// return拢潞脦脼
 
 //-------------------------------------------------------------------------------------------------
 static MS_U8 sec_vel=0;
@@ -352,20 +352,20 @@ void MDrv_FD650_Display(char *FPStr, MS_U8 sec_flag)
         data[i] = Led_Get_Code(FPStr[i]);
     }
 
-    FD650_Write(FD650_SYSON_8);// 开启显示和键盘，8段显示方式
-    //发显示数据
-    FD650_Write( FD650_DIG0 | (MS_U8)data[0] ); //点亮第一个数码管
+    FD650_Write(FD650_SYSON_8);// 驴陋脝么脧脭脢戮潞脥录眉脜脤拢卢8露脦脧脭脢戮路陆脢陆
+    //路垄脧脭脢戮脢媒戮脻
+    FD650_Write( FD650_DIG0 | (MS_U8)data[0] ); //碌茫脕脕碌脷脪禄赂枚脢媒脗毛鹿脺
 
     if(sec_flag)
-        FD650_Write( FD650_DIG1 | (MS_U8)data[1] | FD650_DOT ); //点亮第二个数码管
+        FD650_Write( FD650_DIG1 | (MS_U8)data[1] | FD650_DOT ); //碌茫脕脕碌脷露镁赂枚脢媒脗毛鹿脺
     else
         FD650_Write( FD650_DIG1 | (MS_U8)data[1] );
 
-    FD650_Write( FD650_DIG2 | (MS_U8)data[2]|FD650_DOT); //点亮第三个数码管
+    FD650_Write( FD650_DIG2 | (MS_U8)data[2]|FD650_DOT); //碌茫脕脕碌脷脠媒赂枚脢媒脗毛鹿脺
 
-    FD650_Write( FD650_DIG3 | (MS_U8)data[3] ); //点亮第四个数码管
+    FD650_Write( FD650_DIG3 | (MS_U8)data[3] ); //碌茫脕脕碌脷脣脛赂枚脢媒脗毛鹿脺
 
-    FD650_Write(FD650_SYSON_8);// 开启显示和键盘，8段显示方式
+    FD650_Write(FD650_SYSON_8);// 驴陋脝么脧脭脢戮潞脥录眉脜脤拢卢8露脦脧脭脢戮路陆脢陆
     sec_vel = (MS_U8)data[3];
 
     if(display_time != 0)
@@ -391,7 +391,7 @@ MS_U8 MDrv_FD650_GetKeyValue(void)
         return 0xFF;
     }
     KeyValue =  FD650_Read();       //read key value   
-    FD650_Write(FD650_SYSON_8);// 开启显示和键盘，8段显示方式
+    FD650_Write(FD650_SYSON_8);// 驴陋脝么脧脭脢戮潞脥录眉脜脤拢卢8露脦脧脭脢戮路陆脢陆
     if(FALSE == MsOS_ReleaseMutex(stFD650Mutex))
     {        
         printf("[%s][%d]Release fd650 Mutex ---- fail!\n",__FUNCTION__,__LINE__);
@@ -407,13 +407,13 @@ void Mdrv_FD650_LockLed_OnOff(MS_U8 bLightOn)
         return ;
     }
 
-    FD650_Write(FD650_SYSON_8);// 开启显示和键盘，8段显示方式
+    FD650_Write(FD650_SYSON_8);// 驴陋脝么脧脭脢戮潞脥录眉脜脤拢卢8露脦脧脭脢戮路陆脢陆
     if(bLightOn)
-        FD650_Write( FD650_DIG3 | sec_vel | FD650_DOT ); //点亮第四个数码管
+        FD650_Write( FD650_DIG3 | sec_vel | FD650_DOT ); //碌茫脕脕碌脷脣脛赂枚脢媒脗毛鹿脺
     else
-        FD650_Write( FD650_DIG3 | sec_vel  ); //点亮第四个数码管
+        FD650_Write( FD650_DIG3 | sec_vel  ); //碌茫脕脕碌脷脣脛赂枚脢媒脗毛鹿脺
    
-    FD650_Write(FD650_SYSON_8);// 开启显示和键盘，8段显示方式
+    FD650_Write(FD650_SYSON_8);// 驴陋脝么脧脭脢戮潞脥录眉脜脤拢卢8露脦脧脭脢戮路陆脢陆
     MsOS_ReleaseMutex(stFD650Mutex);
 
 }
@@ -425,12 +425,12 @@ void Mdrv_FD650_PowerLed_OnOff(MS_U8 bLightOn)
         return ;
     }
 
-    FD650_Write(FD650_SYSON_8);// 开启显示和键盘，8段显示方式
+    FD650_Write(FD650_SYSON_8);// 驴陋脝么脧脭脢戮潞脥录眉脜脤拢卢8露脦脧脭脢戮路陆脢陆
     if(bLightOn)
     FD650_Write( FD650_DIG2 | data[2] | FD650_DOT ); 
     else
     FD650_Write( FD650_DIG0 | data[0] | FD650_DOT ); 
     
-    FD650_Write(FD650_SYSON_8);// 开启显示和键盘，8段显示方式
+    FD650_Write(FD650_SYSON_8);// 驴陋脝么脧脭脢戮潞脥录眉脜脤拢卢8露脦脧脭脢戮路陆脢陆
     MsOS_ReleaseMutex(stFD650Mutex);
 }

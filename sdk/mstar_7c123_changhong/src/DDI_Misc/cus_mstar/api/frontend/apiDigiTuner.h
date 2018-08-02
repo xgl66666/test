@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (¡§MStar Confidential Information¡¨) by the recipient.
+// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -107,9 +107,12 @@
 //---------------------------------------------------------------------------
 #include "Board.h"
 #include "drvDemod.h"
-#if MS_DVBS_INUSE
+#include "drvTuner.h"
+#include "MsDevice.h"
+//#if MS_DVBS_INUSE
+#include "drvDish.h"
 //#include "apiDTVSatTable.h"
-#endif
+//#endif
 #define INVALID_POOL_ID -1
 typedef enum
 {
@@ -123,8 +126,8 @@ typedef enum
 //-------------------------------------------------------------------------------------------------
 #if MS_DVBS_INUSE
 #define MAX_C_LOF_FREQ    6350   //4200+2150
-
 #define SAT_MOVE_TIME           10 // s
+#define MAX_DISEQC_CMD_SIZE  16
 #endif
 
 #define FEIndex_NONE   0xff
@@ -140,19 +143,19 @@ typedef enum
 #if (FE_DEBUG_OPTIONS & FE_EN_ERR)
 #define FE_ERR(x) printf("[FE ERR]");printf x
 #else
-#define FE_ERR(x) 
+#define FE_ERR(x)
 #endif
 
 #if (FE_DEBUG_OPTIONS & FE_EN_DBG)
 #define FE_DBG(x) printf("[FE DBG]");printf x
 #else
-#define FE_DBG(x) 
+#define FE_DBG(x)
 #endif
 
 #if (FE_DEBUG_OPTIONS & FE_EN_MSG)
 #define FE_MSG(x) printf x
 #else
-#define FE_MSG(x) 
+#define FE_MSG(x)
 #endif
 
 
@@ -185,6 +188,11 @@ typedef enum
     CONV_CODE_RATE_7_8,                                                 ///< Code rate = 7/8
     CONV_CODE_RATE_3_5,                                                 ///< Code rate = 3/5
     CONV_CODE_RATE_4_5,                                                 ///< Code rate = 4/5
+    CONV_CODE_RATE_1_3,                                                 ///< Code rate =  1/3
+    CONV_CODE_RATE_1_4,                                                 ///< Code rate =  1/4
+    CONV_CODE_RATE_2_5,                                                 ///< Code rate =  2/5
+    CONV_CODE_RATE_8_9,                                                 ///< Code rate =  8/9
+    CONV_CODE_RATE_9_10,                                                ///< Code rate =  9/10
 } EN_CONV_CODE_RATE_TYPE;
 
 /// Define terrestrial band width
@@ -192,7 +200,8 @@ typedef enum
 {
     BW_MODE_6MHZ = 0,                                                   ///< 6 MHz
     BW_MODE_7MHZ,                                                       ///< 7 MHz
-    BW_MODE_8MHZ                                                        ///< 8 MHz
+    BW_MODE_8MHZ,                                                       ///< 8 MHz
+    BW_MODE_1_7MHZ                                                      ///< 1.7 MHz
 } EN_TER_BW_MODE;
 
 /// Define terrestrial constellation type
@@ -333,10 +342,7 @@ typedef MS_U16                      FE_CELL_ID;
 typedef struct
 {
     MS_U8                           u8PlpID;
-
-#ifdef DDI_MISC_INUSE
     MS_U8                           u8ScanType;
-#endif
     EN_TER_BW_MODE                  eBandWidth;                         ///< Band width
     EN_TER_CONSTEL_TYPE             eConstellation;                     ///< Constellation type
     EN_TER_HIE_TYPE                 eHierarchy;                         ///< Hierarchy
@@ -357,9 +363,10 @@ typedef struct
     EN_CAB_IQ_MODE                  eIQMode;                            ///< IQ Mode
     MS_U8                           u8TapAssign;                        ///< Tap assign
     MS_U32                          u32FreqOffset;                      ///< Carrier frequency offset
-    MS_U8                           u8TuneFreqOffset;                       ///< Requeset tuner freq offset
+    MS_U8                           u8TuneFreqOffset;                  ///< Requeset tuner freq offset
     EN_CAB_BW                       eBandWidth;
     MS_U8                           u8DemodConfig;
+    float                           fCFO;                                 ///< Carrier frequency offset
 } MS_CAB_CARRIER_PARAM;
 
 /// Define tuning paramter of DVB-S front-end
@@ -375,7 +382,9 @@ typedef struct
     MS_U8                           u8Polarity; // 0: Horizon; > 0(default 1): Vertical;
     MS_U8                           u8SatID;
 #endif
-
+    MS_U16                          u16ExtSymbolRate;
+    float                           fCFO;                               ///< Carrier frequency offset
+    MS_BOOL                         bIs_DVBS2;
 } MS_SAT_CARRIER_PARAM;
 
 /// Define carrier paramter of digital tuner
@@ -548,17 +557,26 @@ typedef struct drv_frontend_entry
     struct drv_tunertab_entry* tunertab;
 #if MS_DVBS_INUSE
     struct drv_dishtab_entry* dishtab;
+    MS_U8 u8DiseqcCmd[MAX_DISEQC_CMD_SIZE];
+    EN_LOCK_STATUS  eCurrentLockStatus;
 #endif
     MS_BOOL bReset;
     struct drv_frontend_entry* next;
 }DEV_FRONTEND_TYPE;
 
+typedef struct
+{
+    MS_U32 u32DMD_TYPE;
+    MS_U8 u8SlaveID;
+    MS_U8 u8I2C_Port;
+    MS_BOOL bExist;
+} EXT_DMD_INFO;
 
 //-------------------------------------------------------------------------------------------------
 //  Function and Variable
 //-------------------------------------------------------------------------------------------------
 MS_BOOL MApi_DigiTuner_Set_MemPool(E_DDI_FE_SYSPOOLID eSYSPOOL,MS_S32 s32PoolID);
-MS_BOOL MApi_DigiTuner_GetFEtab(MS_U8 drv_frontend_index, DEV_FRONTEND_TYPE* pFETab);
+MS_BOOL MApi_DigiTuner_GetFEtab(MS_U8 drv_frontend_index, DEV_FRONTEND_TYPE** pFETab);
 MS_U8 MApi_DigiTuner_GetMaxFEIdx(void);
 MS_BOOL MApi_Frontend_SetTunerDemod(MS_U8 IIc_index,MS_U32 u32ScanTunerIndex, MS_U32 u32ScanDemodIndex);
 MS_BOOL MApi_Frontend_SetDetectMode(MS_U8 drv_frontend_index,EN_FRONTEND_DETECT_MODE eDetectMode);
@@ -579,6 +597,9 @@ extern MS_BOOL MApi_DigiTuner_DeInit(MS_U8 drv_frontend_index);
 extern MS_BOOL MApi_DigiTuner_Init(MS_U8 drv_frontend_index);
 #if MS_DVBS_INUSE
 extern MS_BOOL MApi_DigiTuner_Tune2RfCh_DVBS(MS_U8 drv_frontend_index, MS_SAT_PARAM *pSATParam,MS_FE_CARRIER_PARAM *pParam, EN_FE_TUNE_MODE eMode);
+#ifdef SUPPORT_DUAL_LNB
+extern MS_BOOL MApi_DigiTuner_Tune2RfCh_DVBS_Ext(MS_U8 drv_frontend_index, MS_SAT_PARAM *pSATParam,MS_FE_CARRIER_PARAM *pParam, EN_CABLE_SELECT eCableID);
+#endif
 #endif
 
 extern MS_BOOL MApi_DigiTuner_Tune2RfCh(MS_U8 drv_frontend_index, MS_FE_CARRIER_PARAM *pParam, EN_FE_TUNE_MODE eMode);
@@ -595,6 +616,7 @@ extern MS_BOOL MApi_DigiTuner_GetPWR(MS_U8 drv_frontend_index, MS_S16 *ps16PWR);
 extern MS_BOOL MApi_DigiTuner_GetSignalQuality(MS_U8 drv_frontend_index, MS_U16* pu16quality);
 extern MS_BOOL MApi_DigiTuner_GetPWRFromTuner(MS_U8 drv_frontend_index, float* pfPWR);
 extern MS_BOOL MApi_DigiTuner_GetBER(MS_U8 drv_frontend_index, float *pfltBER);
+extern MS_BOOL MApi_DigiTuner_Get_Packet_Error(MS_U8 drv_frontend_index, MS_U16 *RegData);
 extern MS_BOOL MApi_DigiTuner_Loop_Through_On(MS_U8 drv_frontend_index, MS_BOOL bOn);
 extern MS_BOOL MApi_DigiTuner_Stand_By(MS_U8 drv_frontend_index);
 extern MS_BOOL MApi_DigiTuner_Wake_Up(MS_U8 drv_frontend_index);
@@ -618,6 +640,11 @@ extern MS_BOOL MApi_DigiTuner_GetRFOffset(MS_U8 drv_frontend_index, MS_S16 *ps16
 extern MS_BOOL MApi_DigiTuner_Satellite_Set22K(MS_U8 drv_frontend_index, MS_BOOL b22KOn);
 extern MS_BOOL MApi_DigiTuner_Satellite_Set22KTone(MS_U8 drv_frontend_index, MS_U32 u32ToneType);
 extern MS_BOOL MApi_DigiTuner_Satellite_SetLNBPower(MS_U8 drv_frontend_index, MS_EN_LNBPWR_ONOFF enLNBPowe,MS_U8 u8Polarity,MS_BOOL bPorInvert);
+#ifdef SUPPORT_DUAL_LNB
+extern MS_BOOL MApi_DigiTuner_Satellite_Set22K_Ext(MS_U8 drv_frontend_index, MS_BOOL b22KOn, EN_CABLE_SELECT eCableID);
+extern MS_BOOL MApi_DigiTuner_Satellite_SetLNBPower_Ext(MS_U8 drv_frontend_index, MS_EN_LNBPWR_ONOFF enLNBPowe,MS_U8 u8Polarity,MS_BOOL bPorInvert, EN_CABLE_SELECT eCableID);
+extern MS_BOOL MApi_DigiTuner_Satellite_Set22KTone_Ext(MS_U8 drv_frontend_index, MS_U32 u32ToneType, EN_CABLE_SELECT eCableID);
+#endif
 
 extern MS_BOOL MApi_DigiTuner_BlindScan_Start(MS_U8 drv_frontend_index, MS_SAT_PARAM *pSATParam,MS_U8 u8Polarity,MS_BOOL bIsHiLOF);
 extern MS_BOOL MApi_DigiTuner_BlindScan_NextFreq(MS_U8 drv_frontend_index, MS_BOOL* bBlindScanEnd);
@@ -626,11 +653,17 @@ extern MS_BOOL MApi_DigiTuner_BlindScan_GetChannel(MS_U8 drv_frontend_index, MS_
 extern MS_BOOL MApi_DigiTuner_BlindScan_Cancel(MS_U8 drv_frontend_index);
 extern MS_BOOL MApi_DigiTuner_BlindScan_End(MS_U8 drv_frontend_index);
 extern MS_BOOL MApi_DigiTuner_BlindScan_GetCurrentFreq(MS_U8 drv_frontend_index, MS_U32 *u32Freq);
+extern MS_BOOL MApi_DigiTuner_Demod_ClearStatus(MS_U8 drv_frontend_index);
+extern MS_BOOL MApi_DigiTuner_IsOverCurrent(MS_U8 drv_frontend_index);
+
 //------------------------------------------------------
 // DiSEqC
 //------------------------------------------------------
-MS_BOOL MApi_DigiTuner_DiSEqC_SendCommand(MS_U8 drv_frontend_index, MS_U8* pCmd,MS_U8 u8CmdSize);
-MS_BOOL MApi_DigiTuner_DiSEqC_SwitchPort(MS_U8 drv_frontend_index, MS_U8 u8Port,MS_BOOL bUnCommited);
+extern MS_BOOL MApi_DigiTuner_DiSEqC_SendCommand(MS_U8 drv_frontend_index, MS_U8* pCmd,MS_U8 u8CmdSize);
+extern MS_BOOL MApi_DigiTuner_DiSEqC_SwitchPort(MS_U8 drv_frontend_index, MS_U8 u8Port,MS_BOOL bUnCommited);
+#ifdef SUPPORT_DUAL_LNB
+extern MS_BOOL MApi_DigiTuner_DiSEqC_SwitchPort_Ext(MS_U8 drv_frontend_index, MS_U8 u8Port,MS_BOOL bUnCommited, EN_CABLE_SELECT eCableID);
+#endif
 extern MS_BOOL MApi_DigiTuner_DiSEqC_Reset(MS_U8 drv_frontend_index);
 extern MS_BOOL MApi_DigiTuner_DiSEqC_SetEastLimit(MS_U8 drv_frontend_index);
 extern MS_BOOL MApi_DigiTuner_DiSEqC_SetWestLimit(MS_U8 drv_frontend_index);
@@ -651,21 +684,9 @@ extern MS_BOOL MApi_DigiTuner_DiSEqC_GotoX(MS_U8 drv_frontend_index, MS_U16 u16S
 extern MS_BOOL MApi_DigiTuner_IsNeedCheckCurrent(void);
 #endif
 
-
-MS_BOOL MApi_DigiTuner_ReadReg(MS_U8 drv_frontend_index, MS_U16 RegAddr, MS_U8 *pu8Data);
-MS_BOOL MApi_DigiTuner_WriteReg(MS_U8 drv_frontend_index, MS_U16 RegAddr, MS_U16 RegData);
-MS_BOOL MApi_DigiTuner_Get_Packet_Error(MS_U8 drv_frontend_index, MS_U16 *RegData);
-
-#ifdef DDI_MISC_INUSE
-#if DDI_MISC_INUSE
-
-MS_BOOL MApi_DigiTuner_GetTunerParam(MS_U8 drv_frontend_index,MS_FE_CARRIER_PARAM* pParam);
-
-#if FAST_BOOT_ENABLE
-void MApi_DigiTuner_Wakeup(MS_U8 drv_frontend_index);
-#endif
-
 #if MS_DVBT2_INUSE
+MS_BOOL MApi_DigiTuner_SetT2Reset(MS_U8 drv_frontend_index);
+MS_BOOL MApi_DigiTuner_SetT2Restart(MS_U8 drv_frontend_index);
 void MApi_DigiTuner_CtrlResetDJBFlag(MS_U8 drv_frontend_index,MS_U8 Ctrl);
 MS_BOOL MApi_DigiTuner_T2MI_Restart(MS_U8 drv_frontend_index);
 MS_BOOL MApi_DigiTuner_InitParameter(MS_U8 drv_frontend_index);
@@ -673,13 +694,29 @@ MS_U8 MApi_DigiTuner_GetPlpIDList(MS_U8 drv_frontend_index);
 MS_U8 MApi_DigiTuner_GetNextPlpID(MS_U8 drv_frontend_index,MS_U8 u8Index);
 MS_BOOL MApi_DigiTuner_SetScanTypeStatus(MS_U8 drv_frontend_index,MS_U8 status);
 MS_U8 MApi_DigiTuner_GetScanTypeStatus(MS_U8 drv_frontend_index);
-#endif
-#if MS_DVBS_INUSE
-MS_BOOL MApi_DigiTuner_IsOverCurrent(MS_U8 drv_frontend_index);
+MS_U8 MApi_DigiTuner_Get_Current_Plp_Id(void);
 #endif
 
-#endif //#if DDI_MISC_INUSE
+
+#ifdef DDI_MISC_INUSE
+    #ifdef FE_AUTO_TEST
+MS_BOOL MApi_DigiTuner_ReadReg(MS_U8 drv_frontend_index, MS_U16 RegAddr, MS_U8 *pu8Data);
+MS_BOOL MApi_DigiTuner_WriteReg(MS_U8 drv_frontend_index, MS_U16 RegAddr, MS_U16 RegData);
+MS_BOOL MApi_DigiTuner_Reset(MS_U8 drv_frontend_index, DEMOD_MS_FE_CARRIER_PARAM* pParam);
+    #endif
+    #if (DDI_MISC_INUSE == 1)
+        #if (BOOT_TYPE == BOOT_TYPE_FAST)
+        void MApi_DigiTuner_Wakeup(MS_U8 drv_frontend_index);
+        #endif
+
+    #endif //#if DDI_MISC_INUSE
 #endif //#ifdef DDI_MISC_INUSE
 
+MS_BOOL MApi_DigiTuner_SetPowerState(EN_POWER_MODE emod);
+MS_BOOL MApi_DigiTuner_GetTunerParam(MS_U8 drv_frontend_index,MS_FE_CARRIER_PARAM* pParam);
+MS_BOOL MApi_DigiTuner_SetISDBTLayer(MS_U8 drv_frontend_index,DEMOD_ISDBT_Layer eISDBT_Layer);
+MS_BOOL MApi_DigiTuner_FEIdx_to_DevIdx(MS_U8 drv_frontend_index, MS_U8* pu8DevIdx);
+MS_BOOL MApi_DigiTuner_Set_DMD_BUFFER(MS_U8 drv_frontend_index, MS_U32 u32StartAddr);
+MS_BOOL MApi_DigiTuner_SetDMD_PIDFilter(MS_U8 drv_frontend_index, DEMOD_PID_FILTER* pstPIDFlt);
 #endif // _API_DIGI_TUNER_H_
 

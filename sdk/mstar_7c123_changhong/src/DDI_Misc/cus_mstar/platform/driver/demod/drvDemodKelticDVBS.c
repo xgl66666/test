@@ -76,8 +76,6 @@
 //******************************************************************************
 //<MStar Software>
 #include "Board.h"
-#if (MS_DVB_TYPE_SEL == DVBS)
-
 #if defined(CHIP_KELTIC)
 
 #include "MsCommon.h"
@@ -95,6 +93,7 @@
 
 static MS_BOOL bInited = FALSE;
 static MS_S32 _s32MutexId = -1;
+static MS_BOOL bIQSwap = FALSE;
 static DEMOD_MS_INIT_PARAM   InitParam[MAX_FRONTEND_NUM];
 DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKELTIC_DVBS) DDI_DRV_TABLE_ENTRY(demodtab);
 
@@ -285,6 +284,14 @@ static DMD_SQI_CN_NORDIGP1 SqiCnNordigP1[] =
     {_64QAM, _CR7Y8, 22.5},
 };
 
+static MS_BOOL _IQ_SWAP(MS_U32 u32TunerType)
+{
+   if((u32TunerType == TUNER_AV2018) || (u32TunerType == TUNER_AV2012) || (u32TunerType == TUNER_RDA5815M))
+       return TRUE;
+   else
+       return FALSE;
+}
+
 static MS_U32 _getTunerIF(MS_U8 u8DemodIndex,MS_U8 u8Tuner)
 {
    MS_U8 u8TblSize;
@@ -314,7 +321,7 @@ MS_BOOL MDrv_Keltic_DVBS_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pPar
 
         if (_s32MutexId < 0)
         {
-            GEN_EXCEP;
+            DMD_ERR(("%s: Create mutex failed.\n", __FUNCTION__));
             return FALSE;
         }
 
@@ -327,7 +334,7 @@ MS_BOOL MDrv_Keltic_DVBS_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pPar
 
      _u32IFrequency[u8DemodIndex] = _getTunerIF(u8DemodIndex,pParam->pstTunertab->data);
     MDrv_SYS_DMD_VD_MBX_Init();
-    MDrv_SAR_Kpd_Init();
+    bIQSwap = _IQ_SWAP(pParam->pstTunertab->data);
 
     static MS_U8 u8DMD_DVBS_InitExt[]={
        4, // version
@@ -355,8 +362,10 @@ MS_BOOL MDrv_Keltic_DVBS_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pPar
        (MS_U8)(FixSymbol_FixQam_Timeout>>0),
        };                // tuner parameter
 
+
     // tuner parameter
-    sDMD_DVBS_InitData.u8SarChannel=1; // 0xFF means un-connected
+    u8DMD_DVBS_InitExt[12] = bIQSwap;
+    sDMD_DVBS_InitData.u8SarChannel=0xff; // 0xFF means un-connected
     sDMD_DVBS_InitData.pTuner_RfagcSsi=ALPS_TUNER_RfagcSsi;
     sDMD_DVBS_InitData.u16Tuner_RfagcSsi_Size=sizeof(ALPS_TUNER_RfagcSsi)/sizeof(DMD_RFAGC_SSI);
     sDMD_DVBS_InitData.pTuner_IfagcSsi_LoRef=ALPS_TUNER_IfagcSsi_LoRef;
@@ -433,7 +442,6 @@ MS_BOOL MDrv_Keltic_DVBS_Demod_SetSerialControl(MS_U8 u8DemodIndex,MS_BOOL bEnab
         HB_ReleaseMutex(_s32MutexId);
         return FALSE;
     }
-
     ret = MDrv_DMD_DVBS_SetSerialControl(bEnable);
     HB_ReleaseMutex(_s32MutexId);
     return ret;
@@ -481,7 +489,7 @@ MS_BOOL MDrv_Keltic_DVBS_Demod_GetLock(MS_U8 u8DemodIndex,EN_LOCK_STATUS *peLock
         case DMD_DVBS_CHECKEND:
             *peLockStatus = E_DEMOD_CHECKEND;
             break;
-        case DMD_DVBS_UNLOCK:         
+        case DMD_DVBS_UNLOCK:
             *peLockStatus = E_DEMOD_UNLOCK;
             break;
         case DMD_DVBS_CHECKING:
@@ -626,15 +634,15 @@ MS_BOOL MDrv_Keltic_DVBS_Demod_GetParam(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_
             pParam->SatParam.eConstellation = DEMOD_SAT_QPSK;
             break;
         case DMD_DVBS_8PSK:
-            pParam->CabParam.eConstellation = DEMOD_SAT_8PSK;
+            pParam->SatParam.eConstellation = DEMOD_SAT_8PSK;
             break;
         default:
-            pParam->CabParam.eConstellation = DEMOD_SAT_QPSK;
+            pParam->SatParam.eConstellation = DEMOD_SAT_QPSK;
             break;
     }
 
-    pParam->CabParam.u16SymbolRate = (MS_U16)u32SymbolRate;
-    pParam->CabParam.u32FreqOffset = FreqOff;
+    pParam->SatParam.u32SymbolRate = u32SymbolRate;
+    pParam->SatParam.fCFO= FreqOff;
 
     HB_ReleaseMutex(_s32MutexId);
 
@@ -689,7 +697,7 @@ MS_BOOL MDrv_Keltic_DVBS_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_P
 #endif
         //while(1);
  #if 1
-        if(FALSE == MDrv_DMD_DVBS_SetConfig(pParam->SatParam.u32SymbolRate, eModulationType, _u32IFrequency[u8DemodIndex], FRONTEND_DEMOD_IQ_SWAP, FALSE))
+        if(FALSE == MDrv_DMD_DVBS_SetConfig(pParam->SatParam.u32SymbolRate, eModulationType, _u32IFrequency[u8DemodIndex], bIQSwap, FALSE))
         {
             DMD_ERR(("MDrv_DMD_DVBS_SetConfig Fail \n"));
             HB_ReleaseMutex(_s32MutexId);
@@ -817,7 +825,7 @@ MS_BOOL MDrv_Demod_Keltic_DiSEqC_GetLNBOut(MS_U8 u8DemodIndex, MS_BOOL* bLNBOutL
 
 MS_BOOL MDrv_Demod_Keltic_DiSEqC_Set22kOnOff(MS_U8 u8DemodIndex, MS_BOOL b22kOn)
 {
-    return MDrv_DMD_DVBS_DiSEqC_Set22kOnOff(b22kOn); 
+    return MDrv_DMD_DVBS_DiSEqC_Set22kOnOff(b22kOn);
 }
 
 MS_BOOL MDrv_Demod_Keltic_DiSEqC_Get22kOnOff(MS_U8 u8DemodIndex, MS_BOOL* b22kOn)
@@ -866,12 +874,15 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKELTIC_DVBS) DDI_DRV_TABLE_ENT
      .I2CByPassPreSetting          = NULL,
      .Extension_Function           = DEMOD_MSKELTIC_DVBS_Extension_Function,
      .Extension_FunctionPreSetting = NULL,
+     .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error,     
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
      .GetPlpBitMap                 = MDrv_Demod_null_GetPlpBitMap,
      .GetPlpGroupID                = MDrv_Demod_null_GetPlpGroupID,
      .SetPlpGroupID                = MDrv_Demod_null_SetPlpGroupID,
+     .GetNextPLPID                 = MDrv_Demod_null_GetNextPLPID,
+     .GetPLPType                   = MDrv_Demod_null_GetPLPType,
 #endif
 #if MS_DVBS_INUSE
      .BlindScanStart               = MDrv_Demod_Keltic_BlindScan_Start,
@@ -891,5 +902,4 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKELTIC_DVBS) DDI_DRV_TABLE_ENT
 };
 
 #endif // (FRONTEND_DEMOD_TYPE == DEMOD_MSDVBS_51)
-#endif
 

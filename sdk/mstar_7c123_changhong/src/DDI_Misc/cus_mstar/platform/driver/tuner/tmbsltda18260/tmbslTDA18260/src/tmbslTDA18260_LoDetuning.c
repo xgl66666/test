@@ -19,8 +19,6 @@
  *
 */
 
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_TDA18260)
 /*============================================================================*/
 /* Standard include files:                                                    */
 /*============================================================================*/
@@ -130,4 +128,3 @@ extern tmErrorCode_t tmbslTDA18260_GetMainPLL
     }
     return err;
 }
-#endif

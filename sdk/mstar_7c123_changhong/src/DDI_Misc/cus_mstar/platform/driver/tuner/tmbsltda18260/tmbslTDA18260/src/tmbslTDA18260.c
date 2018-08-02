@@ -21,9 +21,6 @@
  * \section info Change Information
  *
 */
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_TDA18260)
-
 
 /*============================================================================*/
 /* Standard include files:                                                    */
@@ -4786,6 +4783,3 @@ TDA18260_ForcePllSource
 
     return err;
 }
-#endif
-
-

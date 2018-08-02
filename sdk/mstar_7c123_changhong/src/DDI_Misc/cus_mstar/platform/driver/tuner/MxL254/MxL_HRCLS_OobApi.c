@@ -1,12 +1,11 @@
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_MXL254)
-
 #include "MxL_HRCLS_Common.h"
  
 #ifdef _MXL_HRCLS_OOB_ENABLED_
 
 #include "MxL_HRCLS_CommonApi.h"
 #include "MxL_HRCLS_PhyCtrl.h"
+
+#define MXL_HERMOD_V1_OOB_OUTPUT_ID 8
 
 static REG_CTRL_INFO_T MxL_OobAciMfCoef[] =
 {
@@ -414,7 +413,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodSymbolRateOOB(
 
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("DemodId=%d, SymbolRate=%u\n", demodId, oobSymbRate););
-  if ((devContextPtr) && (demodId == devContextPtr->oobDemod))
+  if ((devContextPtr) && (demodId == devContextPtr->oobDemod) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->oobSupported == MXL_TRUE)
     {
@@ -423,8 +422,6 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodSymbolRateOOB(
         UINT16 control;
         PREG_CTRL_INFO_T OobAciFilterCoefDataPtr = 0;
         PREG_CTRL_INFO_T OobMfFilterCoefDataPtr = 0;
-
-        demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
 
         numBank = 1;
         bank[0] = 0; /* Annex-A bank */
@@ -660,45 +657,6 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodErrorsOOB(UINT8 devId, MXL_HRCLS_DMD_ID_E
   return (MXL_STATUS_E) status;
 }
 
-#if 0
-MXL_STATUS_E MxLWare_HRCLS_API_GetDemodPn23ModeErrorsOOB(UINT8 devId, MXL_HRCLS_DMD_ID_E demodId, MXL_HRCLS_ERRCNT_T * ErrorsPtr)
-{
-  UINT8 status = MXL_SUCCESS;
-  UINT16 readData, pnErr;
-  UINT32 tmpData = 0;
-  MXL_HRCLS_DEV_CONTEXT_T * devContextPtr = MxL_HRCLS_Ctrl_GetDeviceContext(devId);
-
-  if ((devContextPtr) && (demodId < MXL_HRCLS_MAX_NUM_DEMOD) && (ErrorsPtr))
-  {
-    if (devContextPtr->driverInitialized)
-    {
-      /* Freeze register <0> */
-      status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, OOB_PN23_FREEZ, 1);
-
-      /* Get BER = pnErr / (pn23Msb + pn23Lsb) */
-      status |= MxL_HRCLS_Ctrl_ReadRegisterField(devId, OOB_PN23ERR_RB, &pnErr);
-  
-      /* Get PN23 MSB and LSB */
-      status |= MxL_HRCLS_Ctrl_ReadRegisterField(devId, OOB_PN23BITCNT_RB_LO, &readData);
-      tmpData = readData;
-      status |= MxL_HRCLS_Ctrl_ReadRegisterField(devId, OOB_PN23BITCNT_RB_HI, &readData);
-      tmpData |= (readData << 16);
-
-      ErrorsPtr->cntReceived = tmpData;
-      ErrorsPtr->cntUncorrected = pnErr;
-
-      /* Clear register <1> */
-      status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, OOB_PN23_CLEAR, 1);
-
-      // TODO: Optimize
-      status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, OOB_PN23_FREEZ, 0);
-      status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, OOB_PN23_CLEAR, 0);
-    } else status = MXL_NOT_INITIALIZED;
-  } else status = MXL_INVALID_PARAMETER;
-  return (MXL_STATUS_E)status;
-}
-#endif
-
 /**
  *****************************************************************************************
  *  @param[in]  devId MxL device id
@@ -757,6 +715,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodOutParamsOOB(UINT8 devId, MXL_HRCLS_DMD_I
                     MXL_HRCLS_OOB_CFG_T * ParamPtr)
 {
   UINT8 status = MXL_SUCCESS;
+  UINT16 eco4_value = 0;
   MXL_HRCLS_DEV_CONTEXT_T * devContextPtr = MxL_HRCLS_Ctrl_GetDeviceContext(devId);
   const MXL_HRCLS_FIELD_T oob_oe[] = {{OOB0_OE}, {OOB1_OE},
                                 {OOB2_OE}, {OOB3_OE},
@@ -772,19 +731,18 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodOutParamsOOB(UINT8 devId, MXL_HRCLS_DMD_I
       ParamPtr->oobOutMode, ParamPtr->clkPol, ParamPtr->syncPol, ParamPtr->validPol, ParamPtr->enablePn23Const, ParamPtr->oob3WireModeEnable, ParamPtr->syncPulseWidth,
       ParamPtr->pn23Feedback, ParamPtr->pn23SyncMode);    
     );
-  if ((devContextPtr) && (demodId == devContextPtr->oobDemod))
+  if ((devContextPtr) && (demodId == devContextPtr->oobDemod) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->oobSupported == MXL_TRUE)
     {
       if (devContextPtr->driverInitialized)
       {
-        demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId);
         /* Enable the output pins for QAM Mpeg */
 
         /* DIG_MPEG_OUTDATA_EN <1> = 1 */
         status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, OOB_MPEG_EN, 1);
 
-        if (OOB_SCTE_55_1_TYPE == devContextPtr->oobType)
+        if ((OOB_SCTE_55_1_TYPE == devContextPtr->oobType) && (ParamPtr->oobOutMode != OOB_CRX_DRX_MODE))
         {
           /* 1 = Invert the OOB output MPEG clock, 0 = non invert <2> */
           status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, OOB_CTRL_CLK_INVT, (ParamPtr->clkPol == MXL_HRCLS_OOB_ACTIVE_LOW)?1:0);
@@ -821,10 +779,27 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodOutParamsOOB(UINT8 devId, MXL_HRCLS_DMD_I
         }
         else
         {
+          if ((3 <= devContextPtr->chipVersion) && (MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId))
+          {
+            // CRX/DRX via MPEG_8_DAT/VAL
+            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, oob_oe[MXL_HERMOD_V1_OOB_OUTPUT_ID].regAddr,
+                oob_oe[MXL_HERMOD_V1_OOB_OUTPUT_ID].lsbPos,
+                oob_oe[MXL_HERMOD_V1_OOB_OUTPUT_ID].fieldWidth,
+                (ParamPtr->enable == MXL_ENABLE)?1:0);
+
+            // ECO_4[1] used for CRX polarity
+            status |= MxLWare_HRCLS_OEM_ReadRegister(devId, EXTRACT_ADDR(ECO_4), &eco4_value);
+            eco4_value &= ~(1U<<1);
+            eco4_value |= (MXL_HRCLS_OOB_CLK_POSITIVE == ParamPtr->clkPol)?(0x0000):(1U<<1);
+            status |= MxLWare_HRCLS_OEM_WriteRegister(devId, EXTRACT_ADDR(ECO_4) , eco4_value);
+          }
+          else
+          {
           status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, oob_oe[(UINT8) demodId].regAddr,
               oob_oe[(UINT8) demodId].lsbPos,
               oob_oe[(UINT8) demodId].fieldWidth,
               ((ParamPtr->enable == MXL_ENABLE))?1:0);
+          }
         }
       } else status = MXL_NOT_INITIALIZED;
     } else status = MXL_NOT_SUPPORTED;
@@ -833,6 +808,5 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodOutParamsOOB(UINT8 devId, MXL_HRCLS_DMD_I
     
   return (MXL_STATUS_E)status;
 }
-#endif
 #endif
 

@@ -281,14 +281,13 @@ MS_BOOL MDrv_Demod_Dual_Public_Init(void )
 
         if (_s32MutexId < 0)
         {
-            GEN_EXCEP;
+            DMD_ERR(("%s: Create mutex failed.\n", __FUNCTION__));
             return FALSE;
         }
 
     }
 
     MDrv_SYS_DMD_VD_MBX_Init();
-    MDrv_SAR_Kpd_Init();
 
     /*
     static MS_U8 u8DMD_DVBC_InitExt[]={
@@ -337,7 +336,7 @@ MS_BOOL MDrv_Demod_Dual_Public_Init(void )
     sDMD_DVBC_InitData.u8DMD_DVBC_DSPRegInitSize=0;
     sDMD_DVBC_InitData.u8DMD_DVBC_InitExt=u8DMD_DVBC_InitExt; // TODO use system variable type
     */
-    ret=MDrv_DMD_DVBC_Dual_Public_Init(1,1);  //tristate_en,SARchannel
+    ret=MDrv_DMD_DVBC_Dual_Public_Init(1,0xff);  //tristate_en,SARchannel
 
     /*
     if(ret == TRUE)
@@ -367,7 +366,7 @@ MS_BOOL MDrv_Demod_Individual_Init_0(void)
        };                // tuner parameter
 
     // tuner parameter
-    sDMD_DVBC_InitData.u8SarChannel=1; // 0xFF means un-connected
+    sDMD_DVBC_InitData.u8SarChannel=0xff; // 0xFF means un-connected
     sDMD_DVBC_InitData.pTuner_RfagcSsi=ALPS_TUNER_RfagcSsi;
     sDMD_DVBC_InitData.u16Tuner_RfagcSsi_Size=sizeof(ALPS_TUNER_RfagcSsi)/sizeof(DMD_RFAGC_SSI);
     sDMD_DVBC_InitData.pTuner_IfagcSsi_LoRef=ALPS_TUNER_IfagcSsi_LoRef;
@@ -415,7 +414,7 @@ MS_BOOL MDrv_Demod_Individual_Init_1(void)
        };                // tuner parameter
 
     // tuner parameter
-    sDMD_DVBC_InitData.u8SarChannel=1; // 0xFF means un-connected
+    sDMD_DVBC_InitData.u8SarChannel=0xff; // 0xFF means un-connected
     sDMD_DVBC_InitData.pTuner_RfagcSsi=ALPS_TUNER_RfagcSsi;
     sDMD_DVBC_InitData.u16Tuner_RfagcSsi_Size=sizeof(ALPS_TUNER_RfagcSsi)/sizeof(DMD_RFAGC_SSI);
     sDMD_DVBC_InitData.pTuner_IfagcSsi_LoRef=ALPS_TUNER_IfagcSsi_LoRef;
@@ -487,7 +486,7 @@ MS_BOOL MDrv_Demod_MSDVBC_51_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam
 
         if (_s32MutexId < 0)
         {
-            GEN_EXCEP;
+            DMD_ERR(("%s: Create mutex failed.\n", __FUNCTION__));
             return FALSE;
         }
 
@@ -987,12 +986,15 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKAISER_DVBC)  DDI_DRV_TABLE_EN
      .I2CByPassPreSetting          = NULL,
      .Extension_Function           = DEMOD_MSDVBC_51_Extension_Function,
      .Extension_FunctionPreSetting = NULL,
+     .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error,
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
      .GetPlpBitMap                 = MDrv_Demod_null_GetPlpBitMap,
      .GetPlpGroupID                = MDrv_Demod_null_GetPlpGroupID,
      .SetPlpGroupID                = MDrv_Demod_null_SetPlpGroupID,
+     .GetNextPLPID                 = MDrv_Demod_null_GetNextPLPID,
+     .GetPLPType                   = MDrv_Demod_null_GetPLPType,
 #endif
 #if MS_DVBS_INUSE
      .BlindScanStart               = MDrv_Demod_null_BlindScan_Start,

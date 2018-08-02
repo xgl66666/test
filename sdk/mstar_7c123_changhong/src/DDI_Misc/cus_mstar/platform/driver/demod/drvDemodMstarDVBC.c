@@ -5,9 +5,9 @@
 // All software, firmware and related documentation herein ("MStar Software") are
 // intellectual property of MStar Semiconductor, Inc. ("MStar") and protected by
 // law, including, but not limited to, copyright law and international treaties.
-// Any use, modification, reproduction, retransmission, or republication of all 
-// or part of MStar Software is expressly prohibited, unless prior written 
-// permission has been granted by MStar. 
+// Any use, modification, reproduction, retransmission, or republication of all
+// or part of MStar Software is expressly prohibited, unless prior written
+// permission has been granted by MStar.
 //
 // By accessing, browsing and/or using MStar Software, you acknowledge that you
 // have read, understood, and agree, to be bound by below terms ("Terms") and to
@@ -20,15 +20,15 @@
 //
 // 2. You understand that MStar Software might include, incorporate or be
 //    supplied together with third party`s software and the use of MStar
-//    Software may require additional licenses from third parties.  
+//    Software may require additional licenses from third parties.
 //    Therefore, you hereby agree it is your sole responsibility to separately
 //    obtain any and all third party right and license necessary for your use of
-//    such third party`s software. 
+//    such third party`s software.
 //
 // 3. MStar Software and any modification/derivatives thereof shall be deemed as
-//    MStar`s confidential information and you agree to keep MStar`s 
+//    MStar`s confidential information and you agree to keep MStar`s
 //    confidential information in strictest confidence and not disclose to any
-//    third party.  
+//    third party.
 //
 // 4. MStar Software is provided on an "AS IS" basis without warranties of any
 //    kind. Any warranties are hereby expressly disclaimed by MStar, including
@@ -51,7 +51,7 @@
 //    ("Services").
 //    You understand and agree that, except otherwise agreed by both parties in
 //    writing, Services are provided on an "AS IS" basis and the warranty
-//    disclaimer set forth in Section 4 above shall apply.  
+//    disclaimer set forth in Section 4 above shall apply.
 //
 // 6. Nothing contained herein shall be construed as by implication, estoppels
 //    or otherwise:
@@ -59,7 +59,7 @@
 //        mark, symbol or any other identification;
 //    (b) obligating MStar or any of its affiliates to furnish any person,
 //        including without limitation, you and your customers, any assistance
-//        of any kind whatsoever, or any information; or 
+//        of any kind whatsoever, or any information; or
 //    (c) conferring any license or right under any intellectual property right.
 //
 // 7. These terms shall be governed by and construed in accordance with the laws
@@ -70,179 +70,678 @@
 //    Rules of the Association by three (3) arbitrators appointed in accordance
 //    with the said Rules.
 //    The place of arbitration shall be in Taipei, Taiwan and the language shall
-//    be English.  
+//    be English.
 //    The arbitration award shall be final and binding to both parties.
 //
 //******************************************************************************
 //<MStar Software>
 #include "Board.h"
+#if defined(CHIP_KERES) || defined(CHIP_KIRIN) || defined(CHIP_KRONUS) || defined(CHIP_KAISERIN) || \
+    defined(CHIP_KAPPA) || defined(CHIP_KELTIC) || defined(CHIP_KRATOS) || defined(CHIP_KIWI)
 
-#if  0
 #include "MsCommon.h"
-#include "drvDMD.h"
+#include "HbCommon.h"
+#include "drvDMD_common.h"
+#include "drvDMD_INTERN_DVBC.h"
 #include "drvDemod.h"
+#include "drvDemodNull.h"
+#include "drvDMD_VD_MBX.h"
+#include "drvSAR.h"
 
-MS_BOOL MDrv_Demod_Init(void)
+#define COFDMDMD_MUTEX_TIMEOUT       (2000)
+
+static MS_BOOL bInited = FALSE;
+static MS_S32 _s32MutexId = -1;
+
+static DEMOD_MS_INIT_PARAM MS_DVBC_INIT_PARAM;
+const static MS_U32 _u32IFrequency = 5000;
+DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC) DDI_DRV_TABLE_ENTRY(demodtab);
+
+//#if ((FRONTEND_TUNER_TYPE == TUNER_PHILIPS_TDA18250HN || FRONTEND_TUNER_TYPE == TUNER_MXL603 || FRONTEND_TUNER_TYPE == TUNER_TDA18250A|| FRONTEND_TUNER_TYPE == TUNER_TDA18250B|| FRONTEND_TUNER_TYPE == TUNER_TDA18260 || FRONTEND_TUNER_TYPE == TUNER_MS221))
+//const static MS_U32 _u32IFrequency = 5000;//KHz for demod restart&init
+//#else
+//const static MS_U32 _u32IFrequency = 36130;//KHz for demod restart&init
+//#endif
+static DMD_RFAGC_SSI ALPS_TUNER_RfagcSsi[] =
 {
-    return MDrv_Dmd_Init();
-}
+    {-15.00,    0x19},
+    {-25.00,    0x31},
+    {-26.00,    0x33},
+    {-27.00,    0x35},
+    {-28.00,    0x35},
+    {-29.00,    0x36},
+    {-30.00,    0x37},
+    {-31.00,    0x38},
+    {-32.00,    0x3A},
+    {-33.00,    0x3E},
+    {-34.00,    0x40},
+    {-35.00,    0x41},
+    {-36.00,    0x43},
+    {-37.00,    0x44},
+    {-38.00,    0x46},
+    {-39.00,    0x47},
+    {-40.00,    0x49},
+    {-41.00,    0x4B},
+    {-42.00,    0x4E},
+    {-43.00,    0x50},
+    {-44.00,    0x53},
+    {-45.00,    0x56},
+    {-46.00,    0x59},
+    {-46.50,    0x5B},
+    {-47.00,    0x5D},
+    {-48.00,    0x62},
+    {-49.00,    0x67},
+    {-50.00,    0x6B},
+    {-51.00,    0x73},
+    {-52.00,    0x7A},
+    {-53.00,    0x85},
+    {-53.50,    0x8E},
+    {-54.00,    0x98},
+    {-54.10,    0x9F},
+    {-54.20,    0xA4},
+    {-54.30,    0xA7},
+    {-54.40,    0xAC},
+    {-55.00,    0xAC},
+    {-55.00,    0xFF},
+};
 
-MS_BOOL MDrv_Demod_Open(void)
+static DMD_IFAGC_SSI ALPS_TUNER_IfagcSsi_LoRef[] =
 {
-    return MDrv_Dmd_Open();
-}
+    {-54.30,    0x5F},
+    {-54.40,    0x60},
+    {-55.00,    0x63},
+    {-56.00,    0x68},
+    {-57.50,    0x6C},
+	{-58.00,    0x70},
+    {-59.00,    0x75},
+    {-60.00,    0x79},
+    {-61.40,    0x7D},
+    {-62.00,    0x80},
+    {-63.00,    0x81},
+    {-64.00,    0x83},
+    {-65.00,    0x84},
+    {-66.00,    0x85},
+    {-67.00,    0x87},
+    {-68.00,    0x88},
+    {-69.00,    0x89},
+    {-70.00,    0x8A},
+    {-71.00,    0x8C},
+    {-72.00,    0x8D},
+    {-73.00,    0x8F},
+    {-74.00,    0x90},
+    {-75.00,    0x92},
+    {-76.00,    0x93},
+    {-77.00,    0x95},
+    {-78.00,    0x96},
+    {-79.00,    0x98},
+    {-80.00,    0x99},
+    {-81.00,    0x9B},
+    {-82.00,    0x9D},
+    {-83.00,    0x9E},
+    {-84.00,    0xA0},
+    {-85.00,    0xA2},
+    {-86.00,    0xA4},
+    {-87.00,    0xA6},
+    {-88.00,    0xA8},
+    {-89.00,    0xAA},
+    {-90.00,    0xAC},
+    {-91.00,    0xAD},
+    {-92.00,    0xAF},
+    {-93.00,    0xB0},
+    {-93.00,    0xFF},
+};
 
-MS_BOOL MDrv_Demod_Close(void)
+static DMD_IFAGC_SSI ALPS_TUNER_IfagcSsi_HiRef[] =
 {
-    return MDrv_Dmd_Close();
-}
+    {-54.30,    0x5F},
+    {-54.40,    0x60},
+    {-55.00,    0x63},
+    {-56.00,    0x68},
+    {-57.50,    0x6C},
+	{-58.00,    0x70},
+    {-59.00,    0x75},
+    {-60.00,    0x79},
+    {-61.40,    0x7D},
+    {-62.00,    0x80},
+    {-63.00,    0x81},
+    {-64.00,    0x83},
+    {-65.00,    0x84},
+    {-66.00,    0x85},
+    {-67.00,    0x87},
+    {-68.00,    0x88},
+    {-69.00,    0x89},
+    {-70.00,    0x8A},
+    {-71.00,    0x8C},
+    {-72.00,    0x8D},
+    {-73.00,    0x8F},
+    {-74.00,    0x90},
+    {-75.00,    0x92},
+    {-76.00,    0x93},
+    {-77.00,    0x95},
+    {-78.00,    0x96},
+    {-79.00,    0x98},
+    {-80.00,    0x99},
+    {-81.00,    0x9B},
+    {-82.00,    0x9D},
+    {-83.00,    0x9E},
+    {-84.00,    0xA0},
+    {-85.00,    0xA2},
+    {-86.00,    0xA4},
+    {-87.00,    0xA6},
+    {-88.00,    0xA8},
+    {-89.00,    0xAA},
+    {-90.00,    0xAC},
+    {-91.00,    0xAD},
+    {-92.00,    0xAF},
+    {-93.00,    0xB0},
+    {-93.00,    0xFF},
+};
 
-MS_BOOL MDrv_Demod_Reset(void)
+static DMD_IFAGC_ERR ALPS_TUNER_IfagcErr_LoRef[] =
 {
-    return MDrv_Dmd_Reset();
-}
+    {0.00,        0x0A},
+    {0.00,        0xFF},
 
-MS_BOOL MDrv_Demod_TsOut(MS_BOOL bEnable)
+};
+
+static DMD_IFAGC_ERR ALPS_TUNER_IfagcErr_HiRef[] =
 {
-    return MDrv_Dmd_TsOut(bEnable);
-}
+    {0.00,        0x2D},
+    {0.00,        0xFF},        // stopper
+};
 
-MS_BOOL MDrv_Demod_PowerOnOff(MS_BOOL bPowerOn)
+static DMD_SQI_CN_NORDIGP1 SqiCnNordigP1[] =
 {
-    return MDrv_Dmd_PowerOnOff(bPowerOn);
-}
+    {_QPSK,  _CR1Y2, 5.1 },
+    {_QPSK,  _CR2Y3, 6.9 },
+    {_QPSK,  _CR3Y4, 7.9 },
+    {_QPSK,  _CR5Y6, 8.9 },
+    {_QPSK,  _CR7Y8, 9.7 },
+    {_16QAM, _CR1Y2, 10.8},
+    {_16QAM, _CR2Y3, 13.1},
+    {_16QAM, _CR3Y4, 12.2},
+    {_16QAM, _CR5Y6, 15.6},
+    {_16QAM, _CR7Y8, 16.0},
+    {_64QAM, _CR1Y2, 16.5},
+    {_64QAM, _CR2Y3, 16.3},
+    {_64QAM, _CR3Y4, 17.8},
+    {_64QAM, _CR3Y4, 21.2},
+    {_64QAM, _CR5Y6, 21.6},
+    {_64QAM, _CR7Y8, 22.5},
+};
 
-MS_BOOL MDrv_Demod_SetBW(MS_U32 u32BW)
+
+static unsigned char u8DSPTable[] =
 {
-    return MDrv_Dmd_SetBW(u32BW);
-}
+#ifdef SET_DSP_REG
+  #include "DVBC_DMD_DSP_Init_Reg.h"
+#endif
+};
 
-MS_BOOL MDrv_Demod_GetBW(MS_U32 *pu32BW)
+
+MS_BOOL MDrv_MSDVBC_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
 {
-    return MDrv_Dmd_GetBW(pu32BW);
-}
+    DMD_DVBC_InitData sDMD_DVBC_InitData;
+    MS_BOOL ret;
 
-MS_BOOL MDrv_Demod_GetLock(MS_BOOL *pbLock)
-{
-    return MDrv_Dmd_GetLock(pbLock);
-}
+    if(NULL == pParam)
+        return FALSE;
 
-MS_BOOL MDrv_Demod_GetSNR(MS_U32 *pu32SNR)
-{
-    return MDrv_Dmd_GetSNR(pu32SNR);
-}
-
-MS_BOOL MDrv_Demod_GetBER(float *pfBER)
-{
-    return MDrv_Dmd_GetBER(pfBER);
-}
-
-MS_BOOL MDrv_Demod_GetPWR(MS_S32 *ps32Signal)
-{
-    return MDrv_Dmd_GetPWR(ps32Signal);
-}
-
-MS_BOOL MDrv_Demod_Config(MS_U8 *pRegParam)
-{
-    return MDrv_Dmd_Config(pRegParam);
-}
-
-MS_BOOL MDrv_Demod_GetParam(DEMOD_MS_FE_CARRIER_PARAM* pParam)
-{
-    DMD_Param dmdParam;
-
-    if (FALSE == MDrv_Dmd_GetParam(&dmdParam))
+    if (_s32MutexId < 0)
     {
+        _s32MutexId = MsOS_CreateMutex(E_MSOS_FIFO, "OfDmd_Mutex", MSOS_PROCESS_SHARED);
+
+        if (_s32MutexId < 0)
+        {
+            DMD_ERR(("%s: Create mutex failed.\n", __FUNCTION__));
+            return FALSE;
+        }
+
+    }
+
+    MS_DVBC_INIT_PARAM.pstTunertab = pParam->pstTunertab;
+    MDrv_SYS_DMD_VD_MBX_Init();
+
+    static MS_U8 u8DMD_DVBC_InitExt[]={
+       INIT_TBL_VERIOSN,
+       RESERVED,
+       DMD_DVBC_TS_CLK,
+       DMD_DVBC_TRI_STATE,
+       RESERVED,
+       RESERVED,
+       RESERVED,
+       RESERVED,
+       RESERVED,
+       RESERVED,
+       RESERVED,
+       RESERVED,
+       FRONTEND_DEMOD_IQ_SWAP,
+       FRONTEND_DEMOD_IQ_TYPE,
+       DMD_DVBC_PAD_SEL,
+       DMD_DVBC_PGA_EN,
+       DMD_DVBC_PGA_GAIN,
+       (MS_U8)(AutoSymbol_Timeout>>8), // AutoSymbol_Timeout  10000ms~
+       (MS_U8)(AutoSymbol_Timeout>>0),
+       (MS_U8)(FixSymbol_AutoQam_Timeout>>8), // FixSymbol_AutoQam_Timeout 2000ms~
+       (MS_U8)(FixSymbol_AutoQam_Timeout>>0),
+       (MS_U8)(FixSymbol_FixQam_Timeout>>8), // FixSymbol_FixQam_Timeout  2000ms~
+       (MS_U8)(FixSymbol_FixQam_Timeout>>0),
+       };                // tuner parameter
+
+    // tuner parameter
+    sDMD_DVBC_InitData.u8SarChannel=0xff; // 0xFF means un-connected
+    sDMD_DVBC_InitData.pTuner_RfagcSsi=ALPS_TUNER_RfagcSsi;
+    sDMD_DVBC_InitData.u16Tuner_RfagcSsi_Size=sizeof(ALPS_TUNER_RfagcSsi)/sizeof(DMD_RFAGC_SSI);
+    sDMD_DVBC_InitData.pTuner_IfagcSsi_LoRef=ALPS_TUNER_IfagcSsi_LoRef;
+    sDMD_DVBC_InitData.u16Tuner_IfagcSsi_LoRef_Size=sizeof(ALPS_TUNER_IfagcSsi_LoRef)/sizeof(DMD_IFAGC_SSI);
+    sDMD_DVBC_InitData.pTuner_IfagcSsi_HiRef=ALPS_TUNER_IfagcSsi_HiRef;
+    sDMD_DVBC_InitData.u16Tuner_IfagcSsi_HiRef_Size=sizeof(ALPS_TUNER_IfagcSsi_HiRef)/sizeof(DMD_IFAGC_SSI);
+    sDMD_DVBC_InitData.pTuner_IfagcErr_LoRef=ALPS_TUNER_IfagcErr_LoRef;
+    sDMD_DVBC_InitData.u16Tuner_IfagcErr_LoRef_Size=sizeof(ALPS_TUNER_IfagcErr_LoRef)/sizeof(DMD_IFAGC_SSI);
+    sDMD_DVBC_InitData.pTuner_IfagcErr_HiRef=ALPS_TUNER_IfagcErr_HiRef;
+    sDMD_DVBC_InitData.u16Tuner_IfagcErr_HiRef_Size=sizeof(ALPS_TUNER_IfagcErr_HiRef)/sizeof(DMD_IFAGC_SSI);
+    sDMD_DVBC_InitData.pSqiCnNordigP1=SqiCnNordigP1;
+    sDMD_DVBC_InitData.u16SqiCnNordigP1_Size=sizeof(SqiCnNordigP1)/sizeof(DMD_SQI_CN_NORDIGP1);
+
+    // register init
+    if(!DMD_DVBC_SET_DSP_REG)
+    {
+        sDMD_DVBC_InitData.u8DMD_DVBC_DSPRegInitExt=NULL; // TODO use system variable type
+        sDMD_DVBC_InitData.u8DMD_DVBC_DSPRegInitSize=0;
+    }
+    else
+    {
+        sDMD_DVBC_InitData.u8DMD_DVBC_DSPRegInitExt=u8DSPTable; // TODO use system variable type
+        sDMD_DVBC_InitData.u8DMD_DVBC_DSPRegInitSize= (MS_U8)((sizeof(u8DSPTable) - 2)/4);
+    }
+    sDMD_DVBC_InitData.u8DMD_DVBC_InitExt=u8DMD_DVBC_InitExt; // TODO use system variable type
+
+    ret = MDrv_DMD_DVBC_Init(&sDMD_DVBC_InitData, sizeof(sDMD_DVBC_InitData)); // _UTOPIA
+    if(ret == TRUE)
+    {
+        bInited = TRUE;
+    }
+    //MDrv_DMD_DVBC_IQ(FRONTEND_DEMOD_IQ_TYPE);
+
+    return ret;
+}
+
+MS_BOOL MDrv_MSDVBC_Demod_Open(MS_U8 u8DemodIndex)
+{
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
         return FALSE;
     }
+    HB_ReleaseMutex(_s32MutexId);
 
-    switch (dmdParam.eQamType)
-    {
-    case E_DMD_QAM16:
-        pParam->CabParam.eConstellation = DEMOD_CAB_QAM16;
-        break;
-    case E_DMD_QAM32:
-        pParam->CabParam.eConstellation = DEMOD_CAB_QAM32;
-        break;
-    case E_DMD_QAM64:
-        pParam->CabParam.eConstellation = DEMOD_CAB_QAM64;
-        break;
-    case E_DMD_QAM128:
-        pParam->CabParam.eConstellation = DEMOD_CAB_QAM128;
-        break;
-    case E_DMD_QAM256:
-        pParam->CabParam.eConstellation = DEMOD_CAB_QAM256;
-        break;
-    default:
-        break;
-    }
-    switch (dmdParam.eIQSwap)
-    {
-    case E_DMD_IQ_NORMAL:
-        pParam->CabParam.eIQMode = DEMOD_CAB_IQ_NORMAL;
-        break;
-    case E_DMD_IQ_INVERT:
-        pParam->CabParam.eIQMode = DEMOD_CAB_IQ_INVERT;
-        break;
-    default:
-        break;
-    }
-
-    pParam->CabParam.u16SymbolRate = (MS_U16)dmdParam.u32SymRate;
-    pParam->CabParam.u8TapAssign = (MS_U8)dmdParam.eTapAssign;
-    pParam->CabParam.u32FreqOffset = dmdParam.u32FreqOffset;
-    pParam->CabParam.u8TuneFreqOffset = dmdParam.u8TuneFreqOffset;
-    pParam->u32Frequency = dmdParam.u32TunerFreq;
     return TRUE;
 }
 
-MS_BOOL MDrv_Demod_Restart(DEMOD_MS_FE_CARRIER_PARAM* pParam)
+MS_BOOL MDrv_MSDVBC_Demod_Close(MS_U8 u8DemodIndex)
 {
-    DMD_Param dmdParam;
+    MS_BOOL ret;
 
-    switch (pParam->CabParam.eConstellation)//  = DEMOD_CAB_QAM16;
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
     {
-    case DEMOD_CAB_QAM16:
-        dmdParam.eQamType = E_DMD_QAM16;
-        break;
-    case DEMOD_CAB_QAM32:
-        dmdParam.eQamType = E_DMD_QAM32;
-        break;
-    case DEMOD_CAB_QAM64:
-        dmdParam.eQamType = E_DMD_QAM64;
-        break;
-    case DEMOD_CAB_QAM128:
-        dmdParam.eQamType = E_DMD_QAM128;
-        break;
-    case DEMOD_CAB_QAM256:
-        dmdParam.eQamType = E_DMD_QAM256;
-        break;
-    default:
-        break;
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
     }
 
-    switch (pParam->CabParam.eIQMode)
-    {
-    case DEMOD_CAB_IQ_NORMAL:
-        dmdParam.eIQSwap = E_DMD_IQ_NORMAL;
-        break;
-    case DEMOD_CAB_IQ_INVERT:
-        dmdParam.eIQSwap = E_DMD_IQ_INVERT;
-        break;
-    default:
-        break;
-    }
 
-    dmdParam.u32SymRate = pParam->CabParam.u16SymbolRate;
-    dmdParam.eTapAssign = (DMD_TapAssign)pParam->CabParam.u8TapAssign;
-    dmdParam.u32FreqOffset = pParam->CabParam.u32FreqOffset;
-    dmdParam.u8TuneFreqOffset = pParam->CabParam.u8TuneFreqOffset;
-    dmdParam.u32TunerFreq = pParam->u32Frequency;
-    return MDrv_Dmd_Restart(&dmdParam);
+    ret = MDrv_DMD_DVBC_Exit();
+    if(ret == TRUE)
+    {
+        bInited = FALSE;
+    }
+    HB_ReleaseMutex(_s32MutexId);
+    return ret;
+
 }
 
-MS_BOOL MDrv_Demod_SetMode(Demod_Mode* pMode)
+MS_BOOL MDrv_Demod_SetSerialControl(MS_U8 u8DemodIndex,MS_BOOL bEnable)
 {
+    MS_BOOL ret;
+
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    if(bInited == FALSE)
+    {
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+
+    ret = MDrv_DMD_DVBC_SetSerialControl(bEnable);
+    HB_ReleaseMutex(_s32MutexId);
+    return ret;
+}
+
+MS_BOOL MDrv_MSDVBC_Demod_PowerOnOff(MS_U8 u8DemodIndex,MS_BOOL bPowerOn)
+{
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    HB_ReleaseMutex(_s32MutexId);
+    return TRUE;
+}
+
+MS_BOOL MDrv_MSDVBC_Demod_GetLock(MS_U8 u8DemodIndex,EN_LOCK_STATUS *peLockStatus)
+{
+    DMD_DVBC_LOCK_STATUS LockStatus;
+
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    if(bInited == FALSE)
+    {
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+
+
+    if(MDrv_DMD_DVBC_GetLock(DMD_DVBC_GETLOCK, &LockStatus) != TRUE)
+    {
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+    switch (LockStatus)
+    {
+        case DMD_DVBC_LOCK:
+            *peLockStatus = E_DEMOD_LOCK;
+            break;
+        case DMD_DVBC_CHECKEND:
+            *peLockStatus = E_DEMOD_CHECKEND;
+            break;
+        case DMD_DVBC_UNLOCK:
+            *peLockStatus = E_DEMOD_UNLOCK;
+            break;
+        case DMD_DVBC_CHECKING:
+        default:
+            *peLockStatus = E_DEMOD_CHECKING;
+            break;
+    }
+
+    HB_ReleaseMutex(_s32MutexId);
+    return TRUE;
+}
+
+MS_BOOL MDrv_MSDVBC_Demod_GetSNR(MS_U8 u8DemodIndex,float *pfSNR)
+{
+    MS_BOOL ret;
+
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    if(bInited == FALSE)
+    {
+        *pfSNR = 0;
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+
+
+    ret = MDrv_DMD_DVBC_GetSNR(pfSNR);
+    HB_ReleaseMutex(_s32MutexId);
+    return ret;
+}
+
+MS_BOOL MDrv_MSDVBC_Demod_GetBER(MS_U8 u8DemodIndex,float *pfBER)
+{
+    MS_BOOL ret;
+
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    if(bInited == FALSE)
+    {
+        *pfBER = 0;
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+
+    ret = MDrv_DMD_DVBC_GetPostViterbiBer(pfBER);
+
+    HB_ReleaseMutex(_s32MutexId);
+    return ret;
+
+}
+
+MS_BOOL MDrv_MSDVBC_Demod_GetPWR(MS_U8 u8DemodIndex,MS_S32 *ps32Signal)
+{
+    MS_BOOL ret;
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    if(bInited == FALSE)
+    {
+        *ps32Signal = 0;
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+    ret = MDrv_DMD_DVBC_GetSignalStrength((MS_U16*)ps32Signal);
+    HB_ReleaseMutex(_s32MutexId);
+    return ret;
+}
+
+MS_BOOL MDrv_MSDVBC_Demod_GetSignalQuality(MS_U8 u8DemodIndex,MS_U16* u16quality)
+{
+    MS_BOOL ret;
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    if(bInited == FALSE)
+    {
+        *u16quality = 0;
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+    ret = MDrv_DMD_DVBC_GetSignalQuality(u16quality);
+    HB_ReleaseMutex(_s32MutexId);
+    return ret;
+}
+
+
+MS_BOOL MDrv_MSDVBC_Demod_Config(MS_U8 u8DemodIndex,MS_U8 *pRegParam)
+{
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    HB_ReleaseMutex(_s32MutexId);
+    return TRUE;
+}
+
+
+MS_BOOL MDrv_MSDVBC_Demod_GetParam(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM* pParam)
+{
+    DMD_DVBC_MODULATION_TYPE QAMMode;
+    MS_U16 u16SymbolRate;
+    float FreqOff;
+
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+
+    if(bInited == FALSE)
+    {
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+
+    if(FALSE == MDrv_DMD_DVBC_GetStatus(&QAMMode, &u16SymbolRate, &FreqOff))
+    {
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+
+    switch (QAMMode)
+    {
+        case DMD_DVBC_QAM16:
+            pParam->CabParam.eConstellation = DEMOD_CAB_QAM16;
+            break;
+        case DMD_DVBC_QAM32:
+            pParam->CabParam.eConstellation = DEMOD_CAB_QAM32;
+            break;
+        case DMD_DVBC_QAM64:
+            pParam->CabParam.eConstellation = DEMOD_CAB_QAM64;
+            break;
+        case DMD_DVBC_QAM128:
+            pParam->CabParam.eConstellation = DEMOD_CAB_QAM128;
+            break;
+        case DMD_DVBC_QAM256:
+            pParam->CabParam.eConstellation = DEMOD_CAB_QAM256;
+            break;
+        case DMD_DVBC_QAMAUTO:
+            pParam->CabParam.eConstellation = DEMOD_CAB_QAMAUTO;
+            break;
+        default:
+            pParam->CabParam.eConstellation = DEMOD_CAB_QAM128;
+            break;
+    }
+
+    pParam->CabParam.u16SymbolRate = u16SymbolRate;
+    pParam->CabParam.fCFO= FreqOff;
+
+    HB_ReleaseMutex(_s32MutexId);
+
+    return TRUE;
+
+}
+
+MS_BOOL MDrv_MSDVBC_Demod_GetPacketError(MS_U8 u8DemodIndex,MS_U16 *u16PktErr)
+{
+    MS_BOOL ret;
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    if(bInited == FALSE)
+    {
+        *u16PktErr = 0;
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+    ret = MDrv_DMD_DVBC_GetPacketErr(u16PktErr);
+    HB_ReleaseMutex(_s32MutexId);
+    return ret;
+}
+
+MS_BOOL MDrv_MSDVBC_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM* pParam,MS_U32 u32BroadCastType)
+{
+    DMD_DVBC_MODULATION_TYPE eModulationType;
+    MS_U32 u32IF_Freq = 0;
+    /*//mark for warning: set but not used
+    static DMD_DVBC_MODULATION_TYPE ePreModulationType = DMD_DVBC_QAMAUTO;
+    static MS_U16 u16PreSymbolRate = 0;
+    */
+
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    if(bInited == FALSE)
+    {
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+
+    if(!MS_DVBC_INIT_PARAM.pstTunertab->GetTunerIF(u8DemodIndex, &u32IF_Freq))
+    {
+        u32IF_Freq = _u32IFrequency;
+        DMD_DBG(("INTERN_DVBC Get Tuner IF FAIL, use default Tuner IF %d kHz\n",(int)u32IF_Freq));
+    }
+    else
+    {
+       DMD_DBG(("INTERN_DVBC Get Tuner IF %d kHz\n", (int)u32IF_Freq));
+    }
+
+
+    switch(pParam->CabParam.eConstellation)
+    {
+        case DEMOD_CAB_QAM16:
+            eModulationType = DMD_DVBC_QAM16;
+            break;
+        case DEMOD_CAB_QAM32:
+            eModulationType = DMD_DVBC_QAM32;
+            break;
+        case DEMOD_CAB_QAM64:
+            eModulationType = DMD_DVBC_QAM64;
+            break;
+        case DEMOD_CAB_QAM128:
+            eModulationType = DMD_DVBC_QAM128;
+            break;
+        case DEMOD_CAB_QAM256:
+            eModulationType = DMD_DVBC_QAM256;
+            break;
+        default:
+            eModulationType = DMD_DVBC_QAMAUTO;
+            break;
+    }
+
+    //printf("pParam->CabParam.u16SymbolRate [%d], eModulationType [%d] \n",pParam->CabParam.u16SymbolRate,eModulationType);
+
+    //if((ePreModulationType != eModulationType) || (u16PreSymbolRate != pParam->CabParam.u16SymbolRate))
+    //{
+        /*//mark for warning: set but not used
+        ePreModulationType = eModulationType;
+        u16PreSymbolRate = pParam->CabParam.u16SymbolRate;
+        */
+        DMD_DBG(("pParam->CabParam.u16SymbolRate [%d], eModulationType [%d] \n",pParam->CabParam.u16SymbolRate,eModulationType));
+
+        if(FALSE == MDrv_DMD_DVBC_SetConfig(pParam->CabParam.u16SymbolRate, eModulationType, u32IF_Freq, FALSE, FALSE))
+        {
+            DMD_ERR(("MDrv_DMD_DVBC_SetConfig Fail \n"));
+            HB_ReleaseMutex(_s32MutexId);
+            return FALSE;
+        }
+        if(FALSE == MDrv_DMD_DVBC_SetActive(TRUE))
+        {
+            DMD_ERR(("MDrv_DMD_DVBC_SetActive Fail \n"));
+            HB_ReleaseMutex(_s32MutexId);
+            return FALSE;
+        }
+    //}
+
+    HB_ReleaseMutex(_s32MutexId);
+    return TRUE;
+
+}
+
+
+MS_BOOL MDrv_MSDVBC_Demod_SetMode(MS_U8 u8DemodIndex, Demod_Mode* pMode)
+{
+#if 0
     DMD_Mode dmdMod;
     dmdMod.bX4CFE_en            = pMode->bX4CFE_en;
     dmdMod.bPPD_en              = pMode->bPPD_en;
@@ -251,18 +750,123 @@ MS_BOOL MDrv_Demod_SetMode(Demod_Mode* pMode)
     dmdMod.bFHO_en              = pMode->bFHO_en;
     dmdMod.fptTunerSet          = pMode->fptTunerSet;
     return MDrv_Dmd_SetMode((DMD_Mode*)pMode);
+#else
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+    HB_ReleaseMutex(_s32MutexId);
+    return TRUE;
+#endif
 }
 
-MS_BOOL MDrv_Demod_SetOutoutPath(DEMOD_INTERFACE_MODE path)
+MS_BOOL MDrv_MSDVBC_Demod_SetOutoutPath(MS_U8 u8DemodIndex, DEMOD_INTERFACE_MODE path)
 {
-    //Dummy function
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    HB_ReleaseMutex(_s32MutexId);
     return TRUE;
 }
 
-DEMOD_INTERFACE_MODE MDrv_Demod_GetOutoutPath(void)
+DEMOD_INTERFACE_MODE MDrv_MSDVBC_Demod_GetOutoutPath(MS_U8 u8DemodIndex)
 {
-    //Dummy function
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    HB_ReleaseMutex(_s32MutexId);
     return DEMOD_INTERFACE_PARALLEL;
 }
 
-#endif // (FRONTEND_DEMOD_TYPE == DEMOD_MSDVBC)
+MS_BOOL DEMOD_MSDVBC_DVBC_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE fuction_type, void *data)
+{
+    MS_BOOL bret = TRUE;
+    switch(fuction_type)
+    {
+        case DEMOD_EXT_FUNC_FINALIZE:
+            if (_s32MutexId >= 0)
+            {
+                MsOS_DeleteMutex(_s32MutexId);
+                _s32MutexId = -1;
+            }
+            bInited = FALSE;
+            bret &= MDrv_DMD_DVBC_Exit();
+            break;
+        default:
+            DMD_DBG(("Request extension function (%x) does not exist\n",fuction_type));
+    }
+    return bret;
+}
+
+MS_BOOL MDrv_MSDVBC_Demod_I2C_ByPass(MS_U8 u8DemodIndex,MS_BOOL bOn)
+{
+  if(GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC).I2CByPassPreSetting != NULL)
+  {
+      return GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC).I2CByPassPreSetting(u8DemodIndex,bOn);
+  }
+  else
+      return MDrv_Demod_null_I2C_ByPass(u8DemodIndex,bOn);
+}
+#if 1 // byKOR, kaon
+MS_BOOL MDrv_MSDVBC_Demod_Check_Exist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
+{
+	return TRUE;
+}
+#endif
+
+
+DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC) DDI_DRV_TABLE_ENTRY(demodtab) =
+{
+     .name                         = "DEMOD_MSINTERN_DVBC",
+     .data                         = DEMOD_MSINTERN_DVBC,
+     .init                         = MDrv_MSDVBC_Demod_Init,
+     .GetLock                      = MDrv_MSDVBC_Demod_GetLock,
+     .GetSNR                       = MDrv_MSDVBC_Demod_GetSNR,
+     .GetBER                       = MDrv_MSDVBC_Demod_GetBER,
+     .GetPWR                       = MDrv_MSDVBC_Demod_GetPWR,
+     .GetQuality                   = MDrv_MSDVBC_Demod_GetSignalQuality,
+     .GetParam                     = MDrv_MSDVBC_Demod_GetParam,
+     .Restart                      = MDrv_MSDVBC_Demod_Restart,
+     .I2CByPass                    = MDrv_MSDVBC_Demod_I2C_ByPass,
+     .I2CByPassPreSetting          = NULL,
+#if 1 // byKOR, kaon
+     .CheckExist                   = MDrv_MSDVBC_Demod_Check_Exist,
+#endif
+     .Extension_Function           = DEMOD_MSDVBC_DVBC_Extension_Function,
+     .Extension_FunctionPreSetting = NULL,
+     .Get_Packet_Error              = MDrv_MSDVBC_Demod_GetPacketError,
+#if MS_DVBT2_INUSE
+     .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
+     .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
+     .GetPlpBitMap                 = MDrv_Demod_null_GetPlpBitMap,
+     .GetPlpGroupID                = MDrv_Demod_null_GetPlpGroupID,
+     .SetPlpGroupID                = MDrv_Demod_null_SetPlpGroupID,
+     .GetNextPLPID                 = MDrv_Demod_null_GetNextPLPID,
+     .GetPLPType                   = MDrv_Demod_null_GetPLPType,
+#endif
+#if MS_DVBS_INUSE
+     .BlindScanStart               = MDrv_Demod_null_BlindScan_Start,
+     .BlindScanNextFreq            = MDrv_Demod_null_BlindScan_NextFreq,
+     .BlindScanWaitCurFreqFinished = MDrv_Demod_null_BlindScan_WaitCurFreqFinished,
+     .BlindScanCancel              = MDrv_Demod_null_BlindScan_Cancel,
+     .BlindScanEnd                 = MDrv_Demod_null_BlindScan_End,
+     .BlindScanGetChannel          = MDrv_Demod_null_BlindScan_GetChannel,
+     .BlindScanGetCurrentFreq      = MDrv_Demod_null_BlindScan_GetCurrentFreq,
+     .DiSEqCSetTone                = MDrv_Demod_null_DiSEqC_SetTone,
+     .DiSEqCSetLNBOut              = MDrv_Demod_null_DiSEqC_SetLNBOut,
+     .DiSEqCGetLNBOut              = MDrv_Demod_null_DiSEqC_GetLNBOut,
+     .DiSEqCSet22kOnOff            = MDrv_Demod_null_DiSEqC_Set22kOnOff,
+     .DiSEqCGet22kOnOff            = MDrv_Demod_null_DiSEqC_Get22kOnOff,
+     .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd
+#endif
+};
+
+#endif // (FRONTEND_DEMOD_TYPE == DEMOD_MSDVBC_51)
+

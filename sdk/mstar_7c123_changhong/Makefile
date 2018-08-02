@@ -3,7 +3,7 @@
 #    TOOLCHAIN PATH
 # *************************************************
 
-export PATH:=/tools/mstar/mipsisa32-elf-3.4.4/bin/:/opt/toolchains/mips-4.3-154/bin:$(PATH)
+export PATH:=/tools/mstar/gnutools/mipsisa32-elf-3.4.4/bin/:/opt/toolchains/mips-4.3-154/bin:$(PATH)
 
 # *************************************************
 #    BUILD PARAMETERS
@@ -15,7 +15,7 @@ endif
 
 include $(SDK_ROOT)/tools.mak
 
-BUILD_FOLDER:=$(SDK_ROOT)/src/Keltic/DDI_Package/ddi_pkg_ecos/cus_mstar/project/mstar_demo/
+BUILD_FOLDER:=$(SDK_ROOT)/src/Kirin/DDI_Package/ddi_pkg_ecos/cus_mstar/project/mstar_demo/
 
 all: build_sdk prepare_libs
 	
@@ -45,13 +45,62 @@ image:
 	$(MAKE) -ikC $(subst $(BAD_SLASH),$(GOOD_SLASH),$(SDK_ROOT)/tools/genimage)
 
 SDK_OBJS += \
-$(BUILD_FOLDER)/obj/drvDemodKelticDVBC.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/drvDemodNull.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/drvDemodKelticDVBS.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/drvDemodKelticATSC.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/drvTuner_R840.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/drvTuner_R820C.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/SysInit.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvIIC.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvPQ.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/mhal_pq.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/QualityMap_MainEx.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/QualityMap_Main.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvbw.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/mdrv_dac_tbl.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/tmbslTDA18250AdvanceCustom.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/tmbslTDA18250.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/tmbslTDA18250Instance.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/tmddTDA18250.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/tmddTDA18250Instance.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/tmbslTDA18250A_Advanced.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/tmbslTDA18250A.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvTuner_MXL608.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/drvTunerNull.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/MxL608_OEM_Drv.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/MxL608_TunerApi.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/MxL608_TunerCfg.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/MxL608_TunerSpurTable.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/msAPI_Scaler_Adaptive.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/demo_dscmb_basic.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/demo_dscmb_advanced.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/demo_gpio.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/demo_gpd.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/demo_keyladder.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/demo_osd.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/demo_osd_resource.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/demo_utility.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/appDemo_DigiTuner.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/BSP_version_info.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/DDI_MAIN_version_info.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/DDI_MISC_version_info.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvDemodMstarDVBC.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvDemodMstarDVBT.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvDemodKeresATSC.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/device_demodulator_msb1237.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/device_demodulator_msb1233c.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/device_demodulator_msb124x.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/device_demodulator_msb1245.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvDishA8293.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvDishA8296.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvDishA8304.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvDishDemod.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvTuner_R840.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvTuner_RT710.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvTuner_MXL254.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/MxL_HRCLS_CommonApi.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/MxL_HRCLS_OEM_Drv.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/MxL_HRCLS_XptApi.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/MxL_HRCLS_DemodApi.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/MxL_HRCLS_PhyCtrl.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/MxL_HRCLS_CalCtrl.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvTunerNull.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvTuner_R850.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/MxL608_OEM_Drv.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/MxL608_TunerApi.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/MxL608_TunerCfg.$(OBJ_SUFFIX) \
@@ -82,28 +131,27 @@ $(BUILD_FOLDER)/obj/System_Manage_HPMTO.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/tmddTDA18250.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/tmddTDA18250Instance.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/apiDigiTuner.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/SysInit.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/drvIIC.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/drvPQ.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/mhal_pq.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/QualityMap_MainEx.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/QualityMap_Main.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/drvbw.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/mdrv_dac_tbl.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/tmbslTDA18250AdvanceCustom.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/tmbslTDA18250.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/tmbslTDA18250Instance.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/tmddTDA18250.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/tmddTDA18250Instance.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/tmbslTDA18250A_Advanced.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/tmbslTDA18250A.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/tmbslTDA182I5a.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/tmbslTDA182I5a_Instance.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/tmbslTDA182I5a_RegDef.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/drvTuner_MXL608.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/drvTunerNull.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/MxL608_OEM_Drv.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/MxL608_TunerApi.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/MxL608_TunerCfg.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/MxL608_TunerSpurTable.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/msAPI_Scaler_Adaptive.$(OBJ_SUFFIX) 
+$(BUILD_FOLDER)/obj/PVRPL_FileIn.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/PVRPL_Audio.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/PVRPL_CA.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/PVRPL_FS.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/PVRPL_Record.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/PVRPL_ResourcePool.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/PVRPL_Sys.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/PVRPL_Video.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvFrontPnl.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvDemodNull.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/mm_cfg_ini.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_audio.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_controlflag.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_cusinfo.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_database.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_display.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_graphic.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_misc.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_mmap.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_os.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_subtitle.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_sysinfo.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_thread.$(OBJ_SUFFIX) \
+$(SDK_ROOT)/src/libnocs3x_csd/emi.$(OBJ_SUFFIX)

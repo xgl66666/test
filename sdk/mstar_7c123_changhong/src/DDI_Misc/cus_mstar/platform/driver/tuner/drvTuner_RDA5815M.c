@@ -21,6 +21,35 @@
 
 typedef int INT32;
 
+static  MS_BOOL  _DigiTuner_Decide_LNB_LO(TUNER_MS_SAT_PARAM *pSATParam)
+{
+     MS_S32 s32Freq;
+     // calc Mid Freq & LNB control(22K on/off)
+     if(pSATParam->u16LoLOF == pSATParam->u16HiLOF)
+     {
+        *pSATParam->pbIsHiLOF= FALSE;
+     }
+     else // 2LOF
+     {
+         MS_U32 u32MidFreq;
+         MS_S32 s32Offset = 0;
+         s32Freq  = pSATParam->u32RF_FREQ;
+         u32MidFreq =  abs(s32Freq - pSATParam->u16LoLOF) ;
+         s32Offset = pSATParam->u16LoLOF+ MAX_INPUT_FREQ - pSATParam->u16HiLOF - MIN_INPUT_FREQ;
+         if(s32Offset < 0)
+              s32Offset = 0;
+          else
+             s32Offset /= 2;
+
+         if( u32MidFreq <= (MAX_INPUT_FREQ-s32Offset))
+              *pSATParam->pbIsHiLOF = FALSE;
+          else
+              *pSATParam->pbIsHiLOF = TRUE;     
+     }
+     return TRUE;
+}
+
+
 static MS_BOOL RDA5815WriteReg(MS_U8 u8TunerIndex, MS_U8 paddr, MS_U8 pu8data)
 {
     MS_BOOL bRet = TRUE;
@@ -316,7 +345,7 @@ INT32 RDA5815Set(MS_U8 u8TunerIndex, unsigned long fPLL, unsigned long fSym)
 
 /********************************************************************************/
 
-MS_BOOL  MDrv_Tuner_Initial(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam)
+MS_BOOL  MDrv_Tuner_RDA5815M_Initial(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam)
 {
     printf("RDA5815M v1.5 Tuner Init\n");
     RDA5815Initial(u8TunerIndex);
@@ -325,12 +354,12 @@ MS_BOOL  MDrv_Tuner_Initial(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam)
 }
 
 
-MS_BOOL MDrv_Tuner_SetFreq_S2(MS_U8 u8TunerIndex, MS_U32 dwFreq, MS_U32 ucBw)
+MS_BOOL MDrv_Tuner_RDA5815M_SetFreq_S2(MS_U8 u8TunerIndex, MS_U32 dwFreq, MS_U32 u32SymbolRate_kHz)
 {
 //    MS_U32 u32BW;
 //    printf("RDA5815 Freq:%lu,Bandwidth:%u\n",dwFreq,ucBw);
     //u32BW = (6+ucBw)*1000;
-    RDA5815Set(u8TunerIndex, dwFreq, ucBw);
+    RDA5815Set(u8TunerIndex, dwFreq, u32SymbolRate_kHz);
 
     return 1;
 }
@@ -371,16 +400,29 @@ MS_BOOL MDrv_Tuner_RDA5815M_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_c
 
 MS_BOOL RDA5815M_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE fuction_type, void *data)
 {
-    return TRUE;
+    TUNER_MS_SAT_PARAM* SAT_PARAM;
+    MS_BOOL bret = TRUE;
+    switch(fuction_type)
+    {
+        case TUNER_EXT_FUNC_DECIDE_LNB_LO:
+            SAT_PARAM = data;
+            bret &= _DigiTuner_Decide_LNB_LO(SAT_PARAM);
+            break;
+            
+        default:
+            TUNER_DBG(("Request extension function (%x) does not exist\n",fuction_type));
+            break;     
+    }
+    return bret;
 }
 
 DRV_TUNER_TABLE_TYPE GET_TUNER_ENTRY_NODE(TUNER_RDA5815M) DDI_DRV_TUNER_TABLE_ENTRY(tunertab) =
 {
     .name               = "TUNER_RDA5815M",          // demod system name
     .data               = TUNER_RDA5815M,            // private data value
-    .Init               = MDrv_Tuner_Initial,
+    .Init               = MDrv_Tuner_RDA5815M_Initial,
     .SetFreq            = MDrv_Tuner_Null_SetFreq,
-    .SetFreqS2          = MDrv_Tuner_SetFreq_S2,
+    .SetFreqS2          = MDrv_Tuner_RDA5815M_SetFreq_S2,
     .GetLock            = MDrv_Tuner_Null_GetLock,
     .SetTuner           = MDrv_Tuner_Null_SetTuner,
     .CheckExist         = MDrv_Tuner_RDA5815M_CheckExist,

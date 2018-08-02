@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (¡§MStar Confidential Information¡¨) by the recipient.
+// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -154,7 +154,7 @@
 #define _MHAL_IR_REG_H_
 
 // Define IRQ registers
-#if defined(CHIP_KAISER)    //We dont use PM IRQ for IrDA currently
+#if defined(CHIP_KAISER) || defined(CHIP_CLIPPERS) || defined(CHIP_KANO) //We dont use PM IRQ for IrDA currently
 #define REG_IRQ_BASE            0xFD003200
 #else
 #define REG_IRQ_BASE            0xBF003200
@@ -163,7 +163,7 @@
     #define IRQ_UNMASK_IR       0xF7FF
 
 // Define IrDa registers
-#if defined(CHIP_KAISER)
+#if defined(CHIP_KAISER) || defined(CHIP_CLIPPERS) || defined(CHIP_KANO)
 #define REG_IR_BASE             0xFD007B00
 #else
 #define REG_IR_BASE             0xBF007B00
@@ -209,7 +209,7 @@
 #define REG_IR_FIFO_RD_PULSE    (0x0018*4 + (REG_IR_BASE))
 
 //for RC5/6/5ext HW mode
-#if defined(CHIP_KAISER)
+#if defined(CHIP_KAISER) || defined(CHIP_CLIPPERS) || defined(CHIP_KANO)
 #define REG_IR_RC_BASE             0xFD007A00
 #else
 #define REG_IR_RC_BASE             0xBF007A00

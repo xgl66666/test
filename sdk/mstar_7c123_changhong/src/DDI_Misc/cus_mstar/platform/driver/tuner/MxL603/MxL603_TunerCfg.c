@@ -220,5 +220,57 @@ MXL_STATUS MxL603_Ctrl_WriteRegField(UINT8 u8TunerIndex,UINT8 devId, PMXL603_REG
   return status;
 }
 
+/*------------------------------------------------------------------------------
+--| FUNCTION NAME : Ctrl_SetRfFreqLutTblReg
+--|
+--| AUTHOR        : Dong Liu
+--|
+--| DATE CREATED  : 10/27/2012
+--|
+--| DESCRIPTION   : This function is called by MxL603_ConfigTunerChanTune, 
+--|                 configure 0xEA and 0xEB registers when XTAL is 
+--|                 16MHz and 24Hz case 
+--|  
+--|---------------------------------------------------------------------------*/
+
+MXL_STATUS MxL603_Ctrl_SetRfFreqLutTblReg(UINT8 u8TunerIndex,UINT8 devId, UINT32 FreqInHz, PMXL603_CHAN_DEPENDENT_FREQ_TABLE_T freqLutPtr)
+{
+  UINT8 status = MXL_TRUE;
+  UINT8 idx = 0;
+  UINT8 regSetData[MXL603_MAX_SPUR_REG_NUM] = {0, 0};
+   
+  if (freqLutPtr)
+  {
+    // Find and get default value firstly. 
+    for (idx = 0; 0 != freqLutPtr->centerFreqHz; idx++, freqLutPtr++)
+    {
+      if (freqLutPtr->centerFreqHz == 1)  
+      {
+        // When center frequency is 1 means corresponding data is default value 
+        regSetData[0] = freqLutPtr->reg_0xEA;
+        regSetData[1] = freqLutPtr->reg_0xEB;
+        break;
+      } // end of if ((freqLutPtr->centerFreqHz -
+    } // end of for (idx = 0;
+
+    // Check in LUT
+    for (idx = 0; 0 != freqLutPtr->centerFreqHz; idx++, freqLutPtr++)
+    {
+      if ((freqLutPtr->centerFreqHz - MXL603_SPUR_SHIFT_FREQ_WINDOW) <= FreqInHz &&
+          (freqLutPtr->centerFreqHz + MXL603_SPUR_SHIFT_FREQ_WINDOW) >= FreqInHz)
+      {
+        regSetData[0] = freqLutPtr->reg_0xEA;
+        regSetData[1] = freqLutPtr->reg_0xEB;
+        break;
+      } // end of if ((freqLutPtr->centerFreqHz -
+    } // end of for (idx = 0;
+  }
+
+  // Program registers
+  for (idx = 0; idx < MxL603_SPUR_REGISTER.SpurRegNum; idx++)
+    status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, MxL603_SPUR_REGISTER.SpurRegAddr[idx], regSetData[idx]);
+
+  return(MXL_STATUS)status;
+}
 #endif
 

@@ -5,9 +5,9 @@
 // All software, firmware and related documentation herein ("MStar Software") are
 // intellectual property of MStar Semiconductor, Inc. ("MStar") and protected by
 // law, including, but not limited to, copyright law and international treaties.
-// Any use, modification, reproduction, retransmission, or republication of all 
-// or part of MStar Software is expressly prohibited, unless prior written 
-// permission has been granted by MStar. 
+// Any use, modification, reproduction, retransmission, or republication of all
+// or part of MStar Software is expressly prohibited, unless prior written
+// permission has been granted by MStar.
 //
 // By accessing, browsing and/or using MStar Software, you acknowledge that you
 // have read, understood, and agree, to be bound by below terms ("Terms") and to
@@ -20,15 +20,15 @@
 //
 // 2. You understand that MStar Software might include, incorporate or be
 //    supplied together with third party`s software and the use of MStar
-//    Software may require additional licenses from third parties.  
+//    Software may require additional licenses from third parties.
 //    Therefore, you hereby agree it is your sole responsibility to separately
 //    obtain any and all third party right and license necessary for your use of
-//    such third party`s software. 
+//    such third party`s software.
 //
 // 3. MStar Software and any modification/derivatives thereof shall be deemed as
-//    MStar`s confidential information and you agree to keep MStar`s 
+//    MStar`s confidential information and you agree to keep MStar`s
 //    confidential information in strictest confidence and not disclose to any
-//    third party.  
+//    third party.
 //
 // 4. MStar Software is provided on an "AS IS" basis without warranties of any
 //    kind. Any warranties are hereby expressly disclaimed by MStar, including
@@ -51,7 +51,7 @@
 //    ("Services").
 //    You understand and agree that, except otherwise agreed by both parties in
 //    writing, Services are provided on an "AS IS" basis and the warranty
-//    disclaimer set forth in Section 4 above shall apply.  
+//    disclaimer set forth in Section 4 above shall apply.
 //
 // 6. Nothing contained herein shall be construed as by implication, estoppels
 //    or otherwise:
@@ -59,7 +59,7 @@
 //        mark, symbol or any other identification;
 //    (b) obligating MStar or any of its affiliates to furnish any person,
 //        including without limitation, you and your customers, any assistance
-//        of any kind whatsoever, or any information; or 
+//        of any kind whatsoever, or any information; or
 //    (c) conferring any license or right under any intellectual property right.
 //
 // 7. These terms shall be governed by and construed in accordance with the laws
@@ -70,7 +70,7 @@
 //    Rules of the Association by three (3) arbitrators appointed in accordance
 //    with the said Rules.
 //    The place of arbitration shall be in Taipei, Taiwan and the language shall
-//    be English.  
+//    be English.
 //    The arbitration award shall be final and binding to both parties.
 //
 //******************************************************************************
@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (¡§MStar Confidential Information¡¨) by the recipient.
+// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -108,6 +108,8 @@
 #include "msAPI_Gpio.h"
 #include "drvGPIO.h"
 #include "appDemo_FrontPnl.h"
+#include "drvDTC.h"
+
 
 //-------------------------------------------------------------------------------------------------
 //                                MACROS
@@ -226,7 +228,8 @@ MS_BOOL appDemo_FrontPnl_Init(void)
 
     if (_pTaskStack == NULL)
     {
-        GEN_EXCEP;
+        printf("_pTaskStack == NULL!!!\n");
+        return FALSE;
     }
     _s32TaskId = MsOS_CreateTask(_appDemo_FrontPnl_Task,
                                          NULL,
@@ -239,7 +242,8 @@ MS_BOOL appDemo_FrontPnl_Init(void)
     printf("_s32TaskId = 0x%x\n",_s32TaskId);
     if (_s32TaskId < 0)
     {
-        GEN_EXCEP;
+        printf("_s32TaskId < 0!!!\n");
+        return FALSE;
     }
 
     return TRUE;
@@ -328,7 +332,7 @@ static void _appDemo_FrontPnl_Task(MS_U32 argc, void *argv)
         MDrv_FrontPnl_ReadKeyPad(&u32KeyValue);
 
         if(u32KeyValue != 0){
-            printf("MDrv_FrontPnl_ReadKeyPad KeyValue = 0x%lu\n",u32KeyValue);
+            printf("MDrv_FrontPnl_ReadKeyPad KeyValue = 0x%"DTC_MS_U32_u"\n", u32KeyValue);
         }
         MsOS_DelayTask(2);
         //delay(500);
@@ -458,7 +462,8 @@ MS_BOOL appDemo_FrontPnl_Init(void)
     _pTaskStack = MsOS_AllocateMemory( APP_DEMO_FRONTPNL_TASK_STACK, gs32CachedPoolID);
     if (_pTaskStack == NULL)
     {
-        GEN_EXCEP;
+        printf("_pTaskStack == NULL!!!\n");
+        return FALSE;
     }
     _s32TaskId = MsOS_CreateTask(_appDemo_FrontPnl_Task,
                                          NULL,
@@ -470,22 +475,22 @@ MS_BOOL appDemo_FrontPnl_Init(void)
     if (_s32TaskId < 0)
     {
         printf("MsOS_CreateTask fail!\n");
-        GEN_EXCEP;
+        return FALSE;
     }
     #if 1
     //Create frontpanel event
     _s32EventId = MsOS_CreateEventGroup("appDemo_Frontpnl_Event");
     if (_s32EventId < 0)
     {
-
         printf("CreateEventGroup error \n");
-        GEN_EXCEP;
+        return FALSE;
     }
     //Create Task for timer callback
     _pTimerTaskStack = MsOS_AllocateMemory( APP_DEMO_FRONTPNL_TIMER_TASK_STACK, gs32CachedPoolID);
     if (_pTimerTaskStack == NULL)
     {
-        GEN_EXCEP;
+        printf("_pTimerTaskStack == NULL!!!\n");
+        return FALSE;
     }
 
     _s32TimerTaskId = MsOS_CreateTask(_appDemo_Timer_Task,
@@ -498,11 +503,16 @@ MS_BOOL appDemo_FrontPnl_Init(void)
     if (_s32TimerTaskId < 0)
     {
         printf("MsOS_CreateTask error \n");
-        GEN_EXCEP;
+        return FALSE;
     }
 
     //Create timer
     _s32TimerId = MsOS_CreateTimer(appDemo_FrontPnl_TimerCb,500,500,TRUE,"Demo FrontPnl Timer");
+    if (_s32TimerTaskId < 0)
+    {
+        printf("MsOS_CreateTimer error \n");
+        return FALSE;
+    }
 
     #endif
 

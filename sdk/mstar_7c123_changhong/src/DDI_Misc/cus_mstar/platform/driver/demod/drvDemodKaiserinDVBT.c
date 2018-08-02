@@ -311,7 +311,7 @@ MS_BOOL MDrv_Demod_DVBT_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
 
         if (_s32MutexId < 0)
         {
-            GEN_EXCEP;
+            DMD_ERR(("%s: Create mutex failed.\n", __FUNCTION__));
             return FALSE;
         }
 
@@ -320,8 +320,6 @@ MS_BOOL MDrv_Demod_DVBT_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
 
     MDrv_SYS_DMD_VD_MBX_Init();
 
-
-    MDrv_SAR_Kpd_Init();
 
 	static MS_U8 u8DMD_DVBT_DSPRegInitExt[]={	1, // version, should be matched with library
 												0, // reserved
@@ -371,7 +369,7 @@ MS_BOOL MDrv_Demod_DVBT_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
 #endif
 
     // tuner parameter
-    sDMD_DVBT_InitData.u8SarChannel=1; // 0xFF means un-connected
+    sDMD_DVBT_InitData.u8SarChannel=0xff; // 0xFF means un-connected
     sDMD_DVBT_InitData.pTuner_RfagcSsi=ALPS_TUNER_RfagcSsi;
     sDMD_DVBT_InitData.u16Tuner_RfagcSsi_Size=sizeof(ALPS_TUNER_RfagcSsi)/sizeof(DMD_RFAGC_SSI);
     sDMD_DVBT_InitData.pTuner_IfagcSsi_LoRef=ALPS_TUNER_IfagcSsi_LoRef;
@@ -470,7 +468,7 @@ MS_BOOL MDrv_Demod_DVBT_GetLock(MS_U8 u8DemodIndex, EN_LOCK_STATUS *peLockStatus
         case E_DMD_CHECKEND:
             *peLockStatus = E_DEMOD_CHECKEND;
             break;
-        case E_DMD_UNLOCK: 
+        case E_DMD_UNLOCK:
             *peLockStatus = E_DEMOD_UNLOCK;
             break;
         case E_DMD_CHECKING:
@@ -626,7 +624,7 @@ MS_BOOL MDrv_Demod_DVBT_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM* p
            bLPSel = FALSE;
            break;
     }
-    
+
     switch (pParam->TerParam.eBandWidth)
     {
         case DEMOD_BW_MODE_6MHZ:
@@ -642,7 +640,7 @@ MS_BOOL MDrv_Demod_DVBT_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM* p
     }
 
     MDrv_DMD_DVBT_SetConfigHPLP(BW, FALSE, bPalBG, bLPSel);
-    
+
     if(FALSE == MDrv_DMD_DVBT_SetActive(TRUE)) // _UTOPIA
     {
         HB_ReleaseMutex(_s32MutexId);
@@ -762,12 +760,15 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKAISERIN_DVBT) DDI_DRV_TABLE_E
      .I2CByPassPreSetting          = NULL,
      .Extension_Function           = DEMOD_MSKAISERIN_DVBT_Extension_Function,
      .Extension_FunctionPreSetting = NULL,
+     .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error,
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
      .GetPlpBitMap                 = MDrv_Demod_null_GetPlpBitMap,
      .GetPlpGroupID                = MDrv_Demod_null_GetPlpGroupID,
      .SetPlpGroupID                = MDrv_Demod_null_SetPlpGroupID,
+     .GetNextPLPID                 = MDrv_Demod_null_GetNextPLPID,
+     .GetPLPType                   = MDrv_Demod_null_GetPLPType,
 #endif
 #if MS_DVBS_INUSE
      .BlindScanStart               = MDrv_Demod_null_BlindScan_Start,

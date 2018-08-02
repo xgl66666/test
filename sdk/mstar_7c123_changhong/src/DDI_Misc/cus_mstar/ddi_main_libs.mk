@@ -15,3 +15,15 @@ ifeq ($(DDI_DEMO_DFB),enable)
 EXTRAMWLIBS += releaseFREETYPE
 EXTRAMWLIBS += releaseZLIB
 endif
+
+ifeq ($(MI_BSP), enable)
+
+ifeq ($(MMSDK_BSP), enable)
+EXTRAMWLIBS += releaseZLIB releaseFREETYPE
+endif
+
+ifeq ($(DFB_BSP), enable)
+EXTRAMWLIBS +=  releaseZLIB releaseFREETYPE
+endif
+
+endif

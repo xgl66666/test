@@ -179,13 +179,13 @@ tmbslMS222_SetGpio(
         switch (bNumber)
         {
             case 1:
-                /* Set GPIO n°1 */
+                /* Set GPIO nÂ°1 */
                 err = iMS222_Write(pObj, &gMS222_Reg_Gpio_ctrl_byte__GPIO1, (bActive==True)?1:0, Bus_RW);
                 tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iMS222_Write(0x%08X) failed.", pObj->tUnitW));
                 break;
 
             case 2:
-                /* Set GPIO n°2 */
+                /* Set GPIO nÂ°2 */
                 err = iMS222_Write(pObj, &gMS222_Reg_Gpio_ctrl_byte__GPIO2, (bActive==True)?1:0, Bus_RW);
                 tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iMS222_Write(0x%08X) failed.", pObj->tUnitW));
                 break;

@@ -130,23 +130,36 @@ MS_U32 Scan_Time_Start;
 static MS_BOOL _Demod_Get_Lock(MS_U8 u8DemodIndex, DMD_ATSC_GETLOCK_TYPE eType, EN_LOCK_STATUS *peLockStatus)
 {
     DMD_ATSC_LOCK_STATUS eLockStatus;
-    
+    static MS_U8 flag = 0;
+    MS_U16 locktime;
+
     if (MsOS_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
     {
         DBG_MSB(printf("%s: Obtain mutex failed.\n", __FUNCTION__));
         return FALSE;
     }
-    
+
     if(FALSE == bInited)
     {
         printf("[%s]MSB1237 have not inited !!!\n",__FUNCTION__);
-        HB_ReleaseMutex(_s32MutexId);     
+        HB_ReleaseMutex(_s32MutexId);
         return FALSE;
     }
-    
-       
+
+
     eLockStatus= MDrv_DMD_ATSC_GetLock(eType);
-    
+    if (eLockStatus == E_DEMOD_LOCK)
+    {
+        if (!flag)
+        {
+             flag = 1;
+             MDrv_DMD_ATSC_Get_Lock_Time(&locktime);
+             DBG_MSB(printf("****ATSC lock time**** %d\r\n",locktime));
+         }
+     }
+     else
+           flag = 0;
+
       switch (eLockStatus)
       {
        case DMD_ATSC_LOCK:
@@ -170,12 +183,12 @@ static MS_BOOL _Demod_Get_Lock(MS_U8 u8DemodIndex, DMD_ATSC_GETLOCK_TYPE eType, 
 
 // Global function//
 MS_BOOL MSB1237_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
-{  
+{
     DMD_ATSC_InitData sDMD_ATSC_InitData;
     static MS_U8 u8DMD_ATSC_InitExt[]={1};
     MS_BOOL ret = TRUE;
 
-    bInited = FALSE;
+    //bInited = FALSE;
     DBG_MSB(printf("-----%s start----- 111 \n", __FUNCTION__));
 
     if (_s32TaskId >= 0)
@@ -187,10 +200,10 @@ MS_BOOL MSB1237_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
 
     if (_s32MutexId < 0)
     {
-        GEN_EXCEP;
+        DMD_ERR(("-----%s _s32MutexId < 0----- \n", __FUNCTION__));
         return FALSE;
     }
-    
+
     MDrv_DMD_PreInit();
 
 
@@ -199,27 +212,27 @@ MS_BOOL MSB1237_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
         return FALSE;
     else
         InitParam[u8DemodIndex].pstTunertab = pParam->pstTunertab;
-    
+
     if(InitParam[u8DemodIndex].pstTunertab->data == TUNER_R836)
         sDMD_ATSC_InitData.bIQSwap = 1;//u8IqSwap;
     else
         sDMD_ATSC_InitData.bIQSwap = 0;
-    
+
     sDMD_ATSC_InitData.u16IF_KHZ = 5000;//u16DtvIFFreqKHz;
     sDMD_ATSC_InitData.u16VSBAGCLockCheckTime = 50;
     sDMD_ATSC_InitData.u16VSBPreLockCheckTime = 300;
     sDMD_ATSC_InitData.u16VSBFSyncLockCheckTime = 1200;
     sDMD_ATSC_InitData.u16VSBFECLockCheckTime = 5000;
-    
+
     sDMD_ATSC_InitData.u16QAMAGCLockCheckTime = 50;
     sDMD_ATSC_InitData.u16QAMPreLockCheckTime = 1000;
     sDMD_ATSC_InitData.u16QAMMainLockCheckTime = 3000;
-    
-    
+
+
     sDMD_ATSC_InitData.u8DMD_ATSC_InitExt = u8DMD_ATSC_InitExt;
 
-    //Parallel mode	 
-    sDMD_ATSC_InitData.u5TsConfigByte_DivNum = ATSC_TS_CLK_DIVNUM; 
+    //Parallel mode
+    sDMD_ATSC_InitData.u5TsConfigByte_DivNum = ATSC_TS_CLK_DIVNUM;
     sDMD_ATSC_InitData.u1TsConfigByte_ClockInv = ATSC_TS_CLK_INV;
     sDMD_ATSC_InitData.u1TsConfigByte_DataSwap = ATSC_TS_DATA_SWAP;
     sDMD_ATSC_InitData.u1TsConfigByte_SerialMode = ATSC_TS_SERIAL;
@@ -227,8 +240,8 @@ MS_BOOL MSB1237_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
     //I2C[begin]
     sDMD_ATSC_InitData.u8I2CSlaveAddr = DEMOD_MSB1237_SLAVE_ID;
     sDMD_ATSC_InitData.u8I2CSlaveBus = 0;
-    sDMD_ATSC_InitData.bIsExtDemod = TRUE; 
-    sDMD_ATSC_InitData.I2C_WriteBytes = MSB1237_IIC_Write;    
+    sDMD_ATSC_InitData.bIsExtDemod = TRUE;
+    sDMD_ATSC_InitData.I2C_WriteBytes = MSB1237_IIC_Write;
     sDMD_ATSC_InitData.I2C_ReadBytes = MSB1237_IIC_Read;
     sDMD_ATSC_InitData.bIsQPad =  FALSE; //FALSE is Q PAD. TRUE is I PAD.
     sDMD_ATSC_InitData.bIsUseSspiLoadCode = FALSE;
@@ -349,18 +362,18 @@ MS_BOOL MSB1237_Demod_GetBW(MS_U8 u8DemodIndex, MS_U32 *pu32BW)
 }
 
 MS_BOOL MSB1237_Demod_GetLock(MS_U8 u8DemodIndex, EN_LOCK_STATUS *peLockStatus)
-{   
-    return _Demod_Get_Lock(u8DemodIndex, DMD_ATSC_GETLOCK, peLockStatus);   
+{
+    return _Demod_Get_Lock(u8DemodIndex, DMD_ATSC_GETLOCK, peLockStatus);
 }
 
 MS_BOOL MSB1237_Demod_GetPreLockStatus(MS_U8 u8DemodIndex, EN_LOCK_STATUS *peLockStatus)
 {
-    return _Demod_Get_Lock(u8DemodIndex, DMD_ATSC_GETLOCK_VSB_PRELOCK, peLockStatus); 
+    return _Demod_Get_Lock(u8DemodIndex, DMD_ATSC_GETLOCK_VSB_PRELOCK, peLockStatus);
 }
 
 MS_BOOL MSB1237_Demod_GetFlameSyncLockStatus(MS_U8 u8DemodIndex, EN_LOCK_STATUS *peLockStatus)
 {
-    return _Demod_Get_Lock(u8DemodIndex, DMD_ATSC_GETLOCK_VSB_FSYNCLOCK, peLockStatus); 
+    return _Demod_Get_Lock(u8DemodIndex, DMD_ATSC_GETLOCK_VSB_FSYNCLOCK, peLockStatus);
 }
 
 MS_BOOL MSB1237_Demod_GetSignalQuality(MS_U8 u8DemodIndex, MS_U16 *pu16quality)
@@ -374,7 +387,7 @@ MS_BOOL MSB1237_Demod_GetSignalQuality(MS_U8 u8DemodIndex, MS_U16 *pu16quality)
     {
         if( MDrv_DMD_ATSC_GetLock(DMD_ATSC_GETLOCK)== DMD_ATSC_LOCK)
         {
-            
+
             *pu16quality = (MS_U16)MDrv_DMD_ATSC_GetSNRPercentage();
         }
 
@@ -401,7 +414,7 @@ MS_BOOL MSB1237_Demod_GetSNR(MS_U8 u8DemodIndex, float *pfSNR)
     {
         if( MDrv_DMD_ATSC_GetLock(DMD_ATSC_GETLOCK)== DMD_ATSC_LOCK)
         {
-            
+
             *pfSNR = (float)MDrv_DMD_ATSC_GetSNRPercentage() * 0.4;
         }
 
@@ -457,7 +470,7 @@ MS_BOOL MSB1237_Demod_GetPWR(MS_U8 u8DemodIndex, MS_S32 *ps32Signal)
            //Signal = lgdt3305_SignalStatus(DEMOD_TYPE);
            //       wSignal = lgdt3305_IfAcc();
           //rintf("PWR = 0x%x \n",wSignal);
-         
+
          u8snr = MDrv_DMD_ATSC_GetSNRPercentage();
          *ps32Signal = (MS_U32) u8snr;
             //*ps32Signal =  MSB1237_ReadSNRPercentage();
@@ -514,7 +527,7 @@ MS_BOOL MSB1237_Demod_I2C_ByPass(MS_U8 u8DemodIndex, MS_BOOL bEnable)
         if(bEnable)
             return MDrv_DMD_ATSC_IIC_BYPASS_MODE(TRUE);
         else
-            return MDrv_DMD_ATSC_IIC_BYPASS_MODE(FALSE); 
+            return MDrv_DMD_ATSC_IIC_BYPASS_MODE(FALSE);
     }
     else
     {
@@ -531,7 +544,7 @@ MS_BOOL MSB1237_Demod_I2C_ByPass(MS_U8 u8DemodIndex, MS_BOOL bEnable)
 MS_BOOL MSB1237_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM* pParam,MS_U32 u32BroadCastType)
 {
     MS_BOOL bret = FALSE;
-    
+
     if (MsOS_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
     {
         DBG_MSB(printf("MDrv_COFDMDMD_Restart: Obtain mutex failed.\n"));
@@ -674,8 +687,8 @@ MS_BOOL   MSB1237_IIC_Write(MS_U16 u16BusNumSlaveID, MS_U8 u8addrcount, MS_U8* p
     //printf("Enter MDrv_MSB140X_IIC_Write\n");
 
     bResult = MDrv_IIC_Write(u16BusNumSlaveID, pu8addr, u8addrcount, pu8data,  u16size);
-    
-    return bResult;  
+
+    return bResult;
 }
 
 MS_BOOL   MSB1237_IIC_Read(MS_U16 u16BusNumSlaveID, MS_U8 u8AddrNum, MS_U8* paddr, MS_U16 u16size, MS_U8* pu8data)
@@ -684,8 +697,8 @@ MS_BOOL   MSB1237_IIC_Read(MS_U16 u16BusNumSlaveID, MS_U8 u8AddrNum, MS_U8* padd
     //printf("Enter MDrv_MSB140X_IIC_Read\n");
 
     bResult = MDrv_IIC_Read(u16BusNumSlaveID, paddr, u8AddrNum, pu8data,  u16size);
-    
-    return bResult;    
+
+    return bResult;
 }
 
 
@@ -709,7 +722,7 @@ MS_U16 MSB1237_Demod_ReadReg(MS_U16 RegAddr)
 MS_BOOL MSB1237_Demod_WriteReg(MS_U16 RegAddr, MS_U16 RegData)
 {
 	  MS_U8 u8RegData = 0;
-	  
+
 	  u8RegData= (MS_U8) RegData;
     return MDrv_DMD_ATSC_SetReg(RegAddr, u8RegData);
     //return MSB1237_WriteReg(RegAddr, RegData);
@@ -730,7 +743,7 @@ MS_U8 MSB1237_Demod_1237_GetMode(void)
     else if(u8DemodType == 2)
         return DEMOD_MODE_64QAM;
 
-    
+
     return DEMOD_MODE_8VSB;
     //return u8DemodType;
 }
@@ -740,7 +753,7 @@ MS_U8 MSB1237_I2C_ReadByte(MS_U16 u16SlaveAddr, MS_U32 u32Addr, MS_U8 *pu8Data)
 
     MS_BOOL bRet=TRUE;
     MS_U8 u8MsbData[6] = {0};
-    
+
     u8MsbData[0] = 0x10;
     u8MsbData[1] = 0x00;
     u8MsbData[2] = 0x00;
@@ -764,7 +777,7 @@ MS_U8 MSB1237_I2C_WriteByte(MS_U16 u16SlaveAddr, MS_U32 u32Addr, MS_U8 u8Data)
 {
     MS_BOOL bRet=TRUE;
     MS_U8 u8MsbData[6] = {0};
-    
+
     u8MsbData[0] = 0x10;
     u8MsbData[1] = 0x00;
     u8MsbData[2] = 0x00;
@@ -812,7 +825,7 @@ MS_BOOL MSB1237_I2C_CH_Reset(MS_U8 ch_num,MS_BOOL enable)
 
 
 #define MSB1237_CHIP_ID 0x77
-MS_BOOL MSB1237_Check_Exist(MS_U8 u8DemodIndex)
+MS_BOOL MSB1237_Check_Exist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
 {
     MS_U8 u8_tmp = 0;
 
@@ -827,10 +840,11 @@ MS_BOOL MSB1237_Check_Exist(MS_U8 u8DemodIndex)
     {
         printf("[MSB1237] Read  Chip ID fail \n");
     }
-    
+
     printf("[MSB1237] read id :%x \n",u8_tmp );
-    
-    return (u8_tmp == MSB1237_CHIP_ID); 
+
+    *pu8SlaveID = DEMOD_MSB1237_SLAVE_ID;
+    return (u8_tmp == MSB1237_CHIP_ID);
 }
 
 
@@ -840,23 +854,35 @@ MS_BOOL MSB1237_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE f
     MS_BOOL bret = TRUE;
     switch(fuction_type)
     {
+        case DEMOD_EXT_FUNC_OPEN:
+            bret &= MSB1237_Demod_Open(u8DemodIndex);
+            break;
         case DEMOD_EXT_FUNC_ATSC_GET_PRELOCK:
             bret &= MSB1237_Demod_GetPreLockStatus(u8DemodIndex,(EN_LOCK_STATUS*)(data));
             break;
         case DEMOD_EXT_FUNC_ATSC_GET_FLAME_SYNC_LOCK:
             bret &= MSB1237_Demod_GetFlameSyncLockStatus(u8DemodIndex,(EN_LOCK_STATUS*)(data));
             break;
+        case DEMOD_EXT_FUNC_FINALIZE:
+            if (_s32MutexId >= 0)
+            {
+               bret &= MsOS_DeleteMutex(_s32MutexId);
+               _s32MutexId = -1;
+            }
+            bInited = FALSE;
+            bret &= MDrv_DMD_ATSC_Exit();
+            break;
         default:
             printf("Request extension function (%x) does not exist\n",fuction_type);
             break;
-    } 
+    }
     return bret;
 }
 
-DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB1237) DDI_DRV_TABLE_ENTRY(demodtab) = 
-{  
+DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB1237) DDI_DRV_TABLE_ENTRY(demodtab) =
+{
      .name                         = "DEMOD_MSB1237",
-     .data                         = DEMOD_MSB1237,        
+     .data                         = DEMOD_MSB1237,
      .init                         = MSB1237_Demod_Init,
      .GetLock                      = MSB1237_Demod_GetLock,
      .GetSNR                       = MSB1237_Demod_GetSNR,
@@ -870,12 +896,15 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB1237) DDI_DRV_TABLE_ENTRY(dem
      .I2CByPassPreSetting          = NULL,
      .Extension_Function           = MSB1237_Extension_Function,
      .Extension_FunctionPreSetting = NULL,
+     .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error,     
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
      .GetPlpBitMap                 = MDrv_Demod_null_GetPlpBitMap,
      .GetPlpGroupID                = MDrv_Demod_null_GetPlpGroupID,
      .SetPlpGroupID                = MDrv_Demod_null_SetPlpGroupID,
+     .GetNextPLPID                 = MDrv_Demod_null_GetNextPLPID,
+     .GetPLPType                   = MDrv_Demod_null_GetPLPType,
 #endif
 #if MS_DVBS_INUSE
      .BlindScanStart               = MDrv_Demod_null_BlindScan_Start,

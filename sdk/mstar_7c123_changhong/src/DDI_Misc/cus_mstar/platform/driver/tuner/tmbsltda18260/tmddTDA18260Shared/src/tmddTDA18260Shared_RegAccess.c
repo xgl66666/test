@@ -24,8 +24,6 @@
 
 /* File generated automatically from register description file */
 
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_TDA18260)
 
 /*============================================================================*/
 /* Standard include files:                                                    */
@@ -42,7 +40,6 @@
 #include <tmddTDA18260Shared_RegDef.h>
 #include "tmddTDA18260Shared_Local.h"
 #include "tmddTDA18260Shared_Instance.h"
-
 
 
 /*============================================================================*/
@@ -5554,5 +5551,3 @@ tmddTDA18260Shared_Get_psm_agc1
     
     return err;
 }
-#endif
-

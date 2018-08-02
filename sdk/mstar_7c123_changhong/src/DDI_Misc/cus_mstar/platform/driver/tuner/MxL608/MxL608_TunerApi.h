@@ -3,8 +3,10 @@
  * FILE NAME          : MxL608_TunerApi.h
  * 
  * AUTHOR             : Dong Liu
+ *                    : Jay Hung
  *
  * DATE CREATED       : 12/21/2012
+ *                    : 1/5/2015
  *
  * DESCRIPTION        : This file is header file for MxL608_TunerApi.cpp 
  *
@@ -136,7 +138,9 @@ typedef enum
   MXL608_CABLE_BW_8MHz = 0x02,    /* Digital Cable Mode 8 MHz */              
   MXL608_TERR_BW_6MHz = 0x20,     /* Digital Terrestrial Mode 6 MHz */     
   MXL608_TERR_BW_7MHz = 0x21,     /* Digital Terrestrial Mode 7 MHz */    
-  MXL608_TERR_BW_8MHz = 0x22      /* Digital Terrestrial Mode 8 MHz */    
+  MXL608_TERR_BW_8MHz = 0x22,      /* Digital Terrestrial Mode 8 MHz */    
+  MXL608_TERR_BW_1_7MHz = 0x23,	  /* Digital Terrestrial Mode 1.7 MHz for DVB-T2 */	  
+  MXL608_TERR_BW_5MHz = 0x24	  /* Digital Terrestrial Mode 5 MHz for DVB-T2 */	  
 } MXL608_BW_E;
 
 typedef struct
@@ -156,6 +160,12 @@ typedef struct
   UINT8 gainLevel;                  /* IN, IF out gain level */
   UINT32 manualIFOutFreqInKHz;      /* IN, IF out frequency selection when manualFreqSet = 0*/
 }MXL608_IF_OUT_CFG_T, *PMXL608_IF_OUT_CFG_T;
+
+typedef enum
+{
+	MXL608_LOW_IF = 0,
+	MXL608_HIGH_IF = 1
+}MXL608_LOW_HIGH_IF_TYPE_E;
 
 /******************************************************************************
     Global Variable Declarations

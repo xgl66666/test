@@ -11,8 +11,6 @@
  *****************************************************************************************
  *                Copyright (c) 2011, MaxLinear, Inc.
  ****************************************************************************************/
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_MXL254)
 
 #include <stdarg.h>
 
@@ -22,7 +20,6 @@
 #ifdef _MNEMONIC_TRACE_ENABLED_
 #include "MxL_CTRL_PhyAutoRegMapTable.h"
 #endif
-
 
 // Enable this flag to avoid updating registers with exactly the same value
 // that they had before (see MxL_HRCLS_Ctrl_UpdateRegisterField)
@@ -36,6 +33,7 @@ static MXL_HRCLS_DEV_CONTEXT_T MxL_HRCLS_Dev[MXL_HRCLS_MAX_NUM_DEVICES] = {{0,},
 
 static MXL_STATUS_E MxL_HRCLS_Ctrl_DownloadFirmwareSegment(MXL_HRCLS_DEV_CONTEXT_T* devContextPtr, UINT8 segmentIndex, UINT8 * addressPtr, const UINT8* dataPtr, UINT32 dataLen, /*@null@*/ MXL_CALLBACK_FN_T fwCallbackFn);
 static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devContextPtr, UINT16 subAddr, PFW_RESPONSE_T responsePtr);
+static MXL_STATUS_E MxL_HRCLS_Ctrl_SendDownloadCommand(MXL_HRCLS_DEV_CONTEXT_T* devContextPtr, MXL_CMD_ID_E commandId, const void* dataPtr, UINT32 dataLen, UINT16 downloadBlockCnt);
 
 #define MXL_HRCLS_CHAN_NONE       0x00
 #define MXL_HRCLS_CHAN_IF_SERDES  0x01
@@ -43,6 +41,20 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
 #define MXL_HRCLS_CHAN_IF_OOB     0x04
 #define MXL_HRCLS_CHAN_IF_IFOUT   0x08
 
+#define MXL_HRCLS_IS_FOUR_WIRE_SUPPORTED(chipVersion, chipId) ((((chipId) == MXL_HRCLS_HERCULES_CHIP_ID && (chipVersion) >= 3) || ((chipId) == MXL_HRCLS_TITAN_CHIP_ID)) ? MXL_TRUE : MXL_FALSE)
+
+#ifdef MXL_HRCLS_268_ENABLE
+
+  #ifdef _MXL_HRCLS_DEMOD_ENABLED_
+    static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap268[MXL_HRCLS_DEMODS_CNT_268] = 
+            {
+              MXL_HRCLS_DEMOD1, MXL_HRCLS_DEMOD2, MXL_HRCLS_DEMOD3, MXL_HRCLS_DEMOD4,
+              MXL_HRCLS_DEMOD5, MXL_HRCLS_DEMOD6, MXL_HRCLS_DEMOD7, MXL_HRCLS_DEMOD8,
+            };            
+  #endif
+
+#endif
+  
 #ifdef MXL_HRCLS_212_ENABLE
   static MXL_HRCLS_IF_ID_E mxl_hrcls_ifoutMap212_v2[MXL_HRCLS_IFOUT_CNT_212_V2] = 
           {MXL_HRCLS_IF3, MXL_HRCLS_IF2, MXL_HRCLS_IF1, MXL_HRCLS_IF0};
@@ -124,6 +136,25 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
               {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_IFOUT},
               {MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_IFOUT},
             };
+    static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap214T_3wire_noxpt[MXL_HRCLS_DEMODS_CNT_214T_3WIRE_NOXPT] = 
+            {
+              MXL_HRCLS_DEMOD3, MXL_HRCLS_DEMOD4, MXL_HRCLS_DEMOD5, MXL_HRCLS_DEMOD6
+            };            
+    static MXL_HRCLS_CHAN_T mxl_hrcls_dfeChanMap214T_3wire_noxpt[MXL_HRCLS_MAX_DFE_CHANNELS_214T_3WIRE_NOXPT] =
+            {
+              {MXL_HRCLS_CHAN2, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN3, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_DEMOD},              
+              {MXL_HRCLS_CHAN9, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_IFOUT},
+            };
+    static MXL_HRCLS_XPT_OUTPUT_ID_E mxl_hrcls_outputMap214T_3wire_noxpt[MXL_HRCLS_XPT_OUTPUTS_214T_3WIRE_NOXPT] =
+            { 
+              MXL_HRCLS_XPT_OUT_2, MXL_HRCLS_XPT_OUT_3, MXL_HRCLS_XPT_OUT_4, MXL_HRCLS_XPT_OUT_5
+            };
   #endif
 #endif
 
@@ -146,22 +177,8 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
            {MXL_HRCLS_CHAN14, MXL_HRCLS_CHAN_IF_SERDES},
            {MXL_HRCLS_CHAN15, MXL_HRCLS_CHAN_IF_SERDES}};
 
-  static MXL_HRCLS_CHAN_T mxl_hrcls_dfeChanMap265_5184[MXL_HRCLS_MAX_DFE_CHANNELS_265_5184] = 
-          {{MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN1, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN2, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN3, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_OOB | MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN6, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN9, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN10, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN11, MXL_HRCLS_CHAN_IF_SERDES}}; 
-
 #ifdef _MXL_HRCLS_DEMOD_ENABLED_
-  static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap265[MXL_HRCLS_DEMODS_CNT_265] = 
+  static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap265[MXL_HRCLS_DEMODS_CNT_265_MINOS] = 
           {MXL_HRCLS_DEMOD0};
 #endif          
 #endif
@@ -192,27 +209,9 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
            {MXL_HRCLS_CHAN21, MXL_HRCLS_CHAN_IF_SERDES}, 
            {MXL_HRCLS_CHAN22, MXL_HRCLS_CHAN_IF_SERDES}, 
            {MXL_HRCLS_CHAN23, MXL_HRCLS_CHAN_IF_SERDES}}; 
-
-  static MXL_HRCLS_CHAN_T mxl_hrcls_dfeChanMap267_5184[MXL_HRCLS_MAX_DFE_CHANNELS_267_5184] = 
-          {{MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN1, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN2, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN3, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_OOB | MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN6, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_SERDES},
-           {MXL_HRCLS_CHAN9, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN10, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN11, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN12, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN13, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN14, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN15, MXL_HRCLS_CHAN_IF_SERDES}}; 
   
 #ifdef _MXL_HRCLS_DEMOD_ENABLED_  
-  static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap267[MXL_HRCLS_DEMODS_CNT_267] = 
+  static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap267[MXL_HRCLS_DEMODS_CNT_267_MINOS] = 
           {MXL_HRCLS_DEMOD0};
 #endif
 #endif           
@@ -247,6 +246,11 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
               MXL_HRCLS_DEMOD0, MXL_HRCLS_DEMOD3, MXL_HRCLS_DEMOD4, MXL_HRCLS_DEMOD5,
               MXL_HRCLS_DEMOD6
             };            
+    static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap258T_xpt_nomux_4[MXL_HRCLS_DEMODS_CNT_258_NOMUX] = 
+            {
+              MXL_HRCLS_DEMOD_INVALID, MXL_HRCLS_DEMOD3, MXL_HRCLS_DEMOD4, MXL_HRCLS_DEMOD5,
+              MXL_HRCLS_DEMOD6
+            };			
     static MXL_HRCLS_XPT_OUTPUT_ID_E mxl_hrcls_outputMap258_xpt_nomux_4[MXL_HRCLS_XPT_OUTPUTS_258] =
             { 
               MXL_HRCLS_XPT_OUT_2, MXL_HRCLS_XPT_OUT_3, MXL_HRCLS_XPT_OUT_4, MXL_HRCLS_XPT_OUT_5
@@ -260,11 +264,26 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
               {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_DEMOD},
               {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT}
             };
+    static MXL_HRCLS_CHAN_T mxl_hrcls_dfeChanMap258T_xpt_nomux_4[MXL_HRCLS_MAX_DFE_CHANNELS_258_XPT_NOMUX_4] =
+            {
+              {MXL_HRCLS_CHAN9, MXL_HRCLS_CHAN_NONE},
+              {MXL_HRCLS_CHAN2, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN3, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT}
+            };
 
     // MXL258_V2 MUX_4
     static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap258_xpt_mux_4[MXL_HRCLS_DEMODS_CNT_258] = 
             {
               MXL_HRCLS_DEMOD0, MXL_HRCLS_DEMOD1, MXL_HRCLS_DEMOD2, MXL_HRCLS_DEMOD3,
+              MXL_HRCLS_DEMOD4, MXL_HRCLS_DEMOD5, MXL_HRCLS_DEMOD6, MXL_HRCLS_DEMOD7,
+              MXL_HRCLS_DEMOD8
+            };            
+    static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap258T_xpt_mux_4[MXL_HRCLS_DEMODS_CNT_258] = 
+            {
+              MXL_HRCLS_DEMOD_INVALID, MXL_HRCLS_DEMOD1, MXL_HRCLS_DEMOD2, MXL_HRCLS_DEMOD3,
               MXL_HRCLS_DEMOD4, MXL_HRCLS_DEMOD5, MXL_HRCLS_DEMOD6, MXL_HRCLS_DEMOD7,
               MXL_HRCLS_DEMOD8
             };            
@@ -285,12 +304,31 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
               {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_DEMOD},
               {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT}
             };
+    static MXL_HRCLS_CHAN_T mxl_hrcls_dfeChanMap258T_xpt_mux_4[MXL_HRCLS_MAX_DFE_CHANNELS_258_XPT_MUX_4] =
+            {
+              {MXL_HRCLS_CHAN9, MXL_HRCLS_CHAN_NONE},
+              {MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN1, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN2, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN3, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN6, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT}
+            };
 
 
     // MXL258_V2 MUX_2
     static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap258_xpt_mux_2[MXL_HRCLS_DEMODS_CNT_258] = 
             {
               MXL_HRCLS_DEMOD0, MXL_HRCLS_DEMOD1, MXL_HRCLS_DEMOD2, MXL_HRCLS_DEMOD3,
+              MXL_HRCLS_DEMOD4, MXL_HRCLS_DEMOD5, MXL_HRCLS_DEMOD6, MXL_HRCLS_DEMOD7,
+              MXL_HRCLS_DEMOD8
+            };            
+    static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap258T_xpt_mux_2[MXL_HRCLS_DEMODS_CNT_258] = 
+            {
+              MXL_HRCLS_DEMOD_INVALID, MXL_HRCLS_DEMOD1, MXL_HRCLS_DEMOD2, MXL_HRCLS_DEMOD3,
               MXL_HRCLS_DEMOD4, MXL_HRCLS_DEMOD5, MXL_HRCLS_DEMOD6, MXL_HRCLS_DEMOD7,
               MXL_HRCLS_DEMOD8
             };            
@@ -311,11 +349,30 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
               {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_DEMOD},
               {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT}
             };
+    static MXL_HRCLS_CHAN_T mxl_hrcls_dfeChanMap258T_xpt_mux_2[MXL_HRCLS_MAX_DFE_CHANNELS_258_XPT_MUX_2] =
+            {
+              {MXL_HRCLS_CHAN9, MXL_HRCLS_CHAN_NONE},
+              {MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN1, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN2, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN3, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN6, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT}
+            };
 
     // MXL258_V2 PAR            
     static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap258_xpt_par[MXL_HRCLS_DEMODS_CNT_258] = 
             {
               MXL_HRCLS_DEMOD0, MXL_HRCLS_DEMOD1, MXL_HRCLS_DEMOD2, MXL_HRCLS_DEMOD3,
+              MXL_HRCLS_DEMOD4, MXL_HRCLS_DEMOD5, MXL_HRCLS_DEMOD6, MXL_HRCLS_DEMOD7,
+              MXL_HRCLS_DEMOD8
+            };            
+    static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap258T_xpt_par[MXL_HRCLS_DEMODS_CNT_258] = 
+            {
+              MXL_HRCLS_DEMOD_INVALID, MXL_HRCLS_DEMOD1, MXL_HRCLS_DEMOD2, MXL_HRCLS_DEMOD3,
               MXL_HRCLS_DEMOD4, MXL_HRCLS_DEMOD5, MXL_HRCLS_DEMOD6, MXL_HRCLS_DEMOD7,
               MXL_HRCLS_DEMOD8
             };            
@@ -332,11 +389,40 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
               {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_DEMOD},
               {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT}
             };
+    static MXL_HRCLS_CHAN_T mxl_hrcls_dfeChanMap258T_xpt_par[MXL_HRCLS_MAX_DFE_CHANNELS_258_XPT_PAR] =
+            {
+              {MXL_HRCLS_CHAN9, MXL_HRCLS_CHAN_NONE},
+              {MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN1, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN2, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN3, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN6, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT}
+            };
     static MXL_HRCLS_XPT_OUTPUT_ID_E mxl_hrcls_outputMap258_xpt_par[1] =
             { 
               MXL_HRCLS_XPT_OUT_0
             };
 
+    static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap258T_3wire_noxpt[MXL_HRCLS_DEMODS_CNT_258T_3WIRE_NOXPT] = 
+            {
+              MXL_HRCLS_DEMOD3, MXL_HRCLS_DEMOD4, MXL_HRCLS_DEMOD5, MXL_HRCLS_DEMOD6
+            };            
+    static MXL_HRCLS_CHAN_T mxl_hrcls_dfeChanMap258T_3wire_noxpt[MXL_HRCLS_MAX_DFE_CHANNELS_258T_3WIRE_NOXPT] =
+            {
+              {MXL_HRCLS_CHAN2, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN3, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT}
+            };
+    static MXL_HRCLS_XPT_OUTPUT_ID_E mxl_hrcls_outputMap258T_3wire_noxpt[MXL_HRCLS_XPT_OUTPUTS_258] =
+            { 
+              MXL_HRCLS_XPT_OUT_2, MXL_HRCLS_XPT_OUT_3, MXL_HRCLS_XPT_OUT_4, MXL_HRCLS_XPT_OUT_5
+            };
   #endif
 #endif           
 
@@ -389,13 +475,21 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
            {MXL_HRCLS_CHAN6, MXL_HRCLS_CHAN_IF_DEMOD},
            {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_DEMOD},
            {MXL_HRCLS_CHAN10, MXL_HRCLS_CHAN_IF_DEMOD},
-           {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_OOB | MXL_HRCLS_CHAN_IF_DEMOD}};
+           {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_OOB | MXL_HRCLS_CHAN_IF_DEMOD},
+           {MXL_HRCLS_CHAN3, MXL_HRCLS_CHAN_IF_IFOUT},
+           {MXL_HRCLS_CHAN2, MXL_HRCLS_CHAN_IF_IFOUT},
+           {MXL_HRCLS_CHAN1, MXL_HRCLS_CHAN_IF_IFOUT},
+           {MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_IFOUT}};
   
   static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap254[MXL_HRCLS_DEMODS_CNT_254] = 
           {MXL_HRCLS_DEMOD1, MXL_HRCLS_DEMOD2, MXL_HRCLS_DEMOD4, MXL_HRCLS_DEMOD6,
            MXL_HRCLS_DEMOD0};            
 
 #ifdef _MXL_HRCLS_IFOUT_ENABLED_ 
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
+  static MXL_HRCLS_IF_ID_E mxl_hrcls_ifoutMap254_v1[MXL_HRCLS_IFOUT_CNT_254_V1] = 
+           {MXL_HRCLS_IF3, MXL_HRCLS_IF2, MXL_HRCLS_IF1, MXL_HRCLS_IF0};
+#endif
   static MXL_HRCLS_IF_ID_E mxl_hrcls_ifoutMap254_v2[MXL_HRCLS_IFOUT_CNT_254_V2] = 
            {MXL_HRCLS_IF3, MXL_HRCLS_IF2, MXL_HRCLS_IF1, MXL_HRCLS_IF0};
 #endif
@@ -422,6 +516,17 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
               {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_IFOUT},
               {MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_IFOUT},
             };
+    static MXL_HRCLS_CHAN_T mxl_hrcls_dfeChanMap254T_xpt_nomux_4[MXL_HRCLS_MAX_DFE_CHANNELS_254_XPT_NOMUX_4] =
+            {
+              {MXL_HRCLS_CHAN2, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN3, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN9, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_IFOUT},
+            };
 
     // MXL254_V2 MUX_2
     static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap254_xpt_mux_2[MXL_HRCLS_DEMODS_CNT_254] = 
@@ -440,6 +545,17 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
               {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_DEMOD},
               {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_DEMOD},
               {MXL_HRCLS_CHAN9, MXL_HRCLS_CHAN_IF_OOB | MXL_HRCLS_CHAN_IF_DEMOD | MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_IFOUT},
+            };
+    static MXL_HRCLS_CHAN_T mxl_hrcls_dfeChanMap254T_xpt_mux_2[MXL_HRCLS_MAX_DFE_CHANNELS_254_XPT_MUX_2] =
+            {
+              {MXL_HRCLS_CHAN2, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN3, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN9, MXL_HRCLS_CHAN_IF_IFOUT},
               {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT},
               {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_IFOUT},
               {MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_IFOUT},
@@ -466,7 +582,17 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
               {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_IFOUT},
               {MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_IFOUT},
             };
-    
+    static MXL_HRCLS_CHAN_T mxl_hrcls_dfeChanMap254T_xpt_mux_1[MXL_HRCLS_MAX_DFE_CHANNELS_254_XPT_MUX_1] =
+            {
+              {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN6, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN9, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_IFOUT},
+            };    
     // MXL254_V2 PAR
     static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap254_xpt_par[MXL_HRCLS_DEMODS_CNT_254] = 
             {
@@ -484,9 +610,39 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
               {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_IFOUT},
               {MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_IFOUT},
             };
+    static MXL_HRCLS_CHAN_T mxl_hrcls_dfeChanMap254T_xpt_par[MXL_HRCLS_MAX_DFE_CHANNELS_254_XPT_PAR] =
+            {
+              {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN6, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN9, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_IFOUT},
+            };
     static MXL_HRCLS_XPT_OUTPUT_ID_E mxl_hrcls_outputMap254_xpt_par[1] =
             { 
               MXL_HRCLS_XPT_OUT_0
+            };
+    static MXL_HRCLS_DMD_ID_E mxl_hrcls_demodMap254T_3wire_noxpt[MXL_HRCLS_DEMODS_CNT_254T_3WIRE_NOXPT] = 
+            {
+              MXL_HRCLS_DEMOD3, MXL_HRCLS_DEMOD4, MXL_HRCLS_DEMOD5, MXL_HRCLS_DEMOD6
+            };            
+    static MXL_HRCLS_CHAN_T mxl_hrcls_dfeChanMap254T_3wire_noxpt[MXL_HRCLS_MAX_DFE_CHANNELS_254T_3WIRE_NOXPT] =
+            {
+              {MXL_HRCLS_CHAN2, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN3, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_DEMOD},
+              {MXL_HRCLS_CHAN9, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_IFOUT},
+              {MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_IFOUT},
+            };
+    static MXL_HRCLS_XPT_OUTPUT_ID_E mxl_hrcls_outputMap254T_3wire_noxpt[MXL_HRCLS_XPT_OUTPUTS_254] =
+            { 
+              MXL_HRCLS_XPT_OUT_2, MXL_HRCLS_XPT_OUT_3, MXL_HRCLS_XPT_OUT_4, MXL_HRCLS_XPT_OUT_5
             };
   #endif
 #endif           
@@ -691,34 +847,8 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
   #endif
 #endif           
 
-#ifdef MXL_HRCLS_269_ENABLE
+#if defined MXL_HRCLS_269_ENABLE && defined _HRCLS_V1_SUPPORT_ENABLED_
   static MXL_HRCLS_CHAN_T mxl_hrcls_dfeChanMap269_5400[MXL_HRCLS_MAX_DFE_CHANNELS_269_5400] = 
-          {{MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN1, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN2, MXL_HRCLS_CHAN_IF_SERDES},
-           {MXL_HRCLS_CHAN3, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN4, MXL_HRCLS_CHAN_IF_OOB | MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN5, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN6, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN7, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN8, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN9, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN10, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN11, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN12, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN13, MXL_HRCLS_CHAN_IF_SERDES},
-           {MXL_HRCLS_CHAN14, MXL_HRCLS_CHAN_IF_SERDES},
-           {MXL_HRCLS_CHAN15, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN16, MXL_HRCLS_CHAN_IF_SERDES},
-           {MXL_HRCLS_CHAN17, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN18, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN19, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN20, MXL_HRCLS_CHAN_IF_SERDES}, 
-           {MXL_HRCLS_CHAN21, MXL_HRCLS_CHAN_IF_SERDES},  
-           {MXL_HRCLS_CHAN22, MXL_HRCLS_CHAN_IF_SERDES},
-           {MXL_HRCLS_CHAN23, MXL_HRCLS_CHAN_IF_SERDES}};
-  
-  static MXL_HRCLS_CHAN_T mxl_hrcls_dfeChanMap269_5184[MXL_HRCLS_MAX_DFE_CHANNELS_269_5184] = 
           {{MXL_HRCLS_CHAN0, MXL_HRCLS_CHAN_IF_SERDES}, 
            {MXL_HRCLS_CHAN1, MXL_HRCLS_CHAN_IF_SERDES}, 
            {MXL_HRCLS_CHAN2, MXL_HRCLS_CHAN_IF_SERDES},
@@ -779,51 +909,100 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
   
   devContextPtr->dfeMaxChannels = MXL_HRCLS_MAX_CHANNELS_MIN;
 
-  if (devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID)
+#ifdef _MXL_HRCLS_XPT_ENABLED_
+  devContextPtr->xpt.supported = MXL_FALSE;
+#endif  
+  
+  switch (devContextPtr->chipId)
   {
-    switch (devContextPtr->chipVersion)
-    {
-      case 1: devContextPtr->dfeMaxChannels = MXL_HRCLS_MAX_CHANNELS_HERCULES_V1; break;
-      case 2: devContextPtr->dfeMaxChannels = MXL_HRCLS_MAX_CHANNELS_HERCULES_V2; break;
-      default:  devContextPtr->dfeMaxChannels = MXL_HRCLS_MAX_CHANNELS_MIN; break;
-    }
-  }
-  if (devContextPtr->chipId == MXL_HRCLS_MINOS_CHIP_ID)
-  {
-    devContextPtr->dfeMaxChannels = MXL_HRCLS_MAX_CHANNELS_MINOS_V1;
+    case MXL_HRCLS_HERCULES_CHIP_ID:
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
+      if (1 == devContextPtr->chipVersion)
+      {
+        devContextPtr->dfeMaxChannels = MXL_HRCLS_MAX_CHANNELS_HERCULES_V1;
+      }
+      else  
+#endif        
+      {
+        devContextPtr->dfeMaxChannels = MXL_HRCLS_MAX_CHANNELS_HERCULES_V2;
+      }
+#ifdef _MXL_HRCLS_DEMOD_ENABLED_      
+      devContextPtr->extendedErrCntrBitwidthSupported = MXL_FALSE;
+      devContextPtr->erasureDecodingSupported = MXL_FALSE;
+#endif      
+      break;
+	  
+    case MXL_HRCLS_MINOS_CHIP_ID:
+#ifdef _MXL_HRCLS_DEMOD_ENABLED_    
+      devContextPtr->extendedErrCntrBitwidthSupported = MXL_FALSE;
+      devContextPtr->erasureDecodingSupported = MXL_FALSE;
+#endif      
+      devContextPtr->dfeMaxChannels = MXL_HRCLS_MAX_CHANNELS_MINOS_V1;
+      break;
+      
+    case MXL_HRCLS_ATLAS_CHIP_ID:
+#ifdef _MXL_HRCLS_DEMOD_ENABLED_    
+      devContextPtr->extendedErrCntrBitwidthSupported = MXL_FALSE;
+      devContextPtr->erasureDecodingSupported = MXL_FALSE;
+#endif      
+      devContextPtr->dfeMaxChannels = MXL_HRCLS_MAX_CHANNELS_ATLAS_V1;
+      break;
+  
+    case MXL_HRCLS_TITAN_CHIP_ID:
+#ifdef _MXL_HRCLS_DEMOD_ENABLED_    
+      devContextPtr->extendedErrCntrBitwidthSupported = MXL_TRUE;
+      devContextPtr->erasureDecodingSupported = MXL_TRUE;
+      devContextPtr->threeWireModeXptBypassSupported = MXL_FALSE;
+#endif      
+      devContextPtr->dfeMaxChannels = MXL_HRCLS_MAX_CHANNELS_TITAN_V1;
+      break;				
   }
 
-#ifdef _MXL_HRCLS_DEMOD_ENABLED_        
-  devContextPtr->xpt.supported = MXL_FALSE;
+  devContextPtr->clockOutSupported = MXL_FALSE;
+#ifdef _MXL_HRCLS_SERDES_ENABLED_ 
+  devContextPtr->serDesType =  MXL_HRCLS_SERDES_TYPE_1;
+  devContextPtr->serDesLineRate = MXL_HRCLS_SERDES_LINERATE_5400MHZ;
 #endif
+
   switch (devContextPtr->deviceType)
   {
 #ifdef MXL_HRCLS_265_ENABLE      
     case MXL_HRCLS_DEVICE_265:
     {
       UINT8 i;
-      devContextPtr->dfeChanMap = (devContextPtr->serDesLineRate == MXL_HRCLS_SERDES_LINERATE_5400MHZ)?mxl_hrcls_dfeChanMap265_5400:mxl_hrcls_dfeChanMap265_5184; 
-      devContextPtr->dfeChanCount = (devContextPtr->serDesLineRate == MXL_HRCLS_SERDES_LINERATE_5400MHZ)?MXL_HRCLS_MAX_DFE_CHANNELS_265_5400:MXL_HRCLS_MAX_DFE_CHANNELS_265_5184; 
+      devContextPtr->dfeChanMap = mxl_hrcls_dfeChanMap265_5400;
+      devContextPtr->dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_265_5400;
+      devContextPtr->clockOutSupported = MXL_TRUE;
 #ifdef _MXL_HRCLS_SERDES_ENABLED_        
+      if (MXL_HRCLS_ATLAS_CHIP_ID == devContextPtr->chipId)
+      {
+        devContextPtr->serDesType =  MXL_HRCLS_SERDES_TYPE_2;
+      }
       devContextPtr->serDesDSLanesCnt = MXL_HRCLS_SERDES_DS_LANES_CNT_265;
       for (i = 0; i < devContextPtr->serDesDSLanesCnt; i++)
       {
-        if (devContextPtr->serDesLineRate == MXL_HRCLS_SERDES_LINERATE_5400MHZ)
-        {
-          devContextPtr->serDesSlotsPerLane[i] = (devContextPtr->serDesMode[i] == MXL_HRCLS_SERDES_MODE_ENABLED_HALFRATE)?MXL_HRCLS_SERDES_DS_SLOTS_PER_LANE_2700:MXL_HRCLS_SERDES_DS_SLOTS_PER_LANE_5400;
-        }
-        else devContextPtr->serDesSlotsPerLane[i] = MXL_HRCLS_SERDES_DS_SLOTS_PER_LANE_5184; 
+        devContextPtr->serDesSlotsPerLane[i] = MXL_HRCLS_SERDES_DS_SLOTS_PER_LANE_5400;
       }
 #endif      
-#ifdef _MXL_HRCLS_DEMOD_ENABLED_        
-      devContextPtr->demodsCnt = MXL_HRCLS_DEMODS_CNT_265;
-      devContextPtr->demodsMap = mxl_hrcls_demodMap265;
+#ifdef _MXL_HRCLS_DEMOD_ENABLED_
+      if (MXL_HRCLS_MINOS_CHIP_ID == devContextPtr->chipId)
+      {
+        devContextPtr->demodsCnt = MXL_HRCLS_DEMODS_CNT_265_MINOS;
+        devContextPtr->demodsMap = mxl_hrcls_demodMap265;
+      }
+      else
+      {
+        devContextPtr->demodsCnt = MXL_HRCLS_DEMODS_CNT_265_ATLAS;
+        devContextPtr->demodsMap = MXL_HRCLS_DEMODS_MAP_265_ATLAS;
+      }
   #ifdef _MXL_HRCLS_OOB_ENABLED_
-        devContextPtr->oobSupported = MXL_HRCLS_OOB_SUPPORT_265;
-        devContextPtr->oobDemod = MXL_HRCLS_OOB_DEMOD_265;      
+      devContextPtr->oobSupported = MXL_HRCLS_OOB_SUPPORT_265;
+      devContextPtr->oobDemod = MXL_HRCLS_OOB_DEMOD_265;
   #endif            
+  #ifdef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
       devContextPtr->wakeOnWanDemod = MXL_HRLCS_WAKE_ON_WAN_DEMOD_265; 
-      devContextPtr->autoSpectrumInversionSupported = (devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID)?MXL_HRCLS_AUTO_SPECTRUM_INV_265_HERCULES:MXL_HRCLS_AUTO_SPECTRUM_INV_265_MINOS;
+  #endif
+      devContextPtr->autoSpectrumInversionSupported = (devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) ? MXL_HRCLS_AUTO_SPECTRUM_INV_265_HERCULES : MXL_HRCLS_AUTO_SPECTRUM_INV_265_MINOS;
 #endif        
 #ifdef _MXL_HRCLS_IFOUT_ENABLED_
       devContextPtr->ifOutSupported = MXL_HRCLS_IFOUT_SUPPORT_265;
@@ -838,32 +1017,79 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
     case MXL_HRCLS_DEVICE_267:
     {
       UINT8 i;
-      devContextPtr->dfeChanMap = (devContextPtr->serDesLineRate == MXL_HRCLS_SERDES_LINERATE_5400MHZ)?mxl_hrcls_dfeChanMap267_5400:mxl_hrcls_dfeChanMap267_5184; 
-      devContextPtr->dfeChanCount = (devContextPtr->serDesLineRate == MXL_HRCLS_SERDES_LINERATE_5400MHZ)?MXL_HRCLS_MAX_DFE_CHANNELS_267_5400:MXL_HRCLS_MAX_DFE_CHANNELS_267_5184; 
+      devContextPtr->dfeChanMap = mxl_hrcls_dfeChanMap267_5400;
+      devContextPtr->dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_267_5400;
+      devContextPtr->clockOutSupported = MXL_TRUE;
 #ifdef _MXL_HRCLS_SERDES_ENABLED_        
+      if (MXL_HRCLS_ATLAS_CHIP_ID == devContextPtr->chipId)
+      {
+        devContextPtr->serDesType =  MXL_HRCLS_SERDES_TYPE_2;
+      }
       devContextPtr->serDesDSLanesCnt = MXL_HRCLS_SERDES_DS_LANES_CNT_267;
       for (i = 0; i < devContextPtr->serDesDSLanesCnt; i++)
       {
-        if (devContextPtr->serDesLineRate == MXL_HRCLS_SERDES_LINERATE_5400MHZ)
-        {
-          devContextPtr->serDesSlotsPerLane[i] = (devContextPtr->serDesMode[i] == MXL_HRCLS_SERDES_MODE_ENABLED_HALFRATE)?MXL_HRCLS_SERDES_DS_SLOTS_PER_LANE_2700:MXL_HRCLS_SERDES_DS_SLOTS_PER_LANE_5400;
-        }
-        else devContextPtr->serDesSlotsPerLane[i] = MXL_HRCLS_SERDES_DS_SLOTS_PER_LANE_5184; 
+        devContextPtr->serDesSlotsPerLane[i] = MXL_HRCLS_SERDES_DS_SLOTS_PER_LANE_5400;
       }
 #endif      
 #ifdef _MXL_HRCLS_DEMOD_ENABLED_        
-      devContextPtr->demodsCnt = MXL_HRCLS_DEMODS_CNT_267;
-      devContextPtr->demodsMap = mxl_hrcls_demodMap267;
+      if (MXL_HRCLS_MINOS_CHIP_ID == devContextPtr->chipId)
+      {
+        devContextPtr->demodsCnt = MXL_HRCLS_DEMODS_CNT_267_MINOS;
+        devContextPtr->demodsMap = mxl_hrcls_demodMap267;
+      }
+      else
+      {
+        devContextPtr->demodsCnt = MXL_HRCLS_DEMODS_CNT_267_ATLAS;
+        devContextPtr->demodsMap = MXL_HRCLS_DEMODS_MAP_267_ATLAS;
+      }
   #ifdef _MXL_HRCLS_OOB_ENABLED_
       devContextPtr->oobSupported = MXL_HRCLS_OOB_SUPPORT_267;
       devContextPtr->oobDemod = MXL_HRCLS_OOB_DEMOD_267;      
   #endif            
+  #ifdef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
       devContextPtr->wakeOnWanDemod = MXL_HRLCS_WAKE_ON_WAN_DEMOD_267; 
+  #endif
       devContextPtr->autoSpectrumInversionSupported = (devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID)?MXL_HRCLS_AUTO_SPECTRUM_INV_267_HERCULES:MXL_HRCLS_AUTO_SPECTRUM_INV_267_MINOS;
 #endif      
 #ifdef _MXL_HRCLS_IFOUT_ENABLED_
       devContextPtr->ifOutSupported = MXL_HRCLS_IFOUT_SUPPORT_267;
       devContextPtr->ifOutCnt = MXL_HRCLS_IFOUT_CNT_267; 
+      devContextPtr->ifOutMap = NULL;
+#endif
+      break;
+    }
+#endif      
+
+#ifdef MXL_HRCLS_268_ENABLE      
+    case MXL_HRCLS_DEVICE_268:
+    {
+      UINT8 i;
+      devContextPtr->dfeChanMap = NULL; 
+      devContextPtr->dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_268; 
+      devContextPtr->clockOutSupported = MXL_TRUE;
+#ifdef _MXL_HRCLS_SERDES_ENABLED_        
+      devContextPtr->serDesType =  MXL_HRCLS_SERDES_TYPE_3;
+      devContextPtr->serDesDSLanesCnt = MXL_HRCLS_SERDES_DS_LANES_CNT_268;
+      for (i = 0; i < devContextPtr->serDesDSLanesCnt; i++)
+      {
+        devContextPtr->serDesSlotsPerLane[i] = MXL_HRCLS_SERDES_DS_SLOTS_PER_LANE_5400;
+      }
+#endif      
+#ifdef _MXL_HRCLS_DEMOD_ENABLED_        
+      devContextPtr->demodsCnt = MXL_HRCLS_DEMODS_CNT_268;
+      devContextPtr->demodsMap = mxl_hrcls_demodMap268;
+  #ifdef _MXL_HRCLS_OOB_ENABLED_
+      devContextPtr->oobSupported = MXL_HRCLS_OOB_SUPPORT_268;
+      devContextPtr->oobDemod = MXL_HRCLS_OOB_DEMOD_268;      
+  #endif            
+  #ifdef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
+      devContextPtr->wakeOnWanDemod = MXL_HRLCS_WAKE_ON_WAN_DEMOD_268; 
+  #endif
+      devContextPtr->autoSpectrumInversionSupported = MXL_HRCLS_AUTO_SPECTRUM_INV_268; 
+#endif      
+#ifdef _MXL_HRCLS_IFOUT_ENABLED_
+      devContextPtr->ifOutSupported = MXL_HRCLS_IFOUT_SUPPORT_268;
+      devContextPtr->ifOutCnt = MXL_HRCLS_IFOUT_CNT_268; 
       devContextPtr->ifOutMap = NULL;
 #endif
       break;
@@ -880,64 +1106,83 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
 #ifdef _MXL_HRCLS_DEMOD_ENABLED_        
         devContextPtr->demodsCnt = MXL_HRCLS_DEMODS_CNT_258;
         devContextPtr->demodsMap = mxl_hrcls_demodMap258; 
-        devContextPtr->autoSpectrumInversionSupported = (devContextPtr->chipVersion >= 2)?MXL_HRCLS_AUTO_SPECTRUM_INV_258_V2:MXL_HRCLS_AUTO_SPECTRUM_INV_258;
+        devContextPtr->autoSpectrumInversionSupported = (devContextPtr->chipVersion >= 2 || devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID)?MXL_HRCLS_AUTO_SPECTRUM_INV_258_V2:MXL_HRCLS_AUTO_SPECTRUM_INV_258;
+        devContextPtr->threeWireModeXptBypassSupported = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? MXL_TRUE : MXL_FALSE);
   #ifdef _MXL_HRCLS_OOB_ENABLED_
-        devContextPtr->oobSupported = MXL_HRCLS_OOB_SUPPORT_258;
+        devContextPtr->oobSupported = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ?  MXL_FALSE : MXL_HRCLS_OOB_SUPPORT_258);
         devContextPtr->oobDemod = MXL_HRCLS_OOB_DEMOD_258;      
   #endif            
+  #ifdef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
         devContextPtr->wakeOnWanDemod = MXL_HRLCS_WAKE_ON_WAN_DEMOD_258; 
+  #endif
   #ifdef _MXL_HRCLS_XPT_ENABLED_
-        if ((devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && (devContextPtr->chipVersion >= 2))
+        if (((devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && (devContextPtr->chipVersion >= 2)) || 
+               (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID))
         {
           devContextPtr->xpt.supported = MXL_TRUE;
           devContextPtr->xpt.modesCnt = 5;
           devContextPtr->xpt.outputsCnt = MXL_HRCLS_XPT_OUTPUTS_258;
+          devContextPtr->xpt.fourWireModeSupported = MXL_HRCLS_IS_FOUR_WIRE_SUPPORTED(devContextPtr->chipVersion, devContextPtr->chipId);
+          devContextPtr->xpt.commonClockEnabled = MXL_FALSE;
           
           devContextPtr->xpt.currentMode = NULL;
           devContextPtr->xpt.modes[0].mode = MXL_HRCLS_XPT_MODE_NO_MUX_4; 
-          devContextPtr->xpt.modes[0].demodsMap = mxl_hrcls_demodMap258_xpt_nomux_4; 
+          devContextPtr->xpt.modes[0].demodsMap = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? mxl_hrcls_demodMap258T_xpt_nomux_4 : mxl_hrcls_demodMap258_xpt_nomux_4); 
           devContextPtr->xpt.modes[0].demodsCnt = MXL_HRCLS_DEMODS_CNT_258_NOMUX; 
           devContextPtr->xpt.modes[0].outputMap = mxl_hrcls_outputMap258_xpt_nomux_4; 
           devContextPtr->xpt.modes[0].xptMap    = MXL_HRCLS_XPT_MAP_1_TO_1; 
           devContextPtr->xpt.modes[0].dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_258_XPT_NOMUX_4; 
-          devContextPtr->xpt.modes[0].dfeChanMap = mxl_hrcls_dfeChanMap258_xpt_nomux_4;
+          devContextPtr->xpt.modes[0].dfeChanMap = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? mxl_hrcls_dfeChanMap258T_xpt_nomux_4 : mxl_hrcls_dfeChanMap258_xpt_nomux_4);
           devContextPtr->xpt.modes[0].demodScheme = MXL_HRCLS_XPT_258_SCHEME_NO_MUX_4;
 
           devContextPtr->xpt.modes[1].mode = MXL_HRCLS_XPT_MODE_MUX_4; 
-          devContextPtr->xpt.modes[1].demodsMap = mxl_hrcls_demodMap258_xpt_mux_4; 
+          devContextPtr->xpt.modes[1].demodsMap = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? mxl_hrcls_demodMap258T_xpt_mux_4 : mxl_hrcls_demodMap258_xpt_mux_4);
           devContextPtr->xpt.modes[1].demodsCnt = MXL_HRCLS_DEMODS_CNT_258; 
           devContextPtr->xpt.modes[1].outputMap = mxl_hrcls_outputMap258_xpt_mux_4; 
           devContextPtr->xpt.modes[1].xptMap    = MXL_HRCLS_XPT_MAP_2_TO_1; 
           devContextPtr->xpt.modes[1].dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_258_XPT_MUX_4; 
-          devContextPtr->xpt.modes[1].dfeChanMap = mxl_hrcls_dfeChanMap258_xpt_mux_4;
+          devContextPtr->xpt.modes[1].dfeChanMap = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? mxl_hrcls_dfeChanMap258T_xpt_mux_4 : mxl_hrcls_dfeChanMap258_xpt_mux_4);
           devContextPtr->xpt.modes[1].demodScheme = MXL_HRCLS_XPT_258_SCHEME_MUX_4;
 
           devContextPtr->xpt.modes[2].mode = MXL_HRCLS_XPT_MODE_MUX_2; 
-          devContextPtr->xpt.modes[2].demodsMap = mxl_hrcls_demodMap258_xpt_mux_2; 
+          devContextPtr->xpt.modes[2].demodsMap = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? mxl_hrcls_demodMap258T_xpt_mux_2 : mxl_hrcls_demodMap258_xpt_mux_2);
           devContextPtr->xpt.modes[2].demodsCnt = MXL_HRCLS_DEMODS_CNT_258; 
           devContextPtr->xpt.modes[2].outputMap = mxl_hrcls_outputMap258_xpt_mux_2; 
           devContextPtr->xpt.modes[2].xptMap    = MXL_HRCLS_XPT_MAP_4_TO_1; 
           devContextPtr->xpt.modes[2].dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_258_XPT_MUX_2; 
-          devContextPtr->xpt.modes[2].dfeChanMap = mxl_hrcls_dfeChanMap258_xpt_mux_2;
+          devContextPtr->xpt.modes[2].dfeChanMap = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? mxl_hrcls_dfeChanMap258T_xpt_mux_2 : mxl_hrcls_dfeChanMap258_xpt_mux_2);
           devContextPtr->xpt.modes[2].demodScheme = MXL_HRCLS_XPT_258_SCHEME_MUX_2;
 
           devContextPtr->xpt.modes[3].mode = MXL_HRCLS_XPT_MODE_PARALLEL; 
-          devContextPtr->xpt.modes[3].demodsMap = mxl_hrcls_demodMap258_xpt_par; 
+          devContextPtr->xpt.modes[3].demodsMap = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? mxl_hrcls_demodMap258T_xpt_par : mxl_hrcls_demodMap258_xpt_par);
           devContextPtr->xpt.modes[3].demodsCnt = MXL_HRCLS_DEMODS_CNT_258; 
           devContextPtr->xpt.modes[3].outputMap = mxl_hrcls_outputMap258_xpt_par; 
           devContextPtr->xpt.modes[3].xptMap    = MXL_HRCLS_XPT_MAP_PARALLEL; 
           devContextPtr->xpt.modes[3].dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_258_XPT_PAR; 
-          devContextPtr->xpt.modes[3].dfeChanMap = mxl_hrcls_dfeChanMap258_xpt_par;
+          devContextPtr->xpt.modes[3].dfeChanMap = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? mxl_hrcls_dfeChanMap258T_xpt_par : mxl_hrcls_dfeChanMap258_xpt_par);
           devContextPtr->xpt.modes[3].demodScheme = MXL_HRCLS_XPT_258_SCHEME_PARALLEL;
-
-          devContextPtr->xpt.modes[4].mode = MXL_HRCLS_XPT_MODE_CABLECARD; 
-          devContextPtr->xpt.modes[4].demodsMap = mxl_hrcls_demodMap258; 
-          devContextPtr->xpt.modes[4].demodsCnt = MXL_HRCLS_DEMODS_CNT_258; 
-          devContextPtr->xpt.modes[4].outputMap = mxl_hrcls_outputMap258_xpt_par; 
-          devContextPtr->xpt.modes[4].xptMap    = MXL_HRCLS_XPT_MAP_CABLECARD; 
-          devContextPtr->xpt.modes[4].dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_258_XPT_PAR; 
-          devContextPtr->xpt.modes[4].dfeChanMap = mxl_hrcls_dfeChanMap258_xpt_par;
-          devContextPtr->xpt.modes[4].demodScheme = MXL_HRCLS_XPT_258_SCHEME_PARALLEL;
+          if (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID)
+          {
+            devContextPtr->xpt.modes[4].mode = MXL_HRCLS_XPT_MODE_3WIRE_NOXPT; 
+            devContextPtr->xpt.modes[4].demodsMap = mxl_hrcls_demodMap258T_3wire_noxpt;
+            devContextPtr->xpt.modes[4].demodsCnt = MXL_HRCLS_DEMODS_CNT_258T_3WIRE_NOXPT;
+            devContextPtr->xpt.modes[4].outputMap = mxl_hrcls_outputMap258T_3wire_noxpt;
+            devContextPtr->xpt.modes[4].xptMap	= MXL_HRCLS_XPT_MAP_1_TO_1_NO_XPT; 
+            devContextPtr->xpt.modes[4].dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_258T_3WIRE_NOXPT; 
+            devContextPtr->xpt.modes[4].dfeChanMap = mxl_hrcls_dfeChanMap258T_3wire_noxpt;
+            devContextPtr->xpt.modes[4].demodScheme = MXL_HRCLS_XPT_258_SCHEME_XPT_BYPASS;
+          }
+          else
+          {
+            devContextPtr->xpt.modes[4].mode = MXL_HRCLS_XPT_MODE_CABLECARD; 
+            devContextPtr->xpt.modes[4].demodsMap = mxl_hrcls_demodMap258_xpt_par; 
+            devContextPtr->xpt.modes[4].demodsCnt = MXL_HRCLS_DEMODS_CNT_258; 
+            devContextPtr->xpt.modes[4].outputMap = mxl_hrcls_outputMap258_xpt_par; 
+            devContextPtr->xpt.modes[4].xptMap    = MXL_HRCLS_XPT_MAP_CABLECARD; 
+            devContextPtr->xpt.modes[4].dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_258_XPT_PAR; 
+            devContextPtr->xpt.modes[4].dfeChanMap = mxl_hrcls_dfeChanMap258_xpt_par;
+            devContextPtr->xpt.modes[4].demodScheme = MXL_HRCLS_XPT_258_SCHEME_PARALLEL;
+          }
 
           // Set default XPT mode
           if (MxLWare_HRCLS_Ctrl_ValidateXPTMode(devContextPtr, MXL_HRCLS_XPT_MODE_NO_MUX_4) == MXL_FALSE)
@@ -948,18 +1193,21 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
   #endif
 #endif      
 #ifdef _MXL_HRCLS_IFOUT_ENABLED_
-      if (devContextPtr->chipVersion >= 2)
+      if (((devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && devContextPtr->chipVersion >= 2)
+             || (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID))
       {
         devContextPtr->ifOutSupported = MXL_HRCLS_IFOUT_SUPPORT_258_V2;
         devContextPtr->ifOutCnt = MXL_HRCLS_IFOUT_CNT_258_V2;
         devContextPtr->ifOutMap = mxl_hrcls_ifoutMap258_v2; 
       }
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
       else
       {
         devContextPtr->ifOutSupported = MXL_HRCLS_IFOUT_SUPPORT_258;
         devContextPtr->ifOutCnt = 0;
         devContextPtr->ifOutMap = NULL;
       }
+#endif
 #endif
       break;
 #endif      
@@ -979,13 +1227,18 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
         devContextPtr->oobSupported = MXL_HRCLS_OOB_SUPPORT_252;
         devContextPtr->oobDemod = MXL_HRCLS_OOB_DEMOD_252;      
   #endif            
+  #ifdef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
         devContextPtr->wakeOnWanDemod = MXL_HRLCS_WAKE_ON_WAN_DEMOD_252; 
+  #endif
   #ifdef _MXL_HRCLS_XPT_ENABLED_
-        if ((devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && (devContextPtr->chipVersion >= 2))
+        if (((devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && (devContextPtr->chipVersion >= 2)) || 
+               (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID))
         {
           devContextPtr->xpt.supported = MXL_TRUE;
           devContextPtr->xpt.modesCnt = 3;
           devContextPtr->xpt.outputsCnt = MXL_HRCLS_XPT_OUTPUTS_252;
+          devContextPtr->xpt.fourWireModeSupported = MXL_HRCLS_IS_FOUR_WIRE_SUPPORTED(devContextPtr->chipVersion, devContextPtr->chipId);
+          devContextPtr->xpt.commonClockEnabled = MXL_FALSE;
 
           devContextPtr->xpt.currentMode = NULL;
           devContextPtr->xpt.modes[0].mode = MXL_HRCLS_XPT_MODE_NO_MUX_2;
@@ -1024,18 +1277,20 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
   #endif
 #endif      
 #ifdef _MXL_HRCLS_IFOUT_ENABLED_
-      if (devContextPtr->chipVersion >= 2)
+      if ((devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && devContextPtr->chipVersion >= 2)
       {
         devContextPtr->ifOutSupported = MXL_HRCLS_IFOUT_SUPPORT_252_V2;
         devContextPtr->ifOutCnt = MXL_HRCLS_IFOUT_CNT_252_V2;
         devContextPtr->ifOutMap = mxl_hrcls_ifoutMap252_v2; 
       }
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
       else
       {
         devContextPtr->ifOutSupported = MXL_HRCLS_IFOUT_SUPPORT_252;
         devContextPtr->ifOutCnt = 0;
         devContextPtr->ifOutMap = NULL; 
       }
+#endif
 #endif
       break;
 #endif      
@@ -1049,64 +1304,84 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
 #ifdef _MXL_HRCLS_DEMOD_ENABLED_        
         devContextPtr->demodsCnt = MXL_HRCLS_DEMODS_CNT_254;
         devContextPtr->demodsMap = mxl_hrcls_demodMap254; 
-        devContextPtr->autoSpectrumInversionSupported = (devContextPtr->chipVersion >= 2)?MXL_HRCLS_AUTO_SPECTRUM_INV_254_V2:MXL_HRCLS_AUTO_SPECTRUM_INV_254;
+        devContextPtr->autoSpectrumInversionSupported = (devContextPtr->chipVersion >= 2  || devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID)?MXL_HRCLS_AUTO_SPECTRUM_INV_254_V2:MXL_HRCLS_AUTO_SPECTRUM_INV_254;
+        devContextPtr->threeWireModeXptBypassSupported = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? MXL_TRUE : MXL_FALSE);
   #ifdef _MXL_HRCLS_OOB_ENABLED_
-        devContextPtr->oobSupported = MXL_HRCLS_OOB_SUPPORT_254;
+        devContextPtr->oobSupported = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ?  MXL_FALSE : MXL_HRCLS_OOB_SUPPORT_254);
         devContextPtr->oobDemod = MXL_HRCLS_OOB_DEMOD_254;      
   #endif            
+  #ifdef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
         devContextPtr->wakeOnWanDemod = MXL_HRLCS_WAKE_ON_WAN_DEMOD_254; 
+  #endif
   #ifdef _MXL_HRCLS_XPT_ENABLED_
-        if ((devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && (devContextPtr->chipVersion >= 2))
+        if (((devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && (devContextPtr->chipVersion >= 2)) || 
+              (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID))
         {
           devContextPtr->xpt.supported = MXL_TRUE;
           devContextPtr->xpt.modesCnt = 5;
           devContextPtr->xpt.outputsCnt = MXL_HRCLS_XPT_OUTPUTS_254;
+          devContextPtr->xpt.fourWireModeSupported = MXL_HRCLS_IS_FOUR_WIRE_SUPPORTED(devContextPtr->chipVersion, devContextPtr->chipId);
+          devContextPtr->xpt.commonClockEnabled = MXL_FALSE;
 
           devContextPtr->xpt.currentMode = NULL;
           devContextPtr->xpt.modes[0].mode = MXL_HRCLS_XPT_MODE_NO_MUX_4;
           devContextPtr->xpt.modes[0].demodsMap = mxl_hrcls_demodMap254_xpt_nomux_4;
-          devContextPtr->xpt.modes[0].demodsCnt = MXL_HRCLS_DEMODS_CNT_254;
+          devContextPtr->xpt.modes[0].demodsCnt = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? MXL_HRCLS_DEMODS_CNT_254 - 1 : MXL_HRCLS_DEMODS_CNT_254);
           devContextPtr->xpt.modes[0].outputMap = mxl_hrcls_outputMap254_xpt_nomux_4; 
           devContextPtr->xpt.modes[0].xptMap    = MXL_HRCLS_XPT_MAP_1_TO_1; 
           devContextPtr->xpt.modes[0].dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_254_XPT_NOMUX_4; 
-          devContextPtr->xpt.modes[0].dfeChanMap = mxl_hrcls_dfeChanMap254_xpt_nomux_4;
+          devContextPtr->xpt.modes[0].dfeChanMap = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? mxl_hrcls_dfeChanMap254T_xpt_nomux_4 : mxl_hrcls_dfeChanMap254_xpt_nomux_4);
           devContextPtr->xpt.modes[0].demodScheme =  MXL_HRCLS_XPT_254_SCHEME_NO_MUX_4;
            
           devContextPtr->xpt.modes[1].mode = MXL_HRCLS_XPT_MODE_MUX_2; 
           devContextPtr->xpt.modes[1].demodsMap = mxl_hrcls_demodMap254_xpt_mux_2;
-          devContextPtr->xpt.modes[1].demodsCnt = MXL_HRCLS_DEMODS_CNT_254;
+          devContextPtr->xpt.modes[1].demodsCnt = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? MXL_HRCLS_DEMODS_CNT_254 - 1 : MXL_HRCLS_DEMODS_CNT_254);
           devContextPtr->xpt.modes[1].outputMap = mxl_hrcls_outputMap254_xpt_mux_2;
           devContextPtr->xpt.modes[1].xptMap    = MXL_HRCLS_XPT_MAP_2_TO_1; 
           devContextPtr->xpt.modes[1].dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_254_XPT_MUX_2; 
-          devContextPtr->xpt.modes[1].dfeChanMap = mxl_hrcls_dfeChanMap254_xpt_mux_2;
+          devContextPtr->xpt.modes[1].dfeChanMap = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? mxl_hrcls_dfeChanMap254T_xpt_mux_2 : mxl_hrcls_dfeChanMap254_xpt_mux_2);
           devContextPtr->xpt.modes[1].demodScheme = MXL_HRCLS_XPT_254_SCHEME_MUX_2;
 
           devContextPtr->xpt.modes[2].mode = MXL_HRCLS_XPT_MODE_MUX_1; 
           devContextPtr->xpt.modes[2].demodsMap = mxl_hrcls_demodMap254_xpt_mux_1;
-          devContextPtr->xpt.modes[2].demodsCnt = MXL_HRCLS_DEMODS_CNT_254;
+          devContextPtr->xpt.modes[2].demodsCnt = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? MXL_HRCLS_DEMODS_CNT_254 - 1 : MXL_HRCLS_DEMODS_CNT_254);
           devContextPtr->xpt.modes[2].outputMap = mxl_hrcls_outputMap254_xpt_mux_1;
           devContextPtr->xpt.modes[2].xptMap    = MXL_HRCLS_XPT_MAP_4_TO_1; 
           devContextPtr->xpt.modes[2].dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_254_XPT_MUX_1; 
-          devContextPtr->xpt.modes[2].dfeChanMap = mxl_hrcls_dfeChanMap254_xpt_mux_1;
+          devContextPtr->xpt.modes[2].dfeChanMap = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? mxl_hrcls_dfeChanMap254T_xpt_mux_1 : mxl_hrcls_dfeChanMap254_xpt_mux_1);
           devContextPtr->xpt.modes[2].demodScheme = MXL_HRCLS_XPT_254_SCHEME_MUX_1;
 
           devContextPtr->xpt.modes[3].mode = MXL_HRCLS_XPT_MODE_PARALLEL; 
           devContextPtr->xpt.modes[3].demodsMap = mxl_hrcls_demodMap254_xpt_par;
-          devContextPtr->xpt.modes[3].demodsCnt = MXL_HRCLS_DEMODS_CNT_254;
+          devContextPtr->xpt.modes[3].demodsCnt = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? MXL_HRCLS_DEMODS_CNT_254 - 1 : MXL_HRCLS_DEMODS_CNT_254);
           devContextPtr->xpt.modes[3].outputMap = mxl_hrcls_outputMap254_xpt_par;
           devContextPtr->xpt.modes[3].xptMap    = MXL_HRCLS_XPT_MAP_PARALLEL; 
           devContextPtr->xpt.modes[3].dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_254_XPT_PAR; 
-          devContextPtr->xpt.modes[3].dfeChanMap = mxl_hrcls_dfeChanMap254_xpt_par;
+          devContextPtr->xpt.modes[3].dfeChanMap = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? mxl_hrcls_dfeChanMap254T_xpt_par : mxl_hrcls_dfeChanMap254_xpt_par);
           devContextPtr->xpt.modes[3].demodScheme = MXL_HRCLS_XPT_254_SCHEME_PARALLEL;
 
-          devContextPtr->xpt.modes[4].mode = MXL_HRCLS_XPT_MODE_CABLECARD; 
-          devContextPtr->xpt.modes[4].demodsMap = mxl_hrcls_demodMap254_xpt_par;
-          devContextPtr->xpt.modes[4].demodsCnt = MXL_HRCLS_DEMODS_CNT_254;
-          devContextPtr->xpt.modes[4].outputMap = mxl_hrcls_outputMap254_xpt_par;
-          devContextPtr->xpt.modes[4].xptMap    = MXL_HRCLS_XPT_MAP_CABLECARD; 
-          devContextPtr->xpt.modes[4].dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_254_XPT_PAR; 
-          devContextPtr->xpt.modes[4].dfeChanMap = mxl_hrcls_dfeChanMap254_xpt_par;
-          devContextPtr->xpt.modes[4].demodScheme = MXL_HRCLS_XPT_254_SCHEME_PARALLEL;
+          if (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID)
+          {
+            devContextPtr->xpt.modes[4].mode = MXL_HRCLS_XPT_MODE_3WIRE_NOXPT; 
+            devContextPtr->xpt.modes[4].demodsMap = mxl_hrcls_demodMap254T_3wire_noxpt;
+            devContextPtr->xpt.modes[4].demodsCnt = MXL_HRCLS_DEMODS_CNT_254T_3WIRE_NOXPT;
+            devContextPtr->xpt.modes[4].outputMap = mxl_hrcls_outputMap254T_3wire_noxpt;
+            devContextPtr->xpt.modes[4].xptMap	= MXL_HRCLS_XPT_MAP_1_TO_1_NO_XPT; 
+            devContextPtr->xpt.modes[4].dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_254T_3WIRE_NOXPT; 
+            devContextPtr->xpt.modes[4].dfeChanMap = mxl_hrcls_dfeChanMap254T_3wire_noxpt;
+            devContextPtr->xpt.modes[4].demodScheme = MXL_HRCLS_XPT_254_SCHEME_XPT_BYPASS;
+          }
+          else
+          {
+            devContextPtr->xpt.modes[4].mode = MXL_HRCLS_XPT_MODE_CABLECARD; 
+            devContextPtr->xpt.modes[4].demodsMap = mxl_hrcls_demodMap254_xpt_par;
+            devContextPtr->xpt.modes[4].demodsCnt = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? MXL_HRCLS_DEMODS_CNT_254 - 1 : MXL_HRCLS_DEMODS_CNT_254);
+            devContextPtr->xpt.modes[4].outputMap = mxl_hrcls_outputMap254_xpt_par;
+            devContextPtr->xpt.modes[4].xptMap    = MXL_HRCLS_XPT_MAP_CABLECARD; 
+            devContextPtr->xpt.modes[4].dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_254_XPT_PAR; 
+            devContextPtr->xpt.modes[4].dfeChanMap = mxl_hrcls_dfeChanMap254_xpt_par;
+            devContextPtr->xpt.modes[4].demodScheme = MXL_HRCLS_XPT_254_SCHEME_PARALLEL;
+          }
 
           // Set default XPT mode
           if (MxLWare_HRCLS_Ctrl_ValidateXPTMode(devContextPtr, MXL_HRCLS_XPT_MODE_NO_MUX_4) == MXL_FALSE)
@@ -1117,18 +1392,21 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
   #endif
 #endif      
 #ifdef _MXL_HRCLS_IFOUT_ENABLED_
-      if (devContextPtr->chipVersion >= 2)
+      if (((devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && devContextPtr->chipVersion >= 2)
+             || (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID))
       {
         devContextPtr->ifOutSupported = MXL_HRCLS_IFOUT_SUPPORT_254_V2;
         devContextPtr->ifOutCnt = MXL_HRCLS_IFOUT_CNT_254_V2;
         devContextPtr->ifOutMap = mxl_hrcls_ifoutMap254_v2; 
       }
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
       else
       {
         devContextPtr->ifOutSupported = MXL_HRCLS_IFOUT_SUPPORT_254;
-        devContextPtr->ifOutCnt = 0;
-        devContextPtr->ifOutMap = NULL; 
+        devContextPtr->ifOutCnt = MXL_HRCLS_IFOUT_CNT_254_V1;
+        devContextPtr->ifOutMap = mxl_hrcls_ifoutMap254_v1; 
       }
+#endif
 #endif
       break;
 #endif      
@@ -1148,13 +1426,18 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
         devContextPtr->oobSupported = MXL_HRCLS_OOB_SUPPORT_255;
         devContextPtr->oobDemod = MXL_HRCLS_OOB_DEMOD_255;      
   #endif            
+  #ifdef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
         devContextPtr->wakeOnWanDemod = MXL_HRLCS_WAKE_ON_WAN_DEMOD_255; 
+  #endif
   #ifdef _MXL_HRCLS_XPT_ENABLED_
-        if ((devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && (devContextPtr->chipVersion >= 2))
+        if (((devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && (devContextPtr->chipVersion >= 2)) || 
+               (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID))
         {
           devContextPtr->xpt.supported = MXL_TRUE;
           devContextPtr->xpt.modesCnt = 1;
           devContextPtr->xpt.outputsCnt = MXL_HRCLS_XPT_OUTPUTS_255;
+          devContextPtr->xpt.fourWireModeSupported = MXL_HRCLS_IS_FOUR_WIRE_SUPPORTED(devContextPtr->chipVersion, devContextPtr->chipId);
+          devContextPtr->xpt.commonClockEnabled = MXL_FALSE;
           
           devContextPtr->xpt.currentMode = NULL;
           devContextPtr->xpt.modes[0].mode = MXL_HRCLS_XPT_MODE_NO_MUX_4;
@@ -1175,18 +1458,20 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
   #endif
 #endif      
 #ifdef _MXL_HRCLS_IFOUT_ENABLED_
-      if (devContextPtr->chipVersion >= 2)
+      if ((devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && devContextPtr->chipVersion >= 2)
       {
         devContextPtr->ifOutSupported = MXL_HRCLS_IFOUT_SUPPORT_255_V2;
         devContextPtr->ifOutCnt = MXL_HRCLS_IFOUT_CNT_255_V2;
         devContextPtr->ifOutMap = mxl_hrcls_ifoutMap255_v2; 
       }
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
       else
       {
         devContextPtr->ifOutSupported = MXL_HRCLS_IFOUT_SUPPORT_255;
         devContextPtr->ifOutCnt = 0;
         devContextPtr->ifOutMap = NULL; 
       }
+#endif
 #endif
       break;
 #endif      
@@ -1206,13 +1491,18 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
         devContextPtr->oobSupported = MXL_HRCLS_OOB_SUPPORT_256;
         devContextPtr->oobDemod = MXL_HRCLS_OOB_DEMOD_256;      
   #endif            
+  #ifdef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
         devContextPtr->wakeOnWanDemod = MXL_HRLCS_WAKE_ON_WAN_DEMOD_256; 
+  #endif
   #ifdef _MXL_HRCLS_XPT_ENABLED_
-        if ((devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && (devContextPtr->chipVersion >= 2))
+        if (((devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && (devContextPtr->chipVersion >= 2)) || 
+               (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID))
         {
           devContextPtr->xpt.supported = MXL_TRUE;
           devContextPtr->xpt.modesCnt = 7;
           devContextPtr->xpt.outputsCnt = MXL_HRCLS_XPT_OUTPUTS_256;
+          devContextPtr->xpt.fourWireModeSupported = MXL_HRCLS_IS_FOUR_WIRE_SUPPORTED(devContextPtr->chipVersion, devContextPtr->chipId);
+          devContextPtr->xpt.commonClockEnabled = MXL_FALSE;
 
           devContextPtr->xpt.currentMode = NULL;
           devContextPtr->xpt.modes[0].mode = MXL_HRCLS_XPT_MODE_NO_MUX_4; 
@@ -1270,7 +1560,7 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
           devContextPtr->xpt.modes[5].demodScheme = MXL_HRCLS_XPT_256_SCHEME_PARALLEL;
 
           devContextPtr->xpt.modes[6].mode = MXL_HRCLS_XPT_MODE_CABLECARD; 
-          devContextPtr->xpt.modes[6].demodsMap = mxl_hrcls_demodMap256; 
+          devContextPtr->xpt.modes[6].demodsMap = mxl_hrcls_demodMap256_xpt_par; 
           devContextPtr->xpt.modes[6].demodsCnt = MXL_HRCLS_DEMODS_CNT_256;
           devContextPtr->xpt.modes[6].outputMap = mxl_hrcls_outputMap256_xpt_par; 
           devContextPtr->xpt.modes[6].xptMap    = MXL_HRCLS_XPT_MAP_CABLECARD; 
@@ -1287,12 +1577,13 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
   #endif      
 #endif      
 #ifdef _MXL_HRCLS_IFOUT_ENABLED_
-      if (devContextPtr->chipVersion >= 2)
+      if ((devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && devContextPtr->chipVersion >= 2)
       {
         devContextPtr->ifOutSupported = MXL_HRCLS_IFOUT_SUPPORT_256_V2;
         devContextPtr->ifOutCnt = MXL_HRCLS_IFOUT_CNT_256_V2;
         devContextPtr->ifOutMap = mxl_hrcls_ifoutMap256_v2; 
       }
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
       else
       {
         devContextPtr->ifOutSupported = MXL_HRCLS_IFOUT_SUPPORT_256;
@@ -1300,24 +1591,21 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
         devContextPtr->ifOutMap = NULL; 
       }
 #endif
+#endif
       break;
 #endif      
             
-#ifdef MXL_HRCLS_269_ENABLE      
+#if defined MXL_HRCLS_269_ENABLE && defined _HRCLS_V1_SUPPORT_ENABLED_
     case MXL_HRCLS_DEVICE_269:
     {
       UINT8 i;
-      devContextPtr->dfeChanMap = (devContextPtr->serDesLineRate == MXL_HRCLS_SERDES_LINERATE_5400MHZ)?mxl_hrcls_dfeChanMap269_5400:mxl_hrcls_dfeChanMap269_5184; 
-      devContextPtr->dfeChanCount = (devContextPtr->serDesLineRate == MXL_HRCLS_SERDES_LINERATE_5400MHZ)?MXL_HRCLS_MAX_DFE_CHANNELS_269_5400:MXL_HRCLS_MAX_DFE_CHANNELS_269_5184; 
+      devContextPtr->dfeChanMap = mxl_hrcls_dfeChanMap269_5400;
+      devContextPtr->dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_269_5400;
 #ifdef _MXL_HRCLS_SERDES_ENABLED_        
       devContextPtr->serDesDSLanesCnt = MXL_HRCLS_SERDES_DS_LANES_CNT_269;
       for (i = 0; i < devContextPtr->serDesDSLanesCnt; i++)
       {
-        if (devContextPtr->serDesLineRate == MXL_HRCLS_SERDES_LINERATE_5400MHZ)
-        {
-          devContextPtr->serDesSlotsPerLane[i] = (devContextPtr->serDesMode[i] == MXL_HRCLS_SERDES_MODE_ENABLED_HALFRATE)?MXL_HRCLS_SERDES_DS_SLOTS_PER_LANE_2700:MXL_HRCLS_SERDES_DS_SLOTS_PER_LANE_5400;
-        }
-        else devContextPtr->serDesSlotsPerLane[i] = MXL_HRCLS_SERDES_DS_SLOTS_PER_LANE_5184; 
+        devContextPtr->serDesSlotsPerLane[i] = MXL_HRCLS_SERDES_DS_SLOTS_PER_LANE_5400;
       }
 #endif      
 #ifdef _MXL_HRCLS_DEMOD_ENABLED_        
@@ -1328,7 +1616,9 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
         devContextPtr->oobSupported = MXL_HRCLS_OOB_SUPPORT_269;
         devContextPtr->oobDemod = MXL_HRCLS_OOB_DEMOD_269;      
   #endif            
+  #ifdef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
       devContextPtr->wakeOnWanDemod = MXL_HRLCS_WAKE_ON_WAN_DEMOD_269; 
+  #endif
   #ifdef _MXL_HRCLS_XPT_ENABLED_
       devContextPtr->xpt.supported = MXL_FALSE;
   #endif    
@@ -1354,11 +1644,15 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
         devContextPtr->oobSupported = MXL_FALSE; 
         devContextPtr->oobDemod = MXL_HRCLS_OOB_DEMOD_212;
   #endif      
+  #ifdef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
       devContextPtr->wakeOnWanDemod = MXL_HRLCS_WAKE_ON_WAN_DEMOD_212;
+  #endif
   #ifdef _MXL_HRCLS_XPT_ENABLED_
       devContextPtr->xpt.supported = MXL_TRUE;
       devContextPtr->xpt.modesCnt = 1;
       devContextPtr->xpt.outputsCnt = MXL_HRCLS_XPT_OUTPUTS_212; 
+      devContextPtr->xpt.fourWireModeSupported = MXL_HRCLS_IS_FOUR_WIRE_SUPPORTED(devContextPtr->chipVersion, devContextPtr->chipId);
+      devContextPtr->xpt.commonClockEnabled = MXL_FALSE;
 
       devContextPtr->xpt.currentMode = NULL;
       devContextPtr->xpt.modes[0].mode = MXL_HRCLS_XPT_MODE_NO_MUX_4; 
@@ -1397,11 +1691,15 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
         devContextPtr->oobSupported = MXL_FALSE; 
         devContextPtr->oobDemod = MXL_HRCLS_OOB_DEMOD_213;
   #endif      
+  #ifdef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
       devContextPtr->wakeOnWanDemod = MXL_HRLCS_WAKE_ON_WAN_DEMOD_213;
+  #endif
   #ifdef _MXL_HRCLS_XPT_ENABLED_
       devContextPtr->xpt.supported = MXL_TRUE;
       devContextPtr->xpt.modesCnt = 1;
       devContextPtr->xpt.outputsCnt = MXL_HRCLS_XPT_OUTPUTS_213; 
+      devContextPtr->xpt.fourWireModeSupported = MXL_HRCLS_IS_FOUR_WIRE_SUPPORTED(devContextPtr->chipVersion, devContextPtr->chipId);
+      devContextPtr->xpt.commonClockEnabled = MXL_FALSE;
 
       devContextPtr->xpt.currentMode = NULL;
       devContextPtr->xpt.modes[0].mode = MXL_HRCLS_XPT_MODE_NO_MUX_4; 
@@ -1433,20 +1731,26 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
     {
       devContextPtr->dfeChanMap = mxl_hrcls_dfeChanMap214_xpt_nomux_4;
       devContextPtr->dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_214_XPT_NOMUX_4; 
+#ifdef _MXL_HRCLS_DEMOD_ENABLED_        
       devContextPtr->demodsCnt = MXL_HRCLS_DEMODS_CNT_214; 
       devContextPtr->demodsMap = mxl_hrcls_demodMap214_xpt_nomux_4;
-      devContextPtr->autoSpectrumInversionSupported = MXL_TRUE; 
+      devContextPtr->autoSpectrumInversionSupported = MXL_TRUE;
+      devContextPtr->threeWireModeXptBypassSupported = (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID ? MXL_TRUE : MXL_FALSE);
   #ifdef _MXL_HRCLS_OOB_ENABLED_
-        devContextPtr->oobSupported = MXL_FALSE; 
-        devContextPtr->oobDemod = MXL_HRCLS_OOB_DEMOD_214;
+      devContextPtr->oobSupported = MXL_FALSE; 
+      devContextPtr->oobDemod = MXL_HRCLS_OOB_DEMOD_214;
   #endif      
+  #ifdef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
       devContextPtr->wakeOnWanDemod = MXL_HRLCS_WAKE_ON_WAN_DEMOD_214;
+  #endif
   #ifdef _MXL_HRCLS_XPT_ENABLED_
       devContextPtr->xpt.supported = MXL_TRUE;
-      devContextPtr->xpt.modesCnt = 1;
       devContextPtr->xpt.outputsCnt = MXL_HRCLS_XPT_OUTPUTS_214; 
-
+      devContextPtr->xpt.fourWireModeSupported = MXL_HRCLS_IS_FOUR_WIRE_SUPPORTED(devContextPtr->chipVersion, devContextPtr->chipId);
+      devContextPtr->xpt.commonClockEnabled = MXL_FALSE;
       devContextPtr->xpt.currentMode = NULL;
+
+      devContextPtr->xpt.modesCnt = 1;
       devContextPtr->xpt.modes[0].mode = MXL_HRCLS_XPT_MODE_NO_MUX_4; 
       devContextPtr->xpt.modes[0].demodsMap = mxl_hrcls_demodMap214_xpt_nomux_4;
       devContextPtr->xpt.modes[0].demodsCnt = MXL_HRCLS_DEMODS_CNT_214;
@@ -1456,12 +1760,26 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
       devContextPtr->xpt.modes[0].dfeChanMap = mxl_hrcls_dfeChanMap214_xpt_nomux_4;
       devContextPtr->xpt.modes[0].demodScheme = MXL_HRCLS_XPT_214_SCHEME_NO_MUX_4;
 
+      if (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID)
+      {
+        devContextPtr->xpt.modesCnt = 2;
+        devContextPtr->xpt.modes[1].mode = MXL_HRCLS_XPT_MODE_3WIRE_NOXPT; 
+        devContextPtr->xpt.modes[1].demodsMap = mxl_hrcls_demodMap214T_3wire_noxpt;
+        devContextPtr->xpt.modes[1].demodsCnt = MXL_HRCLS_DEMODS_CNT_214T_3WIRE_NOXPT;
+        devContextPtr->xpt.modes[1].outputMap = mxl_hrcls_outputMap214T_3wire_noxpt;
+        devContextPtr->xpt.modes[1].xptMap	= MXL_HRCLS_XPT_MAP_1_TO_1_NO_XPT; 
+        devContextPtr->xpt.modes[1].dfeChanCount = MXL_HRCLS_MAX_DFE_CHANNELS_214T_3WIRE_NOXPT; 
+        devContextPtr->xpt.modes[1].dfeChanMap = mxl_hrcls_dfeChanMap214T_3wire_noxpt;
+        devContextPtr->xpt.modes[1].demodScheme = MXL_HRCLS_XPT_214_SCHEME_XPT_BYPASS;
+      }
+
       // Set default XPT mode
       if (MxLWare_HRCLS_Ctrl_ValidateXPTMode(devContextPtr, devContextPtr->xpt.modes[0].mode) == MXL_FALSE)
       {
         status = MXL_NOT_SUPPORTED;
       }
   #endif    
+#endif
 
   #ifdef _MXL_HRCLS_IFOUT_ENABLED_
       devContextPtr->ifOutSupported = MXL_TRUE; 
@@ -1479,15 +1797,27 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
 
 #ifdef _MXL_HRCLS_OOB_ENABLED_
   devContextPtr->oobType = OOB_SCTE_55_1_TYPE;      
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
   if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (1 == devContextPtr->chipVersion))
   {
     devContextPtr->oobFec_55_2_Supported = MXL_FALSE;      
+    devContextPtr->oobTsOutputSupported = MXL_FALSE;      
+  }
+  else 
+#endif
+  if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (devContextPtr->chipVersion >= 3))
+  {
+    devContextPtr->oobFec_55_2_Supported = MXL_TRUE;      
     devContextPtr->oobTsOutputSupported = MXL_FALSE;      
   }
   else
   {
     devContextPtr->oobFec_55_2_Supported = MXL_TRUE;      
     devContextPtr->oobTsOutputSupported = MXL_TRUE;      
+  }
+  if (MXL_HRCLS_TITAN_CHIP_ID == devContextPtr->chipId)
+  {
+    devContextPtr->oobSupported = MXL_FALSE;      
   }
 #endif
 
@@ -1499,6 +1829,7 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
     MxL_HRCLS_DEBUG("| Device type .......... %-7s                     |\n", 
             (devContextPtr->deviceType == MXL_HRCLS_DEVICE_265)?"265":
             (devContextPtr->deviceType == MXL_HRCLS_DEVICE_267)?"267":
+            (devContextPtr->deviceType == MXL_HRCLS_DEVICE_268)?"268":
             (devContextPtr->deviceType == MXL_HRCLS_DEVICE_258)?"258":
             (devContextPtr->deviceType == MXL_HRCLS_DEVICE_252)?"252":
             (devContextPtr->deviceType == MXL_HRCLS_DEVICE_254)?"254":
@@ -1508,14 +1839,15 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
             (devContextPtr->deviceType == MXL_HRCLS_DEVICE_212)?"212":
             (devContextPtr->deviceType == MXL_HRCLS_DEVICE_213)?"213":
             (devContextPtr->deviceType == MXL_HRCLS_DEVICE_214)?"214":"unknown");
-    MxL_HRCLS_DEBUG("| DFE channels count ... %2d                          |\n", devContextPtr->dfeChanCount);
-    MxL_HRCLS_DEBUG("| Chip ID ... %8s                               |\n", (devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID)?"HERCULES":"MINOS");
-    MxL_HRCLS_DEBUG("| Chip version ... %d                                 |\n", devContextPtr->chipVersion);
+    MxL_HRCLS_DEBUG("| DFE channels count ... %-2d                          |\n", devContextPtr->dfeChanCount);
+    MxL_HRCLS_DEBUG("| Chip ID .............. %-8s                    |\n", (devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID)?"HERCULES":(devContextPtr->chipId == MXL_HRCLS_MINOS_CHIP_ID)?"MINOS":(devContextPtr->chipId == MXL_HRCLS_ATLAS_CHIP_ID)?"ATLAS":(devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID)?"TITAN":"unknown");
+    MxL_HRCLS_DEBUG("| Chip version ......... %d                           |\n", devContextPtr->chipVersion);
 #ifdef _MXL_HRCLS_SERDES_ENABLED_        
     if (devContextPtr->serDesDSLanesCnt)
     {
       UINT8 i;
       MxL_HRCLS_DEBUG("| Serdes mode .......... %1s                           |\n", (devContextPtr->serDesLineRate == MXL_HRCLS_SERDES_LINERATE_5400MHZ)?"A":"B");
+      MxL_HRCLS_DEBUG("| Serdes type .......... %1d                           |\n", devContextPtr->serDesType);
       MxL_HRCLS_DEBUG("| Serdes lanes count ... %1d                           |\n", devContextPtr->serDesDSLanesCnt);
       for (i = 0; i < devContextPtr->serDesDSLanesCnt; i++)
       {
@@ -1528,16 +1860,17 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_InitializeDeviceParameters(MXL_HRCLS_DEV_CONTEXT_T *
 #endif
 #ifdef _MXL_HRCLS_DEMOD_ENABLED_        
     MxL_HRCLS_DEBUG("| Demods count ......... %1d                           |\n", devContextPtr->demodsCnt);
-    MxL_HRCLS_DEBUG("| Auto spectrum inv .... %8s                    |\n", (devContextPtr->autoSpectrumInversionSupported == MXL_TRUE)?"enabled":"disabled");    
+//    MxL_HRCLS_DEBUG("| Equalizer taps ....... %2d                          |\n", (devContextPtr->demods[0].dsEqDfeTapNum / 2));
+    MxL_HRCLS_DEBUG("| Auto spectrum inv .... %-8s                    |\n", (devContextPtr->autoSpectrumInversionSupported == MXL_TRUE)?"enabled":"disabled");
   #ifdef _MXL_HRCLS_OOB_ENABLED_
-    MxL_HRCLS_DEBUG("| OOB .................. %8s (%1d)                |\n", (devContextPtr->oobSupported == MXL_TRUE)?"enabled":"disabled", devContextPtr->oobDemod);    
+    MxL_HRCLS_DEBUG("| OOB .................. %-8s (%1d)                |\n", (devContextPtr->oobSupported == MXL_TRUE)?"enabled":"disabled", devContextPtr->oobDemod);    
   #endif  
   #ifdef _MXL_HRCLS_XPT_ENABLED_
-    MxL_HRCLS_DEBUG("| XPT .................. %8s                    |\n", (devContextPtr->xpt.supported == MXL_TRUE)?"enabled":"disabled");    
+    MxL_HRCLS_DEBUG("| XPT .................. %-8s                    |\n", (devContextPtr->xpt.supported == MXL_TRUE)?"enabled":"disabled");    
   #endif    
 #endif
 #ifdef _MXL_HRCLS_IFOUT_ENABLED_
-    MxL_HRCLS_DEBUG("| IFOUT supported ...... %s (%1d)                     |\n", devContextPtr->ifOutSupported ? "Yes" : "No ", devContextPtr->ifOutCnt);
+    MxL_HRCLS_DEBUG("| IFOUT supported ...... %-s (%1d)                     |\n", (devContextPtr->ifOutSupported == MXL_TRUE) ? "Yes" : "No ", devContextPtr->ifOutCnt);
 #endif
     MxL_HRCLS_DEBUG("------------------------------------------------------\n");
   }
@@ -1566,14 +1899,23 @@ MXL_HRCLS_CHAN_ID_E MxL_HRCLS_Ctrl_ConvertLogical2PhysicalChanId(MXL_HRCLS_DEV_C
 {
   MXL_HRCLS_CHAN_ID_E physicalChanId;
  
+  MXLENTERSTR;
+  MXLENTER(MxL_HRCLS_DEBUG("logicalChannelId=%d\n", logicalChanId););
   if (logicalChanId == MXL_HRCLS_CHAN_NB)
   {
     physicalChanId = MXL_HRCLS_CHAN_NB;
   }
   else
   {
-    physicalChanId = devContextPtr->dfeChanMap[(UINT8) logicalChanId].phyChan;
+    physicalChanId = (devContextPtr->dfeChanMap != NULL)?devContextPtr->dfeChanMap[(UINT8) logicalChanId].phyChan:logicalChanId;
+    MXLDBG2(
+    if (devContextPtr->dfeChanMap == NULL)
+    {
+      MxL_HRCLS_DEBUG("Channel map not defined. Using 1-to-1 mapping\n");
+    }
+    );
   }
+  MXLEXITSTR(physicalChanId);
 
   return physicalChanId;
 }
@@ -1598,6 +1940,7 @@ MXL_HRCLS_CHAN_ID_E MxL_HRCLS_Ctrl_GetOOBPhysicalChannelId(MXL_HRCLS_DEV_CONTEXT
   MXL_HRCLS_CHAN_ID_E physicalChanId = MXL_HRCLS_CHAN_NB;
   UINT8 logicalChanId = 0;
 
+  MXLENTERSTR;
   while (logicalChanId < devContextPtr->dfeChanCount)
   {
     if (0 != (MXL_HRCLS_CHAN_IF_OOB & devContextPtr->dfeChanMap[(UINT8) logicalChanId].ifMask))
@@ -1606,6 +1949,7 @@ MXL_HRCLS_CHAN_ID_E MxL_HRCLS_Ctrl_GetOOBPhysicalChannelId(MXL_HRCLS_DEV_CONTEXT
     }
     logicalChanId++;
   }
+  MXLEXITSTR(physicalChanId);
   return physicalChanId;
 }
 
@@ -1646,7 +1990,6 @@ MXL_HRCLS_DEV_CONTEXT_T * MxL_HRCLS_Ctrl_GetDeviceContext(UINT8 devId)
 --| RETURN VALUE  : MXL_SUCCESS or MXL_FAILURE 
 --|
 --|-------------------------------------------------------------------------------------*/
-
 MXL_STATUS_E MxL_HRCLS_Ctrl_WaitForFieldValue(UINT8 devId, UINT16 regAddr, UINT8 lsbPos, UINT8 fieldWidth, UINT16 expectedValue, MXL_BOOL_E waitForEqual, UINT16 timeoutMs, UINT16 * returnedValue)
 {
   UINT16 value = 0;
@@ -1656,20 +1999,14 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_WaitForFieldValue(UINT8 devId, UINT16 regAddr, UINT8
   MxLWare_HRCLS_OEM_GetCurrTimeInUsec(&timeNow);
   timeout = timeNow + (timeoutMs * 1000);
 
-  do
+  status = MxL_HRCLS_Ctrl_ReadRegisterField(devId, regAddr, lsbPos, fieldWidth, &value);
+  while ((status == MXL_SUCCESS) && (((value != expectedValue) && (waitForEqual == MXL_TRUE)) || ((value == expectedValue) && (waitForEqual == MXL_FALSE))) && (timeNow <= timeout))
   {
+    MxLWare_HRCLS_OEM_DelayUsec(1000); // 1ms
     status = MxL_HRCLS_Ctrl_ReadRegisterField(devId, regAddr, lsbPos, fieldWidth, &value);
-    if ((status == MXL_SUCCESS) && 
-         (
-          ((value != expectedValue) && (waitForEqual == MXL_TRUE)) ||
-          ((value == expectedValue) && (waitForEqual == MXL_FALSE))))
-    {
-      MxLWare_HRCLS_OEM_DelayUsec(1000); // 1ms
-    }
     MXLDBG1(MxL_HRCLS_DEBUG("value=0x%04x (expected%s0x%04x)\n", value, (waitForEqual==MXL_TRUE)?"==":"!=", expectedValue););
     MxLWare_HRCLS_OEM_GetCurrTimeInUsec(&timeNow);
-  } while ((status == MXL_SUCCESS) && (((value != expectedValue) && (waitForEqual == MXL_TRUE)) || ((value == expectedValue) && (waitForEqual == MXL_FALSE))) && (timeNow < timeout));
-
+  }
   MXLDBG1(MxL_HRCLS_DEBUG("delay: %dms\n", timeoutMs - (UINT16) (((SINT32)(timeout - timeNow)) / 1000)););
   
   if (status == MXL_SUCCESS)
@@ -1844,8 +2181,11 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_WriteClockRegister(UINT8 devId, UINT32 newValue)
 {
   UINT8 status;
 
+  MXLENTERSTR;
+  MXLENTER(MxL_HRCLS_DEBUG("newValue=0x%08x\n", newValue););
   status = (UINT8) MxLWare_HRCLS_OEM_WriteRegister(devId, EXTRACT_ADDR(CLK_ENA_LO), (UINT16) (newValue & 0xffff));
   status |= (UINT8) MxLWare_HRCLS_OEM_WriteRegister(devId, EXTRACT_ADDR(CLK_ENA_HI), (UINT16) ((newValue >> 16) & 0xff));
+  MXLEXITSTR(status);
 
   return (MXL_STATUS_E) status;
 }
@@ -1855,13 +2195,16 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_ReadClockRegister(UINT8 devId, UINT32 * readValue)
   UINT8 status = MXL_FAILURE;
   UINT16 regHi, regLo;
 
+  MXLENTERSTR;
   if (readValue)
   {
     status = (UINT8) MxLWare_HRCLS_OEM_ReadRegister(devId, EXTRACT_ADDR(CLK_ENA_LO), &regLo);
     status |= (UINT8) MxLWare_HRCLS_OEM_ReadRegister(devId, EXTRACT_ADDR(CLK_ENA_HI), &regHi);
 
     *readValue = (UINT32) ((UINT32) regLo) | (((UINT32) regHi) << 16);
+    MXLDBG2(MxL_HRCLS_DEBUG("clock register = 0x%08x\n", *readValue););
   }
+  MXLEXITSTR(status);
 
   return (MXL_STATUS_E) status;
 }
@@ -1885,7 +2228,7 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_ReadClockRegister(UINT8 devId, UINT32 * readValue)
 --| RETURN VALUE  : MXL_SUCCESS or MXL_FAILURE
 --|-------------------------------------------------------------------------------------*/
 
-MXL_STATUS_E MxL_HRCLS_Ctrl_DownloadFirmwareInMbin(MXL_HRCLS_DEV_CONTEXT_T* devContextPtr, MBIN_FILE_T* mbinPtr, UINT8 enableRun, MXL_CALLBACK_FN_T fwCallbackFn)
+MXL_STATUS_E MxL_HRCLS_Ctrl_DownloadFirmwareInMbin(MXL_HRCLS_DEV_CONTEXT_T* devContextPtr, const MBIN_FILE_T* mbinPtr, UINT8 enableRun, MXL_CALLBACK_FN_T fwCallbackFn)
 {
   MBIN_SEGMENT_T *segmentPtr ;
   UINT32 index;
@@ -1979,7 +2322,6 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_DownloadFirmwareSegment(MXL_HRCLS_DEV_CONTEXT
     while ((status == MXL_SUCCESS) && (dataLen>0))
     {
       // Send segment data, the block length is nSend
-      //printf("%x / %x", dataLen,downloadStats.segmentSize);
       if (dataLen > (MXL_HRCLS_OEM_MAX_BLOCK_WRITE_LENGTH - COMMAND_HEADER_LENGTH))
       {
         nSend = MXL_HRCLS_OEM_MAX_BLOCK_WRITE_LENGTH - COMMAND_HEADER_LENGTH;
@@ -2060,7 +2402,7 @@ MXLERR(
 --| RETURN VALUE  : none
 --|-------------------------------------------------------------------------------------*/
 
-MXL_STATUS_E MxL_HRCLS_Ctrl_SendDownloadCommand(MXL_HRCLS_DEV_CONTEXT_T* devContextPtr, MXL_CMD_ID_E commandId, void* dataPtr, UINT32 dataLen, UINT16 downloadBlockCnt)
+static MXL_STATUS_E MxL_HRCLS_Ctrl_SendDownloadCommand(MXL_HRCLS_DEV_CONTEXT_T* devContextPtr, MXL_CMD_ID_E commandId, const void* dataPtr, UINT32 dataLen, UINT16 downloadBlockCnt)
 {
   HOST_COMMAND_T downloadFwSeg;
   MXL_STATUS_E status = MXL_SUCCESS;
@@ -2070,8 +2412,8 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_SendDownloadCommand(MXL_HRCLS_DEV_CONTEXT_T* devCont
 #ifdef _DOWNLOAD_DEBUG_ENABLED_  
   static UINT32 curAddress = 0; // curAddress is used for debugging purpose only
 #endif  
-  response.syncChar = 0;
-  response.errorCode = 0;
+
+   memset(&response, 0, sizeof(FW_RESPONSE_T));
 
   // Check if the sending data length exceeds the limitation 
   if (dataLen <= (MXL_HRCLS_OEM_MAX_BLOCK_WRITE_LENGTH - COMMAND_HEADER_LENGTH))
@@ -2101,9 +2443,7 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_SendDownloadCommand(MXL_HRCLS_DEV_CONTEXT_T* devCont
 
     // Copy data from dataPtr to downloadFwSeg.data
     for (i = 0; i < dataLen; i++)  // Copy data from dataPtr to downloadFwSeg.data
-    {
       downloadFwSeg.data[i] = (UINT8)*((UINT8*)dataPtr+i);
-    }
     
     downloadFwSeg.payloadLen = dataLen;
     downloadFwSeg.payloadCheckSum = 0;
@@ -2214,7 +2554,7 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_SendHostCommand(UINT8 devId, HOST_COMMAND_T* cmdPtr,
   UINT16 regAddr = (((UINT16)(MXL_HRCLS_HOST_COMMAND_SYNC_BYTE + (seqNum&7)))<< 8) + (UINT16)cmdId;
   MXL_HRCLS_DEV_CONTEXT_T * devContextPtr = MxL_HRCLS_Ctrl_GetDeviceContext(devId);
 
-  //MXLDBG3(MXLENTER(MxL_HRCLS_DEBUG("+++++ SendHostCommand (%x)\n", cmdId);););
+  MXLDBG3(MXLENTER(MxL_HRCLS_DEBUG("+++++ SendHostCommand (%x)\n", cmdId);););
 
   if (cmdId < MXL_HRCLS_HOST_CMD_MAX)
   {
@@ -2245,10 +2585,10 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_SendHostCommand(UINT8 devId, HOST_COMMAND_T* cmdPtr,
       }
 #endif // _MXL_BOOTLOADER_TEST_ENABLED_
       status = MxLWare_HRCLS_OEM_WriteBlock(devId, regAddr, (UINT16) cmdPtr->payloadLen + 2, &(cmdPtr->payloadCheckSum));
-      //MXLDBG3(
-      //MxLWare_HRCLS_OEM_GetCurrTimeInUsec(&timeNow);
-      //MxL_HRCLS_DEBUG("SendHostCommand executed in %dms\n", (unsigned int) MXL_DIV_ROUND(((SINT32)(timeNow - timeStart)),1000));
-      //)
+      MXLDBG3(
+      MxLWare_HRCLS_OEM_GetCurrTimeInUsec(&timeNow);
+      MxL_HRCLS_DEBUG("SendHostCommand executed in %dms\n", (unsigned int) MXL_DIV_ROUND(((SINT32)(timeNow - timeStart)),1000));
+      )
       // MxL_HRCLS_Diag_SpinOnRegField(devId, MAILBOX_REG_NUM_PENDING_HOST_CMDS, 0xFFFF, 0, SPIN_UNTIL_EQ, 1000000);
     }
     else
@@ -2271,7 +2611,7 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_SendHostCommand(UINT8 devId, HOST_COMMAND_T* cmdPtr,
     MxL_HRCLS_ERROR("%s: invalid command id %d\n", __FUNCTION__, cmdId);
     status = MXL_FAILURE;
   }
-  //MXLDBG3(MXLEXITSTR(status););
+  MXLDBG3(MXLEXITSTR(status););
 
   return status; 
 }
@@ -2325,8 +2665,8 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
   UINT8 status = MXL_SUCCESS;
   UINT8 readBuffer[sizeof(HOST_COMMAND_T)] = {0};
   UINT8 devId = devContextPtr->devId;
-  // Read response header firstly
 
+  // Read response header firstly 
   status |= (UINT8)MxLWare_HRCLS_OEM_ReadBlock(devId, subAddr, COMMAND_HEADER_LENGTH, readBuffer);
 
   MXLDBG2(MxL_HRCLS_DEBUG("Block read back : SYNC=0x%02X, errorCode=0x%02X, checkSum=0x%02X, dataLen=0x%02X. \n",
@@ -2339,12 +2679,14 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDeviceResp(MXL_HRCLS_DEV_CONTEXT_T* devCon
     responsePtr->payloadCheckSum = readBuffer[2];
     responsePtr->payloadLen = readBuffer[3];
 
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
     if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (1 == devContextPtr->chipVersion))
     {
       // Neglected for Version compatibility.
       responsePtr->errorCode = RESPONSE_ID_SUCCESS;
     }
     else
+#endif
     {
       if (responsePtr->errorCode == RESPONSE_ID_SUCCESS)
       {
@@ -2596,6 +2938,8 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_ToggleRegisterBitOneZero(UINT8 devId, UINT16 regAddr
   UINT8 status;
   UINT16 regData = 0;
 
+  MXLENTERSTR;
+  MXLENTER(MxL_HRCLS_DEBUG("regAddr=%x, bitLoc=%d, bitWidth=%d\n", regAddr, bitLocation, bitWidth););
   bitWidth = bitWidth;  // anti-warning
 
   status = MxLWare_HRCLS_OEM_ReadRegister(devId, regAddr, &regData);
@@ -2607,6 +2951,7 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_ToggleRegisterBitOneZero(UINT8 devId, UINT16 regAddr
     regData &= (UINT16) (~(1 << bitLocation));
     status |= MxLWare_HRCLS_OEM_WriteRegister(devId, regAddr, regData);
   }
+  MXLEXITSTR(status);
   return (MXL_STATUS_E) status;
 }
 
@@ -2627,6 +2972,8 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_ToggleRegisterBitZeroOne(UINT8 devId, UINT16 regAddr
   UINT8 status;
   UINT16 regData = 0;
 
+  MXLENTERSTR;
+  MXLENTER(MxL_HRCLS_DEBUG("regAddr=%x, bitLoc=%d, bitWidth=%d\n", regAddr, bitLocation, bitWidth););
   bitWidth = bitWidth;  // anti-warning
 
   status = MxLWare_HRCLS_OEM_ReadRegister(devId, regAddr, &regData);
@@ -2637,6 +2984,7 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_ToggleRegisterBitZeroOne(UINT8 devId, UINT16 regAddr
     regData |= (UINT16) (1 << bitLocation);
     status |= MxLWare_HRCLS_OEM_WriteRegister(devId, regAddr, regData);
   }
+  MXLEXITSTR(status);
   return (MXL_STATUS_E) status;
 }
 
@@ -2706,14 +3054,20 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_ReqTunerTemperatureCode(MXL_HRCLS_DEV_CONTEXT_T * de
 
   status = MxLWare_HRCLS_OEM_ReadRegister(devContextPtr->devId, MAILBOX_REG_TEMPERATURE_CODE, &regData);
   MXLDBG2(MxL_HRCLS_DEBUG("MailboxReg [0x%04x] -> 0x%04x\n", MAILBOX_REG_TEMPERATURE_CODE, regData););
+	
+  if (MXL_SUCCESS == status)
+  {
 
-  if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (devContextPtr->chipVersion == 1))
-  {
-    devContextPtr->currentTemp = (regData) & 0x07;
-  }
-  else
-  {
-    status = MxL_HRCLS_Ctrl_MapCodeToTempInDegrees(((regData) & MXL_HRCLS_TEMP_CODE_MAP_MASK), &devContextPtr->currentTemp);
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
+    if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (devContextPtr->chipVersion == 1))
+    {
+      devContextPtr->currentTemp = (regData) & 0x07;
+    }
+    else
+#endif
+    {
+      status = MxL_HRCLS_Ctrl_MapCodeToTempInDegrees(((regData) & MXL_HRCLS_TEMP_CODE_MAP_MASK), &devContextPtr->currentTemp);
+    }
   }
   return status;
 }
@@ -2742,31 +3096,51 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_ReqTunerRxPwr(MXL_HRCLS_DEV_CONTEXT_T * devContextPt
   UINT16 regData = 0;
   UINT16 rawPwr;
   UINT8 accuracy;
+  UINT16 mailboxReg = MAILBOX_REG_RX_PWR;
 
-  status = MxLWare_HRCLS_OEM_ReadRegister(devContextPtr->devId, MAILBOX_REG_RX_PWR + (2 * phyChanId), &regData);
-  MXLDBG2(MxL_HRCLS_DEBUG("MailboxReg [0x%04x] -> 0x%04x\n", MAILBOX_REG_RX_PWR + (2 * phyChanId), regData););
-  rawPwr = regData & 0x3FF;
-  accuracy = (regData >> 15) & 0x01;
-  if (rxRawPwrIndBuVPtr) *rxRawPwrIndBuVPtr = rawPwr;
-
-  if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (devContextPtr->chipVersion == 1))
+  if (phyChanId == MXL_HRCLS_CHAN_NB)
   {
-    devContextPtr->currentTemp = (regData >> 10) & 0x07;
+    mailboxReg = MAILBOX_REG_RX_PWR_NB_TUNER;
   }
-  else
+  else if (phyChanId <= MXL_HRCLS_CHAN24)
   {
-    status = MxL_HRCLS_Ctrl_MapCodeToTempInDegrees(((regData >> 10) & MXL_HRCLS_TEMP_CODE_MAP_MASK), &devContextPtr->currentTemp);
+    mailboxReg = MAILBOX_REG_RX_PWR + (2 * phyChanId);
+  }
+  else if (phyChanId <= MXL_HRCLS_CHAN31)
+  {
+    mailboxReg = MAILBOX_REG_RX_PWR_CHAN_25 + (2 * (phyChanId - MXL_HRCLS_CHAN25));
   }
 
-  if (accuracyPtr)
+  status = MxLWare_HRCLS_OEM_ReadRegister(devContextPtr->devId, mailboxReg, &regData);
+  MXLDBG2(MxL_HRCLS_DEBUG("MailboxReg [0x%04x] -> 0x%04x\n", mailboxReg, regData););
+	
+  if (MXL_SUCCESS == status)
   {
-    if (rawPwr == 0)
+    rawPwr = regData & 0x3FF;
+    accuracy = (regData >> 15) & 0x01;
+    if (rxRawPwrIndBuVPtr) *rxRawPwrIndBuVPtr = rawPwr;
+
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
+    if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (devContextPtr->chipVersion == 1))
     {
-      *accuracyPtr = MXL_HRCLS_PWR_INVALID;
+      devContextPtr->currentTemp = (regData >> 10) & 0x07;
     }
     else
+#endif
     {
-      *accuracyPtr = (accuracy == 1)?MXL_HRCLS_PWR_AVERAGED:MXL_HRCLS_PWR_ROUGH;
+      status = MxL_HRCLS_Ctrl_MapCodeToTempInDegrees(((regData >> 10) & MXL_HRCLS_TEMP_CODE_MAP_MASK), &devContextPtr->currentTemp);
+    }
+
+    if (accuracyPtr)
+    {
+      if (rawPwr == 0)
+      {
+        *accuracyPtr = MXL_HRCLS_PWR_INVALID;
+      }
+      else
+      {
+        *accuracyPtr = (accuracy == 1)?MXL_HRCLS_PWR_AVERAGED:MXL_HRCLS_PWR_ROUGH;
+      }
     }
   }
 
@@ -2789,20 +3163,29 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_ReqTunerRxPwr(MXL_HRCLS_DEV_CONTEXT_T * devContextPt
 --|
 --|-------------------------------------------------------------------------------------*/
 MXL_STATUS_E MxL_HRCLS_Ctrl_CfgTunerChanTune(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr,
-                        MXL_HRCLS_CHAN_ID_E phyChanId,              
+                        MXL_HRCLS_CHAN_ID_E     phyChanId,              
                         UINT8     bandWidthInMhz,    
                         UINT32    centerFrequencyInHz)
 {
   MXL_STATUS_E status;
   HOST_COMMAND_T tunerChanTuneCfg;
   UINT8         chnBwMode;
+  UINT8         phyChanIdCode;
   /* Form command payload */
+
+  phyChanIdCode = (UINT8)phyChanId;
+  if (MXL_HRCLS_CHAN_NB == phyChanId)
+  {
+    phyChanIdCode = MXL_HRCLS_NB_TUNER_CHANNEL_CODE;
+  }
+
   
   chnBwMode = (6==bandWidthInMhz)?DFE_CHN_BW_6_MODE:DFE_CHN_BW_8_MODE;           
 
-  tunerChanTuneCfg.data[0]    = ((UINT8) phyChanId)       << 0;
-  tunerChanTuneCfg.data[0]   |= (UINT8)(1                 << 5); // channel enable
-  tunerChanTuneCfg.data[0]   |= (UINT8)((chnBwMode)       << 7);
+  tunerChanTuneCfg.data[0]    = ((UINT8) phyChanIdCode&0x1f)          << 0;
+  tunerChanTuneCfg.data[0]   |= (UINT8)(1                             << 5); // channel enable
+  tunerChanTuneCfg.data[0]   |= (UINT8)(((phyChanIdCode& 0x20) >> 5)  << 6); // channel id msb 
+  tunerChanTuneCfg.data[0]   |= (UINT8)((chnBwMode)                   << 7);
   tunerChanTuneCfg.data[1]    = (UINT8)((centerFrequencyInHz >> 0)  & 0xFF);
   tunerChanTuneCfg.data[2]    = (UINT8)((centerFrequencyInHz >> 8)  & 0xFF);
   tunerChanTuneCfg.data[3]    = (UINT8)((centerFrequencyInHz >> 16) & 0xFF);
@@ -2814,6 +3197,7 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_CfgTunerChanTune(MXL_HRCLS_DEV_CONTEXT_T * devContex
 
   /* Send host command */
   status = MxL_HRCLS_Ctrl_SendHostCommand(devContextPtr->devId, &tunerChanTuneCfg, HOST_CMD_CFG_TUNER_CHAN_TUNE, MXL_HRCLS_HOST_REGULAR_COMMAND_SEQ_NUM);
+
   return status;
 }
 
@@ -2991,8 +3375,10 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_GetTemperatureCode(
    )
 {
   UINT8 status = (UINT8) MXL_SUCCESS;
-  UINT8 devId = devContextPtr->devId;
-#ifdef _MXL_HRCLS_TSENS_V2_ENABLED_        
+#if defined(_MXL_HRCLS_TSENS_V2_ENABLED_) || defined(_HRCLS_V1_SUPPORT_ENABLED_)  
+  UINT8  devId = devContextPtr->devId;
+#endif  
+#if (defined _MXL_HRCLS_TSENS_V2_ENABLED_)
   UINT16 vbeCode;
   UINT16 nVbeCode;
   UINT16 vbeCodeAvg;
@@ -3003,11 +3389,13 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_GetTemperatureCode(
 #endif
   UINT8  GrayCode[] = MxL_HRCLS_GRAY_CODE;
 
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
   if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (1 == devContextPtr->chipVersion))
   {
     status |= MxL_HRCLS_Ctrl_ReadRegisterField(devId, ANA_DIG_TSENS_READBACK, tsensCode); // Read back temp sensor
   }
   else // if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (1 == devContextPtr->chipVersion))
+#endif
   {
 #ifdef _MXL_HRCLS_TSENS_V2_ENABLED_        
     status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_REFSX_EN_RCTUNECLK, 1);
@@ -3037,6 +3425,7 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_GetTemperatureCode(
       MXLERR(MxL_HRCLS_ERROR("[HRCLS] Error! MxL_HRCLS_Ctrl_GetTemperatureCode Failed\n"););
     }
 #else
+    devContextPtr = devContextPtr;
     *tsensCode = GrayCode[MxL_HRCLS_TEMPERATURE_INDEX(MxL_HRCLS_DEFAULT_TEMPERATURE_TSENS_NOTUSED)]; 
 #endif //_MXL_HRCLS_TSENS_V2_ENABLED_        
   }
@@ -3068,9 +3457,9 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_CfgDevXtalSetting(
 
   xtalCap = xtalCap;
   status = (UINT8) MxL_HRCLS_Ctrl_ReadRegisterField(devId, HCLK_SEL, &dataRb);
-  printf("in MxL_HRCLS_Ctrl_CfgDevXtalSetting, status = %x, %x\n", status, dataRb);
   if ((status == (UINT8) MXL_SUCCESS) && (dataRb == 1))
   {
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
     if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (1 == devContextPtr->chipVersion))
     {
       // Unlock radio control
@@ -3110,12 +3499,20 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_CfgDevXtalSetting(
       // cap setting is causing problems. Removed
     }
     else // if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (1 == devContextPtr->chipVersion))
+#endif
     {
       // ---------------------------------------------------------------------------------------
       // Overwrite defaults (REF: RADIO_PG_01032012 "Miscellaneous"->"Default Overwrites")
       // ---------------------------------------------------------------------------------------
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_XTAL_CAP,       0x0);
-      status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_MISC_SPARE,     0x1);
+      if ((MXL_HRCLS_ATLAS_CHIP_ID == devContextPtr->chipId) || (MXL_HRCLS_TITAN_CHIP_ID == devContextPtr->chipId))
+      {
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_MISC_SPARE,   0x2);
+      }
+      else
+      {
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_MISC_SPARE,   0x1);
+      }
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_RFFE_RCTUNE,    0x1);
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_CLKOUT_AMP,     0x6);
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_IF_REG_ANA_AMP, 0x3);
@@ -3145,11 +3542,38 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_CfgDevXtalSetting(
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_TX_GAIN,             0x2); 
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_TEST0_ADDR,          0xF); 
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_TEST0_MODE,          0xF); 
-      status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_ADC_REG_FE_AMP,      0x4); 
+      if (MXL_HRCLS_ATLAS_CHIP_ID == devContextPtr->chipId)
+      {
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_ADC_REG_FE_AMP,    0x2); 
+      }
+      else if (MXL_HRCLS_TITAN_CHIP_ID == devContextPtr->chipId)
+      {
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_ADC_REG_FE_AMP,    0x3); 
+      }
+      else
+      {
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_ADC_REG_FE_AMP,    0x4); 
+      }
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_REFSX_SX_REG_AMP,    0x4); 
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_RFSX_SX_REG_AMP,     0x4); 
-      status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_RFSX_VCO_REG_AMP,    0x4); 
+      if ((MXL_HRCLS_ATLAS_CHIP_ID == devContextPtr->chipId) || (MXL_HRCLS_TITAN_CHIP_ID == devContextPtr->chipId))
+      {
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_RFSX_VCO_REG_AMP,  0x3);
+      }
+      else
+      {
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_RFSX_VCO_REG_AMP,  0x4); 
+      }
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_RFFE_INPUTMATCH,     0x0); 
+      if ((MXL_HRCLS_ATLAS_CHIP_ID == devContextPtr->chipId) || (MXL_HRCLS_TITAN_CHIP_ID == devContextPtr->chipId))
+      {
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_RFFE_BUF1_BIAS,    0x1); 
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_REFSX_CHP_GAIN,    0x1B); 
+      }
+      if (MXL_HRCLS_ATLAS_CHIP_ID == devContextPtr->chipId)
+      {
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_RFSX_CHP_REG_AMP,  0x4); 
+      }
 
       // cap setting is causing problems. Removed
       // Unlock radio control
@@ -3158,6 +3582,15 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_CfgDevXtalSetting(
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_TEMPSEN_DURATION, 3); // Overwrite default.
       // Not an overwrite default. One time enabling of temperature sensor.
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_TEMPSEN_ENA, 1); 
+
+      // AtlasV1/TitanV1 - Power saving default overwrites for ADC
+      if ((MXL_HRCLS_ATLAS_CHIP_ID == devContextPtr->chipId) || (MXL_HRCLS_TITAN_CHIP_ID == devContextPtr->chipId))
+      {
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_ADC_BUF_BIAS,    1);
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_ADC_L1_BIAS,     1);
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_ADC_L2_BIAS,     1);
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_ADC_ENOB_SEL,    0);
+      }
     }
 
     status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, ECO_1 , 0x2);           // Cosim checkpoint
@@ -3166,6 +3599,7 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_CfgDevXtalSetting(
     // REF SYNTH (REF: VISIO_PG_20120103 - "REF SYNTH", RADIO_PG_20120103 - "REF SYNTH")
     // ---------------------------------------------------------------------------------------
     status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_REFSX_ENA, 1);
+    status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_REFSX_SX_REG_ENA, 1);
     MxLWare_HRCLS_OEM_DelayUsec(1000); // Wait 1000us for regulators to stabilize
     status |= MxL_HRCLS_Ctrl_GetTemperatureCode(devContextPtr, &dataRb); // Read back temp sensor
     status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_REFSX_TEMP_INFO, dataRb); // Program temp sensor info
@@ -3181,6 +3615,9 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_CfgDevXtalSetting(
     // Changed from 10us to 1000ms per 0.95 Radio PG
     MxLWare_HRCLS_OEM_DelayUsec(MXL_HRCLS_REF_SX_TUNE_TO_IN_US /* changed from 10 us to 1ms */);
     status |= MxL_HRCLS_Ctrl_ReadRegisterField(devId, ANA_DIG_REFSX_TUNE_DONE, &dataRb);
+#ifdef _MXL_TITAN_FPGA_ENABLED_
+    dataRb = 1;
+#endif
     if (dataRb == 1)
     {
       MXLDBG2(MxL_HRCLS_DEBUG("ANA_DIG_REFSX_TUNE_DONE = 1\n"););
@@ -3194,6 +3631,12 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_CfgDevXtalSetting(
       MxLWare_HRCLS_OEM_DelayUsec(10); // Wait 10us for regulators to stabilize
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_ADC_BBCLK_RSTB, 0);
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_ADC_BBCLK_RSTB, 1);
+      if (MXL_HRCLS_TITAN_CHIP_ID == devContextPtr->chipId)
+      {
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, HCLK_CTRL,    6); // Select 112MHz clock for Titan
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, HCLK_CFG_ENA, 1);
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, HCLK_CFG_ENA, 0);
+      }
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, HCLK_SEL, 0); // Switch CPU to BB clock
       status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, ECO_1 , 0x5); // cosim checkpoint
 
@@ -3361,5 +3804,93 @@ MXL_HRCLS_IF_ID_E MxL_HRCLS_Ctrl_GetPhysicalIfOutId(MXL_HRCLS_DEV_CONTEXT_T * de
   return physicalIfOutId;
 }
 #endif
+
+#ifdef _MXL_HRCLS_DEMOD_ENABLED_ 
+/*----------------------------------------------------------------------------------------
+--| FUNCTION NAME : MxL_HRCLS_Ctrl_GetDsEqualizerTapCountUsingAnnexType
+--| 
+--| AUTHOR        : Chau Dang
+--|
+--| DATE CREATED  : 09/22/2014
+--|
+--| DESCRIPTION   : This function returns number of EqualizerTapCount based on:
+--|                           1. chipId (Hercules/Minos/Atlas/Titan)
+--|                           2. In case of Titan, the return value also based on SKU and current Annex Type of 
+--|                               the demodId the function is called with.
+--|                 
+--| RETURN VALUE  : None
+--|                 
+--|-------------------------------------------------------------------------------------*/
+UINT8 MxL_HRCLS_Ctrl_GetDsEqualizerTapCount(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr, MXL_HRCLS_DMD_ID_E demodId)
+{
+  UINT8 dsEqDfeTapCount = (MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT_TITAN_ANNEX_B * 2); // default
+
+  switch (devContextPtr->chipId)
+  {
+    case MXL_HRCLS_HERCULES_CHIP_ID:    
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
+      if (1 == devContextPtr->chipVersion)
+      {
+        dsEqDfeTapCount = MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT_V1 * 2;
+      }
+      else	
 #endif
+        dsEqDfeTapCount = (MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT * 2);
+        
+      break;
+
+    case MXL_HRCLS_MINOS_CHIP_ID:
+      dsEqDfeTapCount = (MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT * 2);
+      break;
+
+    case MXL_HRCLS_ATLAS_CHIP_ID:
+      dsEqDfeTapCount = 0;
+      break;
+
+    case MXL_HRCLS_TITAN_CHIP_ID:
+      if (devContextPtr->demods[(UINT8)demodId].curAnnexType == MXL_HRCLS_ANNEX_A)
+      {
+        switch (devContextPtr->deviceType)
+        {
+          default:
+#ifdef MXL_HRCLS_268_ENABLE
+          case MXL_HRCLS_DEVICE_268:
+#endif
+            dsEqDfeTapCount = (MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT_TITAN_ANNEX_A * 2);
+            break;
+		  
+#ifdef MXL_HRCLS_258_ENABLE
+          case MXL_HRCLS_DEVICE_258:
+            dsEqDfeTapCount = (MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT_ANNEX_A_258T * 2);
+            break;
+#endif
+		  
+#ifdef MXL_HRCLS_254_ENABLE
+          case MXL_HRCLS_DEVICE_254:
+            dsEqDfeTapCount = (MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT_ANNEX_A_254T * 2);
+            break;
+#endif
+			  
+#ifdef MXL_HRCLS_214_ENABLE
+          case MXL_HRCLS_DEVICE_214:
+            dsEqDfeTapCount = (MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT_ANNEX_A_214T * 2);
+            break;
+#endif
+        }
+      }
+      else
+      {
+        dsEqDfeTapCount = (MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT_TITAN_ANNEX_B * 2);
+      }
+      break;
+  }
+
+  MXLDBG3(MxL_HRCLS_PRINT("[HRCLS]%s: chipId %d, deviceType: %d, demodId %d, ANNEX = %s, Tap count = %d\n",
+                 __FUNCTION__, devContextPtr->chipId, devContextPtr->deviceType, demodId, 
+                 devContextPtr->demods[(UINT8)demodId].curAnnexType == MXL_HRCLS_ANNEX_A ? "A" : "B", dsEqDfeTapCount););
+
+  return dsEqDfeTapCount;
+}
+#endif
+
 

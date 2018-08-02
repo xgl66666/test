@@ -8218,7 +8218,7 @@ tmddNT220xSetRFCAL_Freq10
 //-------------------------------------------------------------------------------------
 // FUNCTION:    tmddNT220xGetRFCAL_Freq10:
 //
-// DESCRIPTION: Get the é0 bit(s) status
+// DESCRIPTION: Get the Ã©0 bit(s) status
 //
 // RETURN:      tmdd_ERR_TUNER_BAD_UNIT_NUMBER
 //        ddNT220x_ERR_BAD_PARAMETER
@@ -9407,7 +9407,7 @@ tmddNT220xSetRFCAL_Offset10
 //-------------------------------------------------------------------------------------
 // FUNCTION:    tmddNT220xGetRFCAL_Offset10:
 //
-// DESCRIPTION: Get the é0 bit(s) status
+// DESCRIPTION: Get the Ã©0 bit(s) status
 //
 // RETURN:      TM_OK if no error
 //

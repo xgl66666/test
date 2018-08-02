@@ -11,9 +11,6 @@
  *****************************************************************************************
  *                Copyright (c) 2011, MaxLinear, Inc.
  ****************************************************************************************/
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_MXL254)
-
 
 #include "MxL_HRCLS_Common.h"
 
@@ -164,6 +161,64 @@ static MxL_HRCLS_SNR_RANGE_T snrRangeQpsk[] = {
 
 #define MXL_HRCLS_DEFAULT_FAKE_ANNEX_TYPE ((MXL_HRCLS_ANNEX_TYPE_E) ((UINT8) -1))
 
+/*----------------------------------------------------------------------------------------
+--| FUNCTION NAME : MxL_HRCLS_Ctrl_GetMpegClkRegisterSetting
+--| 
+--| AUTHOR        : Chau Dang
+--|
+--| DATE CREATED  : 08/21/2014
+--|                  
+--| DESCRIPTION   : Return an UINT16 value base on the enum value in MXL_HRCLS_MPEG_CLK_RATE_E
+--|                           The returned value is used to set MCLK_CTRL register in Demod only, not for XPT MPEG
+--|                           clock registers.
+--|                 
+--| RETURN VALUE  : UINT16 number.
+--|
+--|-------------------------------------------------------------------------------------*/
+static UINT16 MxL_HRCLS_Ctrl_GetMpegClkRegisterSetting(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr,
+    MXL_HRCLS_MPEG_CLK_RATE_E mpegClkFreq)
+{
+  UINT16 clkSpeed;
+
+  MXLENTERSTR;
+  switch (mpegClkFreq)
+  {
+    case MXL_HRCLS_MPEG_CLK_10_55MHz:
+    default:
+      clkSpeed = 0;
+      break;
+
+    case MXL_HRCLS_MPEG_CLK_21_09MHz:
+      clkSpeed = 1;
+      break;
+
+    case MXL_HRCLS_MPEG_CLK_25_96MHz:
+      clkSpeed = 2;
+      break;
+
+    case MXL_HRCLS_MPEG_CLK_28_16MHz:
+      clkSpeed = (devContextPtr->threeWireModeXptBypassSupported == MXL_TRUE ? 2 : 3);
+      break;
+
+    case MXL_HRCLS_MPEG_CLK_42_18MHz:
+      clkSpeed = (devContextPtr->threeWireModeXptBypassSupported == MXL_TRUE ? 3 : 4);
+      break;
+
+    case MXL_HRCLS_MPEG_CLK_56_21MHz:
+      clkSpeed = (devContextPtr->threeWireModeXptBypassSupported == MXL_TRUE ? 4 : 5);
+      break;
+
+    case MXL_HRCLS_MPEG_CLK_84_37MHz:
+      clkSpeed = (devContextPtr->threeWireModeXptBypassSupported == MXL_TRUE ? 5 : 6);
+      break;
+
+    case MXL_HRCLS_MPEG_CLK_112_50MHz:
+      clkSpeed = 7;
+      break;
+  }
+  MXLEXITSTR(clkSpeed);
+  return clkSpeed;
+}
 
 /*----------------------------------------------------------------------------------------
 --| FUNCTION NAME : MxL_HRCLS_Ctrl_CfgDemReset
@@ -228,10 +283,55 @@ MXL_HRCLS_DMD_ID_E MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(MXL_HRCLS_DEV_C
   MXL_HRCLS_DMD_ID_E physicalDemodId;
 
   MXLENTERSTR;
-  physicalDemodId = devContextPtr->demodsMap[(UINT8) logicalDemodId];
+  if (devContextPtr->demodsMap != NULL)
+  {
+    physicalDemodId = devContextPtr->demodsMap[(UINT8) logicalDemodId];
+  }
+  else
+  {
+    physicalDemodId = logicalDemodId;
+    MXLDBG2(MxL_HRCLS_DEBUG("Demod map is not defined for this SKU. Using 1-to-1 mapping\n"););
+  }
   MXLEXIT(MxL_HRCLS_DEBUG("logical demod%d -> physical demod%d\n", logicalDemodId, physicalDemodId););
   MXLEXITSTR(physicalDemodId);
   return physicalDemodId;
+}
+
+/*----------------------------------------------------------------------------------------
+--| FUNCTION NAME : MxL_HRCLS_Ctrl_ConvertAndValidateDemodId
+--| 
+--| AUTHOR        : Chau Dang
+--|
+--| DATE CREATED  : 08/14/2014
+--|
+--| DESCRIPTION   : This function converts a Logical demod Id to a Physical demod Id, and verify if the
+--|                           Physical demod Id is valid.
+--|
+--| INPUTS/OUTPUT        : demod number 
+--|
+--| RETURN VALUE  : Physical demod number 
+--|
+--|-------------------------------------------------------------------------------------*/
+MXL_STATUS_E MxL_HRCLS_Ctrl_ConvertAndValidateDemodId (MXL_HRCLS_DEV_CONTEXT_T * devContextPtr, MXL_HRCLS_DMD_ID_E *demodIdPtr)
+{
+  UINT8 status = MXL_FAILURE;
+
+  MXLENTERSTR;
+  if (demodIdPtr && *demodIdPtr < devContextPtr->demodsCnt)
+  {
+    MXL_HRCLS_DMD_ID_E physicalDemodId;
+    physicalDemodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, *demodIdPtr);
+    *demodIdPtr = physicalDemodId;
+    status = MXL_SUCCESS;
+    if (physicalDemodId == MXL_HRCLS_DEMOD_INVALID)
+    {
+      status = MXL_FAILURE;
+      MXLDBG2(MxL_HRCLS_DEBUG("Demod 0 is not available for this SKU.\n"););
+    }
+  }
+  MXLEXITSTR(status);
+  return (MXL_STATUS_E)status;
+
 }
 
 /*----------------------------------------------------------------------------------------
@@ -461,7 +561,7 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_ConfigDemodResampRatio(UINT8 devId, MXL_HRCLS_DMD_ID
     }
 
 //    resampleRateRatio = ((UINT64)(devContextPtr->adcSampRateInHz)*(UINT64)(1<<24)*3)/(256ULL*4*(UINT64)symbolRate[i]);
-    resampleRateRatio = MXL_DIV_ROUND((UINT64) ((UINT64) devContextPtr->adcSampRateInHz * (UINT64) (1<<14) * (UINT64) 3), symbolRate[i]);
+    resampleRateRatio = MXL_DIV_ROUND((UINT64) ((UINT64) (MXL_HRCLS_DEFAULT_REF_PLL_FREQ_HZ) * (UINT64) (1<<14) * (UINT64) 3), symbolRate[i]);
 
     if (resampleRateRatio <= 3*(1<<24))
     {
@@ -548,6 +648,15 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetMCNSSD(UINT8 devId, MXL_HRCLS_DMD_ID_E dem
       {
         tmp = msb << 16;
         tmp |= lsb;
+      }
+      break;
+
+    case MXL_HRCLS_ERASURE_SEL:
+      status |= MxL_HRCLS_Ctrl_WriteDemodRegister(devId, demodId, EXTRACT_ADDR(DMD0_FECA_MCNSSD_SEL), 6/*select for Erasures*/);
+      status |= MxL_HRCLS_Ctrl_ReadDemodRegisterField(devId, demodId, DMD0_FECA_MCNSSD, &lsb);
+      if (status == MXL_SUCCESS)
+      {
+        tmp = lsb;
       }
       break;
 
@@ -697,7 +806,15 @@ UINT32 MxL_HRCLS_Ctrl_ConvertDemod2LogicalInterruptMask(MXL_HRCLS_DEV_CONTEXT_T 
         UINT8 o;
 
         for (o = 0; (o < devContextPtr->demodsCnt) && (devContextPtr->demodsMap[o] != i); o++) continue;
-        if (devContextPtr->demodsMap[o] == i) newMask |= (MXL_HRCLS_INTR_MASK_DMD0 << o);
+        if (NULL == devContextPtr->demodsMap)
+        {
+          MXLERR(MxL_HRCLS_DEBUG("demodsMap is NULL\n"););
+        }
+        else
+        {
+          if (devContextPtr->demodsMap[o] == i) 
+            newMask |= (MXL_HRCLS_INTR_MASK_DMD0 << o);
+        }
       }
     }
   }
@@ -928,6 +1045,7 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_SetDemodAdcIqSwap(
   UINT8 devId = devContextPtr->devId;
   UINT8 status = MXL_SUCCESS;
 
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
   if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (1 == devContextPtr->chipVersion))
   {
     status |= MxL_HRCLS_Ctrl_UpdateRegisterField(
@@ -938,6 +1056,7 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_SetDemodAdcIqSwap(
         (adcIqFlip == MXL_ENABLE)?1:0);
   }
   else
+#endif
   {
     status |= MxL_HRCLS_Ctrl_UpdateRegisterField(
         devId, 
@@ -973,6 +1092,7 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDemodAdcIqSwap(
   UINT8 status = MXL_SUCCESS;
   UINT16 iqFlip = 0;
 
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
   if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (1 == devContextPtr->chipVersion))
   {
     status |= MxL_HRCLS_Ctrl_ReadRegisterField(
@@ -983,6 +1103,7 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDemodAdcIqSwap(
         &iqFlip);
   }
   else
+#endif
   {
     status |= MxL_HRCLS_Ctrl_ReadRegisterField(
         devId, 
@@ -991,7 +1112,11 @@ static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDemodAdcIqSwap(
         EXTRACT_NBITS(DMD0_QAM_IQ_SWAP),
         &iqFlip);
   }
-  *adcIqFlipPtr = iqFlip?MXL_ENABLE:MXL_DISABLE;
+  *adcIqFlipPtr = iqFlip ? MXL_ENABLE : MXL_DISABLE;
+  if (devContextPtr->demods[(UINT8) demodId].curAnnexType == MXL_HRCLS_ANNEX_B)
+  // If Annex B, then the bit DMDx_QAM_IQ_SWAP has the "reverse" meaning.
+  // This is verified by switching between the annexes of the signal generator.
+    *adcIqFlipPtr = (*adcIqFlipPtr == MXL_ENABLE) ? MXL_DISABLE : MXL_ENABLE;
   return (MXL_STATUS_E)status;
 }
 
@@ -1037,13 +1162,12 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodSymbolRate(
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("DemodId=%d, SymbolRate=%u, SymbolRate256=%u\n", demodId, symbRateInHz, symbRate256InHz););
 
-  if ((devContextPtr) && (demodId < devContextPtr->demodsCnt) 
+  if ((devContextPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS) 
       && (((symbRateInHz <= MXL_HRCLS_DEMOD_SYMBOLRATE_MAX_SPS) && (symbRateInHz >= MXL_HRCLS_DEMOD_SYMBOLRATE_MIN_SPS)) || (symbRateInHz == 0))
       && (((symbRate256InHz <= MXL_HRCLS_DEMOD_SYMBOLRATE_MAX_SPS) && (symbRate256InHz >= MXL_HRCLS_DEMOD_SYMBOLRATE_MIN_SPS)) || (symbRate256InHz == 0)))
   {
     if (devContextPtr->driverInitialized)
     {
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
       switch (devContextPtr->demods[(UINT8) demodId].curAnnexType)
       {
         case MXL_HRCLS_ANNEX_A:
@@ -1137,14 +1261,13 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodAnnexQamType(
           demodId,
           annexType,
           qamType););
-  if ((devContextPtr) && (demodId < devContextPtr->demodsCnt)) 
+  if ((devContextPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS)) 
   {
     if (devContextPtr->driverInitialized)
     {
       HOST_COMMAND_T demodAnnexQamTypeCfg;
       UINT8 hw_annex_type;
 
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
       hw_annex_type = (annexType == MXL_HRCLS_ANNEX_B)?MXL_HRCLS_HW_ANNEX_B:MXL_HRCLS_HW_ANNEX_A;
 
       /* Form command payload */
@@ -1180,50 +1303,99 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodAnnexQamType(
   return status; 
 }
 
+
 /**
  *****************************************************************************************
  *  @param[in]  devId MxL device id
  *  @param[in]  demodId Demodulator ID number
- *  @param[out] intrMask interrupt MASK word
+ *  @param[in]  mpegOutParamPtr pointer to MPEG out parameters
  *
- *  @apibrief   This function enables or disables a demod interrupt.
- *              [TBD Page 31]
+ *  @apibrief   This API configures mpeg output for specified demodulator in 3-wire XPT Bypass mode
  *
- *  @usage      \n In order to monitor Demod status after tuning, each demod lock status bit can be enabled.
- *              \n In addition to setting each interrupt enable bit to one, INT_EMABLE_MASK bit has to be set to enable Interrupt.
- *              \n
- *              \n For example, to enable FEC_LOCK and MPEG_LOCK interrupts, the value 0x800A should be passed through InterMask field of parameters.
- *              \n
- *              \n And then to disable FEC_LOCK interrupt, the value 0x0002 should be passed through InterMask field of parameters.
+ *  @usage      
  *
- *  @equ261     MXL_DEMOD_INTR_MASK_CFG
+ *  @equ261    
  *
  *  @return     MXL_SUCCESS or MXL_FAILURE
  ****************************************************************************************/
-
-MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodIntrMask(
-    UINT8     devId,                       
-    MXL_HRCLS_DMD_ID_E demodId,           
-    UINT16    intrMask                   
+MXL_STATUS_E MxL_HRCLS_Ctrl_CfgDemod3WireMpegOutParams(
+    MXL_HRCLS_DEV_CONTEXT_T * devContextPtr,
+    MXL_HRCLS_DMD_ID_E demodId,                /* IN : Demodulator ID number */
+    MXL_HRCLS_MPEGOUT_PARAM_T* mpegOutParamPtr /* IN : MPEG out parameters */
     )
 {
-  MXL_STATUS_E status = MXL_SUCCESS;
-  MXL_HRCLS_DEV_CONTEXT_T * devContextPtr = MxL_HRCLS_Ctrl_GetDeviceContext(devId);
+  UINT8 status = MXL_SUCCESS;
+  UINT8 devId = devContextPtr->devId;
+  UINT16 control_reg_value = 0x0000;    // default values for register 0x03c8
+  UINT16 control_reg_address;
+  const MXL_HRCLS_FIELD_T mdval[] = {{DMD0_MDVAL_GATE_EN}, {DMD1_MDVAL_GATE_EN},
+																	 {DMD2_MDVAL_GATE_EN}, {DMD3_MDVAL_GATE_EN},
+																	 {DMD4_MDVAL_GATE_EN}, {DMD5_MDVAL_GATE_EN},
+																	 {DMD6_MDVAL_GATE_EN}, {DMD7_MDVAL_GATE_EN},
+																	 {DMD8_MDVAL_GATE_EN}};
+  const MXL_HRCLS_FIELD_T mdval_pol[] = {{DMD0_MDVAL_GATE_EN_INV}, {DMD1_MDVAL_GATE_EN_INV},
+																	 {DMD2_MDVAL_GATE_EN_INV}, {DMD3_MDVAL_GATE_EN_INV},
+																	 {DMD4_MDVAL_GATE_EN_INV}, {DMD5_MDVAL_GATE_EN_INV},
+																	 {DMD6_MDVAL_GATE_EN_INV}, {DMD7_MDVAL_GATE_EN_INV},
+																	 {DMD8_MDVAL_GATE_EN_INV}};
+  const MXL_HRCLS_FIELD_T mpeg_fecb_erri[] = {{DMD0_FECB_MPEG_ERRI}, {DMD1_FECB_MPEG_ERRI},
+																	 {DMD2_FECB_MPEG_ERRI}, {DMD3_FECB_MPEG_ERRI},
+																	 {DMD4_FECB_MPEG_ERRI}, {DMD5_FECB_MPEG_ERRI},
+																	 {DMD6_FECB_MPEG_ERRI}, {DMD7_FECB_MPEG_ERRI},
+																	 {DMD8_FECB_MPEG_ERRI}};
 
-  MXLENTERAPISTR(devId);
-  MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d, intrMask=%x\n", demodId, intrMask););
-  if ((devContextPtr) && (demodId < devContextPtr->demodsCnt)) 
+  MXLENTERSTR;
+
+  control_reg_address = MxL_HRCLS_Ctrl_ConvertDemodIdToAddr(demodId, EXTRACT_ADDR(DMD0_VALID_ACTIVE_LEVEL));
+  control_reg_value |= (UINT16) ((UINT16) ((mpegOutParamPtr->lsbOrMsbFirst == MXL_HRCLS_MPEG_SERIAL_LSB_1ST)?0:1) << EXTRACT_LSBLOC(DMD0_MSB_LSB_FIRST)); 
+  if (devContextPtr->threeWireModeXptBypassSupported != MXL_TRUE)
+    control_reg_value |= (UINT16) ((UINT16) ((mpegOutParamPtr->mpegErrorIndication == MXL_TRUE)?1:0) << EXTRACT_LSBLOC(DMD0_MPEG_FRAME_ERROR_INDICATION));
+  control_reg_value |= (UINT16) ((UINT16) ((mpegOutParamPtr->mpegValidPol == MXL_HRCLS_MPEG_ACTIVE_LOW)?1:0) << EXTRACT_LSBLOC(DMD0_VALID_ACTIVE_LEVEL)); 
+  control_reg_value |= (UINT16) ((UINT16) ((mpegOutParamPtr->mpegSyncPol == MXL_HRCLS_MPEG_ACTIVE_LOW)?1:0) << EXTRACT_LSBLOC(DMD0_SYNC_ACTIVE_LEVEL)); 
+  control_reg_value |= (UINT16) ((UINT16) ((mpegOutParamPtr->mpegSyncPulseWidth == MXL_HRCLS_MPEG_SYNC_WIDTH_BIT)?0:1) << EXTRACT_LSBLOC(DMD0_SYNC_PULSE_WIDTH)); 
+
+  // disable - ticket #369
+  //control_reg_value |= (UINT16) (1 << EXTRACT_LSBLOC(DMD0_DISABLE_FIFO_READ_LIMIT));    
+
+  MXLDBG3(MxL_HRCLS_DEBUG("CfgDemodMpeg. control_reg=%x, control_addr=%x\n", control_reg_value, EXTRACT_ADDR(DMD0_VALID_ACTIVE_LEVEL)););
+
+  status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, mdval[(UINT8) demodId].regAddr,
+                    mdval[(UINT8) demodId].lsbPos, mdval[(UINT8) demodId].fieldWidth,
+                    (mpegOutParamPtr->mpeg3WireModeEnable == MXL_ENABLE)?1:0);
+  if (mpegOutParamPtr->mpeg3WireModeEnable == MXL_ENABLE || devContextPtr->threeWireModeXptBypassSupported == MXL_TRUE)
   {
-    if (devContextPtr->driverInitialized)
+    status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, mdval_pol[(UINT8) demodId].regAddr,
+                      mdval_pol[(UINT8) demodId].lsbPos, mdval_pol[(UINT8) demodId].fieldWidth,
+                      (mpegOutParamPtr->mpeg3WireModeClkPol == MXL_HRCLS_MPEG_CLK_IN_PHASE)?1:0);
+    if (devContextPtr->threeWireModeXptBypassSupported == MXL_TRUE)
     {
-	  // demodId not needed here
-      // demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
-      // demodId = demodId;
-      intrMask = intrMask;
-    } else status = MXL_NOT_INITIALIZED;
-  } else status = MXL_INVALID_PARAMETER;
-  MXLEXITAPISTR(devId, status);
-  return status; 
+      status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devContextPtr->devId, mpeg_fecb_erri[(UINT8) demodId].regAddr,
+                        mpeg_fecb_erri[(UINT8) demodId].lsbPos, mpeg_fecb_erri[(UINT8) demodId].fieldWidth,
+                        (mpegOutParamPtr->mpegErrorIndication == MXL_TRUE) ? 1 : 0);
+      /* No need to set these XPT regs:  
+        XPT_DELAY_SEL_TSP0_CLK
+        XPT_DELAY_SEL_MDAT_#
+        XPT_DELAY_SEL_MPVAL_#
+        XPT_DELAY_SEL_MPSYNC_#.
+        They should be set when 4-wire XPT is active */
+    }
+  }
+
+  status |= MxLWare_HRCLS_OEM_WriteRegister(devId, control_reg_address, control_reg_value);
+  status |= MxL_HRCLS_Ctrl_SetMpegPadDrv(devId, demodId, &mpegOutParamPtr->mpegPadDrv);
+  status |= MxL_HRCLS_Ctrl_SetMpegOutEnable(devContextPtr, demodId, mpegOutParamPtr->enable);
+
+#ifdef  _MXL_HRCLS_XPT_ENABLED_
+  // If it is Titan and 3-wire XPT bypass mode, then MCK_OE should be turned off too.
+  // The VAL signal of each OUT port is the clock in this case.
+  if (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_3WIRE_NOXPT)
+  {
+    status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devContextPtr->devId, MCK_OE, 0);
+  }
+#endif
+  MXLEXITSTR(status);
+
+  return (MXL_STATUS_E) status;
 }
 
 /**
@@ -1248,68 +1420,30 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodMpegOutParams(
     )
 {
   UINT8 status = MXL_SUCCESS;
-  const MXL_HRCLS_FIELD_T mdval[] = {{DMD0_MDVAL_GATE_EN}, {DMD1_MDVAL_GATE_EN},
-                                     {DMD2_MDVAL_GATE_EN}, {DMD3_MDVAL_GATE_EN},
-                                     {DMD4_MDVAL_GATE_EN}, {DMD5_MDVAL_GATE_EN},
-                                     {DMD6_MDVAL_GATE_EN}, {DMD7_MDVAL_GATE_EN},
-                                     {DMD8_MDVAL_GATE_EN}};
-  const MXL_HRCLS_FIELD_T mdval_pol[] = {{DMD0_MDVAL_GATE_EN_INV}, {DMD1_MDVAL_GATE_EN_INV},
-                                        {DMD2_MDVAL_GATE_EN_INV}, {DMD3_MDVAL_GATE_EN_INV},
-                                        {DMD4_MDVAL_GATE_EN_INV}, {DMD5_MDVAL_GATE_EN_INV},
-                                        {DMD6_MDVAL_GATE_EN_INV}, {DMD7_MDVAL_GATE_EN_INV},
-                                        {DMD8_MDVAL_GATE_EN_INV}};
   MXL_HRCLS_DEV_CONTEXT_T * devContextPtr = MxL_HRCLS_Ctrl_GetDeviceContext(devId);
-
+  
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d, MpegEnabled=%d, lsbOrMsbFirst=%d,"
        "mpegValidPol=%d, mpegSyncPol=%d, mpegSyncPulseWidth=%d, mpegErrorIndication=%d,"
        "3wireMode=%d, padDrvMpegSyn=%d padDrvMpegDat=%d padDrvMpegVal=%d\n",
           demodId, 
-          mpegOutParamPtr->enable,
-          mpegOutParamPtr->lsbOrMsbFirst,
-          mpegOutParamPtr->mpegValidPol,
-          mpegOutParamPtr->mpegSyncPol,
-          mpegOutParamPtr->mpegSyncPulseWidth,
-          mpegOutParamPtr->mpegErrorIndication,
-          mpegOutParamPtr->mpeg3WireModeEnable,
-          mpegOutParamPtr->mpegPadDrv.padDrvMpegSyn,
-          mpegOutParamPtr->mpegPadDrv.padDrvMpegDat,
-          mpegOutParamPtr->mpegPadDrv.padDrvMpegVal););
-  if ((devContextPtr) && (mpegOutParamPtr) && (demodId < devContextPtr->demodsCnt))
+          mpegOutParamPtr ? mpegOutParamPtr->enable : 0,
+          mpegOutParamPtr ? mpegOutParamPtr->lsbOrMsbFirst : 0,
+          mpegOutParamPtr ? mpegOutParamPtr->mpegValidPol : 0,
+          mpegOutParamPtr ? mpegOutParamPtr->mpegSyncPol : 0,
+          mpegOutParamPtr ? mpegOutParamPtr->mpegSyncPulseWidth : 0,
+          mpegOutParamPtr ? mpegOutParamPtr->mpegErrorIndication : 0,
+          mpegOutParamPtr ? mpegOutParamPtr->mpeg3WireModeEnable : 0,
+          mpegOutParamPtr ? mpegOutParamPtr->mpegPadDrv.padDrvMpegSyn : 0,
+          mpegOutParamPtr ? mpegOutParamPtr->mpegPadDrv.padDrvMpegDat : 0,
+          mpegOutParamPtr ? mpegOutParamPtr->mpegPadDrv.padDrvMpegVal : 0););
+
+  if ((devContextPtr) && (mpegOutParamPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->driverInitialized)
     {
-      if (devContextPtr->xpt.supported == MXL_FALSE)
-      {
-        UINT16 control_reg_value = 0x0000;    // default values for register 0x03c8
-        UINT16 control_reg_address;
-
-        demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
-        control_reg_address = MxL_HRCLS_Ctrl_ConvertDemodIdToAddr(demodId, EXTRACT_ADDR(DMD0_VALID_ACTIVE_LEVEL));
-        control_reg_value |= (UINT16) ((UINT16) ((mpegOutParamPtr->lsbOrMsbFirst == MXL_HRCLS_MPEG_SERIAL_LSB_1ST)?0:1) << EXTRACT_LSBLOC(DMD0_MSB_LSB_FIRST)); 
-        control_reg_value |= (UINT16) ((UINT16) ((mpegOutParamPtr->mpegErrorIndication == MXL_TRUE)?1:0) << EXTRACT_LSBLOC(DMD0_MPEG_FRAME_ERROR_INDICATION));
-        control_reg_value |= (UINT16) ((UINT16) ((mpegOutParamPtr->mpegValidPol == MXL_HRCLS_MPEG_ACTIVE_LOW)?1:0) << EXTRACT_LSBLOC(DMD0_VALID_ACTIVE_LEVEL)); 
-        control_reg_value |= (UINT16) ((UINT16) ((mpegOutParamPtr->mpegSyncPol == MXL_HRCLS_MPEG_ACTIVE_LOW)?1:0) << EXTRACT_LSBLOC(DMD0_SYNC_ACTIVE_LEVEL)); 
-        control_reg_value |= (UINT16) ((UINT16) ((mpegOutParamPtr->mpegSyncPulseWidth == MXL_HRCLS_MPEG_SYNC_WIDTH_BIT)?0:1) << EXTRACT_LSBLOC(DMD0_SYNC_PULSE_WIDTH)); 
-
-      // disable - ticket #369
-        // control_reg_value |= (UINT16) (1 << EXTRACT_LSBLOC(DMD0_DISABLE_FIFO_READ_LIMIT));    
-
-        MXLDBG3(MxL_HRCLS_DEBUG("CfgDemodMpeg. control_reg=%x, control_addr=%x\n", control_reg_value, EXTRACT_ADDR(DMD0_VALID_ACTIVE_LEVEL)););
-
-        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, mdval[(UINT8) demodId].regAddr,
-                          mdval[(UINT8) demodId].lsbPos, mdval[(UINT8) demodId].fieldWidth,
-                          (mpegOutParamPtr->mpeg3WireModeEnable == MXL_ENABLE)?1:0);
-        if (mpegOutParamPtr->mpeg3WireModeEnable == MXL_ENABLE)
-        {
-          status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, mdval_pol[(UINT8) demodId].regAddr,
-                            mdval_pol[(UINT8) demodId].lsbPos, mdval_pol[(UINT8) demodId].fieldWidth,
-                            (mpegOutParamPtr->mpeg3WireModeClkPol == MXL_HRCLS_MPEG_CLK_IN_PHASE)?1:0);
-        }
-        status |= MxLWare_HRCLS_OEM_WriteRegister(devId, control_reg_address, control_reg_value);
-        status |= MxL_HRCLS_Ctrl_SetMpegPadDrv(devId, demodId, &mpegOutParamPtr->mpegPadDrv);
-        status |= MxL_HRCLS_Ctrl_SetMpegOutEnable(devContextPtr, demodId, mpegOutParamPtr->enable);
-      }
+      if (devContextPtr->xpt.supported == MXL_FALSE || devContextPtr->threeWireModeXptBypassSupported == MXL_TRUE)
+        status = MxL_HRCLS_Ctrl_CfgDemod3WireMpegOutParams(devContextPtr, demodId, mpegOutParamPtr);
       else
       {
         status = MXL_NOT_SUPPORTED;
@@ -1317,6 +1451,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodMpegOutParams(
       }
     } else status = MXL_NOT_INITIALIZED;
   } else status = MXL_INVALID_PARAMETER;
+
   MXLEXITAPISTR(devId, status);
 
   return (MXL_STATUS_E) status;
@@ -1352,24 +1487,49 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodMpegOutGlobalParams(
   {
    if (devContextPtr->driverInitialized)
     {
-      if (devContextPtr->xpt.supported == MXL_FALSE)
+      if ((devContextPtr->xpt.supported == MXL_FALSE) 
+#ifdef  _MXL_HRCLS_XPT_ENABLED_
+          || ((devContextPtr->xpt.currentMode->mode ==  MXL_HRCLS_XPT_MODE_3WIRE_NOXPT) 
+             && (mpegClkFreq < MXL_HRCLS_MPEG_CLK_84_37MHz)
+             && (mpegClkFreq != MXL_HRCLS_MPEG_CLK_25_96MHz))
+#endif
+             )
       {
         // Mariusz: According to Jinzhou, first write 1 to MCLK_CFG_ENA, next write
         // frequency, and write 0 to MCLK_CFG_ENA
-        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MCLK_CFG_ENA, 1);
+        // 8/19/14.  Chau: Titan PG V1 also requires toggling MCLK_SEL and DMD_MCLK_INV.
+        // Need to test with previous chip version to see any side-effect.  Otherwise, the additional setting apply
+        // to Titan only.
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devContextPtr->devId, MCLK_SEL, 0);
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devContextPtr->devId, DMD_MCLK_INV, 1); 
         // set frequency here
-        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MCLK_CTRL, mpegClkFreq);
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MCLK_CTRL, MxL_HRCLS_Ctrl_GetMpegClkRegisterSetting(devContextPtr, mpegClkFreq));
+        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MCLK_CFG_ENA, 1);
+
         // set pad drive
         status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, PAD_MPEG_CLK_DRV, mpegClkPadDrv);
         status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MCLK_CFG_ENA, 0);
 
-        // FIXME: MP_CLK_INV is removed from V1R3B3; should it be MCLK_INV? need verification
+
+        if (devContextPtr->threeWireModeXptBypassSupported != MXL_TRUE)
+        {
+          // Titan-39: MCLK_INV is not used.
+          // FIXME: MP_CLK_INV is removed from V1R3B3; should it be MCLK_INV? need verification
 #ifdef MP_CLK_INV
-        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MP_CLK_INV, ((mpegClkPol == MXL_HRCLS_MPEG_CLK_POSITIVE)?0:1));
+          status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MP_CLK_INV, ((mpegClkPol == MXL_HRCLS_MPEG_CLK_POSITIVE)?0:1));
 #else // MP_CLK_INV
-        status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MCLK_INV, ((mpegClkPol == MXL_HRCLS_MPEG_CLK_POSITIVE)?0:1));
+          status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MCLK_INV, ((mpegClkPol == MXL_HRCLS_MPEG_CLK_POSITIVE)?0:1));
 #endif // MP_CLK_INV
+        }
       }
+#ifdef _MXL_HRCLS_XPT_ENABLED_  
+      else if (devContextPtr->xpt.fourWireModeSupported == MXL_TRUE && (devContextPtr->xpt.currentMode->mode !=  MXL_HRCLS_XPT_MODE_PARALLEL) && (devContextPtr->xpt.currentMode->mode != MXL_HRCLS_XPT_MODE_CABLECARD))
+      {
+        status = MxLWare_Ctrl_ConfigureCommonClock(devContextPtr, mpegClkFreq, mpegClkPol, mpegClkPadDrv);
+
+        if (status == MXL_SUCCESS) devContextPtr->xpt.commonClockEnabled = MXL_TRUE;
+      }
+#endif      
       else
       {
         status = MXL_NOT_SUPPORTED;
@@ -1412,11 +1572,10 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodAdcIqFlip(
 
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d, AdcIqFlip=%d\n", demodId, adcIqFlip););
-  if ((devContextPtr) && (demodId < devContextPtr->demodsCnt))
+  if ((devContextPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->driverInitialized)
     {
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
       if (adcIqFlip == MXL_HRCLS_IQ_AUTO)
       {
         if (devContextPtr->autoSpectrumInversionSupported == MXL_TRUE)
@@ -1461,11 +1620,10 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodEqualizerFilter(
 
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d, equalizerSetting=%d\n", demodId, equalizerSetting););
-  if ((devContextPtr) && (demodId < devContextPtr->demodsCnt))
+  if ((devContextPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->driverInitialized)
     {
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
       status = MxL_HRCLS_Ctrl_UpdateDemodRegisterField(devId, demodId, DMD0_EQU_SPUR_BYPASS, (equalizerSetting == MXL_ENABLE)?1:0);
     } else status = MXL_NOT_INITIALIZED;
   } else status = MXL_INVALID_PARAMETER;
@@ -1505,11 +1663,10 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodErrorStatClear(
 
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d\n", demodId););
-  if ((devContextPtr) && (demodId < devContextPtr->demodsCnt))
+  if ((devContextPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->driverInitialized)
     {
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
       status |= MxL_HRCLS_Ctrl_UpdateDemodRegisterField(devId, demodId, DMD0_FECA_STAMP, 0x0055);
     } else status = MXL_NOT_INITIALIZED;
   } else status = MXL_INVALID_PARAMETER;
@@ -1583,13 +1740,12 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodSnr(
   
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d\n", demodId););
-  if ((devContextPtr) && (demodId < devContextPtr->demodsCnt) && (snrPtr) )
+  if ((devContextPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS) && (snrPtr) )
   {
     if (devContextPtr->driverInitialized)
     {
       MxL_HRCLS_SNR_RANGE_T * snrArray = NULL;
       /* Read QAM and Annex type */
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
       status |= MxL_HRCLS_Ctrl_GetDemodCurrentAnnexAndQam(devContextPtr, demodId, NULL, &qamType);
 
       status |= MxL_HRCLS_Ctrl_UpdateDemodRegisterField(devId, demodId, DMD0_EQU_DEBUG_MSE_CALC_COEF, MXL_HRCLS_MSE_AVG_COEF); 
@@ -1694,11 +1850,10 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodErrorStat(
 
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d\n", demodId););
-  if ((devContextPtr) && (statsPtr) && (demodId < devContextPtr->demodsCnt))
+  if ((devContextPtr) && (statsPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->driverInitialized)
     {
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
       /* Check Annex Type */
       status |= MxL_HRCLS_Ctrl_GetDemodCurrentAnnexAndQam(devContextPtr, demodId, &annexType, NULL);
 
@@ -1710,20 +1865,30 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodErrorStat(
       status |= MxL_HRCLS_Ctrl_GetMCNSSD(devId, demodId, MXL_HRCLS_CW_COUNT_SEL, &statsPtr->CwReceived);
       status |= MxL_HRCLS_Ctrl_GetMCNSSD(devId, demodId, MXL_HRCLS_CORR_BITS_SEL, &statsPtr->CorrBits);
 
-      status |= MxL_HRCLS_Ctrl_ReadDemodRegisterField(devId, demodId, DMD0_FECA_FRCNT, &regData);
       /* ERR_MPEG */
+      statsPtr->ReceivedMpeg = statsPtr->CwReceived;
+
       if (annexType == MXL_HRCLS_ANNEX_A) 
       {
-        statsPtr->ReceivedMpeg = 0xFFFF - regData;
         statsPtr->ErrMpeg = statsPtr->CwErrCount;
+
+        if (MXL_TRUE == devContextPtr->erasureDecodingSupported)
+        {
+          status |= MxL_HRCLS_Ctrl_GetMCNSSD(devId, demodId, MXL_HRCLS_ERASURE_SEL, &statsPtr->Erasures);
+        }
+        else
+        {
+          statsPtr->Erasures = 0;
+        }
       }
       else
       {
-        statsPtr->ReceivedMpeg = regData;
-
         status |= MxL_HRCLS_Ctrl_ReadDemodRegisterField(devId, demodId, DMD0_FECA_MEF, &regData); 
         statsPtr->ErrMpeg = regData;
+        statsPtr->Erasures = 0;
       }
+
+      status |= MxL_HRCLS_Ctrl_ReadDemodRegisterField(devId, demodId, DMD0_FECA_FRCNT, &regData/*dummy-read, needed only to reset CORR_BITS_SEL*/);
   
       MXLDBG2(MxL_HRCLS_PRINT("CwCorrCount = %d\n", statsPtr->CwCorrCount););
       MXLDBG2(MxL_HRCLS_PRINT("CwErrCount = %d\n", statsPtr->CwErrCount););
@@ -1731,6 +1896,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodErrorStat(
       MXLDBG2(MxL_HRCLS_PRINT("CorrBits = %d\n", statsPtr->CorrBits););
       MXLDBG2(MxL_HRCLS_PRINT("ReceivedMpeg = %d\n", statsPtr->ReceivedMpeg););
       MXLDBG2(MxL_HRCLS_PRINT("ErrMpeg = %d\n", statsPtr->ErrMpeg););
+      MXLDBG2(MxL_HRCLS_PRINT("Erasures = %d\n", statsPtr->Erasures););
 
     } else status = MXL_NOT_INITIALIZED;
   } else status = MXL_INVALID_PARAMETER;
@@ -1768,12 +1934,11 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodAnnexQamType(
 
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d\n", demodId););
-  if ((devContextPtr) && (demodId < devContextPtr->demodsCnt) && (annexTypePtr) &&
+  if ((devContextPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS) && (annexTypePtr) &&
     (qamTypePtr))
   {
     if (devContextPtr->driverInitialized)
     {
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
       status |= MxL_HRCLS_Ctrl_GetDemodCurrentAnnexAndQam(devContextPtr, demodId, annexTypePtr, qamTypePtr);
 #ifdef _MXL_DIAG_ENABLED_
       /* Check if QAM or Annex type has been changed since last update */
@@ -1791,6 +1956,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodAnnexQamType(
   MXLEXITAPISTR(devId, status);
   return (MXL_STATUS_E) status;
 }
+
 
 /**
  *****************************************************************************************
@@ -1823,11 +1989,10 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodCarrierOffset(
 
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d\n", demodId););
-  if ((devContextPtr) && (carrierOffsetInHzPtr) && (demodId < devContextPtr->demodsCnt))
+  if ((devContextPtr) && (carrierOffsetInHzPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->driverInitialized)
     {
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
       if (status == MXL_SUCCESS)
       {
         status = MxL_HRCLS_Ctrl_GetDemodCurrentResampleRate(devContextPtr, demodId, &resampleRateRatio);
@@ -1835,7 +2000,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodCarrierOffset(
         if ((status == MXL_SUCCESS) && (resampleRateRatio))
         {
 //          symbolRateInHz = ((UINT64)(devContextPtr->adcSampRateInHz)*(UINT64)(1<<14)*(byPass?1:3))/((UINT64) resampleRateRatio);
-          symbolRateInHz = MXL_DIV_ROUND((UINT64)(devContextPtr->adcSampRateInHz)*(UINT64)(1<<14)*(byPass?1:3), resampleRateRatio);
+          symbolRateInHz = MXL_DIV_ROUND((UINT64)(MXL_HRCLS_DEFAULT_REF_PLL_FREQ_HZ)*(UINT64)(1<<14)*(byPass?1:3), resampleRateRatio);
           if (FIRMWARE_STATUS_LOADED == devContextPtr->firmwareStatus)
           {
             status |= MxLWare_HRCLS_OEM_ReadRegister(devId, MAILBOX_REG_CARRIER_OFFSET_BASE + 2*demodId, &regData);
@@ -1866,7 +2031,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodCarrierOffset(
   return (MXL_STATUS_E) status;
 }
 
-static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDemodCurrentInterleaverDepth(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr, MXL_HRCLS_DMD_ID_E demodId, MXL_HRCLS_ANNEX_TYPE_E annexType, UINT8 * lengthIPtr, UINT8 * lengthJPtr)
+static MXL_STATUS_E MxL_HRCLS_Ctrl_GetDemodCurrentInterleaverDepth(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr, MXL_HRCLS_DMD_ID_E demodId, MXL_HRCLS_ANNEX_TYPE_E annexType, /*@out@*/ UINT8 * lengthIPtr, /*@out@*/ UINT8 * lengthJPtr)
 {
   UINT8 status = MXL_SUCCESS;
   PINTERLEAVER_LOOKUP_INFO_T interDepthLoopUpTable = MxL_HRCLS_InterDepthLookUpTable;
@@ -1926,11 +2091,10 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodInterleaverDepth(
   
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d\n", demodId););
-  if ((devContextPtr) && (interDepthIPtr) && (interDepthJPtr) && (demodId < devContextPtr->demodsCnt))
+  if ((devContextPtr) && (interDepthIPtr) && (interDepthJPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->driverInitialized)
     {
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
       /* Read the current Annex Type <10> */
       status |= MxL_HRCLS_Ctrl_GetDemodCurrentAnnexAndQam(devContextPtr, demodId, &annexType, NULL);
       status |= MxL_HRCLS_Ctrl_GetDemodCurrentInterleaverDepth(devContextPtr, demodId, annexType, interDepthIPtr, interDepthJPtr);
@@ -1968,18 +2132,16 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgUpdateDemodSettings(
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d\n", demodId););
 
-  if ((devContextPtr) && (demodId < devContextPtr->demodsCnt))
+  if ((devContextPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->driverInitialized)
     {
-      if ((devContextPtr->chipVersion > 1) && (devContextPtr->chipId ==  MXL_HRCLS_HERCULES_CHIP_ID))
+      if (((devContextPtr->chipVersion > 1) && (devContextPtr->chipId ==  MXL_HRCLS_HERCULES_CHIP_ID)) || (devContextPtr->chipId ==  MXL_HRCLS_TITAN_CHIP_ID))
       {
         UINT8 i;
         UINT8 depthI, depthJ;
         MXL_HRCLS_ANNEX_TYPE_E annexType = MXL_HRCLS_ANNEX_A;
         MXL_HRCLS_QAM_TYPE_E qamType;
-
-        demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
   
         /* Read the current Annex Type <10> */
         status |= MxL_HRCLS_Ctrl_GetDemodCurrentAnnexAndQam(devContextPtr, demodId, &annexType, &qamType);
@@ -2053,7 +2215,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodEqualizerFilter(
   
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d\n", demodId););
-  if ((devContextPtr) && (equInfoPtr) && (demodId < devContextPtr->demodsCnt))
+  if ((devContextPtr) && (equInfoPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->driverInitialized)
     {
@@ -2064,7 +2226,6 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodEqualizerFilter(
       UINT16  rspLenBytes = 0;
 #endif
   
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
 #ifdef _DEMOD_EQUALIZER_BLOCK_READ_
       /* Form command payload */
       demodEqualizerReq.data[0]    = (UINT8)demodId;
@@ -2118,14 +2279,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodEqualizerFilter(
       
       if (status == MXL_SUCCESS)
       {
-        if ((devContextPtr->chipVersion == 2) || (devContextPtr->chipId ==  MXL_HRCLS_MINOS_CHIP_ID))
-        {
-          equInfoPtr->dsEqDfeTapNum = (MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT * 2);
-        }
-        else
-        {
-          equInfoPtr->dsEqDfeTapNum = (MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT_V1 * 2);
-        }
+        equInfoPtr->dsEqDfeTapNum = MxL_HRCLS_Ctrl_GetDsEqualizerTapCount(devContextPtr, demodId);
         status = MxL_HRCLS_Ctrl_WaitForFieldValue(devId, MAILBOX_REG_DMD_EQUALIZER_RSP_LEN, 0, 16, 0, MXL_TRUE, 1, &rspLenBytes);
         if (MXL_SUCCESS == status)
         {
@@ -2152,7 +2306,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodEqualizerFilter(
       MxLWare_HRCLS_OEM_DelayUsec(1000);
 
       status |= MxL_HRCLS_Ctrl_UpdateDemodRegisterField(devId, demodId, DMD0_EXTENDED_SPACE_ADDRESS_AUTO_INCREMENT, (UINT16) 1); 
-      equInfoPtr->dsEqDfeTapNum = 56;
+      equInfoPtr->dsEqDfeTapNum = MxL_HRCLS_Ctrl_GetDsEqualizerTapCount(devContextPtr, demodId);
 
       status |= MxL_HRCLS_Ctrl_UpdateDemodRegisterField(devId, demodId, DMD0_EXTENDED_SPACE_ADDRESS, (UINT16) MXL_HRCLS_READ_FFE_START_ADDRESS); 
       for (i=0; i<MXL_HRCLS_FFE_INFO_LENGTH; i++)
@@ -2234,11 +2388,10 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodTimingOffset(
   
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d\n", demodId););
-  if ((devContextPtr) && (timingOffsetPtr) && (demodId < devContextPtr->demodsCnt))
+  if ((devContextPtr) && (timingOffsetPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->driverInitialized)
     {
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
       if (status == MXL_SUCCESS)
       {
         SINT64 temp;
@@ -2300,19 +2453,26 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodEnable(
   
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d, demodEnable=%d\n", demodId, (demodEnable==MXL_TRUE)?1:0););
-  if ((devContextPtr) && (demodId < devContextPtr->demodsCnt))
+  if ((devContextPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->driverInitialized)
     {
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
-  
-      if (devContextPtr->xpt.supported == MXL_FALSE)
-      {
-        status |= MxL_HRCLS_Ctrl_SetMpegOutEnable(devContextPtr, demodId, demodEnable);
-      }
-      status |= MxL_HRCLS_Ctrl_ConfigDemodClockEnable(devContextPtr, demodId, demodEnable);
+      HOST_COMMAND_T demodEnableCfg;
+
+      /* Form command payload */
+      demodEnableCfg.data[0] = ((UINT8)demodId & 0x0F); // Only least 4 bits used right now.
+      demodEnableCfg.data[0] |= (demodEnable == MXL_ENABLE ? (1 << 4) : 0);
+      demodEnableCfg.payloadLen = 1;
+      demodEnableCfg.syncChar = 0;
+      demodEnableCfg.commandId = 0;
+      demodEnableCfg.payloadCheckSum = 0;
+
+      /* Send host command */
+      status = MxL_HRCLS_Ctrl_SendHostCommand(devId, &demodEnableCfg, HOST_CMD_CFG_DEMOD_ENABLE, MXL_HRCLS_HOST_REGULAR_COMMAND_SEQ_NUM);
+
       if (status == MXL_SUCCESS) devContextPtr->demods[(UINT8) demodId].enabled = demodEnable;
 
+#ifdef _MXL_HRCLS_OOB_ENABLED_
       if ((devContextPtr->demods[(UINT8) demodId].oobMode == MXL_TRUE) && (MXL_DISABLE == demodEnable))
       {
         if (MXL_TRUE == devContextPtr->oobFec_55_2_Supported)
@@ -2320,6 +2480,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodEnable(
           status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, OOB_2_CLK_ENABLE, 0);
         }
       }
+#endif      
     } else status = MXL_NOT_INITIALIZED;
   } else status = MXL_INVALID_PARAMETER;
   MXLEXITAPISTR(devId, status);
@@ -2352,11 +2513,10 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodEnable(
   
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d\n", demodId););
-  if ((devContextPtr) && (demodEnablePtr) && (demodId < devContextPtr->demodsCnt))
+  if ((devContextPtr) && (demodEnablePtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->driverInitialized)
     {
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
       status = MxL_HRCLS_Ctrl_GetDemodClockEnable(devId, demodId, demodEnablePtr);
       devContextPtr->demods[(UINT8) demodId].enabled = *demodEnablePtr;
     } else status = MXL_NOT_INITIALIZED;
@@ -2409,13 +2569,11 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodAllLockStatus(
   
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d\n", demodId););
-  if ((devContextPtr) && (demodId < devContextPtr->demodsCnt) &&
+  if ((devContextPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS) &&
     ((qamLockStatusPtr) || (fecLockStatusPtr) || (mpegLockStatusPtr) || (retuneRequiredPtr)))
   {
     if (devContextPtr->driverInitialized)
     {
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
-
       if (devContextPtr->demods[(UINT8) demodId].enabled == MXL_TRUE)
       {
         retuneRequired = MXL_FALSE; 
@@ -2432,6 +2590,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodAllLockStatus(
         fecLockStatus = ((readBack >> 1) & 0x0001)?MXL_TRUE:MXL_FALSE;
         mpegLockStatus = (readBack & 0x0001)?MXL_TRUE:MXL_FALSE;
 
+#ifdef _MXL_HRCLS_OOB_ENABLED_
         if (devContextPtr->demods[(UINT8) demodId].oobMode == MXL_TRUE)
         {
           if (OOB_SCTE_55_2_TYPE == devContextPtr->oobType)
@@ -2446,6 +2605,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodAllLockStatus(
           mpegLockStatus = fecLockStatus;
         }
         else
+#endif          
         if (annexType == MXL_HRCLS_ANNEX_A)
         {
           // Flip lock bit for MXL_HRCLS_ANNEX_A type
@@ -2518,12 +2678,11 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodRestart(UINT8 devId, MXL_HRCLS_DMD_ID_E d
   MXL_HRCLS_DEV_CONTEXT_T * devContextPtr = MxL_HRCLS_Ctrl_GetDeviceContext(devId);
   
   MXLENTERAPISTR(devId);
-  if ((devContextPtr)  && (demodId < devContextPtr->demodsCnt))
+  if ((devContextPtr)  && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->driverInitialized)
     {
       HOST_COMMAND_T demodRestartCfg;
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
 
       status = MxL_HRCLS_Ctrl_ConfigDemodClockEnable(devContextPtr, demodId, MXL_TRUE); 
       if (status == MXL_SUCCESS)
@@ -2571,11 +2730,10 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodInvertSpectrum(UINT8 devId, MXL_HRCLS_DMD
   
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d\n", demodId););
-  if ((devContextPtr)  && (demodId < devContextPtr->demodsCnt))
+  if ((devContextPtr)  && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
   {
     if (devContextPtr->driverInitialized)
     {
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
       /* Set Carrier Offset Address and clear auto-increment bit*/ 
       if (FIRMWARE_STATUS_LOADED == devContextPtr->firmwareStatus)
       {
@@ -2614,6 +2772,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodInvertSpectrum(UINT8 devId, MXL_HRCLS_DMD
   return (MXL_STATUS_E)status;
 }
 
+#ifdef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
 /*---------------------------------------------------------------------------------------
 --| FUNCTION NAME : MxLWare_HRCLS_API_CfgDemodInterruptOnPid
 --|
@@ -2743,6 +2902,7 @@ MXLDBG2(
   MXLEXITAPISTR(devId, status);
   return (status);
 }
+#endif
 
 /*---------------------------------------------------------------------------------------
 --| FUNCTION NAME : MxLWare_HRCLS_API_CfgDemodFreqSearchRange
@@ -2769,11 +2929,10 @@ MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodFreqSearchRange(
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d, searchRangeIdx=%d\n", demodId, searchRangeIdx););
 
-  if ((devContextPtr) && (demodId < devContextPtr->demodsCnt) && (searchRangeIdx <= MXL_HRCLS_DEMOD_FREQ_SEARCH_RANGE_IDX_MAX))
+  if ((devContextPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS) && (searchRangeIdx <= MXL_HRCLS_DEMOD_FREQ_SEARCH_RANGE_IDX_MAX))
   {
     if (devContextPtr->driverInitialized)
     {
-      demodId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(devContextPtr, demodId); 
       status = MxL_HRCLS_Ctrl_UpdateDemodRegisterField(devId, demodId, DMD0_EQU_FREQ_SWEEP_LIMIT, searchRangeIdx);
       devContextPtr->demods[(UINT8) demodId].demodFreqRangeIdx = searchRangeIdx;
     } else status = MXL_NOT_INITIALIZED;
@@ -2783,6 +2942,100 @@ MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodFreqSearchRange(
   return status;
 }
 
+/**
+ *****************************************************************************************
+ *  @param[in]  devId MxL device id
+ *  @param[in]  demodId Demodulator ID number
+ *
+ *  @apibrief   This API returns the constellation value of the specified demod.
+ *
+ *  @usage      This API can be called any time.
+ *
+ *
+ *  @return     MXL_SUCCESS or MXL_FAILURE
+ ****************************************************************************************/
+
+MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodConstellationValue(
+    UINT8     devId,                        
+    MXL_HRCLS_DMD_ID_E demodId,
+    SINT16 *iVal,
+    SINT16 *qVal
+    )
+{
+  MXL_STATUS_E status = MXL_FAILURE;
+  UINT16 softDecValueReg, regVal;
+  MXL_HRCLS_DEV_CONTEXT_T * devContextPtr = MxL_HRCLS_Ctrl_GetDeviceContext(devId);
+  
+  MXLENTERAPISTR(devId);
+  MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d\n", demodId););
+  if ((devContextPtr) && (iVal && qVal) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS))
+  {
+    if (devContextPtr->driverInitialized)
+    {
+      /* Check the correctness of MxL_HRCLS_Ctrl_ConvertDemodIdToAddr() */
+      if (devContextPtr->demods[(UINT8) demodId].enabled == MXL_TRUE)
+      {
+        softDecValueReg = MxL_HRCLS_Ctrl_ConvertDemodIdToAddr(demodId, EXTRACT_ADDR(DMD0_SOFTDEC_VALUE));
+        do
+        {
+          status = MxL_HRCLS_Ctrl_ReadDemodRegister(devId, demodId, softDecValueReg, &regVal);
+        } while ((status == MXL_SUCCESS) && (((regVal & 0x0400) >> 10) == 1));
+        if (status == MXL_SUCCESS)
+        {
+          *iVal = (SINT16)(regVal & 0x03FF);
+          status = MxL_HRCLS_Ctrl_ReadDemodRegister(devId, demodId, softDecValueReg, &regVal);
+          *qVal = (SINT16)(regVal & 0x03FF);
+        }
+      } else status = MXL_NOT_READY;
+    } else status = MXL_NOT_INITIALIZED;
+  } else status = MXL_INVALID_PARAMETER;
+  MXLEXITAPISTR(devId, status);
+  return status;
+}
+
+/**
+ *****************************************************************************************
+ *  @param[in]  devId MxL device id
+ *  @param[in]  demodId Demodulator ID number
+ *  @param[out] Returns with adcIqFlip status MXL_HRCLS_IQ_NORMAL or MXL_HRCLS_IQ_FLIPPED
+ *
+ *  @apibrief   It the gets the I/Q path status.
+ *
+ *  @usage      This API should be called anytime after demod locked.
+ *
+ *  @return      MXL_SUCCESS or MXL_FAILURE, MXL_NOT_INITIALIZED, MXL_INVALID_PARAMETER
+ ****************************************************************************************/
+
+MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodAdcIqFlip(
+    UINT8     devId,                      
+    MXL_HRCLS_DMD_ID_E demodId,          
+    MXL_HRCLS_IQ_FLIP_E  *adcIqFlipPtr               
+    )
+{
+  MXL_STATUS_E status = MXL_SUCCESS;
+  MXL_HRCLS_DEV_CONTEXT_T * devContextPtr = MxL_HRCLS_Ctrl_GetDeviceContext(devId);
+  MXL_BOOL_E adcIqFlip = MXL_DISABLE; 
+
+  MXLENTERAPISTR(devId);
+  MXLENTERAPI(MxL_HRCLS_DEBUG("demodId=%d\n", demodId););
+  if ((devContextPtr) && (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS) && (adcIqFlipPtr != NULL))
+  {
+    if (devContextPtr->driverInitialized)
+    { 
+      if (devContextPtr->demods[(UINT8) demodId].enabled == MXL_TRUE) {
+        status = MxL_HRCLS_Ctrl_GetDemodAdcIqSwap(devContextPtr, demodId, &adcIqFlip);
+      } else {
+        MXLERR(printf("Error: Demod is not enabled\n"););
+        status = MXL_FAILURE;
+      }
+      if (status == MXL_SUCCESS) 
+        *adcIqFlipPtr = (adcIqFlip == MXL_DISABLE) ? MXL_HRCLS_IQ_NORMAL:MXL_HRCLS_IQ_FLIPPED;
+    } else status = MXL_NOT_INITIALIZED;
+  } else status = MXL_INVALID_PARAMETER;
+  MXLEXITAPISTR(devId, status);
+  return status;
+}
+
+
 #endif // of _MXL_HRCLS_DEMOD_ENABLED_
-#endif
 

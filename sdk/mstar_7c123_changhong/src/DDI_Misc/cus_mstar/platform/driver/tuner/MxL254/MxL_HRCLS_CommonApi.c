@@ -11,9 +11,6 @@
  *****************************************************************************************
  *                Copyright (c) 2011, MaxLinear, Inc.
  ****************************************************************************************/
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_MXL254)
-
 
 #include "MxL_HRCLS_Common.h"
 #include "MxL_HRCLS_CommonApi.h"
@@ -21,7 +18,7 @@
 #include "MxL_HRCLS_CalCtrl.h"
 
 /* MxLWare Driver version for MxL_HRCLS */
-static const UINT8 MxLWare_HRCLS_Version[] = {4, 1, 4, 1, 7};
+static const UINT8 MxLWare_HRCLS_Version[] = {6, 1, 2, 5, 1};
 
 /* OEM Data pointer array */
 void * MxL_HRCLS_OEM_DataPtr[MXL_HRCLS_MAX_NUM_DEVICES];
@@ -66,7 +63,6 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDrvInit(
       MxL_HRCLS_OEM_DataPtr[devId] = oemDataPtr;
 #endif
       devContextPtr->devId = devId;
-      devContextPtr->adcSampRateInHz = MXL_HRCLS_DEFAULT_REF_PLL_FREQ_HZ;
       devContextPtr->deviceType = requiredDeviceType;
       switch (requiredDeviceType)
       {
@@ -78,9 +74,14 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDrvInit(
 #ifdef MXL_HRCLS_267_ENABLE
         case MXL_HRCLS_DEVICE_267:
             MXLDBG1(MxL_HRCLS_DEBUG("MXL267 driver initialization\n"););
-            break;
-#endif
-#ifdef MXL_HRCLS_258_ENABLE
+            break; 
+#endif            
+#ifdef MXL_HRCLS_268_ENABLE        
+        case MXL_HRCLS_DEVICE_268:
+            MXLDBG1(MxL_HRCLS_DEBUG("MXL268 driver initialization\n"););
+            break; 
+#endif            
+#ifdef MXL_HRCLS_258_ENABLE        
         case MXL_HRCLS_DEVICE_258:
             MXLDBG1(MxL_HRCLS_DEBUG("MXL258 driver initialization\n"););
             break;
@@ -103,9 +104,9 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDrvInit(
 #ifdef MXL_HRCLS_252_ENABLE
         case MXL_HRCLS_DEVICE_252:
             MXLDBG1(MxL_HRCLS_DEBUG("MXL252 driver initialization\n"););
-            break;
-#endif
-#ifdef MXL_HRCLS_269_ENABLE
+            break; 
+#endif            
+#if defined MXL_HRCLS_269_ENABLE && defined _HRCLS_V1_SUPPORT_ENABLED_
         case MXL_HRCLS_DEVICE_269:
             MXLDBG1(MxL_HRCLS_DEBUG("MXL269 driver initialization\n"););
             break;
@@ -136,6 +137,24 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDrvInit(
   MXLEXITAPISTR(devId,status);
 
   return status;
+}
+
+static UINT8 MxL_HRCLS_Ctrl_GetHermodVersionNumber(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr)
+{
+  UINT8 versionNo = 0;
+  MXL_STATUS_E status;
+  UINT16 gpioVal = 0;
+
+  status = MxL_HRCLS_Ctrl_ReadRegisterField(devContextPtr->devId, GPIO_DIN, &gpioVal);
+  if (status == MXL_SUCCESS)
+  {
+    UINT8 gpio2, gpio3;
+    gpio2 = (gpioVal & 0x04)?1:0;
+    gpio3 = (gpioVal & 0x08)?1:0;
+    versionNo = gpio2 ^ gpio3;
+  }
+
+  return versionNo;
 }
 
 /**
@@ -177,7 +196,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDevReset(
 
       if (status == MXL_SUCCESS)
       {
-#ifndef _MXL_DIAG_ENABLED_
+#if (!defined _MXL_DIAG_ENABLED_) && (!defined _MXL_TITAN_FPGA_ENABLED_)
         UINT16 flavorId;
 
         status |= MxL_HRCLS_Ctrl_ReadRegisterField(devId, ANA_DIG_SOC_FLVR, &flavorId);
@@ -193,7 +212,10 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDevReset(
           case MXL_FLVR_MXL258: if (devContextPtr->deviceType !=MXL_HRCLS_DEVICE_258) status = MXL_NOT_SUPPORTED; break;
           case MXL_FLVR_MXL265: if (devContextPtr->deviceType !=MXL_HRCLS_DEVICE_265) status = MXL_NOT_SUPPORTED; break;
           case MXL_FLVR_MXL267: if (devContextPtr->deviceType !=MXL_HRCLS_DEVICE_267) status = MXL_NOT_SUPPORTED; break;
+          case MXL_FLVR_MXL268: if (devContextPtr->deviceType !=MXL_HRCLS_DEVICE_268) status = MXL_NOT_SUPPORTED; break;
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
           case MXL_FLVR_MXL269: if (devContextPtr->deviceType !=MXL_HRCLS_DEVICE_269) status = MXL_NOT_SUPPORTED; break;
+#endif
           case MXL_FLVR_MXL212: if (devContextPtr->deviceType !=MXL_HRCLS_DEVICE_212) status = MXL_NOT_SUPPORTED; break;
           case MXL_FLVR_MXL213: if (devContextPtr->deviceType !=MXL_HRCLS_DEVICE_213) status = MXL_NOT_SUPPORTED; break;
           case MXL_FLVR_MXL214: if (devContextPtr->deviceType !=MXL_HRCLS_DEVICE_214) status = MXL_NOT_SUPPORTED; break;
@@ -213,15 +235,45 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDevReset(
             }
           }
 #endif // _MXL_HRCLS_DEMOD_ENABLED_
-
+          
           status |= MxL_HRCLS_Ctrl_ReadRegisterField(devId, ANA_DIG_SOC_ID, &temp);
-          if ((temp == MXL_HRCLS_HERCULES_HW_ID) || (temp == MXL_HRCLS_MINOS_HW_ID))
+#ifdef _MXL_TITAN_FPGA_ENABLED_
+          temp = MXL_HRCLS_TITAN_HW_ID;
+#endif // _MXL_TITAN_FPGA_ENABLED_
+          if ((temp == MXL_HRCLS_HERCULES_HW_ID) || (temp == MXL_HRCLS_MINOS_HW_ID) || (temp == MXL_HRCLS_ATLAS_HW_ID)  || (temp == MXL_HRCLS_TITAN_HW_ID))
           {
-            devContextPtr->chipId = (temp == MXL_HRCLS_HERCULES_HW_ID)?MXL_HRCLS_HERCULES_CHIP_ID:MXL_HRCLS_MINOS_CHIP_ID;
+            switch (temp)
+            {
+              case MXL_HRCLS_HERCULES_HW_ID:
+                devContextPtr->chipId = MXL_HRCLS_HERCULES_CHIP_ID;
+                break;
+                
+              case MXL_HRCLS_MINOS_HW_ID:
+                devContextPtr->chipId = MXL_HRCLS_MINOS_CHIP_ID;
+                break;
+
+              case MXL_HRCLS_ATLAS_HW_ID:
+                devContextPtr->chipId = MXL_HRCLS_ATLAS_CHIP_ID;
+                break;
+
+              case MXL_HRCLS_TITAN_HW_ID:
+                devContextPtr->chipId = MXL_HRCLS_TITAN_CHIP_ID;
+                break;                
+            }
+            
             status |= MxL_HRCLS_Ctrl_ReadRegisterField(devId, CHIP_VERSION_MXL254, &temp);
             devContextPtr->chipVersion = temp;
-
-            MXLDBG1(MxL_HRCLS_DEBUG("chipId=%s chipVersion=%d\n", (devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID)?"HERCULES":"MINOS", devContextPtr->chipVersion);)
+            if ((status == MXL_SUCCESS) && (devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) && (devContextPtr->chipVersion == 2))
+            {
+              devContextPtr->chipVersion += MxL_HRCLS_Ctrl_GetHermodVersionNumber(devContextPtr);
+            }
+            
+            MXLDBG1(MxL_HRCLS_DEBUG("chipId=%s chipVersion=%d\n", 
+                              (devContextPtr->chipId == MXL_HRCLS_HERCULES_CHIP_ID) ? "HERCULES" :
+                              (devContextPtr->chipId == MXL_HRCLS_MINOS_CHIP_ID) ? "MINOS" :
+                              (devContextPtr->chipId == MXL_HRCLS_ATLAS_CHIP_ID) ? "ATLAS" :
+                              (devContextPtr->chipId == MXL_HRCLS_TITAN_CHIP_ID) ? "TITAN" : "UNKNOWN", 
+                              devContextPtr->chipVersion);)
 #ifdef _MXL_HRCLS_SERDES_ENABLED_
             devContextPtr->serDesLineRate =  MXL_HRCLS_DEFAULT_SERDES_LINERATE;
             devContextPtr->serDesMode[(UINT8) MXL_HRCLS_SERDES_LANE0] = MXL_HRCLS_SERDES_MODE_DISABLED;
@@ -328,15 +380,18 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDevRefClockOut(
   {
     if (devContextPtr->driverInitialized)
     {
-      status = MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_CLKOUT_ENA, (enable == MXL_ENABLE)?1:0);
-      if (status == MXL_SUCCESS)
+      if (devContextPtr->clockOutSupported == MXL_TRUE)
       {
-        status = MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_CLKOUT_AMP, (UINT16) (enable == MXL_ENABLE)?amplitude:0);
+        status = MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_CLKOUT_ENA, (enable == MXL_ENABLE)?1:0); 
         if (status == MXL_SUCCESS)
         {
-          status = MxL_HRCLS_Ctrl_ToggleRegisterBitOneZero(devId, DIG_ANA_XTAL_UPDATE);
+          status = MxL_HRCLS_Ctrl_UpdateRegisterField(devId, DIG_ANA_CLKOUT_AMP, (UINT16) (enable == MXL_ENABLE)?amplitude:0); 
+          if (status == MXL_SUCCESS)
+          {
+            status = MxL_HRCLS_Ctrl_ToggleRegisterBitOneZero(devId, DIG_ANA_XTAL_UPDATE);  
+          }
         }
-      }
+      } else status = MXL_NOT_SUPPORTED;
     } else status = MXL_NOT_INITIALIZED;
   } else status = MXL_INVALID_PARAMETER;
   MXLEXITAPISTR(devId, status);
@@ -724,11 +779,12 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgTunerChanTune(
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("chanId=%u, bandWidth=%uMHz, frequency=%uHz\n", chanId, bandWidthInMhz, centerFrequencyInHz););
   if ((devContextPtr) && ((chanId < devContextPtr->dfeChanCount) || (chanId == MXL_HRCLS_CHAN_NB))
-      && ((bandWidthInMhz == 6) || (bandWidthInMhz == 8)))
+      && ((bandWidthInMhz == 6) || (bandWidthInMhz == 8))
+      && (devContextPtr->dfeChanMap == NULL || chanId == MXL_HRCLS_CHAN_NB || (devContextPtr->dfeChanMap && devContextPtr->dfeChanMap[chanId].ifMask)))
   {
     if (devContextPtr->driverInitialized)
     {
-#ifndef _MXL_DIAG_ENABLED_
+#if (!defined _MXL_DIAG_ENABLED_) && (!defined _MXL_TITAN_FPGA_ENABLED_)
       if (((centerFrequencyInHz >= MXL_HRCLS_WB_CHANNEL_FREQ_MIN_HZ) && (centerFrequencyInHz <= MXL_HRCLS_WB_CHANNEL_FREQ_MAX_HZ))
           || ((chanId == MXL_HRCLS_CHAN_NB) && (centerFrequencyInHz >= MXL_HRCLS_NB_CHANNEL_FREQ_MIN_HZ) && (centerFrequencyInHz <= MXL_HRCLS_NB_CHANNEL_FREQ_MAX_HZ)))
 #else
@@ -752,16 +808,8 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgTunerChanTune(
           MXLERR(MxL_HRCLS_ERROR("%s tuner must be enabled first\n", (chanId == MXL_HRCLS_CHAN_NB)?"NB":"FB"););
         }
       } else status = MXL_INVALID_PARAMETER;
-    }
-    else
-    {
-        status = MXL_NOT_INITIALIZED;
-    }
-  }
-  else
-  {
-    status = MXL_INVALID_PARAMETER;
-  }
+    } else status = MXL_NOT_INITIALIZED;
+  } else status = MXL_INVALID_PARAMETER;
   MXLEXITAPISTR(devId, status);
   return status;
 }
@@ -790,6 +838,7 @@ MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_CfgTunerChanFineRetune(
 {
   MXL_STATUS_E    status = MXL_SUCCESS;
   MXL_HRCLS_DEV_CONTEXT_T * devContextPtr = MxL_HRCLS_Ctrl_GetDeviceContext(devId);
+  UINT8         phyChanIdCode;
 
   MXLENTERAPISTR(devId);
   if (devContextPtr)
@@ -800,10 +849,17 @@ MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_CfgTunerChanFineRetune(
       HOST_COMMAND_T command;
 
       phyChanId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalChanId(devContextPtr, chanId);
+      phyChanIdCode = (UINT8)phyChanId;
+      if (MXL_HRCLS_CHAN_NB == phyChanId)
+      {
+        phyChanIdCode = MXL_HRCLS_NB_TUNER_CHANNEL_CODE;
+      }
+
+
       /* Form command payload */
-      command.data[0] = (UINT8) phyChanId;
-      command.data[1] = (UINT8) 0;
-      command.data[2] = (UINT8) 0;
+      command.data[0] = phyChanIdCode; 
+      command.data[1] = (UINT8) 0; 
+      command.data[2] = (UINT8) 0; 
       command.payloadLen = 3;
       command.payloadCheckSum = 0;
       command.syncChar = 0;
@@ -893,6 +949,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgTunerChannelDisable(
 {
   MXL_STATUS_E    status = MXL_SUCCESS;
   MXL_HRCLS_DEV_CONTEXT_T * devContextPtr = MxL_HRCLS_Ctrl_GetDeviceContext(devId);
+  UINT8         phyChanIdCode;
 
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MxL_HRCLS_DEBUG("chanId=%d\n", chanId););
@@ -900,26 +957,33 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgTunerChannelDisable(
   {
     if (devContextPtr->driverInitialized)
     {
+      HOST_COMMAND_T command;
       MXL_HRCLS_CHAN_ID_E phyChanId = MxL_HRCLS_Ctrl_ConvertLogical2PhysicalChanId(devContextPtr, chanId);
+      phyChanIdCode = (UINT8)phyChanId;
+      if (MXL_HRCLS_CHAN_NB == phyChanId)
       {
-        HOST_COMMAND_T command;
-        /* Form command payload */
-        command.data[0] = ((UINT8) phyChanId);
-        command.data[1] = 0;
-        command.data[2] = 0;
-        command.data[3] = 0;
-        command.data[4] = 0;
-        command.payloadLen = 5;
-        command.payloadCheckSum = 0;
-        command.syncChar = 0;
-        command.commandId = 0;
-        /* Send host command */
-        status = MxL_HRCLS_Ctrl_SendHostCommand(devId, &command, HOST_CMD_CFG_TUNER_CHAN_TUNE, MXL_HRCLS_HOST_REGULAR_COMMAND_SEQ_NUM);
+        phyChanIdCode = MXL_HRCLS_NB_TUNER_CHANNEL_CODE;
+      }
 
-        if ((status == MXL_SUCCESS) && (chanId == MXL_HRCLS_CHAN_NB))
-        {
-          devContextPtr->nbTunerPowerState = MXL_OFF;
-        }
+      /* Form command payload */
+      command.data[0]    = ((UINT8) phyChanIdCode&0x1F)          << 0;
+      command.data[0]   |= (UINT8)(0                             << 5); // channel disable
+      command.data[0]   |= (UINT8)(((phyChanIdCode& 0x20) >> 5)  << 6); // channel id msb 
+      command.data[0]   |= (UINT8)((0)                           << 7); // Dont care
+      command.data[1]    = 0;
+      command.data[2]    = 0;
+      command.data[3]    = 0;
+      command.data[4]    = 0;
+      command.payloadLen = 5;
+      command.payloadCheckSum = 0;
+      command.syncChar = 0;
+      command.commandId = 0;
+      /* Send host command */
+      status = MxL_HRCLS_Ctrl_SendHostCommand(devId, &command, HOST_CMD_CFG_TUNER_CHAN_TUNE, MXL_HRCLS_HOST_REGULAR_COMMAND_SEQ_NUM);
+
+      if ((status == MXL_SUCCESS) && (chanId == MXL_HRCLS_CHAN_NB))
+      {
+        devContextPtr->nbTunerPowerState = MXL_OFF;
       }
     } else status = MXL_NOT_INITIALIZED;
   } else status = MXL_INVALID_PARAMETER;
@@ -968,7 +1032,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgTunerEnable(
         if (devContextPtr->nbTunerPowerState != MXL_OFF)
         {
           status = MXL_NOT_SUPPORTED;
-          MXLERR(MxL_HRCLS_ERROR("[HRCLS] NB tuner was already enabled\n"));
+          MXLDBG1(MxL_HRCLS_DEBUG("[HRCLS] NB tuner was already enabled\n"));
         }
       }
       else
@@ -976,7 +1040,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgTunerEnable(
         if (devContextPtr->fbTunerPowerState != MXL_OFF)
         {
           status = MXL_NOT_SUPPORTED;
-          MXLERR(MxL_HRCLS_ERROR("[HRCLS] FB tuner was already enabled\n"));
+          MXLDBG1(MxL_HRCLS_DEBUG("[HRCLS] FB tuner was already enabled\n"));
         }
       }
 
@@ -1048,7 +1112,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgTunerDisable(
         if (devContextPtr->nbTunerPowerState != MXL_ON)
         {
           status = MXL_NOT_SUPPORTED;
-          MXLERR(MxL_HRCLS_ERROR("[HRCLS] NB tuner was already disabled\n"));
+          MXLDBG1(MxL_HRCLS_DEBUG("[HRCLS] NB tuner was already disabled\n"));
         }
       }
       else
@@ -1056,7 +1120,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgTunerDisable(
         if (devContextPtr->fbTunerPowerState != MXL_ON)
         {
           status = MXL_NOT_SUPPORTED;
-          MXLERR(MxL_HRCLS_ERROR("[HRCLS] FB tuner was already disabled\n"));
+          MXLDBG1(MxL_HRCLS_DEBUG("[HRCLS] FB tuner was already disabled\n"));
         }
       }
       if (status == MXL_SUCCESS)
@@ -1120,9 +1184,9 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgTunerIfOutParams(
   MXL_HRCLS_DEV_CONTEXT_T * devContextPtr = MxL_HRCLS_Ctrl_GetDeviceContext(devId);
 
   MXLENTERAPISTR(devId);
-  MXLENTERAPI(MxL_HRCLS_DEBUG("enable=%d, freq=%dHz, signalLevel=%d(%d.%ddBuV)\n", (enable == MXL_TRUE)?1:0, ifFreqInHz, signalLevel, signalLevel / 2, signalLevel % 2););
-  if ((devContextPtr) &&
-      (((ifFreqInHz >= MXL_HRCLS_IFOUT_FREQ_MIN_HZ) && (ifFreqInHz <= MXL_HRCLS_IFOUT_FREQ_MAX_HZ)
+  MXLENTERAPI(MxL_HRCLS_DEBUG("ifOutId=%d, enable=%d, freq=%dHz, signalLevel=%d(%d.%ddBuV)\n", ifOutId, (enable == MXL_TRUE)?1:0, ifFreqInHz, signalLevel, signalLevel / 2, signalLevel % 2););
+  if ((devContextPtr) && 
+      (((ifFreqInHz >= MXL_HRCLS_IFOUT_FREQ_MIN_HZ) && (ifFreqInHz <= MXL_HRCLS_IFOUT_FREQ_MAX_HZ) 
         && (signalLevel >= MXL_HRCLS_IFOUT_LEVEL_MIN) && (signalLevel <= MXL_HRCLS_IFOUT_LEVEL_MAX)) || (enable == MXL_DISABLE))
       )
   {
@@ -1935,16 +1999,17 @@ MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_ReqDevTemperature(
 {
   MXL_STATUS_E status;
   MXL_HRCLS_DEV_CONTEXT_T * devContextPtr = MxL_HRCLS_Ctrl_GetDeviceContext(devId);
-  SINT16 grayCodeToTemp[] =  MxL_HRCLS_GRAY_CODE_TEMPERATURE;
-  UINT16 grayCode;
   MXLENTERAPISTR(devId);
 
   if ((devContextPtr) && (temperaturePtr))
   {
     if ((devContextPtr->driverInitialized) && (devContextPtr->firmwareStatus == FIRMWARE_STATUS_LOADED))
     {
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
       if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (devContextPtr->chipVersion == 1))
       {
+        SINT16 grayCodeToTemp[] =  MxL_HRCLS_GRAY_CODE_TEMPERATURE;
+        UINT16 grayCode;
         status = MxL_HRCLS_Ctrl_ReadRegisterField(devId, ANA_DIG_TSENS_READBACK, &grayCode); // Read back temp sensor
         if (MXL_SUCCESS == status)
         {
@@ -1952,6 +2017,7 @@ MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_ReqDevTemperature(
         }
       }
       else
+#endif
       {
         status = MxLWare_HRCLS_OEM_ReadRegister(devId, MAILBOX_REG_TEMPERATURE_DEGREES, (UINT16*)temperaturePtr);
       }
@@ -1960,5 +2026,4 @@ MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_ReqDevTemperature(
   MXLEXITAPISTR(devId, status);
   return status;
 }
-#endif
 

@@ -18,7 +18,13 @@
 #define MXL254_I2C_ADDR   0x50 //0x50 0x51 0x52 0x53 depend on HW setting
 #define MAX_CHANNEL_COUNT 4
 
+#if TS_PARALLEL_OUTPUT
+static MXL_HRCLS_XPT_MODE_E eXPT_mode = MXL_HRCLS_XPT_MODE_PARALLEL;
+#else
+static MXL_HRCLS_XPT_MODE_E eXPT_mode = MXL_HRCLS_XPT_MODE_NO_MUX_4;
+#endif
 
+static MXL_HRCLS_XPT_HEADER_SIZE_E hdr_size = MXL_HRCLS_XPT_HDR_SIZE_12_BYTES;
 static UINT8 MxL254_LIB[] =
 {
   #include "MxL_HRCLS_FW.dat"
@@ -32,7 +38,13 @@ typedef struct
 
 mxl254_init_data_t initData;
 
-
+static MS_U32 extra_hdr[4][3] = 
+{
+ {0x01010148, 0x01010101, 0x01010101}, 
+ {0x02020249, 0x02020202, 0x02020202},
+ {0x0303034a, 0x03030303, 0x03030303},
+ {0x0404044b, 0x04040404, 0x04040404}
+};
 //-------------------------------------------------------------------------------------------------
 //  static function
 //---------------------------------------------------------------------------------------------
@@ -64,6 +76,158 @@ static MS_BOOL MXL254_init[MAX_FRONTEND_NUM] =
 {FALSE, FALSE,FALSE,FALSE};
 #endif
 
+static MS_BOOL MXL254_TSclk[MAX_FRONTEND_NUM][MAX_CHANNEL_COUNT] =
+#if (MAX_FRONTEND_NUM == 1)
+{0,0,0,0};
+#elif (MAX_FRONTEND_NUM == 2)
+{{0,0,0,0}, {0,0,0,0}};
+#elif (MAX_FRONTEND_NUM == 3)
+{{0,0,0,0}, {0,0,0,0},{0,0,0,0}};
+#elif (MAX_FRONTEND_NUM == 4)
+{{0,0,0,0}, {0,0,0,0},{0,0,0,0},{0,0,0,0}};
+#else
+{{0,0,0,0}, {0,0,0,0},{0,0,0,0},{0,0,0,0}};
+#endif
+
+static MS_U32 mxl_GetMaxTSClk(MS_U8 u8DemodIndex, MS_U8 u8StartIdx, MS_U8 u8EndInx)
+{
+   MS_U8 u8DMDIdx=0;
+   MS_U32 u32MaxTSClk=0;
+
+   for(u8DMDIdx=u8StartIdx;u8DMDIdx<u8EndInx; u8DMDIdx++)
+   {
+       if(u32MaxTSClk < MXL254_TSclk[u8DemodIndex][u8DMDIdx])
+           u32MaxTSClk = MXL254_TSclk[u8DemodIndex][u8DMDIdx];
+   }
+
+   return u32MaxTSClk;
+}
+
+static MXL_HRCLS_MPEG_CLK_RATE_E mxl_GetTSClkRate( MS_U8 u8DemodIndex, MXL_HRCLS_QAM_TYPE_E eConstellation, UINT16 symbolRatekSps)
+{
+   MS_U8 u8BitPerSymbol, u8ClkRateIdx=0;
+   MS_U32 u32TSClkTab[8]={10550, 21090, 25960, 28160, 42180, 56210, 84370, 112500}; //KHz
+   MS_U32 u32TSClk;
+   MXL_HRCLS_MPEG_CLK_RATE_E eClkRate = MXL_HRCLS_MPEG_CLK_112_50MHz;
+   MXL_HRCLS_DMD_ID_E eDMD_ID;
+
+   eDMD_ID = (MXL_HRCLS_DMD_ID_E)(u8DemodIndex % MAX_CHANNEL_COUNT);
+
+   switch(eConstellation)
+   {
+        case MXL_HRCLS_QAM16:
+           u8BitPerSymbol = 4;
+           break;
+       case MXL_HRCLS_QAM32:
+           u8BitPerSymbol = 5;
+           break;
+       case MXL_HRCLS_QAM64:
+           u8BitPerSymbol = 6;
+           break;
+       case MXL_HRCLS_QAM128:
+           u8BitPerSymbol = 7;
+           break;
+       case MXL_HRCLS_QAM256:
+       case MXL_HRCLS_QAM_AUTO:
+       default:
+           u8BitPerSymbol = 8;
+           break;
+   }
+
+   u32TSClk = symbolRatekSps * u8BitPerSymbol *188/204; // for DVBC only, J83B not ready
+   MXL254_TSclk[u8DemodIndex][eDMD_ID] = u32TSClk;
+   
+   switch(eXPT_mode)
+   {
+       case MXL_HRCLS_XPT_MODE_PARALLEL:
+           u32TSClk = mxl_GetMaxTSClk(u8DemodIndex,0,4);
+           u32TSClk = (u32TSClk*4 * 200)/188/8;
+           break;
+       case MXL_HRCLS_XPT_MODE_MUX_2:
+           if(eDMD_ID < MXL_HRCLS_DEMOD2)
+               u32TSClk = mxl_GetMaxTSClk(u8DemodIndex,0,2);
+           else
+               u32TSClk = mxl_GetMaxTSClk(u8DemodIndex,2,4);
+
+           u32TSClk = (u32TSClk* 2 * 200)/188; // 188 byte extend to 200 byte for extra header
+           break;
+       case MXL_HRCLS_XPT_MODE_MUX_1:
+
+           u32TSClk = (u32TSClk* 4 * 200)/188; // 188 byte extend to 200 byte for extra header
+           break;
+       case MXL_HRCLS_XPT_MODE_NO_MUX_4:
+       default:
+           break;
+   }
+
+   for(u8ClkRateIdx=0;u8ClkRateIdx<8; u8ClkRateIdx++)
+   {
+      if(u32TSClk < u32TSClkTab[u8ClkRateIdx])
+        break;
+   }
+
+   eClkRate = (MXL_HRCLS_MPEG_CLK_RATE_E)u8ClkRateIdx;
+   DMD_DBG(("=== MxL254 TS Clock Rate: "));
+
+   switch(eClkRate)
+   {
+       case MXL_HRCLS_MPEG_CLK_10_55MHz:
+           DMD_DBG((" 10.55 Mhz\n"));
+           break;
+       case MXL_HRCLS_MPEG_CLK_21_09MHz:
+           DMD_DBG((" 21.09 Mhz\n"));
+           break;
+       case MXL_HRCLS_MPEG_CLK_25_96MHz:
+           DMD_DBG((" 25.96 Mhz\n"));
+           break;
+       case MXL_HRCLS_MPEG_CLK_42_18MHz:
+           DMD_DBG((" 42.18 Mhz\n"));
+           break;
+       case MXL_HRCLS_MPEG_CLK_56_21MHz:
+           DMD_DBG((" 56.21 Mhz\n"));
+           break;
+       case MXL_HRCLS_MPEG_CLK_84_37MHz:
+           DMD_DBG((" 84.37 Mhz\n"));
+           break;
+       case MXL_HRCLS_MPEG_CLK_112_50MHz:
+           DMD_DBG((" 112.50 Mhz\n"));
+           break;    
+       default:
+           DMD_DBG((" NULL\n"));
+           break;
+   }
+
+   return eClkRate;
+}
+
+static MXL_HRCLS_XPT_OUTPUT_ID_E mxl_Get_XPT_ID(MXL_HRCLS_DMD_ID_E eDMD_ID)
+{
+   MXL_HRCLS_XPT_OUTPUT_ID_E eXPT_ID;
+   
+   switch(eXPT_mode)
+   {
+       case MXL_HRCLS_XPT_MODE_PARALLEL:
+           eXPT_ID = MXL_HRCLS_XPT_OUT_0;
+           break;
+       case MXL_HRCLS_XPT_MODE_MUX_2:
+           if(eDMD_ID < MXL_HRCLS_DEMOD2)
+               eXPT_ID = MXL_HRCLS_XPT_OUT_1;
+           else
+               eXPT_ID = MXL_HRCLS_XPT_OUT_2;
+
+           break;
+       case MXL_HRCLS_XPT_MODE_MUX_1:
+           eXPT_ID = MXL_HRCLS_XPT_OUT_2;
+           break;
+       case MXL_HRCLS_XPT_MODE_NO_MUX_4:
+       default:
+           eXPT_ID = (MXL_HRCLS_XPT_OUTPUT_ID_E)eDMD_ID;
+           break;
+   }
+
+   return eXPT_ID;
+}
+
 
 static MXL_HRCLS_ANNEX_TYPE_E mxl_ANNEX_TYPE_MAP(MS_U32 dvb_type)
 {
@@ -77,7 +241,7 @@ static MXL_HRCLS_ANNEX_TYPE_E mxl_ANNEX_TYPE_MAP(MS_U32 dvb_type)
            ret = MXL_HRCLS_ANNEX_B;
            break;
        default:
-           ret = MXL_HRCLS_ANNEX_NOT_SUPPORT;
+           ret = MXL_HRCLS_ANNEX_A;
            break;
    }
    return ret;
@@ -98,7 +262,7 @@ static MXL_HRCLS_QAM_TYPE_E mxl_QAM_TYPE_MAP(DEMOD_EN_CAB_CONSTEL_TYPE eConstell
            ret = MXL_HRCLS_QAM64;
            break;
        case DEMOD_CAB_QAM128:
-           ret = MXL_HRCLS_QAM32;
+           ret = MXL_HRCLS_QAM128;
            break;
        case DEMOD_CAB_QAM256:
            ret = MXL_HRCLS_QAM256;
@@ -317,6 +481,12 @@ static MS_BOOL _mxl254_init(MS_U8 u8DevIdx)
         return FALSE;
    }
 
+     status = MxLWare_HRCLS_API_CfgTunerDsCalDataLoad(u8DevIdx);
+     if (status != MXL_SUCCESS)
+     {
+       printf("[HRCLS][%d] Calibration data not available. Power reporting will not be accurate\n", u8DevIdx);
+     }
+
    status = mxl_checkVersion(u8DevIdx, &devVerInfo);
    if (status != MXL_SUCCESS)
    {
@@ -352,7 +522,7 @@ static MS_BOOL _mxl254_init(MS_U8 u8DevIdx)
    
    if (xptSupported[u8DevIdx] == MXL_TRUE)
    {
-        status = MxLWare_HRCLS_API_CfgXpt(u8DevIdx, MXL_HRCLS_XPT_MODE_NO_MUX_4); 
+        status = MxLWare_HRCLS_API_CfgXpt(u8DevIdx, eXPT_mode); 
    }
    else
    {
@@ -365,7 +535,7 @@ static MS_BOOL _mxl254_init(MS_U8 u8DevIdx)
         return FALSE;
    }
 
-   MXL254_init[u8DevIdx] = TRUE;
+   MXL254_init[u8DevIdx] = TRUE;  
    return TRUE;
 }
 //-------------------------------------------------------------------------------------------------
@@ -376,16 +546,16 @@ static MS_BOOL _mxl254_init(MS_U8 u8DevIdx)
 MS_BOOL MXL254Tuner_Init(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam)
 {
     MS_U8 u8devID = u8TunerIndex/MAX_CHANNEL_COUNT;
-
-    if(MXL254_init[u8devID] == TRUE)
-        return TRUE;
     
     if(pParam->pCur_Broadcast_type == NULL)
         return FALSE;
     else
         InitParam[u8TunerIndex/MAX_CHANNEL_COUNT].pCur_Broadcast_type = pParam->pCur_Broadcast_type;
+    
+    if(MXL254_init[u8devID] == TRUE)
+        return TRUE;
 
-   return _mxl254_init(u8devID);
+    return _mxl254_init(u8devID);
 }
 
 MS_BOOL MXL254_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
@@ -444,7 +614,7 @@ MS_BOOL MXL254_TunerCheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt)
   MS_U8 u8devID;
 
   u8devID = u8TunerIndex; // here u8TunerIndex means device index
-  //return TRUE;
+
   if(!MXL254_detect[u8devID])
   {
       status = MxLWare_HRCLS_OEM_ReadRegister(u8devID, 0x60E4, &regData);
@@ -471,51 +641,80 @@ MS_BOOL MXL254_TunerCheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt)
   return TRUE;
 }
 
-MS_BOOL MXL254_DemodCheckExist(MS_U8 u8TunerIndex)
+MS_BOOL MXL254_DemodCheckExist(MS_U8 u8TunerIndex, MS_U8* pu8SlaveID)
 {
   MXL_STATUS_E status = MXL_FAILURE;
   UINT16 regData = 0;
   MS_U8 u8devID;
 
   u8devID = u8TunerIndex; // here u8TunerIndex means device index
-  //return TRUE;
+
   if(!MXL254_detect[u8devID])
   {
       status = MxLWare_HRCLS_OEM_ReadRegister(u8devID, 0x60E4, &regData);
       if((MXL_SUCCESS == status) && (MXL254_CHIP_ID == regData))
       {
-          TUNER_DBG(("== Get MXL254 ID !!\n"));
+          DMD_DBG(("== Get MXL254 ID !!\n"));
           MXL254_detect[u8devID] = TRUE;
+          *pu8SlaveID = MXL254_SLAVE_ID;
           return TRUE;
       }
       else
       {
-          TUNER_ERR(("== Get MXL254 ID FAIL !!\n"));
+          DMD_ERR(("== Get MXL254 ID FAIL !!\n"));
           return FALSE;
       }
   }
-  TUNER_DBG(("== MXL254 have been detected \n"));
+  DMD_DBG(("== MXL254 have been detected \n"));
+  *pu8SlaveID = MXL254_SLAVE_ID;
   return TRUE;
+}
+
+MS_BOOL MXL254_Demod_SetPIDFilter(MS_U8 u8DemodIndex, MXL_HRCLS_XPT_PID_ENTRY_T *pPIDFlt)
+{
+    MXL_STATUS_E status = MXL_SUCCESS;
+    MXL_HRCLS_DMD_ID_E eDMD_ID;
+    UINT8 u8devID;
+
+    eDMD_ID = (MXL_HRCLS_DMD_ID_E)(u8DemodIndex % MAX_CHANNEL_COUNT);
+    u8devID = (UINT8)(u8DemodIndex/MAX_CHANNEL_COUNT);
+
+    status &= MxLWare_HRCLS_API_CfgXptPidTable(u8devID, eDMD_ID, 1, pPIDFlt, MXL_FALSE);
+
+    if(MXL_SUCCESS == status)
+        return TRUE;
+    else
+        return FALSE;
 }
 
 
 MS_BOOL MXL254_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE fuction_type, void *data)
 {
-    //MS_U8 tmp;
+    MS_BOOL bret=TRUE;
+    MS_U8 u8devID;
+    DEMOD_PID_FILTER stPIDFlt;
+    MXL_HRCLS_XPT_PID_ENTRY_T stMXL_PIDFlt;
+
+    u8devID = (UINT8)(u8DemodIndex/MAX_CHANNEL_COUNT);
     switch(fuction_type)
     {
-        //case DEMOD_EXT_FUNC_SET_CHANNEL_ID:
-            // channel ID = Demod ID
-            //tmp = *data;
-            //eCur_channel = *data;
-            //eCur_DMD_ID = *data;
-            //break;
+        case DEMOD_EXT_FUNC_FINALIZE:
+            MXL254_init[u8devID] = FALSE;
+            MxLWare_HRCLS_OEM_DrvDeInit(u8devID);
+            break;
+        case DEMOD_EXT_FUNC_SET_PID_FILTER:
+            stPIDFlt = *(DEMOD_PID_FILTER*)data;
+            stMXL_PIDFlt.pidValue = (UINT16)stPIDFlt.u16PIDValue;
+            stMXL_PIDFlt.pidRemapValue = (UINT16)stPIDFlt.u16PIDRemapValue;
+            stMXL_PIDFlt.pidDrop = (MXL_BOOL_E)stPIDFlt.bPIDDrop;
+            bret &= MXL254_Demod_SetPIDFilter(u8DemodIndex, &stMXL_PIDFlt);
+            break;            
         default:
             DMD_DBG(("Request extension function (%x) does not exist\n",fuction_type));
             break;
             
     }
-    return TRUE;
+    return bret;
 }
 
 MS_BOOL MXL254_Demod_GetLock(MS_U8 u8DemodIndex, EN_LOCK_STATUS *peLockStatus)
@@ -581,6 +780,7 @@ MS_BOOL MXL254_Demod_GetBER(MS_U8 u8DemodIndex, float *pfBER)
     eDMD_ID = (MXL_HRCLS_CHAN_ID_E)(u8DemodIndex % MAX_CHANNEL_COUNT);
     u8devID = (UINT8)(u8DemodIndex/MAX_CHANNEL_COUNT);
 
+    status = MxLWare_HRCLS_API_CfgDemodErrorStatClear(u8devID, eDMD_ID);
     status = MxLWare_HRCLS_API_ReqDemodErrorStat(u8devID, eDMD_ID, &stState);
 
    if(status == MXL_SUCCESS)
@@ -605,28 +805,109 @@ MS_BOOL MXL254_Demod_GetBER(MS_U8 u8DemodIndex, float *pfBER)
 
 }
 
+MS_BOOL MXL254_Demod_GetPWR(MS_U8 u8DemodIndex,MS_S32 *ps32Signal)
+{
+    MXL_HRCLS_CHAN_ID_E chanId;
+    UINT8 u8devID;
+    UINT16 rxPwrIndBuV;
+        
+    MXL_HRCLS_RX_PWR_ACCURACY_E accuracy = MXL_HRCLS_PWR_AVERAGED;
+   
+    chanId = (MXL_HRCLS_CHAN_ID_E)(u8DemodIndex % MAX_CHANNEL_COUNT);
+    u8devID = (UINT8)(u8DemodIndex/MAX_CHANNEL_COUNT);
+
+    if(MXL_SUCCESS != MxLWare_HRCLS_API_ReqTunerRxPwr(u8devID, chanId, &rxPwrIndBuV, &accuracy))
+    {
+       return FALSE;
+    }
+    else
+    {
+       *ps32Signal = (((MS_S32)(rxPwrIndBuV) - 1070) + 5)/10;
+       return TRUE;
+    }
+}
+
+
+MS_BOOL MXL254_Demod_GetParam(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM* pParam)
+{     
+    MXL_HRCLS_ANNEX_TYPE_E  annexType = 0;
+    MXL_HRCLS_QAM_TYPE_E    qamType = 0;
+    MXL_HRCLS_IQ_FLIP_E adcIqFlip = MXL_HRCLS_IQ_NORMAL;
+    MXL_HRCLS_DMD_ID_E eDMD_ID;
+    UINT8 u8devID;
+    int CFO;
+
+    eDMD_ID = (MXL_HRCLS_DMD_ID_E)(u8DemodIndex % MAX_CHANNEL_COUNT);
+    u8devID = (UINT8)(u8DemodIndex/MAX_CHANNEL_COUNT);
+
+    if(MXL_SUCCESS != MxLWare_HRCLS_API_ReqDemodAnnexQamType(u8devID,eDMD_ID,&annexType,&qamType))
+    {
+        return FALSE;
+    }
+
+    if(MXL_SUCCESS != MxLWare_HRCLS_API_ReqDemodAdcIqFlip(u8devID,eDMD_ID,&adcIqFlip))
+    {
+        return FALSE;
+    }
+    
+    if(MXL_SUCCESS != MxLWare_HRCLS_API_ReqDemodCarrierOffset(u8devID,eDMD_ID,&CFO))
+    {
+       return FALSE;
+    }
+
+    
+    switch(qamType)
+    {
+        case MXL_HRCLS_QAM16:
+            pParam->CabParam.eConstellation = DEMOD_CAB_QAM16;
+            break;
+        case MXL_HRCLS_QAM32:
+            pParam->CabParam.eConstellation = DEMOD_CAB_QAM32;
+            break;
+        case MXL_HRCLS_QAM64:
+            pParam->CabParam.eConstellation = DEMOD_CAB_QAM64;
+            break;
+        case MXL_HRCLS_QAM128:
+            pParam->CabParam.eConstellation = DEMOD_CAB_QAM128;
+            break;
+        case MXL_HRCLS_QAM256:
+            pParam->CabParam.eConstellation = DEMOD_CAB_QAM256;
+            break;
+        default:
+            pParam->CabParam.eConstellation = DEMOD_CAB_QAM64;
+            break;
+    }
+    
+    pParam->CabParam.eIQMode = (DEMOD_EN_CAB_IQ_MODE)adcIqFlip;
+    pParam->CabParam.fCFO = (float)(CFO)/1000;
+
+    return TRUE;
+
+}
 
 MS_BOOL MXL254_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM *pParam, MS_U32 u32BroadCastType)
 {
   MXL_STATUS_E status = MXL_SUCCESS;
   MXL_HRCLS_ANNEX_TYPE_E annexType;
   MXL_HRCLS_QAM_TYPE_E qamType = mxl_QAM_TYPE_MAP(pParam->CabParam.eConstellation);
-  MXL_BOOL_E iqFlip = (MXL_BOOL_E)pParam->CabParam.eIQMode;
   UINT16 symbolRatekSps = (UINT16)pParam->CabParam.u16SymbolRate;
   MXL_HRCLS_DMD_ID_E eDMD_ID;
   UINT8 u8devID;
   MXL_HRCLS_MPEGOUT_PARAM_T mpegParams;
   MXL_HRCLS_XPT_MPEGOUT_PARAM_T mpegXptParams;
-  
+  MS_U32* pu32hdr = NULL;
+  MS_U8 u8hdr_size_in_U32, u8hdr_idx;
+  MXL_HRCLS_MPEG_CLK_RATE_E eClkRate;
+
+  u8hdr_size_in_U32 = (MS_U8)hdr_size;
   eDMD_ID = (MXL_HRCLS_DMD_ID_E)(u8DemodIndex % MAX_CHANNEL_COUNT);
   u8devID = (UINT8)(u8DemodIndex/MAX_CHANNEL_COUNT);
   annexType = mxl_ANNEX_TYPE_MAP(*InitParam[u8devID].pCur_Broadcast_type);
 
   //TUNER_DBG(("### MXL254_Demod_Restart eDMD_ID = %x, u8devID = %x\n", (UINT8)eDMD_ID, u8devID);
 
-  if(annexType == MXL_HRCLS_ANNEX_NOT_SUPPORT)
-     return FALSE;
-
+  eClkRate = mxl_GetTSClkRate(eDMD_ID, qamType,symbolRatekSps);
+    
   if (xptSupported[u8devID] == MXL_FALSE)
   {
       //MXL_HRCLS_MPEGOUT_PARAM_T mpegParams;
@@ -674,23 +955,24 @@ MS_BOOL MXL254_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM *pPar
       mpegXptParams.mpegValidPol = MXL_HRCLS_MPEG_ACTIVE_HIGH;
       mpegXptParams.mpegSyncPol = MXL_HRCLS_MPEG_ACTIVE_HIGH;
       mpegXptParams.mpegClkPol = MXL_HRCLS_MPEG_CLK_NEGATIVE;
-      mpegXptParams.clkFreq = MXL_HRCLS_MPEG_CLK_42_18MHz; 
+      mpegXptParams.clkFreq = eClkRate; 
       mpegXptParams.mpegPadDrv.padDrvMpegSyn = MXL_HRCLS_MPEG_DRV_MODE_2X;  
       mpegXptParams.mpegPadDrv.padDrvMpegDat = MXL_HRCLS_MPEG_DRV_MODE_2X;  
       mpegXptParams.mpegPadDrv.padDrvMpegVal = MXL_HRCLS_MPEG_DRV_MODE_2X;  
 
       // In MxL254 and NO_MUX_4 mode, outputId = demodId
       // Check MxLWare API User Guide for other modes' mappings
-      status = MxLWare_HRCLS_API_CfgXptOutput(u8devID, (MXL_HRCLS_XPT_OUTPUT_ID_E) eDMD_ID, &mpegXptParams);
+      status = MxLWare_HRCLS_API_CfgXptOutput(u8devID, mxl_Get_XPT_ID(eDMD_ID), &mpegXptParams);
   }
 
-  status = mxl_waitForChannelLock(u8devID);
+
+  status = mxl_waitForChannelLock(u8DemodIndex);
   if (status == MXL_SUCCESS)
   {
     status = MxLWare_HRCLS_API_CfgDemodEnable(u8devID, eDMD_ID, MXL_TRUE);
     if (status == MXL_SUCCESS)
     {
-      status = MxLWare_HRCLS_API_CfgDemodAdcIqFlip(u8devID, eDMD_ID, iqFlip);
+      status = MxLWare_HRCLS_API_CfgDemodAdcIqFlip(u8devID, eDMD_ID, MXL_HRCLS_IQ_AUTO);
       if (status == MXL_SUCCESS)
       {
         status = MxLWare_HRCLS_API_CfgDemodAnnexQamType(u8devID, eDMD_ID, annexType, qamType);
@@ -707,11 +989,30 @@ MS_BOOL MXL254_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM *pPar
     }
   }
 
+  //if(MXL_HRCLS_XPT_MODE_PARALLEL == eXPT_mode)
+  if (MXL_HRCLS_XPT_MODE_NO_MUX_4 != eXPT_mode)
+  {
+      pu32hdr = (MS_U32*)malloc(sizeof(MS_U32)*u8hdr_size_in_U32);
+      if(NULL == pu32hdr)
+        return FALSE;
+      
+      for(u8hdr_idx = 0; u8hdr_idx < u8hdr_size_in_U32; u8hdr_idx++)
+      {
+          *(pu32hdr + u8hdr_idx) = extra_hdr[eDMD_ID][u8hdr_idx];
+      }
+
+      status = MxLWare_HRCLS_API_CfgXptHeaderWords(u8devID, eDMD_ID, hdr_size, (UINT32*)pu32hdr);
+      if(status != MXL_SUCCESS)
+      {
+          DMD_DBG(("[HRCLS] Set Extra Header API Fail  <<---------------------------------\n"));
+      }
+  }
   if(status == MXL_SUCCESS)
       return TRUE;
   else
       return FALSE;
 }
+
 
 
 DRV_TUNER_TABLE_TYPE GET_TUNER_ENTRY_NODE(TUNER_MXL254) DDI_DRV_TUNER_TABLE_ENTRY(tunertab) =
@@ -736,9 +1037,9 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MXL254) DDI_DRV_TABLE_ENTRY(demo
      .GetLock                      = MXL254_Demod_GetLock,
      .GetSNR                       = MXL254_Demod_GetSNR,
      .GetBER                       = MXL254_Demod_GetBER,
-     .GetPWR                       = MDrv_Demod_null_GetPWR,
+     .GetPWR                       = MXL254_Demod_GetPWR,
      .GetQuality                   = MDrv_Demod_null_GetSignalQuality,
-     .GetParam                     = MDrv_Demod_null_GetParam,
+     .GetParam                     = MXL254_Demod_GetParam,
      .Restart                      = MXL254_Demod_Restart,
      .I2CByPass                    = MDrv_Demod_null_I2C_ByPass,
      .CheckExist                   = MXL254_DemodCheckExist,
@@ -749,6 +1050,8 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MXL254) DDI_DRV_TABLE_ENTRY(demo
      .GetPlpBitMap                 = MDrv_Demod_null_GetPlpBitMap,
      .GetPlpGroupID                = MDrv_Demod_null_GetPlpGroupID,
      .SetPlpGroupID                = MDrv_Demod_null_SetPlpGroupID,
+     .GetNextPLPID                 = MDrv_Demod_null_GetNextPLPID,
+     .GetPLPType                   = MDrv_Demod_null_GetPLPType,
  #endif
  #if MS_DVBS_INUSE
      .BlindScanStart               = MDrv_Demod_null_BlindScan_Start,

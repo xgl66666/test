@@ -1,0 +1,9 @@
+# <- this is for comment / total file size must be less than 4KB
+
+#application
+mstar [[application
+
+printenv
+reset
+% <- this is end of file symbol
+

@@ -4188,7 +4188,7 @@ MS_BOOL MSB123X_Demod_I2C_ByPass(MS_U8 u8DemodIndex,MS_BOOL bOn)
     return TRUE;
 }
 
-MS_BOOL MSB123X_Demod_SetScanTypeStatus(MS_U8 status)
+MS_BOOL MSB123X_Demod_SetScanTypeStatus(MS_U8 u8DemodIndex,MS_U8 status)
 {
     MDvr_CofdmDmd_CONFIG *pMSB123X = &MSB123X;
     if (!pMSB123X)
@@ -4232,7 +4232,7 @@ MS_BOOL MSB123X_Demod_SetScanTypeStatus(MS_U8 status)
     return TRUE;
 }
 
-MS_U8 MSB123X_Demod_GetScanTypeStatus(void)
+MS_U8 MSB123X_Demod_GetScanTypeStatus(MS_U8 u8DemodIndex)
 {
     MDvr_CofdmDmd_CONFIG *pMSB123X = &MSB123X;
     if (!pMSB123X)
@@ -4319,7 +4319,7 @@ MS_U8 MSB123X_Demod_GetPlpIDList(MS_U8 u8DemodIndex)
     return pMSB123X->PlpIDSize;
 }
 
-MS_U8 MSB123X_Demod_GetNextPlpID(MS_U8 u8Index)
+MS_U8 MSB123X_Demod_GetNextPlpID(MS_U8 u8DemodIndex, MS_U8 u8Index, MS_U8* pu8PLPID)
 {
     MDvr_CofdmDmd_CONFIG *pMSB123X = &MSB123X;
     MS_U8 u8PlpID;
@@ -4923,7 +4923,7 @@ MS_BOOL MSB123X_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
 }
 
 #define MSB1233X_CHIP_ID 0x19
-MS_BOOL MSB123X_Check_Exist(MS_U8 u8DemodIndex)
+MS_BOOL MSB123X_Check_Exist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
 {
     MS_U8 u8_tmp = 0;
 
@@ -4946,10 +4946,8 @@ MS_BOOL MSB123X_Check_Exist(MS_U8 u8DemodIndex)
 MS_BOOL MSB123X_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE fuction_type, void *data)
 {
     MS_BOOL bret = TRUE;
-#ifdef DDI_MISC_INUSE
 #if MS_DVBT2_INUSE
     MS_U8 *Ctrl = 0;
-#endif
 #endif
     switch(fuction_type)
     {
@@ -4962,30 +4960,20 @@ MS_BOOL MSB123X_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE f
         case DEMOD_EXT_FUNC_FINALIZE:
             bret &= MSB123X_Finalize(u8DemodIndex);
             break;
-        case DEMOD_EXT_FUNC_IIC_BYPASS_ON:
-            bret &= MSB123X_I2C_CH_Reset(3,TRUE);
-            bret &= MSB123X_WriteReg(0x0910, 0x10);
-            break;
-        case DEMOD_EXT_FUNC_IIC_BYPASS_OFF:
-            bret &= MSB123X_I2C_CH_Reset(3,TRUE);
-            bret &= MSB123X_WriteReg(0x0910, 0x00);
-            break;
-#ifdef DDI_MISC_INUSE
 #if MS_DVBT2_INUSE
-        case DEMOD_EXT_FUNC_GetPlpIDList:
+        case DEMOD_EXT_FUNC_GET_PLPID_LIST:
             bret &=MSB123X_GetPlpIDList(u8DemodIndex);
             break;
-        case DEMOD_EXT_FUNC_T2MI_Restart:
+        case DEMOD_EXT_FUNC_T2MI_RESTART:
             bret &=MSB123X_Demod_T2MI_Restart(u8DemodIndex);
             break;
-        case DEMOD_EXT_FUNC_CtrlResetDJBFlag:
+        case DEMOD_EXT_FUNC_CTRL_RESET_DJB_FLAG:
             Ctrl=(MS_U8 *)data;
-            bret &=MSB123X_Demod_CtrlResetDJBFlag(*Ctrl);
+            MSB123X_Demod_CtrlResetDJBFlag(*Ctrl);
             break;
-        case DEMOD_EXT_FUNC_InitParameter:
+        case DEMOD_EXT_FUNC_INIT_PARAMETER:
             bret &=MSB123X_Demod_InitParameter();
             break;
-#endif
 #endif
         default:
             printf("Request extension function (%x) does not exist\n",fuction_type);
@@ -5016,11 +5004,9 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB123X) DDI_DRV_TABLE_ENTRY(dem
      .GetPlpGroupID                = MSB123X_DTV_GetPlpGroupID,
      .SetPlpGroupID                = MSB123X_DTV_SetPlpGroupID,
 #endif
-#ifdef DDI_MISC_INUSE
      .SetScanTypeStatus            = MSB123X_Demod_SetScanTypeStatus,
      .GetScanTypeStatus            = MSB123X_Demod_GetScanTypeStatus,
      .GetNextPLPID                 = MSB123X_Demod_GetNextPlpID,
-#endif
 #if MS_DVBS_INUSE
      .BlindScanStart               = MDrv_Demod_null_BlindScan_Start,
      .BlindScanNextFreq            = MDrv_Demod_null_BlindScan_NextFreq,

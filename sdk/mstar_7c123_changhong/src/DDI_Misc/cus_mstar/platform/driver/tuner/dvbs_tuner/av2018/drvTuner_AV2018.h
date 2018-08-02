@@ -27,15 +27,4 @@ typedef enum
 } EN_SAT_ROLL_OFF_TYPE;
 
 
-MS_BOOL MDrv_Tuner_SetFreq(MS_U16 u16CenterFreq, MS_U32 u32SymbolRate_Hz);
-MS_BOOL MDrv_Tuner_Initial(void);
-MS_BOOL MDrv_Tuner_CheckLock(void);
-void MDrv_Tuner_SetRolloff(MS_U8 u8Rolloff);
-
-#if 0
-extern void devTunerInit(void);
-extern void devTunerSetFreqStep(FREQSTEP eFreqStep);
-extern void devTunerSetPLLData(WORD wPLLData, RFBAND eBand);
-#endif
-
 #endif

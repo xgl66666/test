@@ -2,12 +2,12 @@
 * Copyright (c) 2013,ShenZhen Coship Electronic Ltd Co.
 * All rights reserved.
 *
-* File Name£ºtps65233.h
-* File Identify£ºreference to Configuration Manager
-* Summary£º Control the LNB chip Tps65233 by I2C
+* File NameÂ£Âºtps65233.h
+* File IdentifyÂ£Âºreference to Configuration Manager
+* SummaryÂ£Âº Control the LNB chip Tps65233 by I2C
 *
-* Current Version£º1.0
-* Author(s)£ºHowl.
+* Current VersionÂ£Âº1.0
+* Author(s)Â£ÂºHowl.
 * Example:
 /----------------------------------------------------------------------------/
 revision             author            reason             date
@@ -90,7 +90,7 @@ extern "C" {
 
     typedef struct
     {
-        BYTE m_ucTemperature;   //if die temperature T>125¡æ0:if die temperature T<125¡æ
+        BYTE m_ucTemperature;   //if die temperature T>125Â¡Ã¦0:if die temperature T<125Â¡Ã¦
         BYTE m_ucLDO_ON;        //LDO && boost converter ON 0:LDO OFF && boost converter ON
         BYTE m_ucTSD;           //ThermalShutdown occurs 0:ThermalShutdown not occurs
         BYTE m_ucOCP;           //OverCurrentProtection trigered 0:OverCurrentProtection realeased

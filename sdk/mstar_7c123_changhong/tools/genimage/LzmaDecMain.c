@@ -96,8 +96,8 @@ int LzmaDec(const unsigned char *in, unsigned int in_size, unsigned char *out, u
     int i;
     ELzmaStatus status;
     SRes res;
-
-    uart_puts("\r\nLZMA Decompression...");
+    
+    //uart_puts("\r\nLZMA Decompression...");
 
     SizeT in_size_pure = in_size - (LZMA_PROPS_SIZE + 8);
     SizeT out_size;
@@ -113,12 +113,12 @@ int LzmaDec(const unsigned char *in, unsigned int in_size, unsigned char *out, u
     //printf("in_size=%d out_size=%d unpack_size=%d\n", in_size, out_size, unpack_size);
     res = LzmaDecode(out, &out_size, in + (LZMA_PROPS_SIZE + 8), &in_size_pure, header, LZMA_PROPS_SIZE, LZMA_FINISH_ANY, &status, &g_Alloc);
     if(res != SZ_OK) {
-        uart_puts("fail\r\n");
+        //uart_puts("LZMA Decompression...fail\r\n");
         return -1;
     }
     //printf("res=%d status=%d out_size=%d\n", res, status, out_size);
 
-    uart_puts("ok\r\n");
+    //uart_puts("ok\r\n");
     return unpack_size;
 }
 
@@ -133,19 +133,6 @@ void enable_cache(void)
     void enable_cache_asm(void);
     asm volatile(
             "jal enable_cache_asm\n"
-            "nop\n" : : :
-            "$1", "$2", "$3", "$4", "$5", "$6", "$7",
-            "$8", "$9", "$10", "$11", "$12", "$13", "$14", "$15",
-            "$16", "$17", "$18", "$19", "$20", "$21", "$22", "$23",
-            "$24", "$25", "$26", "$27", "$29", "$31",
-            "memory");
-}
-
-void disable_cache(void)
-{
-    void disable_cache_asm(void);
-    asm volatile(
-            "jal disable_cache_asm\n"
             "nop\n" : : :
             "$1", "$2", "$3", "$4", "$5", "$6", "$7",
             "$8", "$9", "$10", "$11", "$12", "$13", "$14", "$15",
@@ -171,19 +158,6 @@ void flush_cache(void)
 // Application program to test the Decompression API on target
 // @return None
 //-------------------------------------------------------------------------------------------------
-void ReInitHardwareMini(void)
-{
-    flush_cache();
-    disable_cache();
-// ---- put your specific HW init code here ----
-#ifdef ENABLE_KRONUS_U04
-    *(volatile MS_U16*)(0xBF200000+(0x0B3E<<1)) = 0x18; // set clk_miu = 288M
-#endif
-// ---- end of put your specific HW init code here ----
-    enable_cache();
-
-}
-
 int main(void) __attribute__((section(".text.entry")));
 int main(void)
 {
@@ -193,10 +167,6 @@ int main(void)
     asm __volatile__ (
         "la      $sp,    __stack_begin;"
     );
-
-#ifdef ENABLE_KRONUS_U04
-    ReInitHardwareMini();
-#endif
 
 
 

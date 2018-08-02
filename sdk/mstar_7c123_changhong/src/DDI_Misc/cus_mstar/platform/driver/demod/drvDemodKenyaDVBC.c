@@ -88,8 +88,8 @@
 #include "drvSAR.h"
 
 #define COFDMDMD_MUTEX_TIMEOUT       (2000)
-#ifdef SUPPORT_DVBC_DMD_BW_CHANGE        
-#if SUPPORT_DVBC_DMD_BW_CHANGE 
+#ifdef SUPPORT_DVBC_DMD_BW_CHANGE
+#if SUPPORT_DVBC_DMD_BW_CHANGE
 #define REG_DVBC_BW  0x8D
 #endif
 #endif
@@ -280,7 +280,7 @@ MS_BOOL MDrv_Kenya_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
 
         if (_s32MutexId < 0)
         {
-            GEN_EXCEP;
+            DMD_ERR(("%s: Create mutex failed.\n", __FUNCTION__));
             return FALSE;
         }
 
@@ -291,7 +291,6 @@ MS_BOOL MDrv_Kenya_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
 
     KenyaDVBC_InitParam.pstTunertab = pParam->pstTunertab;
     MDrv_SYS_DMD_VD_MBX_Init();
-    MDrv_SAR_Kpd_Init();
 #if 0
 	static MS_U8 u8DMD_DVBC_InitExt[]={	2, // version
 										0, // reserved
@@ -622,8 +621,8 @@ MS_BOOL MDrv_Kenya_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM* 
     static DMD_DVBC_MODULATION_TYPE ePreModulationType = DMD_DVBC_QAMAUTO;
     static MS_U16 u16PreSymbolRate = 0;
     MS_U32 u32IF_Freq;
-#ifdef SUPPORT_DVBC_DMD_BW_CHANGE        
-#if SUPPORT_DVBC_DMD_BW_CHANGE 
+#ifdef SUPPORT_DVBC_DMD_BW_CHANGE
+#if SUPPORT_DVBC_DMD_BW_CHANGE
     MS_U8 u8reg_data=0;
 #endif
 #endif
@@ -686,8 +685,8 @@ MS_BOOL MDrv_Kenya_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM* 
             HB_ReleaseMutex(_s32MutexId);
             return FALSE;
         }
-#ifdef SUPPORT_DVBC_DMD_BW_CHANGE        
-#if SUPPORT_DVBC_DMD_BW_CHANGE 
+#ifdef SUPPORT_DVBC_DMD_BW_CHANGE
+#if SUPPORT_DVBC_DMD_BW_CHANGE
         switch(pParam->CabParam.eBandWidth)
         {
             case DEMOD_CAB_BW_6M:
@@ -798,12 +797,15 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKENYA_DVBC) DDI_DRV_TABLE_ENTR
      .I2CByPassPreSetting          = NULL,
      .Extension_Function           = DEMOD_MSKENYA_DVBC_Extension_Function,
      .Extension_FunctionPreSetting = NULL,
+     .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error,     
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
      .GetPlpBitMap                 = MDrv_Demod_null_GetPlpBitMap,
      .GetPlpGroupID                = MDrv_Demod_null_GetPlpGroupID,
      .SetPlpGroupID                = MDrv_Demod_null_SetPlpGroupID,
+     .GetNextPLPID                 = MDrv_Demod_null_GetNextPLPID,
+     .GetPLPType                   = MDrv_Demod_null_GetPLPType,
 #endif
 #if MS_DVBS_INUSE
      .BlindScanStart               = MDrv_Demod_null_BlindScan_Start,

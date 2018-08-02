@@ -236,7 +236,7 @@ tmErrorCode_t
 tmbslTDA18250A_GetPowerLevel(
     UInt8                       u8TunerIndex,
     tmUnitSelect_t  tUnit,      /* I: Unit number */
-    Int32*          pPowerLevel /* O: Power Level in (x100) dB£gVrms */
+    Int32*          pPowerLevel /* O: Power Level in (x100) dBÂ£gVrms */
 );
 
 tmErrorCode_t
@@ -248,6 +248,12 @@ tmbslTDA18250A_CheckHWVersion(
 
 tmErrorCode_t
 tmbslTDA18250B_ResetConfig(UInt8 u8TunerIndex);
+
+tmErrorCode_t
+tmbslTDA18250A_LTAdapt(UInt8 u8TunerIndex,
+    tmUnitSelect_t  tUnit, /* I: Unit number */
+    Bool          bEnable  /* O: True  LT is forced and adapted vs LNA gain    False:  LT gain in automatic*/
+);
 #ifdef __cplusplus
 }
 #endif

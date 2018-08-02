@@ -4,11 +4,13 @@ source /application/auto_gen/conf_info
 PRJ_NAME=$CHIP
 
 #check input format
-if [ "$#" != "1" ]
+if [ "$#" -lt "1" ]
   then
-		echo $PRJ_NAME
+    echo "gdbs.sh  [v1.0]"
     echo
-		echo "Invalid input format!!"
+    echo $PRJ_NAME
+    echo
+    echo "Invalid input format!!"
     echo
     echo "Usage:"
     echo "    gdbs.sh <ext-no> [target_ap_path_name]"
@@ -26,11 +28,11 @@ if [ "${#1}" != "4" ]
 fi
 
 TARGET_AP=application/${PRJ_NAME}_linux1
-if [ "$#" == "2" ]
+if [ "$#" -ge "2" ]
   then
-    TARGET_AP=$5
+    TARGET_AP=$2
     echo "TARGET_AP=$TARGET_AP"
-else  
+else
   gdbc_usage "!! Invalid input format !!"
 fi
 

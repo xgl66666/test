@@ -84,15 +84,15 @@
 #include "drvDemodNull.h"
 #include "device_demodulator_msb131x.h"
 #include "drvTuner.h"
+#include "drvDTC.h"
 
-
-
-#if IF_THIS_DEMOD_INUSE(DEMOD_MSB131X)
 
 MS_U8 MSB131X_LIB[]=
 {
-#include "msb131x_dvbs.dat"
+  #include "msb131x_dvbs.dat"
 };
+
+#if IF_THIS_DEMOD_INUSE(DEMOD_MSB131X)
 
 #ifdef MSB1310_A8304_Board_IN_USE
 #define MSB131X_TS_DATA_SWAP  1
@@ -103,6 +103,14 @@ MS_U8 MSB131X_LIB[]=
 #if MSB131X_TS_DATA_SWAP
 static MS_BOOL                  _bTSDataSwap=FALSE;
 #endif
+
+#if TS_PARALLEL_OUTPUT
+#define MSB131X_SERIAL_TS    0x00
+#else
+#define MSB131X_SERIAL_TS    0x01
+#endif
+
+#define MSB131X_SERIAL_TS_LSB_1ST    0
 
 #define MDrv_msb131x_IIC_Write(p, a, b, c, d, e)    MDrv_IIC_WriteBytes(p,a, c, b, e, d)
 #define MDrv_msb131x_IIC_Read(p, a, b, c, d, e)    MDrv_IIC_ReadBytes(p,a, c, b, e, d)
@@ -115,8 +123,8 @@ static MS_BOOL                  _bTSDataSwap=FALSE;
 #define MSB131X_TUNER_WAIT_TIMEOUT    (50)
 
 static  MS_S32                       _s32TaskId     = -1;
-static  MS_S32                       _s32MutexId;
-static  MS_S32                       _s32FunMutexId;
+static  MS_S32                       _s32MutexId = -1;
+static  MS_S32                       _s32FunMutexId = -1;
 static  MS_BOOL                  _bInited     = FALSE;
 static  MS_BOOL                  _bDemodType=FALSE;
 static  MS_U16                       _u16BlindScanStartFreq =0;
@@ -189,10 +197,10 @@ MS_BOOL MDrv_Demod_MSB131X_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
     MS_U16 u16Data;
     MS_U16 u16dat_size;
 
-    _bInited = FALSE;
+    //_bInited = FALSE;
     if (_s32TaskId >= 0)
     {
-        DMD_ERR(("MSB131X TaskID 0x%lx\n",_s32TaskId));
+        DMD_ERR(("MSB131X TaskID 0x%"DTC_MS_U32_x"\n", _s32TaskId));
         return TRUE;
     }
     if (_bInited==TRUE)
@@ -209,7 +217,7 @@ MS_BOOL MDrv_Demod_MSB131X_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
      _s32FunMutexId=MsOS_CreateMutex(E_MSOS_FIFO, "Mutex_MSB131X_Function",MSOS_PROCESS_SHARED);
       if ((_s32MutexId < 0) || (_s32FunMutexId <0))
     {
-        DMD_ERR(("creat  MSB131X  Mutex error!!! _s32MutexId:%ld _s32FunMutexId:%ld\n", _s32MutexId, _s32FunMutexId));
+        DMD_ERR(("creat  MSB131X  Mutex error!!! _s32MutexId:%"DTC_MS_U32_d" _s32FunMutexId:%"DTC_MS_U32_d"\n", _s32MutexId, _s32FunMutexId));
         if (_s32MutexId >=0)
             MsOS_DeleteMutex(_s32MutexId);
         if (_s32FunMutexId >=0)
@@ -265,7 +273,103 @@ MS_BOOL MDrv_Demod_MSB131X_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
         MsOS_DeleteMutex(_s32MutexId);
         MsOS_DeleteMutex(_s32FunMutexId);
     }
+    
+    if(MSB131X_SERIAL_TS)
+        MDrv_Demod_MSB131X_SetTsSerial(u8DemodIndex, TRUE);
+    
     _bInited = TRUE;
+    return bRet;
+}
+
+static MS_BOOL  _MSB131X_I2C_Channel_Set(MS_U8 u8DemodIndex, MS_U8 ch_num)
+{
+    MS_BOOL bRet=TRUE;
+    MS_U8 Data[5] = {0x53, 0x45, 0x52, 0x44, 0x42};
+
+    HWI2C_PORT ePort;
+    ePort = getI2CPort(u8DemodIndex);
+
+    //Exit
+    Data[0] = 0x34;
+    bRet&=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 1);
+    Data[0]=(ch_num & 0x01)? 0x36 : 0x45;
+    bRet&=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 1);
+    //Init
+    Data[0] = 0x53;
+    bRet&=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 5);
+    Data[0]=(ch_num & 0x04)? 0x80 : 0x81;
+    bRet&=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 1);
+    if ((ch_num==4)||(ch_num==5)||(ch_num==1))
+        Data[0]=0x82;
+    else
+        Data[0] = 0x83;
+     bRet&=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 1);
+
+    if ((ch_num==4)||(ch_num==5))
+        Data[0]=0x85;
+    else
+        Data[0] = 0x84;
+     bRet&=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 1);
+     Data[0]=(ch_num & 0x01)? 0x51 : 0x53;
+     bRet&=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 1);
+     Data[0]=(ch_num & 0x01)? 0x37 : 0x7F;
+     bRet&=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 1);
+     Data[0] = 0x35;
+     bRet&=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 1);
+     Data[0] = 0x71;
+     bRet&=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 1);
+
+     return bRet;
+}
+
+static MS_BOOL  _MSB131X_GetReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 *pu8Data)
+{
+    MS_BOOL bRet=TRUE;
+    MS_U8 Data[5];
+    HWI2C_PORT ePort;
+    ePort = getI2CPort(u8DemodIndex);
+
+
+    Data[0] = 0x10;
+    Data[1] = 0x00;
+    Data[2] = 0x00;
+    Data[3] = (u16Addr >> 8) &0xff;
+    Data[4] = u16Addr &0xff;
+
+    Data[0] = 0x35;
+    bRet &=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 1);
+    Data[0] = 0x10;
+    bRet &=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 5);
+    bRet &=MDrv_msb131x_IIC_Read(ePort, DEMOD_MSB131X_SLAVE_ID, 0,0, pu8Data, 1);
+    Data[0] = 0x34;
+    bRet &=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 1);
+
+    return bRet;
+}
+
+static MS_BOOL _MSB131X_SetReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 u8Data)
+{
+    MS_BOOL bRet=TRUE;
+    MS_U8 Data[6];
+    HWI2C_PORT ePort;
+    ePort = getI2CPort(u8DemodIndex);
+
+    Data[0] = 0x10;
+    Data[1] = 0x00;
+    Data[2] = 0x00;
+    Data[3] = (u16Addr >> 8) & 0xff;
+    Data[4] = u16Addr & 0xff;
+    Data[5] = u8Data;
+
+    Data[0] = 0x35;
+    bRet &=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 1);
+
+    Data[0] = 0x10;
+    bRet &=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 6);
+
+    Data[0] = 0x34;
+    bRet &=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 1);
+
     return bRet;
 }
 
@@ -275,23 +379,48 @@ static MS_BOOL MSB131X_IIC_Bypass_Mode(MS_U8 u8DemodIndex, MS_BOOL enable)
     MS_BOOL bResult = TRUE;
     MS_U8 u8Data;
 
-    bResult &= MSB131X_I2C_Channel_Set(u8DemodIndex, 0);
-    bResult &= MSB131X_ReadReg(u8DemodIndex, 0x0900+(0x28)*2 + 1, &u8Data); //reg_turn_off_pad
-    if((u8Data & 0x1) && (TRUE == bResult))
+    if (_bInited)
     {
-        u8Data &= 0xfe;
-        bResult &= MSB131X_WriteReg(u8DemodIndex, 0x0900+(0x28)*2 + 1, u8Data);
-    }
-    
-    while(u8Retry--)
-    {
-        if (enable)
-            bResult &= MSB131X_WriteReg(u8DemodIndex, 0x0900+(0x08)*2, 0x10);// IIC by-pass mode on
-        else
-            bResult &= MSB131X_WriteReg(u8DemodIndex, 0x0900+(0x08)*2, 0x00);// IIC by-pass mode off
+        bResult &= MSB131X_I2C_Channel_Set(u8DemodIndex, 0);
+        bResult &= MSB131X_ReadReg(u8DemodIndex, 0x0900+(0x28)*2 + 1, &u8Data); //reg_turn_off_pad
+        if((u8Data & 0x1) && (TRUE == bResult))
+        {
+            u8Data &= 0xfe;
+            bResult &= MSB131X_WriteReg(u8DemodIndex, 0x0900+(0x28)*2 + 1, u8Data);
+        }
 
-        if (TRUE == bResult)
-            break;
+        while(u8Retry--)
+        {
+            if (enable)
+                bResult &= MSB131X_WriteReg(u8DemodIndex, 0x0900+(0x08)*2, 0x10);// IIC by-pass mode on
+            else
+                bResult &= MSB131X_WriteReg(u8DemodIndex, 0x0900+(0x08)*2, 0x00);// IIC by-pass mode off
+
+            if (TRUE == bResult)
+                break;
+        }
+    }
+    else
+    {
+        bResult &= _MSB131X_I2C_Channel_Set(u8DemodIndex, 0);
+        bResult &= _MSB131X_GetReg(u8DemodIndex, 0x0900+(0x28)*2 + 1, &u8Data); //reg_turn_off_pad
+        if((u8Data & 0x1) && (TRUE == bResult))
+        {
+            u8Data &= 0xfe;
+            bResult &= _MSB131X_SetReg(u8DemodIndex, 0x0900+(0x28)*2 + 1, u8Data);
+        }
+
+        while(u8Retry--)
+        {
+            if (enable)
+                bResult &= _MSB131X_SetReg(u8DemodIndex, 0x0900+(0x08)*2, 0x10);// IIC by-pass mode on
+            else
+                bResult &= _MSB131X_SetReg(u8DemodIndex, 0x0900+(0x08)*2, 0x00);// IIC by-pass mode off
+
+            if (TRUE == bResult)
+                break;
+        }
+
     }
     return bResult;
 }
@@ -310,7 +439,7 @@ static MS_BOOL  MSB131X_I2C_Channel_Set(MS_U8 u8DemodIndex, MS_U8 ch_num)
         DMD_ERR(("%s mutex timeout\n", __FUNCTION__));
         return FALSE;
     }
-   
+
     //Exit
     Data[0] = 0x34;
     bRet&=MDrv_msb131x_IIC_Write(ePort, DEMOD_MSB131X_SLAVE_ID, 0, 0, Data, 1);
@@ -696,7 +825,7 @@ static float MSB131X_DTV_GetBitErrorRate(MS_U8 u8DemodIndex,  MS_BOOL bDemodType
             DMD_ERR(("MSB131X_DTV_GetSignalQuality GetPostViterbiBer Fail!\n"));
             return 0;
         }
-        
+
     }
     else    //S2
     {
@@ -735,69 +864,153 @@ static float MSB131X_DTV_GetBitErrorRate(MS_U8 u8DemodIndex,  MS_BOOL bDemodType
             return 0;
         }
     }
-    return fber;       
+    return fber;
 }
 
 
 
 static MS_U16    MSB131X_DTV_GetSignalQuality(MS_U8 u8DemodIndex, MS_BOOL bDemodType)
 {
-        float fber;
-        float log_ber;
+    MS_BOOL bRet=TRUE;
+    MS_U16 u16Address;
+    MS_U8  u8Data;
+    MS_U16 u16BitErrPeriod;
+    MS_U32 u32BitErr;
+    float fber;
+    float log_ber;
 
-        if (MSB131X_DTV_GetLock(u8DemodIndex)==FALSE)
-            return 0;
+    if (MSB131X_DTV_GetLock(u8DemodIndex)==FALSE)
+        return 0;
 
-        fber = MSB131X_DTV_GetBitErrorRate(u8DemodIndex, bDemodType);
-        if(fber == 0)
-            return 0;
-
-        if (bDemodType==FALSE)//S
+    if (bDemodType==FALSE)//S
+    {
+        u16Address=0x112C;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        if (bRet==FALSE)
         {
-            log_ber = ( - 1) *Log10Approx(1 / fber);
-            if (log_ber <= ( - 7.0))
-            {
-                return 100;
-            }
-            else if (log_ber < ( - 3.7))
-            {
-                  return (60+((( - 3.7) - log_ber) / (( - 3.7) - ( - 7.0))*(100-60)));
-            }
-             else if (log_ber < ( - 2.7))
-             {
-              return (10+((( - 2.7) - log_ber) / (( - 2.7) - ( - 3.7))*(60-10)));
-            }
-            else
-            {
-                  return 10;
-            }
+            DMD_ERR(("MSB131X_DTV_GetSignalQuality fail!!! \n"));
             return 0;
         }
-        else    //S2
-        {      
-            log_ber = ( - 1) *Log10Approx(1 / fber);
-            if (log_ber <= ( - 7.0))
-            {
-                return 100;
-             }
-             else if (log_ber < ( - 3.7))
-             {
-                return (80+((( - 3.7) - log_ber) / (( - 3.7) - ( - 7.0))*(100-80)));
-             }
-             else if (log_ber < ( - 1.7))
-             {
-                return (40+((( - 1.7) - log_ber) / (( - 1.7) - ( - 3.7))*(80-40)));
-             }
-             else if (log_ber < ( - 0.7))
-             {
-                return (10+((( - 0.7) - log_ber) / (( - 0.7) - ( - 1.7))*(40-10)));
-             }
-             else
-              {
-                return 5;
-              }
-              return 0;
+        if ((u8Data&0x02)!=0x02)
+        {
+            return 0;
         }
+        u16Address=0x1132;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u8Data|=0x80;
+        bRet&=MSB131X_WriteReg(u8DemodIndex, u16Address, u8Data);
+        u16Address=0x1131;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u16BitErrPeriod=u8Data;
+        u16Address=0x1130;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u16BitErrPeriod=(u16BitErrPeriod<<8)|u8Data;
+        u16Address=0x113D;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u32BitErr=u8Data;
+        u16Address=0x113C;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u32BitErr=(u32BitErr<<8)|u8Data;
+        u16Address=0x113B;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u32BitErr=(u32BitErr<<8)|u8Data;
+        u16Address=0x113A;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u32BitErr=(u32BitErr<<8)|u8Data;
+        u16Address=0x1132;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u8Data&=~(0x80);
+        bRet&=MSB131X_WriteReg(u8DemodIndex, u16Address, u8Data);
+        if (u16BitErrPeriod == 0)
+            u16BitErrPeriod = 1;
+        if (u32BitErr <= 0)
+            fber = 0.5 / ((float)u16BitErrPeriod *128 * 188 * 8);
+        else
+            fber = (float)u32BitErr / ((float)u16BitErrPeriod *128 * 188 * 8);
+        if (bRet==FALSE)
+        {
+            DMD_ERR(("MSB131X_DTV_GetSignalQuality GetPostViterbiBer Fail!\n"));
+            return 0;
+        }
+        log_ber = ( - 1) *Log10Approx(1 / fber);
+        if (log_ber <= ( - 7.0))
+        {
+            return 100;
+        }
+        else if (log_ber < ( - 3.7))
+        {
+            return (60+((( - 3.7) - log_ber) / (( - 3.7) - ( - 7.0))*(100-60)));
+        }
+        else if (log_ber < ( - 2.7))
+        {
+            return (10+((( - 2.7) - log_ber) / (( - 2.7) - ( - 3.7))*(60-10)));
+        }
+        else
+        {
+            return 10;
+        }
+        return 0;
+
+    }
+    else    //S2
+    {
+        u16Address=0x2604;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u8Data|=0x01;
+        bRet&=MSB131X_WriteReg(u8DemodIndex, u16Address, u8Data);
+        u16Address=0x2625;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u16BitErrPeriod=u8Data;
+        u16Address=0x2624;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u16BitErrPeriod=(u16BitErrPeriod<<8)|u8Data;
+        u16Address=0x265B;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u32BitErr=u8Data;
+        u16Address=0x265A;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u32BitErr=(u32BitErr<<8)|u8Data;
+        u16Address=0x2659;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u32BitErr=(u32BitErr<<8)|u8Data;
+        u16Address=0x2658;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u32BitErr=(u32BitErr<<8)|u8Data;
+        u16Address=0x2604;
+        bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+        u8Data&=~(0x01);
+        bRet&=MSB131X_WriteReg(u8DemodIndex, u16Address, u8Data);
+        if (u16BitErrPeriod == 0)
+            u16BitErrPeriod = 1;
+        fber = (float)u32BitErr/(u16BitErrPeriod*64800);
+        if (bRet==FALSE)
+        {
+            DMD_ERR(("MSB131X_DTV_GetSignalQuality GetPostViterbiBer Fail!\n"));
+            return 0;
+        }
+        log_ber = ( - 1) *Log10Approx(1 / fber);
+        if (log_ber <= ( - 7.0))
+        {
+            return 100;
+        }
+        else if (log_ber < ( - 3.7))
+        {
+            return (80+((( - 3.7) - log_ber) / (( - 3.7) - ( - 7.0))*(100-80)));
+        }
+        else if (log_ber < ( - 1.7))
+        {
+            return (40+((( - 1.7) - log_ber) / (( - 1.7) - ( - 3.7))*(80-40)));
+        }
+        else if (log_ber < ( - 0.7))
+        {
+            return (10+((( - 0.7) - log_ber) / (( - 0.7) - ( - 1.7))*(40-10)));
+        }
+        else
+        {
+            return 5;
+        }
+        return 0;
+    }
 }
 
 static MS_BOOL    MSB131X_DTV_GetLock(MS_U8 u8DemodIndex)
@@ -836,22 +1049,64 @@ static MS_BOOL    MSB131X_DTV_GetLock(MS_U8 u8DemodIndex)
         }
         else
         {
-            if (_bTSDataSwap==FALSE)
+            if (_bTSDataSwap==FALSE && (MSB131X_SERIAL_TS == 0))
             {
                 _bTSDataSwap=TRUE;
                 u16Address=0x2A80;
                 bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
-                u8Data^=0x20;
+                u8Data |= 0x20;
                 bRet&=MSB131X_WriteReg(u8DemodIndex, u16Address, u8Data);
             }
+
         }
 #endif
+
+       if(MSB131X_SERIAL_TS)
+       {
+            u16Address = 0x2A80;
+            bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+            if(MSB131X_SERIAL_TS_LSB_1ST)
+                u8Data |= (0x20);
+            else
+                u8Data &= (0xDF);
+
+            bRet&=MSB131X_WriteReg(u8DemodIndex, u16Address, u8Data);
+       }
     }
     else
     {
         bRet = TRUE;
     }
     return bRet;
+}
+
+static void MSB131X_Driving_Control(MS_U8 u8DemodIndex, MS_BOOL bEnable)
+{
+    DMD_DBG(("%s(),%d\n", __FUNCTION__, __LINE__));
+    MS_U8 u8Temp;
+
+    MSB131X_ReadReg(u8DemodIndex,0x0958, &u8Temp );
+    if (bEnable)
+    {
+        u8Temp = 0xFF;
+    }
+    else
+    {
+        u8Temp = 0x00;
+    }
+
+    MSB131X_WriteReg(u8DemodIndex, 0x0958, u8Temp);//TOP_TS_DATA_DRV_SEL
+
+    MSB131X_ReadReg(u8DemodIndex,0x0959, &u8Temp );    
+    if (bEnable)
+    {
+        u8Temp = u8Temp | 0x0F; 
+    }
+    else
+    {
+        u8Temp = u8Temp & (~0x0F);
+    }
+    MSB131X_WriteReg(u8DemodIndex,0x0959,u8Temp );
 }
 
 MS_BOOL MDrv_Demod_MSB131X_SetTsSerial(MS_U8 u8DemodIndex, MS_BOOL bSerial)
@@ -862,6 +1117,8 @@ MS_BOOL MDrv_Demod_MSB131X_SetTsSerial(MS_U8 u8DemodIndex, MS_BOOL bSerial)
         DMD_ERR(("%s function mutex timeout\n", __FUNCTION__));
         return FALSE;
     }
+
+    MSB131X_Driving_Control(u8DemodIndex,TRUE);
     MsOS_ReleaseMutex(_s32FunMutexId);
     return bRet;
 }
@@ -1349,7 +1606,8 @@ MS_BOOL MDrv_Demod_MSB131X_BlindScan_GetChannel(MS_U8 u8DemodIndex, MS_U16 u16Re
         }
         pTable[u16TableIndex].SatParam.u32SymbolRate = u32SymbolRate_Hz /1000;
 
-       DMD_DBG(("MDrv_Demod_BlindScan_GetChannel Freq:%ld SymbolRate:%ld\n", pTable[u16TableIndex].u32Frequency, pTable[u16TableIndex].SatParam.u32SymbolRate));
+       DMD_DBG(("MDrv_Demod_BlindScan_GetChannel Freq:%"DTC_MS_U32_d" SymbolRate:%"DTC_MS_U32_d"\n",
+        pTable[u16TableIndex].u32Frequency, pTable[u16TableIndex].SatParam.u32SymbolRate));
     }
     DMD_DBG(("MS131X u16TPNum:%d\n", *u16TPNum));
     MsOS_ReleaseMutex(_s32FunMutexId);
@@ -1679,10 +1937,18 @@ MS_BOOL MDrv_Demod_MSB131X_GetLock(MS_U8 u8DemodIndex, EN_LOCK_STATUS *peLockSta
     }
 
     if(MSB131X_DTV_GetLock(u8DemodIndex))
+    {
         *peLockStatus= E_DEMOD_LOCK;
+    }
     else
+    {
+#ifdef DDI_MISC_INUSE
+        *peLockStatus= E_DEMOD_CHECKING;
+#else
         *peLockStatus= E_DEMOD_UNLOCK;
-    
+#endif
+    }
+
     DMD_DBG(("MSB131X MDrv_Demod_GetLock 0x%x\n", *peLockStatus));
     MsOS_ReleaseMutex(_s32FunMutexId);
     return bRet;
@@ -1720,14 +1986,13 @@ MS_BOOL MDrv_Demod_MSB131X_GetBER(MS_U8 u8DemodIndex, float *pfBER)
 MS_BOOL MDrv_Demod_MSB131X_GetSignalQuality(MS_U8 u8DemodIndex, MS_U16 *pu16quality)
 {
     MS_BOOL bRet=TRUE;
-    MS_U16 u16Data;
+
     if (MsOS_ObtainMutex(_s32FunMutexId, MSB131X_MUTEX_TIMEOUT)==FALSE)
     {
         DMD_ERR(("%s function mutex timeout\n", __FUNCTION__));
         return FALSE;
     }
-    u16Data=MSB131X_DTV_GetSignalQuality(u8DemodIndex, _bDemodType);
-    *pu16quality= u16Data;
+    *pu16quality = MSB131X_DTV_GetSignalQuality(u8DemodIndex, _bDemodType);
     DMD_DBG(("MSB131X Quality %d\n", *pu16quality));
     MsOS_ReleaseMutex(_s32FunMutexId);
     return bRet;
@@ -1743,7 +2008,7 @@ MS_BOOL MDrv_Demod_MSB131X_GetPWR(MS_U8 u8DemodIndex, MS_S32 *ps32Signal)
     }
     *ps32Signal=(MS_S32)MSB131X_DTV_GetSignalStrength(u8DemodIndex);
     *ps32Signal=(-1)*(*ps32Signal)/10;
-    DMD_DBG(("MSB131X Signal Level %ld\n", *ps32Signal));
+    DMD_DBG(("MSB131X Signal Level %"DTC_MS_U32_d"\n", *ps32Signal));
     MsOS_ReleaseMutex(_s32FunMutexId);
     return bRet;
 }
@@ -1790,7 +2055,7 @@ MS_BOOL MDrv_Demod_MSB131X_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM
     }
 
     u16SymbolRate=(pParam->SatParam.u32SymbolRate/1000);
-#if (DMD_DEBUG_OPTIONS & DMD_EN_DBG)    
+#if (DMD_DEBUG_OPTIONS & DMD_EN_DBG)
     u16CenterFreq=pParam->u32Frequency;
 #endif
     DMD_DBG(("MSB131X MDrv_Demod_Restart+ Fc:%d SymbolRate %d\n", u16CenterFreq, u16SymbolRate));
@@ -1811,6 +2076,20 @@ MS_BOOL MDrv_Demod_MSB131X_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM
     u8Data=((u16SymbolRate>>8)&0xFF);
     bRet&=MSB131X_WriteReg(u8DemodIndex, u16Address,u8Data);
 
+    //TS serial mode: msb1310
+    u16Address = 0x0980;// TOP_SW_USE_80
+    bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
+
+    if(MSB131X_SERIAL_TS)
+    {
+        u8Data |= (0x01);     
+    }
+    else
+    {
+        u8Data &= (0xFE);
+    }
+    bRet&= MSB131X_WriteReg(u8DemodIndex, u16Address, u8Data);
+    
     u16Address=0x0990;
     bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
     u8Data&=0xF0;
@@ -2008,7 +2287,7 @@ static MS_BOOL  MSB131X_GPIO_Disable(MS_U8 u8Pin)
 #endif
 
 #define MSB131X_CHIP_ID 0x30
-MS_BOOL MSB131X_Check_Exist(MS_U8 u8DemodIndex)
+MS_BOOL MSB131X_Check_Exist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
 {
     MS_U8 u8_id = 0;
 
@@ -2016,7 +2295,8 @@ MS_BOOL MSB131X_Check_Exist(MS_U8 u8DemodIndex)
     _s32FunMutexId=MsOS_CreateMutex(E_MSOS_FIFO, "Mutex_MSB131X_Function",MSOS_PROCESS_SHARED);
     if ((_s32MutexId < 0) || (_s32FunMutexId <0))
     {
-        DMD_DBG(("creat  MSB131X  Mutex error!!! _s32MutexId:%ld _s32FunMutexId:%ld\n", _s32MutexId, _s32FunMutexId));
+        DMD_DBG(("creat  MSB131X  Mutex error!!! _s32MutexId:%"DTC_MS_U32_d" _s32FunMutexId:%"DTC_MS_U32_d"\n",
+            _s32MutexId, _s32FunMutexId));
         if (_s32MutexId >=0)
             MsOS_DeleteMutex(_s32MutexId);
         if (_s32FunMutexId >=0)
@@ -2034,7 +2314,7 @@ MS_BOOL MSB131X_Check_Exist(MS_U8 u8DemodIndex)
     {
         DMD_DBG(("[MSB131x] Read  Chip ID fail \n"));
     }
-    
+
     DMD_DBG(("[MSB131X] read id :%x \n",u8_id ));
 
     if(u8_id == MSB131X_CHIP_ID)
@@ -2042,17 +2322,35 @@ MS_BOOL MSB131X_Check_Exist(MS_U8 u8DemodIndex)
        if(NULL == _pu16ChannelInfo)
             _pu16ChannelInfo = (MS_U16*)malloc(sizeof(MS_U16)*_u16ChannelInfoRow*_u16ChannelInfoColumn);
     }
-    return (u8_id == MSB131X_CHIP_ID); 
+
+    *pu8SlaveID = DEMOD_MSB131X_SLAVE_ID;
+    return (u8_id == MSB131X_CHIP_ID);
 }
 
 MS_BOOL MSB131X_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE fuction_type, void *data)
 {
     MS_BOOL bret=TRUE;
-    
+
     switch(fuction_type)
     {
+        case DEMOD_EXT_FUNC_OPEN:
+            bret &= MDrv_Demod_MSB131X_Open(u8DemodIndex);
+            break;
         case DEMOD_EXT_FUNC_CLOSE:
             _bInited     = FALSE;
+            break;
+        case DEMOD_EXT_FUNC_FINALIZE:
+            if(_s32MutexId >=0)
+                MsOS_DeleteMutex(_s32MutexId);
+            if(_s32FunMutexId >=0)
+                MsOS_DeleteMutex(_s32FunMutexId);
+
+            _bInited     = FALSE;
+            _s32MutexId = -1;
+            _s32FunMutexId = -1;
+            break;
+        case DEMOD_EXT_FUNC_GET_ROLL_OFF:
+            bret &= MDrv_Demod_MSB131X_GetRollOff(u8DemodIndex, (MS_U8*)data);
             break;
         default:
             DMD_DBG(("Request extension function (%x) does not exist\n",fuction_type));
@@ -2077,12 +2375,15 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB131X) DDI_DRV_TABLE_ENTRY(dem
      .I2CByPassPreSetting          = NULL,
      .Extension_Function           = MSB131X_Extension_Function,
      .Extension_FunctionPreSetting = NULL,
+     .Get_Packet_Error              = MDrv_Demod_null_Get_Packet_Error,     
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
      .GetPlpBitMap                 = MDrv_Demod_null_GetPlpBitMap,
      .GetPlpGroupID                = MDrv_Demod_null_GetPlpGroupID,
      .SetPlpGroupID                = MDrv_Demod_null_SetPlpGroupID,
+     .GetNextPLPID                 = MDrv_Demod_null_GetNextPLPID,
+     .GetPLPType                   = MDrv_Demod_null_GetPLPType,
 #endif
 #if MS_DVBS_INUSE
      .BlindScanStart               = MDrv_Demod_MSB131X_BlindScan_Start,

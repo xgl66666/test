@@ -24,7 +24,6 @@
 #include "MxL_HRCLS_OEM_Drv.h"
 #include "MxL_HRCLS_SOC_Registers.h"
 
-//#define _DOWNLOAD_DEBUG_ENABLED_
 #ifdef _MXL_DIAG_ENABLED_
 #include "../MxLDiag/MxL_DIAG_Api.h"
 #endif // _MXL_DIAG_ENABLED_
@@ -71,6 +70,7 @@
 #define MXL_HRCLS_CW_CORR_COUNT_SEL         1
 #define MXL_HRCLS_CW_ERR_COUNT_SEL          2
 #define MXL_HRCLS_CORR_BITS_SEL             3
+#define MXL_HRCLS_ERASURE_SEL               4
 
 #define MXL_HRCLS_DEFAULT_REF_PLL_FREQ_HZ   2700000000U
 #define MXL_HRCLS_DEFAULT_SERDES_LINERATE   MXL_HRCLS_SERDES_LINERATE_5400MHZ
@@ -123,6 +123,7 @@
 #define MXL_FLVR_MXL212                     0x02
 #define MXL_FLVR_MXL213                     0x03
 #define MXL_FLVR_MXL214                     0x04
+#define MXL_FLVR_MXL268                     0x08
 
 #define MXL_HRCLS_XPT_BASEADDR              0x30000U
 #define MXL_HRCLS_XPT_MAX_PIDS              65
@@ -145,6 +146,9 @@
 
 #define MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT  36
 #define MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT_V1 28
+#define MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT_TITAN_ANNEX_B 27
+#define MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT_TITAN_ANNEX_A  36
+
 
 // Mailbox registers
 #define MAILBOX_REG_NUM_PENDING_HOST_CMDS  0xF000
@@ -161,6 +165,8 @@
 #define MAILBOX_REG_AFE_TUNER_STATUS       0xF02A
 
 #define MAILBOX_REG_RX_PWR                 0xF0A6
+#define MAILBOX_REG_RX_PWR_CHAN_25         0xF1B4
+#define MAILBOX_REG_RX_PWR_NB_TUNER        0xF1C4
 #define MAILBOX_REG_TEMPERATURE_CODE       0xF09C
 #define MAILBOX_REG_TEMPERATURE_DEGREES    0xF17E
 
@@ -249,7 +255,10 @@
 #define MXL_HRCLS_MAX_CHANNELS_MINOS_V1     24
 #define MXL_HRCLS_MAX_CHANNELS_HERCULES_V1  24
 #define MXL_HRCLS_MAX_CHANNELS_HERCULES_V2  10
+#define MXL_HRCLS_MAX_CHANNELS_ATLAS_V1     24
+#define MXL_HRCLS_MAX_CHANNELS_TITAN_V1     32
 #define MXL_HRCLS_MAX_CHANNELS_MIN          MXL_MIN(MXL_MIN(MXL_HRCLS_MAX_CHANNELS_MINOS_V1, MXL_HRCLS_MAX_CHANNELS_HERCULES_V1), MXL_HRCLS_MAX_CHANNELS_HERCULES_V2)
+#define MXL_HRCLS_NB_TUNER_CHANNEL_CODE         63
 
 // -20	     0
 // (-20,0]	 1
@@ -273,6 +282,10 @@
 
 #define MXL_HRCLS_HERCULES_HW_ID 0x01
 #define MXL_HRCLS_MINOS_HW_ID    0x11
+#define MXL_HRCLS_TITAN_HW_ID    0x12
+#define MXL_HRCLS_ATLAS_HW_ID    0x13
+
+#define MXL_HRCLS_DEMOD_INVALID MXL_HRCLS_MAX_NUM_DEMOD 
 
 /*****************************************************************************************
     User-Defined Types (Typedefs)
@@ -329,6 +342,7 @@ typedef enum
     HOST_CMD_REQ_DEMOD                        = 37,
     HOST_CMD_CFG_DEMOD_CARRIER_OFFSET_FLIP    = 38,
     HOST_CMD_CFG_DEMOD_RESAMPLE_RATE_RATIO    = 39,
+    HOST_CMD_CFG_DEMOD_READ_EXT_SPACE_REG     = 40,
 
     HOST_CMD_CFG_SERDES_MODE                  = 43,
     HOST_CMD_CFG_SERDES_DS_PARAMS             = 44,
@@ -496,7 +510,8 @@ typedef enum
   MXL_HRCLS_XPT_MAP_4_TO_1,
   MXL_HRCLS_XPT_MAP_PARALLEL,
   MXL_HRCLS_XPT_MAP_CABLECARD,
-
+  MXL_HRCLS_XPT_MAP_1_TO_1_NO_XPT,
+  
   MXL_HRCLS_XPT_MAP_INVALID
 } MXL_HRCLS_XPT_MAP_E;
 
@@ -541,11 +556,13 @@ typedef enum
 #define MXL_HRCLS_XPT_213_SCHEME_NO_MUX_4     0
 
 #define MXL_HRCLS_XPT_214_SCHEME_NO_MUX_4     0
+#define MXL_HRCLS_XPT_214_SCHEME_XPT_BYPASS     1
 
 #define MXL_HRCLS_XPT_258_SCHEME_NO_MUX_4     0
 #define MXL_HRCLS_XPT_258_SCHEME_MUX_4        1
 #define MXL_HRCLS_XPT_258_SCHEME_MUX_2        2
 #define MXL_HRCLS_XPT_258_SCHEME_PARALLEL     3
+#define MXL_HRCLS_XPT_258_SCHEME_XPT_BYPASS     4
 
 #define MXL_HRCLS_XPT_252_SCHEME_NO_MUX_2     0
 #define MXL_HRCLS_XPT_252_SCHEME_PARALLEL     1
@@ -554,6 +571,7 @@ typedef enum
 #define MXL_HRCLS_XPT_254_SCHEME_MUX_2        1
 #define MXL_HRCLS_XPT_254_SCHEME_MUX_1        2
 #define MXL_HRCLS_XPT_254_SCHEME_PARALLEL     3
+#define MXL_HRCLS_XPT_254_SCHEME_XPT_BYPASS     4
 
 #define MXL_HRCLS_XPT_255_SCHEME_NO_MUX_4     0
 
@@ -565,10 +583,11 @@ typedef enum
 #define MXL_HRCLS_XPT_256_SCHEME_PARALLEL     5
 
 #ifdef MXL_HRCLS_265_ENABLE
+/* Default setting for Minos */
   #define MXL_HRCLS_MAX_DFE_CHANNELS_265_5400 16
   #define MXL_HRCLS_MAX_DFE_CHANNELS_265_5184 12
   #define MXL_HRCLS_SERDES_DS_LANES_CNT_265   1
-  #define MXL_HRCLS_DEMODS_CNT_265            1
+  #define MXL_HRCLS_DEMODS_CNT_265_MINOS            1
   #define MXL_HRCLS_IFOUT_SUPPORT_265         MXL_TRUE
   #define MXL_HRCLS_IFOUT_CNT_265             4
   #define MXL_HRCLS_OOB_SUPPORT_265           MXL_FALSE
@@ -576,13 +595,18 @@ typedef enum
   #define MXL_HRLCS_WAKE_ON_WAN_DEMOD_265     MXL_HRCLS_DEMOD0
   #define MXL_HRCLS_AUTO_SPECTRUM_INV_265_HERCULES  MXL_FALSE
   #define MXL_HRCLS_AUTO_SPECTRUM_INV_265_MINOS     MXL_TRUE
+
+/* Default setting for Atlas */
+#define MXL_HRCLS_DEMODS_CNT_265_ATLAS			0
+#define MXL_HRCLS_DEMODS_MAP_265_ATLAS			NULL
 #endif  
 
 #ifdef MXL_HRCLS_267_ENABLE
+/* Default setting for Minos */
   #define MXL_HRCLS_MAX_DFE_CHANNELS_267_5400 24 
   #define MXL_HRCLS_MAX_DFE_CHANNELS_267_5184 16
   #define MXL_HRCLS_SERDES_DS_LANES_CNT_267   2
-  #define MXL_HRCLS_DEMODS_CNT_267            1
+  #define MXL_HRCLS_DEMODS_CNT_267_MINOS            1
   #define MXL_HRCLS_IFOUT_SUPPORT_267         MXL_TRUE
   #define MXL_HRCLS_IFOUT_CNT_267             4
   #define MXL_HRCLS_OOB_SUPPORT_267           MXL_FALSE
@@ -590,6 +614,22 @@ typedef enum
   #define MXL_HRLCS_WAKE_ON_WAN_DEMOD_267     MXL_HRCLS_DEMOD0
   #define MXL_HRCLS_AUTO_SPECTRUM_INV_267_HERCULES  MXL_FALSE
   #define MXL_HRCLS_AUTO_SPECTRUM_INV_267_MINOS     MXL_TRUE
+  
+/* Default setting for Atlas */
+#define MXL_HRCLS_DEMODS_CNT_267_ATLAS			0
+#define MXL_HRCLS_DEMODS_MAP_267_ATLAS			NULL
+#endif
+
+#ifdef MXL_HRCLS_268_ENABLE
+  #define MXL_HRCLS_MAX_DFE_CHANNELS_268      32
+  #define MXL_HRCLS_SERDES_DS_LANES_CNT_268   2
+  #define MXL_HRCLS_DEMODS_CNT_268            8
+  #define MXL_HRCLS_OOB_SUPPORT_268           MXL_FALSE
+  #define MXL_HRCLS_OOB_DEMOD_268             MXL_HRCLS_MAX_NUM_DEMOD
+  #define MXL_HRLCS_WAKE_ON_WAN_DEMOD_268     MXL_HRCLS_MAX_NUM_DEMOD
+  #define MXL_HRCLS_AUTO_SPECTRUM_INV_268     MXL_TRUE
+  #define MXL_HRCLS_IFOUT_SUPPORT_268         MXL_TRUE
+  #define MXL_HRCLS_IFOUT_CNT_268             4  
 #endif
     
 #ifdef MXL_HRCLS_212_ENABLE
@@ -616,10 +656,14 @@ typedef enum
   #define MXL_HRCLS_IFOUT_CNT_214_V2    4
   #define MXL_HRCLS_IFOUT_SUPPORT_214   MXL_TRUE
   #define MXL_HRCLS_DEMODS_CNT_214      4 
+  #define MXL_HRCLS_DEMODS_CNT_214T_3WIRE_NOXPT      4 
   #define MXL_HRCLS_XPT_OUTPUTS_214     4
+  #define MXL_HRCLS_XPT_OUTPUTS_214T_3WIRE_NOXPT     4
   #define MXL_HRCLS_MAX_DFE_CHANNELS_214_XPT_NOMUX_4 8
+  #define MXL_HRCLS_MAX_DFE_CHANNELS_214T_3WIRE_NOXPT 8
   #define MXL_HRCLS_OOB_DEMOD_214 	MXL_HRCLS_DEMOD0
   #define MXL_HRLCS_WAKE_ON_WAN_DEMOD_214   MXL_HRCLS_DEMOD0
+  #define MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT_ANNEX_A_214T 64
 #endif
 
 #ifdef MXL_HRCLS_258_ENABLE
@@ -627,6 +671,7 @@ typedef enum
   #define MXL_HRCLS_SERDES_DS_LANES_CNT_258   0
   #define MXL_HRCLS_DEMODS_CNT_258            9
   #define MXL_HRCLS_DEMODS_CNT_258_NOMUX      5
+  #define MXL_HRCLS_DEMODS_CNT_258T_3WIRE_NOXPT      4
   #define MXL_HRCLS_IFOUT_SUPPORT_258         MXL_FALSE
   #define MXL_HRCLS_IFOUT_SUPPORT_258_V2      MXL_TRUE
   #define MXL_HRCLS_IFOUT_CNT_258_V2          1
@@ -638,16 +683,20 @@ typedef enum
   #define MXL_HRCLS_MAX_DFE_CHANNELS_258_XPT_MUX_4     10
   #define MXL_HRCLS_MAX_DFE_CHANNELS_258_XPT_MUX_2     10
   #define MXL_HRCLS_MAX_DFE_CHANNELS_258_XPT_PAR       10
+  #define MXL_HRCLS_MAX_DFE_CHANNELS_258T_3WIRE_NOXPT       5
   #define MXL_HRCLS_AUTO_SPECTRUM_INV_258     MXL_FALSE
   #define MXL_HRCLS_AUTO_SPECTRUM_INV_258_V2  MXL_TRUE
+  #define MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT_ANNEX_A_258T 64
 #endif
 
 #ifdef MXL_HRCLS_254_ENABLE
-  #define MXL_HRCLS_MAX_DFE_CHANNELS_254      5
+  #define MXL_HRCLS_MAX_DFE_CHANNELS_254      9
   #define MXL_HRCLS_SERDES_DS_LANES_CNT_254   0
   #define MXL_HRCLS_DEMODS_CNT_254            5
-  #define MXL_HRCLS_IFOUT_SUPPORT_254         MXL_FALSE
+  #define  MXL_HRCLS_DEMODS_CNT_254T_3WIRE_NOXPT 4
+  #define MXL_HRCLS_IFOUT_SUPPORT_254         MXL_TRUE
   #define MXL_HRCLS_IFOUT_SUPPORT_254_V2      MXL_TRUE
+  #define MXL_HRCLS_IFOUT_CNT_254_V1          4
   #define MXL_HRCLS_IFOUT_CNT_254_V2          4
   #define MXL_HRCLS_OOB_SUPPORT_254           MXL_TRUE
   #define MXL_HRCLS_OOB_DEMOD_254             MXL_HRCLS_DEMOD4 
@@ -657,8 +706,10 @@ typedef enum
   #define MXL_HRCLS_MAX_DFE_CHANNELS_254_XPT_MUX_2      8
   #define MXL_HRCLS_MAX_DFE_CHANNELS_254_XPT_MUX_1      8
   #define MXL_HRCLS_MAX_DFE_CHANNELS_254_XPT_PAR        8
+  #define MXL_HRCLS_MAX_DFE_CHANNELS_254T_3WIRE_NOXPT 8
   #define MXL_HRCLS_AUTO_SPECTRUM_INV_254     MXL_FALSE
   #define MXL_HRCLS_AUTO_SPECTRUM_INV_254_V2  MXL_TRUE
+  #define MXL_HRCLS_DFE_EQUALIZER_TAPS_COUNT_ANNEX_A_254T 64
 #endif
 
 #ifdef MXL_HRCLS_252_ENABLE
@@ -717,7 +768,7 @@ typedef enum
   #define MXL_HRCLS_AUTO_SPECTRUM_INV_256_V2  MXL_TRUE
 #endif
     
-#ifdef MXL_HRCLS_269_ENABLE
+#if defined MXL_HRCLS_269_ENABLE && defined _HRCLS_V1_SUPPORT_ENABLED_
   #define MXL_HRCLS_MAX_DFE_CHANNELS_269_5400 24 
   #define MXL_HRCLS_MAX_DFE_CHANNELS_269_5184 24 
   #define MXL_HRCLS_SERDES_DS_LANES_CNT_269   2
@@ -778,6 +829,15 @@ typedef struct
   UINT8                 currentTiltIndex;
 } MXL_HRCLS_CAL_DATA_T;
 
+#ifdef _MXL_HRCLS_SERDES_ENABLED_
+typedef enum
+{
+  MXL_HRCLS_SERDES_TYPE_1 = 1,               //!< Current serdes type
+  MXL_HRCLS_SERDES_TYPE_2 = 2,               //!< New serdes type: Atlas
+  MXL_HRCLS_SERDES_TYPE_3 = 3,               //!< New serdes type: Titan
+} MXL_HRCLS_SERDES_TYPE_E;
+#endif
+
 #ifdef _MXL_DIAG_ENABLED_
 #pragma pack(push)
 #pragma pack(4)
@@ -805,7 +865,6 @@ typedef struct
   UINT8                 driverInitialized;
   MXL_HRCLS_CHIP_ID_E   chipId;
   UINT16                chipVersion;       // 0 for FPGA platform, 1 for ES1, 2 for ES2
-  UINT32                adcSampRateInHz;
 
   MXL_HRCLS_FW_MXL_HRCLS_AFE_STATE_E  currentAfeTiltMode;
   UINT8                 currentAfeBO;
@@ -820,6 +879,7 @@ typedef struct
   UINT32                interruptMask;
 
 #ifdef _MXL_HRCLS_SERDES_ENABLED_
+  MXL_HRCLS_SERDES_TYPE_E serDesType;
   MXL_HRCLS_SERDES_LINERATE_E serDesLineRate;
   MXL_HRCLS_SERDES_MODE_E     serDesMode[MXL_HRCLS_SERDES_DS_LANES_CNT];
   UINT8                       serDesDSLanesCnt;
@@ -852,8 +912,11 @@ typedef struct
     MXL_BOOL_E                autoSpectrumInversionEnabled;
   } demods[MXL_HRCLS_MAX_NUM_DEMOD];
   UINT8                       demodsCnt;
+  MXL_BOOL_E                threeWireModeXptBypassSupported;
   MXL_HRCLS_DMD_ID_E *        demodsMap;
   MXL_BOOL_E                  autoSpectrumInversionSupported;
+  MXL_BOOL_E  extendedErrCntrBitwidthSupported;
+  MXL_BOOL_E  erasureDecodingSupported;
 #ifdef _MXL_HRCLS_OOB_ENABLED_
   MXL_BOOL_E                  oobSupported;
   MXL_BOOL_E                  oobFec_55_2_Supported;
@@ -861,7 +924,9 @@ typedef struct
   MXL_HRCLS_DMD_ID_E          oobDemod;
   MXL_HRCLS_OOB_TYPE_E        oobType;
 #endif    
+#ifdef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
   MXL_HRCLS_DMD_ID_E          wakeOnWanDemod;
+#endif
   struct
   {
     MXL_BOOL_E                supported;
@@ -879,6 +944,11 @@ typedef struct
       MXL_HRCLS_CHAN_T *        dfeChanMap;
       UINT8                     demodScheme;
     } modes[MXL_HRCLS_XPT_MODE_MAX], *currentMode;
+    MXL_BOOL_E                  commonClockEnabled;
+    MXL_HRCLS_MPEG_CLK_RATE_E   commonClkFreq; 
+    UINT16                      enableMap;
+    MXL_BOOL_E                  fourWireModeSupported;
+    MXL_HRCLS_XPT_OUTPUT_ID_E   clkSrcOutputId;
 #endif   
   } xpt;
 #endif
@@ -887,6 +957,7 @@ typedef struct
   UINT8                       ifOutCnt;
   MXL_HRCLS_IF_ID_E *         ifOutMap;
 #endif  
+  MXL_BOOL_E                  clockOutSupported;
 } MXL_HRCLS_DEV_CONTEXT_T;
 
 #define MXL_HRCLS_TABLE_ID_FFT_HOST_CMD_DATA  0x00
@@ -914,14 +985,16 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_ConfigDemodEqualizer(UINT8 devId, MXL_HRCLS_DMD_ID_E
 MXL_STATUS_E MxL_HRCLS_Ctrl_ConfigDemodResampRatio(UINT8 devId, MXL_HRCLS_DMD_ID_E demodId, UINT32 symbolRate[], UINT8 bank[], UINT8 numBank);
 MXL_STATUS_E MxL_HRCLS_Ctrl_CfgDemReset(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr, MXL_HRCLS_DMD_ID_E demodId);
 MXL_HRCLS_DMD_ID_E MxL_HRCLS_Ctrl_ConvertLogical2PhysicalDemodId(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr, MXL_HRCLS_DMD_ID_E logicalDemodId);
+MXL_STATUS_E MxL_HRCLS_Ctrl_ConvertAndValidateDemodId (MXL_HRCLS_DEV_CONTEXT_T * devContextPtr, /*@out@*/MXL_HRCLS_DMD_ID_E *demodIdPtr);
+MXL_STATUS_E MxL_HRCLS_Ctrl_CfgDemod3WireMpegOutParams(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr, MXL_HRCLS_DMD_ID_E demodId, MXL_HRCLS_MPEGOUT_PARAM_T* mpegOutParamPtr);
+UINT8 MxL_HRCLS_Ctrl_GetDsEqualizerTapCount(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr, MXL_HRCLS_DMD_ID_E demodId);
 #endif // _MXL_HRCLS_DEMOD_ENABLED_
 
 #ifdef _MXL_HRCLS_IFOUT_ENABLED_
 MXL_HRCLS_IF_ID_E MxL_HRCLS_Ctrl_GetPhysicalIfOutId(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr, MXL_HRCLS_IF_ID_E logicalIfOutId);
 #endif
 
-MXL_STATUS_E MxL_HRCLS_Ctrl_DownloadFirmwareInMbin(MXL_HRCLS_DEV_CONTEXT_T* devContextPtr,MBIN_FILE_T* mbinPtr,UINT8 enableRun, /*@null@*/ MXL_CALLBACK_FN_T fwCallbackFn);
-MXL_STATUS_E MxL_HRCLS_Ctrl_SendDownloadCommand(MXL_HRCLS_DEV_CONTEXT_T* devContextPtr, MXL_CMD_ID_E commandId, void* dataPtr, UINT32 dataLen, UINT16 downloadBlockCnt);
+MXL_STATUS_E MxL_HRCLS_Ctrl_DownloadFirmwareInMbin(MXL_HRCLS_DEV_CONTEXT_T* devContextPtr, const MBIN_FILE_T* mbinPtr,UINT8 enableRun, /*@null@*/ MXL_CALLBACK_FN_T fwCallbackFn);
 MXL_STATUS_E MxL_HRCLS_Ctrl_SendHostCommand(UINT8 devId, HOST_COMMAND_T* cmdPtr, MXL_CMD_ID_E cmdId, UINT8 seqNum);
 MXL_STATUS_E MxL_HRCLS_Ctrl_ReadRegisterField(UINT8 devId, UINT16 regAddr, UINT8 lsbPos, UINT8 fieldWidth, /*@out@*/ UINT16* valuePtr);
 MXL_STATUS_E MxL_HRCLS_Ctrl_UpdateRegisterField(UINT8 devId, UINT16 regAddr, UINT8 lsbPos, UINT8 fieldWidth, UINT16 newValue);
@@ -968,7 +1041,13 @@ MXL_HRCLS_CHAN_ID_E MxL_HRCLS_Ctrl_GetOOBPhysicalChannelId(MXL_HRCLS_DEV_CONTEXT
 
 #ifdef _MXL_HRCLS_XPT_ENABLED_
 MXL_BOOL_E MxLWare_HRCLS_Ctrl_ValidateXPTMode(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr, MXL_HRCLS_XPT_MODE_E mode);
+MXL_STATUS_E MxLWare_Ctrl_ConfigureCommonClock(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr, MXL_HRCLS_MPEG_CLK_RATE_E mpegClkFreq, MXL_HRCLS_MPEG_CLK_FMT_E mpegClkPol, MXL_HRCLS_MPEG_DRV_MODE_E mpegClkPadDrv);
 #endif // _MXL_HRCLS_XPT_ENABLED_
+
+#ifdef _MXL_HRCLS_SERDES_ENABLED_
+MXL_STATUS_E MxL_HRCLS_Ctrl_SerdesOverwriteDefaults(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr, MXL_HRCLS_SERDES_LANE_ID_E serDesId);
+MXL_STATUS_E MxL_HRCLS_Ctrl_SetSerdesIOTermination(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr, MXL_HRCLS_SERDES_LANE_ID_E serDesId, MXL_HRCLS_SERDES_RCAL_CODE_E rcalCode);
+#endif // _MXL_HRCLS_SERDES_ENABLED_
 
 #endif /* __MXL_HRCLS_PHY_CFG_H__*/
 

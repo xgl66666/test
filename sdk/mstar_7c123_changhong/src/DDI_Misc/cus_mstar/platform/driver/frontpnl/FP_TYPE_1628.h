@@ -128,7 +128,7 @@ typedef struct
 #endif
 
 //#define BIT_LED    0x20
-// 定义字符编码，此处无需随方案不同而改动，只需改动上面配置的BIT_A、BIT_B等
+// 露篓脪氓脳脰路没卤脿脗毛拢卢麓脣麓娄脦脼脨猫脣忙路陆掳赂虏禄脥卢露酶赂脛露炉拢卢脰禄脨猫赂脛露炉脡脧脙忙脜盲脰脙碌脛BIT_A隆垄BIT_B碌脠
 #define DATA_0        (DATA_NOT (BIT_A | BIT_B | BIT_C | BIT_D | BIT_E | BIT_F))
 #define DATA_1        (DATA_NOT (BIT_B | BIT_C))
 #define DATA_2        (DATA_NOT (BIT_A | BIT_B | BIT_D | BIT_E | BIT_G))

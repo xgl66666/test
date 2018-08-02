@@ -12,8 +12,6 @@
  *****************************************************************************************
  *                Copyright (c) 2010, MaxLinear, Inc.
  ****************************************************************************************/
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_MXL254)
 
 #include "MxL_HRCLS_Common.h"
 #include "MxL_HRCLS_PhyCtrl.h"
@@ -249,6 +247,7 @@ static SINT16 MxL_HRCLS_Ctrl_CalGetCGTF_V2(MXL_HRCLS_DEV_CONTEXT_T * devContextP
   return cgtf;
 }
 
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
 /*----------------------------------------------------------------------------------------
 --| FUNCTION NAME : MxL_HRCLS_Ctrl_CalGetCGTF 
 --| 
@@ -349,6 +348,7 @@ static SINT16 MxL_HRCLS_Ctrl_CalGetCGTF(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr,
 
   return cgtf;
 }
+#endif // _HRCLS_V1_SUPPORT_ENABLED_
 
 /*----------------------------------------------------------------------------------------
 --| FUNCTION NAME : MxL_HRCLS_Ctrl_CalGetCGTTZ_V2
@@ -383,7 +383,7 @@ static SINT16 MxL_HRCLS_Ctrl_CalGetCGTTZ_V2(MXL_HRCLS_DEV_CONTEXT_T * devContext
 }
 
 
-
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
 /*----------------------------------------------------------------------------------------
 --| FUNCTION NAME : MxL_HRCLS_Ctrl_CalGetCGTTZ
 --| 
@@ -415,6 +415,7 @@ static SINT16 MxL_HRCLS_Ctrl_CalGetCGTTZ(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr
   
   return (SINT16) cgttz;
 }
+#endif // _HRCLS_V1_SUPPORT_ENABLED_
 
 /*----------------------------------------------------------------------------------------
 --| FUNCTION NAME : MxL_HRCLS_Ctrl_CalGetCGFF 
@@ -499,11 +500,13 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_CalGetCorrected(MXL_HRCLS_DEV_CONTEXT_T * devContext
       c_gff = MxL_HRCLS_Ctrl_CalGetCGFF(devContextPtr, freqMHz);
     }
 //    devContextPtr->currentAfeBO = MxL_HRCLS_Ctrl_ReqDevCurrentAFEBackOff(devContextPtr);
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
     if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (1 == devContextPtr->chipVersion))
     {
       c_gtf = MxL_HRCLS_Ctrl_CalGetCGTF(devContextPtr, freqMHz, devContextPtr->currentTemp);
     }
     else
+#endif
     {
       c_gtf = MxL_HRCLS_Ctrl_CalGetCGTF_V2(devContextPtr, freqMHz, devContextPtr->currentTemp);
     }
@@ -578,11 +581,13 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_CalGetCorrectedPSM(MXL_HRCLS_DEV_CONTEXT_T * devCont
       status = MxLWare_HRCLS_OEM_ReadRegister(devContextPtr->devId, MAILBOX_REG_NB_HOST_HANDOVER_BKP, &regData);
       if (status == MXL_SUCCESS)
       {
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
         if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (1 == devContextPtr->chipVersion))
         {
           tempHandover = (regData >> 5) & 0x07;
         }
         else
+#endif
         {
           status = MxL_HRCLS_Ctrl_MapCodeToTempInDegrees(((regData >> 5) & MXL_HRCLS_TEMP_CODE_MAP_MASK), &tempHandover);
         }
@@ -594,22 +599,26 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_CalGetCorrectedPSM(MXL_HRCLS_DEV_CONTEXT_T * devCont
         c_gff = MxL_HRCLS_Ctrl_CalGetCGFF(devContextPtr, freqMHz);
       }
 
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
       if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (1 == devContextPtr->chipVersion))
       {
         c_gttz_now = MxL_HRCLS_Ctrl_CalGetCGTTZ(devContextPtr, devContextPtr->currentTemp);
         c_gttz_handover = MxL_HRCLS_Ctrl_CalGetCGTTZ(devContextPtr, tempHandover);
       }
       else
+#endif
       {
         c_gttz_now = MxL_HRCLS_Ctrl_CalGetCGTTZ_V2(devContextPtr, devContextPtr->currentTemp);
         c_gttz_handover = MxL_HRCLS_Ctrl_CalGetCGTTZ_V2(devContextPtr, tempHandover);
       }
       c_gttz = c_gttz_now - c_gttz_handover;
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
       if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (1 == devContextPtr->chipVersion))
       {
         c_gtf = MxL_HRCLS_Ctrl_CalGetCGTF(devContextPtr, freqMHz, devContextPtr->currentTemp);
       }
       else
+#endif
       {
         c_gtf = MxL_HRCLS_Ctrl_CalGetCGTF_V2(devContextPtr, freqMHz, devContextPtr->currentTemp);
       }
@@ -1027,11 +1036,13 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_CalReadReferencePower(MXL_HRCLS_DEV_CONTEXT_T * devC
           // C_PFF
           calData->freqPoints[freqIndex+i].deltaPowerdB -= MXL_DIV_ROUND(MxL_HRCLS_Ctrl_CalGetCPFF(calData->freqPoints[freqIndex + i].freqMHz), 10);
           // C_GTF
+#if defined _HRCLS_V1_SUPPORT_ENABLED_
           if ((MXL_HRCLS_HERCULES_CHIP_ID == devContextPtr->chipId) && (1 == devContextPtr->chipVersion))
           {
             calData->freqPoints[freqIndex+i].deltaPowerdB -= MXL_DIV_ROUND(MxL_HRCLS_Ctrl_CalGetCGTF(devContextPtr, calData->freqPoints[freqIndex + i].freqMHz, devContextPtr->currentTemp), 10);
           }
           else
+#endif
           {
             calData->freqPoints[freqIndex+i].deltaPowerdB -= MXL_DIV_ROUND(MxL_HRCLS_Ctrl_CalGetCGTF_V2(devContextPtr, calData->freqPoints[freqIndex + i].freqMHz, devContextPtr->currentTemp), 10);
           }
@@ -1525,5 +1536,4 @@ MXL_STATUS_E MxL_HRCLS_Ctrl_CalReadCoeffsFromFile(MXL_HRCLS_DEV_CONTEXT_T * devC
 
   return status;
 }
-#endif
 

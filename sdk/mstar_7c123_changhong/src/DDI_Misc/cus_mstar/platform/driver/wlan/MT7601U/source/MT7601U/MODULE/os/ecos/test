@@ -1,0 +1,4 @@
+#!/bin/sh
+cleanofile=`find ../../ -name "*.o"`
+echo ${cleanofile}
+rm -rf $cleanofile

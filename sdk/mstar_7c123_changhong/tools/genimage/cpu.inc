@@ -1,6 +1,6 @@
 ################################################################################
 #
-# Copyright (c) 2008-2010 MStar Semiconductor, Inc.
+# Copyright (c) 2008-2009 MStar Semiconductor, Inc.
 # All rights reserved.
 #
 # Unless otherwise stipulated in writing, any and all information contained
@@ -60,39 +60,116 @@ M_Config1DL             = (0x7  << S_Config1DL)
 S_Config1DA             = 7
 M_Config1DA             = (0x7  << S_Config1DA)
 
+# R_zero                  0
+# R_AT                    1
+# R_v0                    2
+# R_v1                    3
+# R_a0                    4
+# R_a1                    5
+# R_a2                    6
+# R_a3                    7
+# R_t0                    8
+# R_t1                    9
+# R_t2                    10
+# R_t3                    11
+# R_t4                    12
+# R_t5                    13
+# R_t6                    14
+# R_t7                    15
+# R_s0                    16
+# R_s1                    17
+# R_s2                    18
+# R_s3                    19
+# R_s4                    20
+# R_s5                    21
+# R_s6                    22
+# R_s7                    23
+# R_t8                    24
+# R_t9                    25
+# R_repc                  25
+# R_k0                    26
+# R_k1                    27
+# R_gp                    28
+# R_sp                    29
+# R_fp                    30
+# R_s8                    30
+# R_tid                   30
+# R_ra                    31
+# R_hi                    32                      /* Hi register */
+# R_lo                    33                      /* Lo register */
+#
+# R_C0_Config             16
+# R_C0_SelConfig0         0
+# R_C0_SelConfig1         1
+# R_C0_SelConfig2         2
+#
+# C0_TagHi                $29
+# R_C0_TagHi              29
+# R_C0_SelTagHi           0
+# C0_ITagHi               $29,0
+# R_C0_ITagHi             29
+# R_C0_SelITagHi          0
+# C0_DTagHi               $29,2
+# R_C0_DTagHi             29
+# R_C0_SelDTagHi          2
+
+
 INITIAL_STATUS          = 0x10400000
 INITIAL_CONFIG0         = 0x00000002    #Uncached
 
 Idx_WB_IV_D             = 0x1
-Idx_L_Tag_D             = 0x5
 Idx_S_Tag_I             = 0x8
 Idx_S_Tag_D             = 0x9
-
-TAG_SPRAM_EN            = 0x00000080
-ERRCTL_SPR              = 0x10000000
 
 A_DSPRAM                = 0x08000000    # 0x88000000
 A_KSEG0BASE             = 0x80000000
 
+
 #-------------------------------------------------------------------------------------------------
 # General register usage macro
 #-------------------------------------------------------------------------------------------------
+        .macro MFC0_OP  dst, src, sel   # (e.g.) R_zero, R_C0_ITagLo, R_C0_SelITagLo
+        .word   (0x40000000 | ((\dst)<<16) | ((\src)<<11) | (\sel))
+        .endm
 
-        .macro  DELAYMS ms              # ms < 0x7FFFFFFF/CLK*2*1000, up to 19000ms for 216Mhz, 8500ms for 504Mhz
+
+        .macro MTC0_OP  src, dst, sel
+        .word   (0x40800000 | ((\src)<<16) | ((\dst)<<11) | (\sel))
+        .endm
+
+
+        .macro  RBASE   reg
+        lui     $8,     (\reg >> 16)
+        .endm
+
+
+#        .macro  WREG    reg, value
+#        li      $9,     (\value)
+#        sw      $9,     (\reg & 0xFFFF)($8)
+#        .endm
+
+
+        .macro  DBGREG  value
+#        WREG    R_DEBUG, (\value)
+        .endm
+
+
+        .macro  DELAYMS ms              # ms < 0x7FFFFFFF/CLK*2*1000, up to 1900ms for 216Mhz
         li      $26,    (\ms * (CPU_CLK_FREQ/2/1000)) #ticks
         mtc0    $0,     $9              #tick1 = 0
 1:
         mfc0    $10,    $9              #tick2
-        bltu    $10,    $26, 1b
+        blt     $10,    $26, 1b
         nop
         .endm
 
-        .macro  DELAYUS us              # us < 0x7FFFFFFF/CLK*2*1000000, up to 19000ms for 216Mhz, 8500ms for 504Mhz
+
+        .macro  DELAYUS us              # ms < 0x7FFFFFFF/CLK*2*1000000, up to 19000000us for 216Mhz
         li      $26,    (\us * (CPU_CLK_FREQ/2/1000000)) #ticks
         mtc0    $0,     $9              #tick1 = 0
 1:
         mfc0    $10,    $9              #tick2
-        bltu    $10,    $26, 1b
+        blt     $10,    $26, 1b
         nop
         .endm
 
@@ -101,10 +178,9 @@ A_KSEG0BASE             = 0x80000000
         mtc0    $0,     $9              #tick1 = 0
 1:
         mfc0    $10,    $9              #tick2
-        bltu    $10,    $26, 1b
+        blt     $10,    $26, 1b
         nop
         .endm
-
 
 #-------------------------------------------------------------------------------------------------
 # CPU_Init
@@ -115,15 +191,21 @@ A_KSEG0BASE             = 0x80000000
         .macro  CPU_Init
 #CPU_Init:
 
+        # INIT DEBUG
+        mfc0    $8,     $23
+        and     $8,     (~M_DebugCOUNTDM)
+        mtc0    $8,     $23
+
         # CLEAR COUNT
         mtc0    $0,     $9
 
+        # INIT STATUS
+# @FIXME: the below instructions will make T3 hang? Why?
+#        li      $8,     INITIAL_STATUS
+#        mtc0    $8,     $12
+
         # INIT CAUSE
         mtc0    $0,     $13
-
-        # INIT STATUS
-        li      $8,     INITIAL_STATUS
-        mtc0    $8,     $12
 
         # INIT CONFIG
         li      $8,     INITIAL_CONFIG0
@@ -142,11 +224,10 @@ A_KSEG0BASE             = 0x80000000
 #CPU_InitIC:
 
         # Clear TagLo & TagHi
-        mtc0    $0,     $28, 0                # TagLo / ITagLo
-        mtc0    $0,     $28, 2                # DTagLo
-        mtc0    $0,     $29, 0                # TagHi / ITagHi
-        mtc0    $0,     $29, 2                # DTagHi
-
+        mtc0    $0,     $28, 0                              # TagLo / ITagLo
+        mtc0    $0,     $28, 2                              # DTagLo
+        mtc0    $0,     $29, 0                              # TagHi / ITagHi
+        mtc0    $0,     $29, 2                              # DTagHi
 
         # Config1
         mfc0    $8,     $16, 1
@@ -204,10 +285,10 @@ A_KSEG0BASE             = 0x80000000
 #CPU_InitDC:
 
         # Clear TagLo & TagHi
-        mtc0    $0,     $28, 0                # TagLo / ITagLo
-        mtc0    $0,     $28, 2                # DTagLo
-        mtc0    $0,     $29, 0                # TagHi / ITagHi
-        mtc0    $0,     $29, 2                # DTagHi
+        mtc0    $0,     $28, 0                              # TagLo / ITagLo
+        mtc0    $0,     $28, 2                              # DTagLo
+        mtc0    $0,     $29, 0                              # TagHi / ITagHi
+        mtc0    $0,     $29, 2                              # DTagHi
 
         # Config1
         mfc0    $8,     $16, 1
@@ -311,44 +392,82 @@ A_KSEG0BASE             = 0x80000000
 
 
 #-------------------------------------------------------------------------------------------------
-# CPU_InitDSPRAM
+# CPU_InitDSPRAM                                            # ( $2 should not be touch )
 # @param  None
 # @return None
 # @note   Init Data ScratchPad RAM
 #-------------------------------------------------------------------------------------------------
         .macro CPU_InitDSPRAM
-        .set push
-        .set at
 #CPU_InitDSPRAM:
 
-        li      $16, ERRCTL_SPR
-        mtc0    $16, $26             # Set ErrCtl[SPR]
+        li      $17,    0x10000000                          # enable write to spram
+        mtc0    $17,    $26
 
-        li      $16, A_KSEG0BASE
-        cache   Idx_L_Tag_D, 0($16)
-        mfc0    $17, $28, 2  # DSPRAM addr
+        li      $16,    0xFFFFFFFF
+#        ehb
+        mtc0    $16,    $28
+#        ehb
+        li      $17,    0x80000000
+        cache   Idx_S_Tag_D, 0($17)
 
-        li      $16, (A_KSEG0BASE + 8)
-        cache   Idx_L_Tag_D, 0($16)
-        mfc0    $17, $28, 2
-        and     $17, 0xffffff00 # DSPRAM size
 
-        li      $16, (A_DSPRAM | TAG_SPRAM_EN)
-        mtc0    $16, $28, 2          # move to DTagLo
+        li      $16,    A_DSPRAM                            # DSPRAM base offset 0x04000000
+#        ehb
+        mtc0    $16,    $28
+#        ehb
+        cache   Idx_S_Tag_D, 0x10($17)
 
-        li      $16, (A_DSPRAM | A_KSEG0BASE)
-        cache   Idx_S_Tag_D,0($16)   # store tag to SPRAM
-        mtc0    $0, $26              # Clear ErrCtl[SPR]
+        mtc0    $0,     $28
+        mtc0    $0,     $29
+        mtc0    $0,     $26
 
-        # for i from $16 to $17
-        or      $17, $17, $16
+        li      $15,    0x80000000
+        or      $16,    $16, $17                            # DSPRAM base 0x84000000
+
+        li      $15,    0x00001000
 1:
-        sw      $0,  0($16)
-        add     $16, 4
-        bltu    $16, $17, 1b
+        sw      $0,     0($16)
+        add     $16,    4
+        sub     $15,    4
+        bnez    $15,    1b
         nop
-        .set pop
+
         .endm
+
+
+#-------------------------------------------------------------------------------------------------
+# CPU_DisableDSPRAM                                         # ( $2 should not be touch )
+# @param  None
+# @return None
+# @note   Disable ScratchPad RAM
+#-------------------------------------------------------------------------------------------------
+        .macro CPU_DisableDSPRAM
+#CPU_DisableDSPRAM:
+
+        li      $17,    0x10000000                          # enable write to spram
+        mtc0    $17,    $26
+
+#        ehb
+        mtc0    $0,    $28
+#        ehb
+        li      $17,    0x80000000
+        cache   Idx_S_Tag_D, 0($17)
+
+
+#        ehb
+        mtc0    $0,    $28
+#        ehb
+        cache   Idx_S_Tag_D, 0x10($17)
+
+        mtc0    $0,     $28
+        mtc0    $0,     $29
+        mtc0    $0,     $26
+
+        li      $15,    0x80000000
+        or      $16,    $16, $17                            # DSPRAM base 0x84000000
+
+        .endm
+
 
 #-------------------------------------------------------------------------------------------------
 # CPU_EnableCache
@@ -368,24 +487,18 @@ A_KSEG0BASE             = 0x80000000
 
 
 #-------------------------------------------------------------------------------------------------
-# CPU_DisCache
+# CPU_DisableCache
 # @param  None
 # @return None
 # @note   Disable Cache and Scratchpad
 #-------------------------------------------------------------------------------------------------
-        .macro CPU_DisCache
-#CPU_DisCache:
+        .macro CPU_DisableCache
+#CPU_DisableCache:
 
         # Disble cache
         li      $8,     INITIAL_CONFIG0
-        ehb
+#        ehb
         mtc0    $8,     $16
-        ehb
-
-        # Disble Scratchpad
-        li      $16, A_DSPRAM
-        ehb
-        mtc0    $16, $28, 2          # move to DTagLo
-        ehb
+#        ehb
         .endm
 

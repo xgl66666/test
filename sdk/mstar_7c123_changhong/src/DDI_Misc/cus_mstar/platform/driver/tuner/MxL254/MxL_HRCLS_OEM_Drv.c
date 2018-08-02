@@ -1,8 +1,6 @@
 /*******************************************************************************
  * Example MxL_HRCLS_OEM_Drv.c
  ******************************************************************************/
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_MXL254)
 
 #ifndef S_SPLINT_S
 
@@ -14,14 +12,15 @@
 #include "MsCommon.h"
 #include "MsOS.h"
 #include "drvIIC.h"
+#include "MxL_HRCLS_OEM_Drv.h"
+#include "MxL_HRCLS_PhyCtrl.h"
+
 
 //extern MS_BOOL MDrv_IIC_Write(MS_U8 u8SlaveID, MS_U8 *pu8Addr, MS_U8 u8AddrSize, MS_U8 *pu8Buf, MS_U32 u32BufSize);
 //extern MS_BOOL MDrv_IIC_Read(MS_U8 u8SlaveID, MS_U8 *pu8Addr, MS_U8 u8AddrSize, MS_U8 *pu8Buf, MS_U32 u32BufSize);
 //extern MS_BOOL MDrv_IIC1_Write(MS_U8 u8SlaveID, MS_U8 *pu8Addr, MS_U8 u8AddrSize, MS_U8 *pu8Buf, MS_U32 u32BufSize);
 //extern MS_BOOL MDrv_IIC1_Read(MS_U8 u8SlaveID, MS_U8 *pu8Addr, MS_U8 u8AddrSize, MS_U8 *pu8Buf, MS_U32 u32BufSize);
 
-
-#define MXL254_SLAVE_ID 0x50
 /*------------------------------------------------------------------------------
 --| FUNCTION NAME : MxLWare_HRCLS_OEM_Reset
 --| 
@@ -379,7 +378,8 @@ void MxLWare_HRCLS_OEM_DelayUsec(UINT32 usec)
   // !!! FIXME !!! 
   // To be implemented for customer OEM platform
   //usleep(usec);
-  MsOS_DelayTask((usec + 500) /1000);
+  //MsOS_DelayTask((usec + 500) /1000);
+  MsOS_DelayTaskUs(usec);
 }
 
 /*------------------------------------------------------------------------------
@@ -403,6 +403,19 @@ void MxLWare_HRCLS_OEM_GetCurrTimeInUsec(UINT64* usecPtr)
   // return MXL_SUCCESS;
 }
 
-#endif
+MXL_STATUS_E MxLWare_HRCLS_OEM_DrvDeInit(UINT8 devId)
+{
+  MXL_STATUS_E status = MXL_SUCCESS;
+  MXL_HRCLS_DEV_CONTEXT_T * devContextPtr = MxL_HRCLS_Ctrl_GetDeviceContext(devId);
+
+
+  if (devContextPtr)
+  {
+    if (devContextPtr->driverInitialized == 1)
+        devContextPtr->driverInitialized = 0;
+  }
+  return status;
+}
+
 #endif
 

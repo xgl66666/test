@@ -132,7 +132,6 @@ TDA18250AObject_t gTDA18250AInstance[TDA18250A_MAX_UNITS] =
         {
             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 /* sSmoothCurrentStateSave */
         },
-        TDA18250A_Scanning_Mode_Enabled,
         TDA18250A_CONFIG_0          /* Instance Customizable Settings */
     },
     {
@@ -164,7 +163,6 @@ TDA18250AObject_t gTDA18250AInstance[TDA18250A_MAX_UNITS] =
         {
             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 /* sSmoothCurrentStateSave */
         },
-        TDA18250A_Scanning_Mode_Enabled,
         TDA18250A_CONFIG_1          /* Instance Customizable Settings */
     }
 };
@@ -260,7 +258,7 @@ tmbslTDA18250B_ResetConfig(UInt8 u8TunerIndex)
 /*============================================================================*/
 tmErrorCode_t
 tmbslTDA18250A_Open(
-                    UInt8 u8TunerIndex, 
+                    UInt8 u8TunerIndex,
                     tmUnitSelect_t              tUnit,      /* I: FrontEnd unit number */
                     tmbslFrontEndDependency_t*  psSrvFunc   /* I: setup parameters */
                     )
@@ -347,7 +345,7 @@ tmbslTDA18250A_Open(
 /*============================================================================*/
 tmErrorCode_t
 tmbslTDA18250A_Close(
-                     UInt8 u8TunerIndex, 
+                     UInt8 u8TunerIndex,
                      tmUnitSelect_t  tUnit   /* I: FrontEnd unit number */
                      )
 {
@@ -403,7 +401,7 @@ tmbslTDA18250A_Close(
 /*============================================================================*/
 tmErrorCode_t
 tmbslTDA18250A_SetPowerState(
-                             UInt8 u8TunerIndex, 
+                             UInt8 u8TunerIndex,
                              tmUnitSelect_t  tUnit,      /* I: Unit number */
                              tmPowerState_t  powerState  /* I: Power state */
                              )
@@ -453,14 +451,14 @@ tmbslTDA18250A_SetPowerState(
 /*============================================================================*/
 tmErrorCode_t
 tmbslTDA18250A_SetStandardMode(
-                               UInt8 u8TunerIndex, 
+                               UInt8 u8TunerIndex,
                                tmUnitSelect_t          tUnit,          /* I: Unit number */
                                TDA18250AStandardMode_t  StandardMode    /* I: Standard mode of this device */
                                )
 {
     pTDA18250AObject_t           pObj = Null;
     tmErrorCode_t               err = TM_OK;
-    pTDA18250AStdCoefficients    prevPStandard = Null;
+    //pTDA18250AStdCoefficients    prevPStandard = Null;
 
     /* Get a driver instance */
     err = iTDA18250A_GetInstance(u8TunerIndex,tUnit, &pObj);
@@ -481,7 +479,7 @@ tmbslTDA18250A_SetStandardMode(
         pObj->StandardMode = StandardMode;
 
         /* Reset standard map pointer */
-        prevPStandard = pObj->pStandard;
+        //prevPStandard = pObj->pStandard;
         pObj->pStandard = Null;
 
         if(pObj->StandardMode>TDA18250A_StandardMode_Unknown && pObj->StandardMode<TDA18250A_StandardMode_Max)
@@ -634,7 +632,7 @@ tmbslTDA18250A_SetStandardMode(
                         }
                     }
                     else /* Free_Frozen algo will be used */
-                    {                
+                    {
                         /* Activate AGC1 Fast mode */
                         err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_2__AGC1_Up_step, 0x02, Bus_None);
                         tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
@@ -694,7 +692,7 @@ tmbslTDA18250A_SetStandardMode(
                 tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
             }
             if ((pObj->eChipVersion == TDA18250A_VersionES2) || (pObj->eChipVersion == TDA18250A_VersionES3))
-            { 
+            {
                 if(err == TM_OK)
                 { /* AGC2_Gain_Control_Speed False 1ms ; True 0.5ms    */
                     err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC2_byte_3__AGC2_Gain_Control_Speed, (pObj->pStandard->AGC2_Gain_Control_Speed ? 0x01:0x00), Bus_NoRead);
@@ -785,7 +783,7 @@ tmbslTDA18250A_SetStandardMode(
             if(err == TM_OK)
             {
                 /* Set IF */
-                //pObj->pStandard->IF = 5000000; 
+                //pObj->pStandard->IF = 5000000;
                 err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_IF_Frequency_byte__IF_Freq, (UInt8)((pObj->pStandard->IF - pObj->pStandard->CF_Offset)/50000), Bus_NoRead);
                 tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
             }
@@ -837,7 +835,7 @@ tmbslTDA18250A_SetStandardMode(
 /*============================================================================*/
 tmErrorCode_t
 tmbslTDA18250A_SetRF(
-                     UInt8 u8TunerIndex, 
+                     UInt8 u8TunerIndex,
                      tmUnitSelect_t  tUnit,  /* I: Unit number */
                      UInt32          uRF     /* I: RF frequency in hertz */
                      )
@@ -862,13 +860,7 @@ tmbslTDA18250A_SetRF(
 
     if(err == TM_OK)
     {
-    #if 0
         err = iTDA18250A_SetFreqDependantStandard(pObj, uRF);
-    #else
-	/*Program AGC TOPs only when uRF changed*/
-	if(pObj->uRF != uRF)	
-       	 err = iTDA18250A_SetFreqDependantStandard(pObj, uRF);
-   #endif
     }
 
     if (err == TM_OK)
@@ -907,8 +899,8 @@ tmbslTDA18250A_SetRF(
 /*                                                                            */
 /*============================================================================*/
 tmErrorCode_t
-tmbslTDA18250A_HwInit(      
-                      UInt8 u8TunerIndex, 
+tmbslTDA18250A_HwInit(
+                      UInt8 u8TunerIndex,
                       tmUnitSelect_t  tUnit   /* I: Unit number */
                       )
 {
@@ -923,7 +915,7 @@ tmbslTDA18250A_HwInit(
     err = iTDA18250A_GetInstance(u8TunerIndex,tUnit, &pObj);
 
     _MUTEX_ACQUIRE(TDA18250A)
-
+#if 1
         tmDBGPRINTEx(DEBUGLVL_INOUT, "tmbslTDA18250A_HwInit(0x%08X)", tUnit);
 
     /* Reset standard mode & Hw State */
@@ -932,9 +924,9 @@ tmbslTDA18250A_HwInit(
 
     while(counter > 0)
     {
-        /* Read all bytes */
-        err = iTDA18250A_ReadRegMap(pObj, 0x00, TDA18250A_REG_MAP_NB_BYTES);
-        tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_ReadRegMap(0x%08X) failed.", tUnit));
+        /* put tuner in POR state by soft reset */
+        err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_Powerdown, 0x03, Bus_NoRead);
+        tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", tUnit));
 
         if(err==TM_OK)
         {
@@ -951,6 +943,24 @@ tmbslTDA18250A_HwInit(
             err = iTDA18250A_Wait(pObj, 1);
             tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Wait(0x%08X) failed.", pObj->tUnitW));
         }
+    }
+    if (err==TM_OK)
+    {
+        /* check POR status */
+        err = iTDA18250A_Read(pObj, &gTDA18250A_Reg_Power_state_byte_1__POR , &uVal, Bus_RW);
+        tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Read(0x%08X) failed.", pObj->tUnitW));
+        err = (uVal == 1 ?  TM_OK : TDA18250A_ERR_NOT_INITIALIZED);
+    }
+    if(err == TM_OK)
+    {
+        err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_Powerdown, 0x00, Bus_NoRead);
+        tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", tUnit));
+    }
+    if(err == TM_OK)
+    {
+        /* Read all bytes */
+        err = iTDA18250A_ReadRegMap(pObj, 0x00, TDA18250A_REG_MAP_NB_BYTES);
+        tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_ReadRegMap(0x%08X) failed.", tUnit));
     }
 
     if(err == TM_OK)
@@ -1001,7 +1011,7 @@ tmbslTDA18250A_HwInit(
     }
 
     if (err == TM_OK /*&& uVal != 1*/)
-    { 
+    {
 		/* at least Software init request with HW not in POR -> so Rewrite needed POR values */
 
         /* S2B Dcboost */
@@ -1404,7 +1414,7 @@ tmbslTDA18250A_HwInit(
             tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
         }
     }
-    
+
     if(err == TM_OK)
     {
         /* LO_SetAll */
@@ -1653,16 +1663,16 @@ tmbslTDA18250A_HwInit(
     if(err == TM_OK)
     {
         /* Set IRQ_clear */
-        err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_IRQ_clear, TDA18250A_IRQ_Global|TDA18250A_IRQ_HwInit, Bus_NoRead);
+        err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_IRQ_clear, TDA18250A_IRQ_HwInit, Bus_NoRead);
         tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
     }
 
     if(err == TM_OK)
     {
         pObj->curPowerState = tmPowerOn;
-
+#endif
         /* Launch tuner calibration */
-
+#if 1
         /* Set state machine and Launch it */
         if(err == TM_OK)
         {
@@ -1682,21 +1692,8 @@ tmbslTDA18250A_HwInit(
             err = iTDA18250A_WaitIRQ(pObj, 500, 10, TDA18250A_IRQ_HwInit);
             tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_WaitIRQ(0x%08X) failed.", tUnit));
         }
-
-        /* Patch : launch the RC Cal after the other cals */
-        if(err == TM_OK)
-        {
-            err = iTDA18250A_SetMSM(pObj, TDA18250A_MSM_RC_Cal, True);
-            tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_SetMSM(0x%08X, TDA18250A_MSM_HwInit) failed.", pObj->tUnitW));
-        }
-
-        if(err == TM_OK)
-        {
-            /* State reached after 500 ms max */
-            err = iTDA18250A_WaitIRQ(pObj, 500, 10, TDA18250A_IRQ_Global|TDA18250A_IRQ_MSM_RCCal);
-            tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_WaitIRQ(0x%08X) failed.", tUnit));
-        }
-
+#endif
+#if 1
         if(err == TM_OK && pObj->eHwState == TDA18250A_HwState_InitPending)
         {
             pObj->eHwState = TDA18250A_HwState_InitDone;
@@ -1741,7 +1738,7 @@ tmbslTDA18250A_HwInit(
             tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
         }
     }
-
+#endif
     _MUTEX_RELEASE(TDA18250A)
 
     return err;
@@ -1757,7 +1754,7 @@ tmbslTDA18250A_HwInit(
 /*============================================================================*/
 tmErrorCode_t
 tmbslTDA18250A_GetIF(
-    UInt8           u8TunerIndex, 
+    UInt8           u8TunerIndex,
     tmUnitSelect_t  tUnit,  /* I: Unit number */
     UInt32*         puIF    /* O: IF Frequency in hertz */
 )
@@ -1804,7 +1801,7 @@ tmbslTDA18250A_GetIF(
 /*============================================================================*/
 tmErrorCode_t
 tmbslTDA18250A_SetIFLevel(
-    UInt8 u8TunerIndex, 
+    UInt8 u8TunerIndex,
     tmUnitSelect_t              tUnit,      /* I: Unit number */
     TDA18250AIF_Output_Level_t  eIFLevel    /* I: IF Level */
 )
@@ -1843,7 +1840,7 @@ tmbslTDA18250A_SetIFLevel(
 /*============================================================================*/
 tmErrorCode_t
 tmbslTDA18250A_GetIFLevel(
-    UInt8                       u8TunerIndex, 
+    UInt8                       u8TunerIndex,
     tmUnitSelect_t              tUnit,      /* I: Unit number */
     TDA18250AIF_Output_Level_t  *peIFLevel  /* I: IF Level */
 )
@@ -1884,7 +1881,7 @@ tmErrorCode_t
 tmbslTDA18250A_GetPowerLevel(
     UInt8           u8TunerIndex,
     tmUnitSelect_t  tUnit,      /* I: Unit number */
-    Int32*          pPowerLevel /* O: Power Level in (x100) dBµVrms */
+    Int32*          pPowerLevel /* O: Power Level in (x100) dBÂµVrms */
 )
 {
     pTDA18250AObject_t  pObj = Null;
@@ -1907,7 +1904,7 @@ tmbslTDA18250A_GetPowerLevel(
     {
       err = TDA18250A_ERR_BAD_PARAMETER;
     }
-    
+
     if(err == TM_OK)
     {
           err = iTDA18250A_Read(pObj, &gTDA18250A_Reg_MSM_byte_1__RSSI_Meas, &uRSSIMeasSave, Bus_RW);
@@ -1916,7 +1913,7 @@ tmbslTDA18250A_GetPowerLevel(
         /* Get the RSSI value for the power level estimation*/
         err = iTDA18250A_GetRSSI(pObj, &RSSIValue);
         tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_GetRSSI(0x%08X) failed.", tUnit));
-        
+
         if (err == TM_OK)
         {
         	err =  iTDA18250A_GetPowerLevel(u8TunerIndex,pObj, RSSIValue, pPowerLevel);
@@ -1958,12 +1955,12 @@ tmbslTDA18250A_CheckHWVersion(
 {
    pTDA18250AObject_t   pObj = Null;
    tmErrorCode_t       err = TM_OK;
-   
+
    /* Get a driver instance */
    err = iTDA18250A_GetInstance(u8TunerIndex,tUnit, &pObj);
-   
+
    _MUTEX_ACQUIRE(TDA18250A)
-   
+
       tmDBGPRINTEx(DEBUGLVL_INOUT, "tmbslTDA18250A_CheckHWVersion(0x%08X)", tUnit);
 
    /* Test parameter(s) */
@@ -1971,17 +1968,59 @@ tmbslTDA18250A_CheckHWVersion(
    {
    	err = TDA18250A_ERR_BAD_PARAMETER;
    }
-   
+
    if(err == TM_OK)
    {
           *pEsVersion = pObj->eChipVersion;
    }
-   
+
    _MUTEX_RELEASE(TDA18250A)
-   
+
     return err;
 }
 
+tmErrorCode_t
+tmbslTDA18250A_LTAdapt(
+    UInt8 u8TunerIndex,
+    tmUnitSelect_t  tUnit, /* I: Unit number */
+    Bool          bEnable  /* O: True  LT is forced and adapted vs LNA gain    False:  LT gain free in automatic*/
+)
+{
+	pTDA18250AObject_t   pObj = Null;
+	tmErrorCode_t       err = TM_OK;
+    UInt8 uVal=0;
+    UInt8 LT_LNA_adapt[12] = {0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6};
+
+	/* Get a driver instance */
+	err = iTDA18250A_GetInstance(u8TunerIndex,tUnit, &pObj);
+
+	_MUTEX_ACQUIRE(TDA18250A)
+
+    tmDBGPRINTEx(DEBUGLVL_INOUT, "tmbslTDA18250A_LTAdapt(0x%08X)", tUnit);
+
+    if (bEnable==True)
+    {
+        iTDA18250A_Write(pObj, &gTDA18250A_Reg_LT_byte_1__Force_LT_gain, 0x01, Bus_None);
+        err = iTDA18250A_Read(pObj, &gTDA18250A_Reg_AGC1_LT_Gain_status__AGC1_gain_read, &uVal, Bus_NoWrite);
+        tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Read(0x%08X) failed.", pObj->tUnitW));
+        if (err==TM_OK)
+        {
+            err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_LT_byte_1__LT_Gain, LT_LNA_adapt[uVal], Bus_NoRead);
+        }
+    }
+    else /* disable feature if enabled */
+    {
+        iTDA18250A_Read(pObj, &gTDA18250A_Reg_LT_byte_1__Force_LT_gain, &uVal, Bus_None);
+        if (uVal==1)
+        {
+            err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_LT_byte_1__Force_LT_gain, 0x00, Bus_NoRead);
+        }
+    }
+
+    _MUTEX_RELEASE(TDA18250A)
+
+    return err;
+}
 /*============================================================================*/
 /* Internal functions:                                                        */
 /*============================================================================*/
@@ -2067,7 +2106,7 @@ iTDA18250A_GetPowerLevel(
 )
 {
     tmErrorCode_t   err = TM_OK;
-	Int32           PowerLevel = 0; /* in (x100) dBµV */
+	Int32           PowerLevel = 0; /* in (x100) dBÂµV */
     Int32           DeltaAGC1NBTunerGain = 0; /* in dB x 1000 */
     Int32           DeltaAGC1NBMasterGain = 0; /* in dB x 1000 */
     Int32           DeltaAGC2NBGain = 0; /* in dB x 1000 */
@@ -2079,14 +2118,14 @@ iTDA18250A_GetPowerLevel(
 
     tmDBGPRINTEx(DEBUGLVL_INOUT, "iTDA18250A_GetPowerLevel(0x%08X)", pObj->tUnitW);
 
-        
-    uRF = pObj->uRF;        
+
+    uRF = pObj->uRF;
 
     /*************************************/
     /*  RSSI contribution                */
     /*************************************/
-    /* For 0 < RSSI[7:0] <= 203  => RSSI value= 109.5 - RSSI[7:0] *0.25 (in dBµV) */
-    /* For RSSI[7:0] > 204     => RSSI value = 58.75dBµVrms (in dBµV) */
+    /* For 0 < RSSI[7:0] <= 203  => RSSI value= 109.5 - RSSI[7:0] *0.25 (in dBÂµV) */
+    /* For RSSI[7:0] > 204     => RSSI value = 58.75dBÂµVrms (in dBÂµV) */
     if ( uRSSIValue > 204 )
     {
       PowerLevel = 10975;
@@ -2095,7 +2134,7 @@ iTDA18250A_GetPowerLevel(
     {
     	PowerLevel = 5875 + uRSSIValue*25;
     }
-    
+
     /**********************************************************/
     /*  Retrieve reference Max Gain of NB path (in dB x 1000) */
     /**********************************************************/
@@ -2123,7 +2162,7 @@ iTDA18250A_GetPowerLevel(
             }
             else if (pObj->tOtherUnit != (tmUnitSelect_t)-1)
             {
-                err = iTDA18250A_GetInstance(u8TunerIndex,pObj->tOtherUnit, &psMasterObj); 
+                err = iTDA18250A_GetInstance(u8TunerIndex,pObj->tOtherUnit, &psMasterObj);
                 err = iTDA18250A_LvlAgc1NBMasterContribution(psMasterObj, uRF, &DeltaAGC1NBMasterGain);
             }
         }
@@ -2264,7 +2303,7 @@ iTDA18250A_LvlAgc1NBTunerContribution(
         {
             uIndex = uIndex + 1;
         }
-        
+
         if (uIndex == TDA18250A_INSTANCE_CUSTOM_COMMON_LVL_AGC1_MAX)
         {
             uIndex = uIndex - 1;
@@ -2276,7 +2315,7 @@ iTDA18250A_LvlAgc1NBTunerContribution(
         /* X1 : Lvl_AGC1NB[uIndex][TDA18250A_Coeff_X1] */
         /* X2 : Lvl_AGC1NB[uIndex][TDA18250A_Coeff_X2] */
         plCurrentTable = &Lvl_AGC1NB_TUNER_LT_OFF_ST_OFF;
-        
+
         lReferenceDeltaGain = (*plCurrentTable)[uIndex][TDA18250A_Coeff_X0];
         lReferenceDeltaGain += (*plCurrentTable)[uIndex][TDA18250A_Coeff_X1] * (Int32)uRF;
         lReferenceDeltaGain += (*plCurrentTable)[uIndex][TDA18250A_Coeff_X2] * (Int32)uRF * (Int32)uRF / 10;
@@ -2286,7 +2325,7 @@ iTDA18250A_LvlAgc1NBTunerContribution(
 #endif
         *pDeltaGain = 0;
     }
-    
+
     if(err == TM_OK)
     {
         /* PD_LT */
@@ -2449,7 +2488,7 @@ iTDA18250A_LvlAgc2NBContribution(
     {
         while ( (uIndex < TDA18250A_INSTANCE_CUSTOM_COMMON_LVL_AGC2_MAX) && (uAGC2NBGainRead > Lvl_AGC2NB[uIndex][TDA18250A_Coeff_Y_Code]) )
             uIndex = uIndex + 1;
-        
+
         if (uIndex == TDA18250A_INSTANCE_CUSTOM_COMMON_LVL_AGC2_MAX)
         {
             uIndex = uIndex - 1;
@@ -2503,7 +2542,7 @@ iTDA18250A_LvlAgc3NBContribution(
     {
         while ( (uIndex < TDA18250A_INSTANCE_CUSTOM_COMMON_LVL_AGC3_MAX) && (uAGC3NBGainRead > (Lvl_AGC3NB[uIndex][TDA18250A_Coeff_Y_Code]-1)) )
             uIndex = uIndex + 1;
-        
+
         if (uIndex == TDA18250A_INSTANCE_CUSTOM_COMMON_LVL_AGC3_MAX)
         {
             uIndex = uIndex - 1;
@@ -2690,7 +2729,7 @@ iTDA18250A_SetLLPowerState(
                     {
                         err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_3__Force_AGC1_gain, 0x01, Bus_RW);
                         tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
-                        
+
                         if (err == TM_OK)
                         {
                             err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_3__AGC1_Gain, (UInt8)TDA18250AAGC1_GAIN_Minus_5dB-1, Bus_RW);
@@ -2918,7 +2957,7 @@ iTDA18250A_SetLLPowerState(
 
                 if (err == TM_OK) err = iTDA18250A_Read(pObj, &gTDA18250A_Reg_W_Filter_byte__W_Filter_Enable, &pObj->sSmoothCurrentStateSave.uWFilterEnable, Bus_RW);
                 if (err == TM_OK) err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_W_Filter_byte__W_Filter_Enable, 0x00, Bus_RW);
-                
+
                 if (err == TM_OK) err = iTDA18250A_Read(pObj, &gTDA18250A_Reg_Reference_Byte__XTout, &pObj->sSmoothCurrentStateSave.uXtOut, Bus_RW);
                 /* if (err == TM_OK) err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_Reference_Byte__XTout, 0x00, Bus_RW); */
 
@@ -2929,7 +2968,7 @@ iTDA18250A_SetLLPowerState(
                     {
                         err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_3__Force_AGC1_gain, 0x01, Bus_RW);
                         tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
-                        
+
                         if (err == TM_OK)
                         {
                             err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_3__AGC1_Gain, (UInt8)TDA18250AAGC1_GAIN_Minus_5dB-1, Bus_RW);
@@ -2974,7 +3013,7 @@ iTDA18250A_SetLLPowerState(
                 /* 3 => xt + pll   */
                 /* 4 xt + lt + pll */
                 if (err == TM_OK) err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_Power_state_byte_2__Power_State_Mode, 2, Bus_RW);
-                
+
                 if (err == TM_OK) err = iTDA18250A_Read(pObj, &gTDA18250A_Reg_LT_byte_1__PD_LT, &pObj->sSmoothCurrentStateSave.uPDLT, Bus_RW);
                 if (err == TM_OK) err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_LT_byte_1__PD_LT, 0x00, Bus_RW);
             }
@@ -3056,7 +3095,7 @@ iTDA18250A_SetLLPowerState(
 
                 if (err == TM_OK) err = iTDA18250A_Read(pObj, &gTDA18250A_Reg_W_Filter_byte__W_Filter_Enable, &pObj->sSmoothCurrentStateSave.uWFilterEnable, Bus_RW);
                 if (err == TM_OK) err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_W_Filter_byte__W_Filter_Enable, 0x00, Bus_RW);
-                
+
                 if (err == TM_OK) err = iTDA18250A_Read(pObj, &gTDA18250A_Reg_Reference_Byte__XTout, &pObj->sSmoothCurrentStateSave.uXtOut, Bus_RW);
                 if (err == TM_OK) err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_Reference_Byte__XTout, 0x00, Bus_RW);
 
@@ -3067,7 +3106,7 @@ iTDA18250A_SetLLPowerState(
                     {
                         err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_3__Force_AGC1_gain, 0x01, Bus_RW);
                         tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
-                        
+
                         if (err == TM_OK)
                         {
                             err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_3__AGC1_Gain, (UInt8)TDA18250AAGC1_GAIN_Minus_5dB-1, Bus_RW);
@@ -3112,7 +3151,7 @@ iTDA18250A_SetLLPowerState(
                 /* 3 => xt + pll   */
                 /* 4 xt + lt + pll */
                 if (err == TM_OK) err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_Power_state_byte_2__Power_State_Mode, 1, Bus_RW);
-                
+
                 if (err == TM_OK) err = iTDA18250A_Read(pObj, &gTDA18250A_Reg_LT_byte_1__PD_LT, &pObj->sSmoothCurrentStateSave.uPDLT, Bus_RW);
                 if (err == TM_OK) err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_LT_byte_1__PD_LT, 0x01, Bus_RW);
             }
@@ -3194,7 +3233,7 @@ iTDA18250A_SetLLPowerState(
 
                 if (err == TM_OK) err = iTDA18250A_Read(pObj, &gTDA18250A_Reg_W_Filter_byte__W_Filter_Enable, &pObj->sSmoothCurrentStateSave.uWFilterEnable, Bus_RW);
                 if (err == TM_OK) err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_W_Filter_byte__W_Filter_Enable, 0x00, Bus_RW);
-                
+
                 if (err == TM_OK) err = iTDA18250A_Read(pObj, &gTDA18250A_Reg_Reference_Byte__XTout, &pObj->sSmoothCurrentStateSave.uXtOut, Bus_RW);
                 /* if (err == TM_OK) err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_Reference_Byte__XTout, 0x00, Bus_RW); */
 
@@ -3205,7 +3244,7 @@ iTDA18250A_SetLLPowerState(
                     {
                         err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_3__Force_AGC1_gain, 0x01, Bus_RW);
                         tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
-                        
+
                         if (err == TM_OK)
                         {
                             err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_3__AGC1_Gain, (UInt8)TDA18250AAGC1_GAIN_Minus_5dB-1, Bus_RW);
@@ -3250,7 +3289,7 @@ iTDA18250A_SetLLPowerState(
                 /* 3 => xt + pll   */
                 /* 4 xt + lt + pll */
                 if (err == TM_OK) err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_Power_state_byte_2__Power_State_Mode, 2, Bus_RW);
-                
+
                 if (err == TM_OK) err = iTDA18250A_Read(pObj, &gTDA18250A_Reg_LT_byte_1__PD_LT, &pObj->sSmoothCurrentStateSave.uPDLT, Bus_RW);
                 if (err == TM_OK) err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_LT_byte_1__PD_LT, 0x01, Bus_RW);
             }
@@ -3457,7 +3496,7 @@ iTDA18250A_SetRF_Freq(
             {
                 err = iTDA18250A_Read(pObj, &gTDA18250A_Reg_AGC_fast_auto_byte_1__AGC_timer_mod_fast_auto, &uValue, Bus_RW);
                 tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Read(0x%08X) failed.", pObj->tUnitW));
-                
+
                 if (err == TM_OK)
                 {
                     switch (uValue)
@@ -3476,7 +3515,7 @@ iTDA18250A_SetRF_Freq(
                         uTimeOut = 2 * 300;
                         break;
                     }
-                       
+
                     uCurrentTime = 0;
 
                     do
@@ -3541,8 +3580,8 @@ iTDA18250A_OverrideICP(
     UInt8           uPrevICP = 0;
     UInt32          uXtalFreqId = pObj->eXtalFreq-1;
     UInt32          i;
-    UInt8           uRDiv;
-    UInt8           uNDiv;
+    //UInt8           uRDiv;
+    //UInt8           uNDiv;
 
     tmDBGPRINTEx(DEBUGLVL_INOUT, "iTDA18250A_OverrideICP(0x%08X)", pObj->tUnitW);
 
@@ -3613,8 +3652,8 @@ iTDA18250A_OverrideICP(
                 if (FVCO >= RDivNDivTable[uXtalFreqId].psVCOModes[i].uVCOFreq)
                 {
                     ICP = RDivNDivTable[uXtalFreqId].psVCOModes[i].uICP;
-                    uRDiv = RDivNDivTable[uXtalFreqId].psVCOModes[i].uRDiv;
-                    uNDiv = RDivNDivTable[uXtalFreqId].psVCOModes[i].uNDiv;
+                    //uRDiv = RDivNDivTable[uXtalFreqId].psVCOModes[i].uRDiv;
+                    //uNDiv = RDivNDivTable[uXtalFreqId].psVCOModes[i].uNDiv;
                 }
             }
 
@@ -3729,7 +3768,7 @@ iTDA18250A_OverrideWireless(
         W_Filter_Bypass = 0x00;
         W_Filter_Offset = 0x00;
         W_Filter = 0x01;
-        if ((pObj->uProgRF >= 289280000) && (pObj->uProgRF < 320000000)) 
+        if ((pObj->uProgRF >= 289280000) && (pObj->uProgRF < 320000000))
         {
             W_Filter_Enable = 1;
         }
@@ -5012,7 +5051,7 @@ iTDA18250A_SetFreqDependantStandard(
             }
             uValue1 = pObj->pStandard->AGC2_TOP_ES1[i].uTOPDn;
             uValue2 = pObj->pStandard->AGC2_TOP_ES1[i].uTOPUp;
-            
+
             if(err == TM_OK)
             {
                 /* AGC2_TOP_DO */
@@ -5022,7 +5061,7 @@ iTDA18250A_SetFreqDependantStandard(
 
             if(err == TM_OK)
             {
-                /* AGC2_TOP_UP */ 
+                /* AGC2_TOP_UP */
                 err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC2_byte_3__AGC2_TOP_UP, 107-uValue2, Bus_NoRead);
                 tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
             }
@@ -5054,7 +5093,7 @@ iTDA18250A_SetFreqDependantStandard(
 
             if(err == TM_OK)
             {
-                /* AGC2_TOP_UP */ 
+                /* AGC2_TOP_UP */
                 err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC2_byte_3__AGC2_TOP_UP, (107-uValue2)*2, Bus_NoRead);
                 tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
             }
@@ -5064,12 +5103,12 @@ iTDA18250A_SetFreqDependantStandard(
                 { /* AGC2_adapt_top23_delta */
                     err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC2_byte_5__AGC2_adapt_top23_delta, pObj->pStandard->AGC2_Adapt_TOP23_Delta_ES2, Bus_None);
                     tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
-                }            
+                }
                 if(err == TM_OK)
                 { /* AGC2_adapt_top23_enable */
                     err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC2_byte_5__AGC2_adapt_top23_enable, (pObj->pStandard->AGC2_Adapt_TOP23_Enable_ES2 ? 0x01:0x00), Bus_NoRead);
                     tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
-                }   
+                }
             }
             else
             {
@@ -5105,7 +5144,7 @@ iTDA18250A_SetFreqDependantStandard(
 
             if(err == TM_OK)
             {
-                /* AGC2_TOP_UP */ 
+                /* AGC2_TOP_UP */
                 err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC2_byte_3__AGC2_TOP_UP, (107-uValue2)*2, Bus_NoRead);
                 tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
             }
@@ -5115,12 +5154,12 @@ iTDA18250A_SetFreqDependantStandard(
                 { /* AGC2_adapt_top23_delta */
                     err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC2_byte_5__AGC2_adapt_top23_delta, 9, Bus_None);
                     tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
-                }            
+                }
                 if(err == TM_OK)
                 { /* AGC2_adapt_top23_enable */
                     err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC2_byte_5__AGC2_adapt_top23_enable, (pObj->pStandard->AGC2_Adapt_TOP23_Enable_ES3 ? 0x01:0x00), Bus_NoRead);
                     tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
-                }   
+                }
             }
             else
             {
@@ -5128,7 +5167,7 @@ iTDA18250A_SetFreqDependantStandard(
                 { /* AGC2_adapt_top23_delta */
                     err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC2_byte_5__AGC2_adapt_top23_delta, 9, Bus_None);
                     tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
-                }            
+                }
                 if(err == TM_OK)
                 { /* AGC2_adapt_top23_enable */
                     err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC2_byte_5__AGC2_adapt_top23_enable, (pObj->pStandard->AGC2_Adapt_TOP23_Enable_ES3 ? 0x01:0x00), Bus_NoRead);
@@ -5172,7 +5211,7 @@ iTDA18250A_SetFreqDependantStandard(
             }
             uValue1 = pObj->pStandard->AGC3_TOP[i].uTOPDn;
             uValue2 = pObj->pStandard->AGC3_TOP[i].uTOPUp;
-        
+
             /* AGC3_TOP_DO */
             err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC3_byte_1__AGC3_TOP_DO, 117-uValue1, Bus_None);
             tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
@@ -5199,7 +5238,7 @@ iTDA18250A_SetFreqDependantStandard(
             }
             uValue1 = pObj->pStandard->S2D_Gain[i].eS2DGain;
 
-            /* S2D gain */ 
+            /* S2D gain */
             err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_IR_Mixer_byte_1__S2D_Gain, uValue1, Bus_NoRead);
             tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
         }
@@ -5207,7 +5246,7 @@ iTDA18250A_SetFreqDependantStandard(
         /* AGC2_HP_EN_BP and AGC2_HP_EN */
         if(err == TM_OK)
         {
-#ifdef TDA18250A_DVBC_SUPPORTED 
+#ifdef TDA18250A_DVBC_SUPPORTED
             if ( (pObj->StandardMode == TDA18250A_QAM_8MHz) || (pObj->StandardMode == TDA18250A_QAM_6MHz) )
             {
                 if (uRF < 600000000)
@@ -5226,11 +5265,11 @@ iTDA18250A_SetFreqDependantStandard(
 #endif
                 uValue1 = 0x00;
                 uValue2 = 0x00;
-#ifdef TDA18250A_DVBC_SUPPORTED 
+#ifdef TDA18250A_DVBC_SUPPORTED
             }
 #endif
-        
-            /* AGC2_HP_EN_BP */ 
+
+            /* AGC2_HP_EN_BP */
             err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC2_byte_5__AGC2_HP_EN_BP, uValue1, Bus_NoRead);
             tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
 
@@ -5271,10 +5310,10 @@ iTDA18250A_SetFreqDependantStandard(
                 {
                     bSmoothEnabled = False;
                 }
-                
+
             }
             else /* For ES1 and ES3, smooth is always enabled */
-            { 
+            {
                 bSmoothEnabled = True;
             }
         }
@@ -5286,13 +5325,13 @@ iTDA18250A_SetFreqDependantStandard(
                 /* restore values standard dependant */
                 err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_4__AGC1_smooth_t_cst, pObj->pStandard->AGC1_Smooth_T_Cst, Bus_None);
                 /* restore value As in HWini() */
-                err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_4__AGC1_smooth_t_cst_fast, 0x01, Bus_NoRead);                
+                err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_4__AGC1_smooth_t_cst_fast, 0x01, Bus_NoRead);
                 tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
             }
             else
             {
                 err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_4__AGC1_smooth_t_cst, 0x00, Bus_None);
-                err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_4__AGC1_smooth_t_cst_fast, 0x00, Bus_NoRead);                
+                err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_4__AGC1_smooth_t_cst_fast, 0x00, Bus_NoRead);
                 tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
             }
         }
@@ -5337,7 +5376,7 @@ iTDA18250A_AGC1_Update( pTDA18250AObject_t pObj)
         err = iTDA18250A_Write(pObj, &gTDA18250A_Reg_AGC1_byte_3__Force_AGC1_gain, 0x00, Bus_NoRead);
         tmASSERTExT(err, TM_OK, (DEBUGLVL_ERROR, "iTDA18250A_Write(0x%08X) failed.", pObj->tUnitW));
     }
-    
+
     /* Wait until AGC1 stable ( no change, min or max reached ) */
     do
     {
@@ -5501,7 +5540,7 @@ iTDA18250A_DeAllocInstance(
 /*============================================================================*/
 tmErrorCode_t
 iTDA18250A_GetInstance(
-                       UInt8               u8TunerIndex, 
+                       UInt8               u8TunerIndex,
                        tmUnitSelect_t      tUnit,      /* I: Unit number   */
                        ppTDA18250AObject_t  ppDrvObject /* I: Driver Object */
                        )
@@ -5511,6 +5550,10 @@ iTDA18250A_GetInstance(
     //UInt32              uLoopCounter = 0;
 
     /* Get instance */
+    if(u8TunerIndex >= TDA18250A_MAX_UNITS)
+    {
+        return err;
+    }
     //for (uLoopCounter = 0; uLoopCounter<TDA18250A_MAX_UNITS; uLoopCounter++)
     //{
         //pObj = &gTDA18250AInstance[uLoopCounter];

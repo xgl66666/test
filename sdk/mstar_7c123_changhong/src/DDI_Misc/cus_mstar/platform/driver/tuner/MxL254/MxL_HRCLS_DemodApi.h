@@ -17,7 +17,7 @@
 /** @brief Equalizer Spur filter length */
 #define MXL_HRCLS_SPUR_INFO_LENGTH            32
 /** @brief Equalizer Dfe filter length */
-#define MXL_HRCLS_DFE_INFO_LENGTH             72 
+#define MXL_HRCLS_DFE_INFO_LENGTH             128 /* Max taps (Titan=64) X 2 */ 
 
 /** @brief Demod interrupt mask for FEC lost */
 #define MXL_HRCLS_INTR_FEC_LOST_EN            0x0001
@@ -62,7 +62,8 @@ typedef enum
   MXL_HRCLS_XPT_MODE_PARALLEL,
   MXL_HRCLS_XPT_MODE_CABLECARD,
   MXL_HRCLS_XPT_MODE_NO_MUX_2,
-
+  MXL_HRCLS_XPT_MODE_3WIRE_NOXPT,
+  
   MXL_HRCLS_XPT_MODE_MAX
 } MXL_HRCLS_XPT_MODE_E;  
 
@@ -160,7 +161,6 @@ typedef enum
   MXL_HRCLS_ANNEX_B = 0,
   MXL_HRCLS_ANNEX_A,
   MXL_HRCLS_ANNEX_OOB,
-  MXL_HRCLS_ANNEX_NOT_SUPPORT
 } MXL_HRCLS_ANNEX_TYPE_E;
 
 /** @brief QAM types */
@@ -193,6 +193,7 @@ typedef struct
   UINT32 CorrBits;                          //!< Counter for corrected bits
   UINT32 ErrMpeg;                           //!< Counter for erred MPEG frames
   UINT32 ReceivedMpeg;                      //!< Counter for received MPEG frames
+  UINT32 Erasures;                          //!< Counter for Erasures
 } MXL_HRCLS_DMD_STAT_CNT_T;
 
 /** @brief MPEGOUT parameter struct */
@@ -547,6 +548,26 @@ MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_CfgDemodAdcIqFlip(
  *****************************************************************************************
  *  @param[in]  devId MxL device id
  *  @param[in]  demodId Demodulator ID number
+ *  @param[out] Returns with adcIqFlip status MXL_HRCLS_IQ_NORMAL or MXL_HRCLS_IQ_FLIPPED
+ *
+ *  @apibrief   It the gets the I/Q path status.
+ *
+ *  @usage      This API should be called anytime after demod locked.
+ *
+ *  @return     MXL_SUCCESS or MXL_FAILURE, MXL_NOT_INITIALIZED, MXL_INVALID_PARAMETER
+ ****************************************************************************************/
+
+MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodAdcIqFlip(
+    UINT8     devId,                      
+    MXL_HRCLS_DMD_ID_E demodId,          
+    MXL_HRCLS_IQ_FLIP_E  *adcIqFlipPtr               
+    );
+
+
+/**
+ *****************************************************************************************
+ *  @param[in]  devId MxL device id
+ *  @param[in]  demodId Demodulator ID number
  *  @param[in]  equalizerSetting Enable or disable equalizer filter
  *
  *  @apibrief   It enables or disables equalizer filter
@@ -875,7 +896,7 @@ MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodAllLockStatus(
     MXL_BOOL_E* retuneRequiredPtr
     );
 
-
+#ifdef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
 /**
  *****************************************************************************************
  *  @param[in]  devId MxL device id
@@ -930,6 +951,7 @@ MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodCapturedTsPacket(
     MXL_HRCLS_DMD_ID_E    demodId,
     UINT16 *              bufferPtr
     );
+#endif
 
 /**
  *****************************************************************************************
@@ -972,5 +994,12 @@ MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_CfgXptOutput(
 MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_CfgXpt(
     UINT8   devId,
     MXL_HRCLS_XPT_MODE_E mode);
+
+MXL_HRCLS_API MXL_STATUS_E MxLWare_HRCLS_API_ReqDemodConstellationValue(
+    UINT8	  devId,						
+    MXL_HRCLS_DMD_ID_E demodId,
+    SINT16 *iVal,
+    SINT16 *qVal);
+
 #endif
 

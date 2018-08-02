@@ -11,8 +11,6 @@
  *****************************************************************************************
  *                Copyright (c) 2011, MaxLinear, Inc.
  ****************************************************************************************/
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_MXL254)
 
 
 #include "MxL_HRCLS_Common.h"
@@ -127,6 +125,5 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgDebugCli(
   return status; 
 }
 
-#endif
 #endif
 

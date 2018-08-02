@@ -36,7 +36,7 @@ extern "C"
 #define TDA18250A_DVBC_SETTINGS_CUSTOMER_NUM      (0)                     /* SW Settings Customer Number */
 #define TDA18250A_DVBC_SETTINGS_PROJECT_NUM       (0)                     /* SW Settings Project Number  */
 #define TDA18250A_DVBC_SETTINGS_MAJOR_VER         (1)                     /* SW Settings Major Version   */
-#define TDA18250A_DVBC_SETTINGS_MINOR_VER         (14)                     /* SW Settings Minor Version   */
+#define TDA18250A_DVBC_SETTINGS_MINOR_VER         (15)                     /* SW Settings Minor Version   */
 
     /* Standard Preset Definitions: */
 #define TDA18250A_CONFIG_STD_QAM_6MHZ_VCO_PULLING_MINUS \

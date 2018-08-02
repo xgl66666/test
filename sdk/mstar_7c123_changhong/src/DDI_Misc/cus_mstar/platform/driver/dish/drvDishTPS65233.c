@@ -1,3 +1,4 @@
+
 #include "Board.h"
 #include "MsCommon.h"
 #include "drvDish.h"
@@ -5,22 +6,44 @@
 #include "drvGPIO.h"
 #include "drvDishTPS65233.h"
 #include "MsTypes.h"
-#include "apiDigiTuner.h"
 #include "drvIIC.h"
 
-#if(DISH_TYPE == DISH_TPS65233)
+#if(DISH_TYPE == DISH_TPS65233) ||\
+   (defined(DISH_TYPE1) && (DISH_TYPE1 == DISH_TPS65233)) || \
+   (defined(DISH_TYPE2) && (DISH_TYPE2 == DISH_TPS65233)) || \
+   (defined(DISH_TYPE3) && (DISH_TYPE3 == DISH_TPS65233))
+
 
 #define HB_printf       printf
 
-#ifdef DISH_IIC_PORT
 
+#ifdef DISH_IIC_PORT
 #define TPS65233_IIC_PORT DISH_IIC_PORT
 #else
 #define TPS65233_IIC_PORT FRONTEND_TUNER_PORT
 #endif
 
-#define TPS65233_IIC_Write( a, b, c, d, e)   MDrv_IIC1_Write(a, b, c, d, e)
-#define TPS65233_IIC_Read( a, b, c, d, e)    MDrv_IIC1_Read(a, b, c, d, e)
+#ifdef DISH_IIC_PORT1
+#define TPS65233_IIC_PORT1 DISH_IIC_PORT1
+#else
+#define TPS65233_IIC_PORT1 FRONTEND_TUNER_PORT1
+#endif
+
+#ifdef DISH_IIC_PORT2
+#define TPS65233_IIC_PORT2 DISH_IIC_PORT2
+#else
+#define TPS65233_IIC_PORT2 FRONTEND_TUNER_PORT2
+#endif
+
+#ifdef DISH_IIC_PORT3
+#define TPS65233_IIC_PORT3 DISH_IIC_PORT3
+#else
+#define TPS65233_IIC_PORT3 FRONTEND_TUNER_PORT3
+#endif
+
+
+//#define TPS65233_IIC_Write( a, b, c, d, e)   MDrv_IIC1_Write(a, b, c, d, e)
+//#define TPS65233_IIC_Read( a, b, c, d, e)    MDrv_IIC1_Read(a, b, c, d, e)
 
 
 #define TPS65233_SLAVE_ID					(0xC2)    //Addr En pull hight
@@ -48,15 +71,41 @@ static BOOL TPS65233_iCurrentLimit(CSHDITunerIndex eTunerIndex, TPS65233_Current
 static BOOL TPS65233_iSetCurrentControlMode(CSHDITunerIndex eTunerIndex, TPS65233_CLController_E eCLController);
 
 /*************************************************
-  Function:         Tps65233 I2C ¼Ä´æÆ÷¶Áº¯Êý
-  Description:      Tps65233 I2C ¼Ä´æÆ÷¶Áº¯Êý
-  Input:                eTunerIndex, pRegAddress(¼Ä´æÆ÷µØÖ·Ö¸Õë), pDatabuf(¶ÁÈ¡Êý¾ÝÖ¸Õë)
+  Function:         Tps65233 I2C Â¼Ã„Â´Ã¦Ã†Ã·Â¶ÃÂºÂ¯ÃŠÃ½
+  Description:      Tps65233 I2C Â¼Ã„Â´Ã¦Ã†Ã·Â¶ÃÂºÂ¯ÃŠÃ½
+  Input:                eTunerIndex, pRegAddress(Â¼Ã„Â´Ã¦Ã†Ã·ÂµÃ˜Ã–Â·Ã–Â¸Ã•Ã«), pDatabuf(Â¶ÃÃˆÂ¡ÃŠÃ½Â¾ÃÃ–Â¸Ã•Ã«)
   Output:           NULL
-  Return:           ³É¹¦·µ»ØTRUE,·ñÔò·µ»ØFALSE
+  Return:           Â³Ã‰Â¹Â¦Â·ÂµÂ»Ã˜TRUE,Â·Ã±Ã”Ã²Â·ÂµÂ»Ã˜FALSE
 *************************************************/
+static HWI2C_PORT _get_I2C_port(MS_U8 u8DishIndex)
+{
+    HWI2C_PORT ehwI2c_port;
+    switch(u8DishIndex)
+    {
+        case 1:
+            ehwI2c_port = TPS65233_IIC_PORT1;
+            break;
+        case 2:
+            ehwI2c_port = TPS65233_IIC_PORT2;
+            break;
+        case 3:
+            ehwI2c_port = TPS65233_IIC_PORT3;
+            break;
+        case 0:
+        default:    
+            ehwI2c_port = TPS65233_IIC_PORT;
+            break;
+    }
+    return ehwI2c_port;
+}
+
+
 static BOOL TPS65233_iReadReg(CSHDITunerIndex eTunerIndex, BYTE *pucRegAddress, BYTE *pucDatabuf)
 {
     BOOL bRet = TRUE;
+    HWI2C_PORT ehwI2c_port;
+
+    ehwI2c_port = _get_I2C_port((MS_U8)eTunerIndex);
 
     do
     {
@@ -67,23 +116,34 @@ static BOOL TPS65233_iReadReg(CSHDITunerIndex eTunerIndex, BYTE *pucRegAddress, 
             break;
         }
 
-        //ÉèÖÃTps65233¶Á¼Ä´æÆ÷Ä£Ê½
-        if (!MDrv_HWI2C_SetReadModeP1(E_HWI2C_READ_MODE_DIRECTION_CHANGE))
+        //Ã‰Ã¨Ã–ÃƒTps65233Â¶ÃÂ¼Ã„Â´Ã¦Ã†Ã·Ã„Â£ÃŠÂ½
+
+        if(ehwI2c_port > E_HWI2C_PORT_1)
+            bRet = MDrv_HWI2C_SetReadModeP1(E_HWI2C_READ_MODE_DIRECTION_CHANGE);
+        else
+            bRet = MDrv_HWI2C_SetReadMode(E_HWI2C_READ_MODE_DIRECTION_CHANGE);
+
+        if (!bRet)
         {
             HB_printf("[%s]MDrv_HWI2C_SetReadModeP1 FAIL!\r\n", __FUNCTION__);
             bRet = FALSE;
             break;
         }
-
-        if (!TPS65233_IIC_Read(g_ucDevSlaveID[eTunerIndex], pucRegAddress, 1, pucDatabuf, 1))
+        
+        if(!MDrv_IIC_ReadBytes(ehwI2c_port,g_ucDevSlaveID[eTunerIndex], 1, pucRegAddress, 1, pucDatabuf))
         {
             HB_printf("[%s]TPS65233_IIC_Read FAIL!\r\n", __FUNCTION__);
             bRet = FALSE;
             break;
         }
 
-        //ÉèÖÃTps65233¶Á¼Ä´æÆ÷Ä£Ê½
-        if (!MDrv_HWI2C_SetReadModeP1(E_HWI2C_READ_MODE_DIRECT))
+        //Ã‰Ã¨Ã–ÃƒTps65233Â¶ÃÂ¼Ã„Â´Ã¦Ã†Ã·Ã„Â£ÃŠÂ½
+        if(ehwI2c_port > E_HWI2C_PORT_1)
+            bRet = MDrv_HWI2C_SetReadModeP1(E_HWI2C_READ_MODE_DIRECT);
+        else
+            bRet = MDrv_HWI2C_SetReadMode(E_HWI2C_READ_MODE_DIRECT);
+        
+        if (!bRet)
         {
             HB_printf("[%s]MDrv_HWI2C_SetReadModeP1 FAIL!\r\n", __FUNCTION__);
             bRet = FALSE;
@@ -96,15 +156,18 @@ static BOOL TPS65233_iReadReg(CSHDITunerIndex eTunerIndex, BYTE *pucRegAddress, 
 }
 
 /*************************************************
-  Function:         Tps65233 I2C ¼Ä´æÆ÷Ð´º¯Êý
-  Description:      Tps65233 I2C ¼Ä´æÆ÷Ð´º¯Êý
-  Input:                eTunerIndex,  pRegAddress(¼Ä´æÆ÷µØÖ·Ö¸Õë), pDatabuf(Ð´ÈëÊý¾ÝÖ¸Õë)
+  Function:         Tps65233 I2C Â¼Ã„Â´Ã¦Ã†Ã·ÃÂ´ÂºÂ¯ÃŠÃ½
+  Description:      Tps65233 I2C Â¼Ã„Â´Ã¦Ã†Ã·ÃÂ´ÂºÂ¯ÃŠÃ½
+  Input:                eTunerIndex,  pRegAddress(Â¼Ã„Â´Ã¦Ã†Ã·ÂµÃ˜Ã–Â·Ã–Â¸Ã•Ã«), pDatabuf(ÃÂ´ÃˆÃ«ÃŠÃ½Â¾ÃÃ–Â¸Ã•Ã«)
   Output:           NULL
-  Return:           ³É¹¦·µ»ØTRUE,·ñÔò·µ»ØFALSE
+  Return:           Â³Ã‰Â¹Â¦Â·ÂµÂ»Ã˜TRUE,Â·Ã±Ã”Ã²Â·ÂµÂ»Ã˜FALSE
 *************************************************/
 static BOOL TPS65233_iWriteReg(CSHDITunerIndex eTunerIndex, BYTE *pucRegAddress, BYTE *pucDatabuf)
 {
     BOOL bRet = TRUE;
+    HWI2C_PORT ehwI2c_port;
+
+    ehwI2c_port = _get_I2C_port((MS_U8)eTunerIndex);
 
     do
     {
@@ -114,8 +177,8 @@ static BOOL TPS65233_iWriteReg(CSHDITunerIndex eTunerIndex, BYTE *pucRegAddress,
             bRet = FALSE;
             break;
         }
-
-        if (!TPS65233_IIC_Write(g_ucDevSlaveID[eTunerIndex], pucRegAddress, 1, pucDatabuf, 1))
+        
+        if(!MDrv_IIC_WriteBytes(ehwI2c_port, g_ucDevSlaveID[eTunerIndex], 1, pucRegAddress, 1, pucDatabuf))
         {
             HB_printf("[%s]TPS65233_IIC_Write error!\r\n", __FUNCTION__);
             bRet = FALSE;
@@ -128,11 +191,11 @@ static BOOL TPS65233_iWriteReg(CSHDITunerIndex eTunerIndex, BYTE *pucRegAddress,
 }
 
 /*************************************************
-  Function:         Tps65233 I2C Î»Ð´Èë
-  Description:      Tps65233 I2C Î»Ð´Èë
-  Input:                eTunerIndex,  ucRegAddress(¼Ä´æÆ÷µØÖ·), ucData(Ð´ÈëÊý¾Ý), ucMask(Ð´ÈëÎ»ÑÚÂë)
+  Function:         Tps65233 I2C ÃŽÂ»ÃÂ´ÃˆÃ«
+  Description:      Tps65233 I2C ÃŽÂ»ÃÂ´ÃˆÃ«
+  Input:                eTunerIndex,  ucRegAddress(Â¼Ã„Â´Ã¦Ã†Ã·ÂµÃ˜Ã–Â·), ucData(ÃÂ´ÃˆÃ«ÃŠÃ½Â¾Ã), ucMask(ÃÂ´ÃˆÃ«ÃŽÂ»Ã‘ÃšÃ‚Ã«)
   Output:           NULL
-  Return:           ³É¹¦·µ»ØTRUE,·ñÔò·µ»ØFALSE
+  Return:           Â³Ã‰Â¹Â¦Â·ÂµÂ»Ã˜TRUE,Â·Ã±Ã”Ã²Â·ÂµÂ»Ã˜FALSE
 *************************************************/
 static BOOL TPS65233_iWriteRegBits(CSHDITunerIndex eTunerIndex, BYTE ucRegAddress, BYTE ucData, BYTE ucMask)
 {
@@ -167,11 +230,11 @@ static BOOL TPS65233_iWriteRegBits(CSHDITunerIndex eTunerIndex, BYTE ucRegAddres
 }
 
 /*************************************************
-  Function:         ÉèÖÃTps65233 I2C¿ØÖÆÊ¹ÄÜº¯Êý
-  Description:      ÉèÖÃTps65233 I2C ¿ØÖÆÊÇ·ñÊ¹ÄÜ
-  Input:            eTunerIndex,  eI2CContrlMode(I2CÊ¹ÄÜÃ¶¾Ù±äÁ¿)
+  Function:         Ã‰Ã¨Ã–ÃƒTps65233 I2CÂ¿Ã˜Ã–Ã†ÃŠÂ¹Ã„ÃœÂºÂ¯ÃŠÃ½
+  Description:      Ã‰Ã¨Ã–ÃƒTps65233 I2C Â¿Ã˜Ã–Ã†ÃŠÃ‡Â·Ã±ÃŠÂ¹Ã„Ãœ
+  Input:            eTunerIndex,  eI2CContrlMode(I2CÃŠÂ¹Ã„ÃœÃƒÂ¶Â¾Ã™Â±Ã¤ÃÂ¿)
   Output:           NULL
-  Return:           ³É¹¦·µ»ØTRUE,·ñÔò·µ»ØFALSE
+  Return:           Â³Ã‰Â¹Â¦Â·ÂµÂ»Ã˜TRUE,Â·Ã±Ã”Ã²Â·ÂµÂ»Ã˜FALSE
 *************************************************/
 static BOOL TPS65233_iSetI2CControlMode(CSHDITunerIndex eTunerIndex, TPS65233_I2CContrlMode_E eI2CContrlMode)
 {
@@ -202,11 +265,11 @@ static BOOL TPS65233_iSetI2CControlMode(CSHDITunerIndex eTunerIndex, TPS65233_I2
 }
 
 /*************************************************
-  Function:         ÉèÖÃ current limit(µçÁ÷ÏÞÖÆ)
-  Description:      ÉèÖÃ current limit(µçÁ÷ÏÞÖÆ)
-  Input:                eTunerIndex, eCurrentLimit(µçÁ÷ÏÞÖÆÉèÖÃÖµ)
+  Function:         Ã‰Ã¨Ã–Ãƒ current limit(ÂµÃ§ÃÃ·ÃÃžÃ–Ã†)
+  Description:      Ã‰Ã¨Ã–Ãƒ current limit(ÂµÃ§ÃÃ·ÃÃžÃ–Ã†)
+  Input:                eTunerIndex, eCurrentLimit(ÂµÃ§ÃÃ·ÃÃžÃ–Ã†Ã‰Ã¨Ã–ÃƒÃ–Âµ)
   Output:           NULL
-  Return:           ³É¹¦·µ»ØTRUE,·ñÔò·µ»ØFALSE
+  Return:           Â³Ã‰Â¹Â¦Â·ÂµÂ»Ã˜TRUE,Â·Ã±Ã”Ã²Â·ÂµÂ»Ã˜FALSE
 *************************************************/
 static BOOL TPS65233_iCurrentLimit(CSHDITunerIndex eTunerIndex, TPS65233_CurrentLimit_E eCurrentLimit)
 {
@@ -236,11 +299,11 @@ static BOOL TPS65233_iCurrentLimit(CSHDITunerIndex eTunerIndex, TPS65233_Current
 }
 
 /*************************************************
-  Function:         ÉèÖÃ current limit µÄ¿ØÖÆÕß
+  Function:         Ã‰Ã¨Ã–Ãƒ current limit ÂµÃ„Â¿Ã˜Ã–Ã†Ã•ÃŸ
   Description:      deside what is the controller of current limit
-  Input:                eTunerIndex, eCLController(µçÁ÷ÏÞÖÆ¿ØÖÆÕß¾ö¶¨±äÁ¿)
+  Input:                eTunerIndex, eCLController(ÂµÃ§ÃÃ·ÃÃžÃ–Ã†Â¿Ã˜Ã–Ã†Ã•ÃŸÂ¾Ã¶Â¶Â¨Â±Ã¤ÃÂ¿)
   Output:           NULL
-  Return:           ³É¹¦·µ»ØTRUE,·ñÔò·µ»ØFALSE
+  Return:           Â³Ã‰Â¹Â¦Â·ÂµÂ»Ã˜TRUE,Â·Ã±Ã”Ã²Â·ÂµÂ»Ã˜FALSE
 *************************************************/
 static BOOL TPS65233_iSetCurrentControlMode(CSHDITunerIndex eTunerIndex, TPS65233_CLController_E eCLController)
 {
@@ -270,11 +333,11 @@ static BOOL TPS65233_iSetCurrentControlMode(CSHDITunerIndex eTunerIndex, TPS6523
 }
 
 /*************************************************
-  Function:         ÉèÖÃ TPS65233 Êä³öµçÑ¹
-  Description:      ÉèÖÃ TPS65233 Êä³öµçÑ¹
-  Input:                eTunerIndex, eLNBPower(LNBÐ¾Æ¬Êä³öµçÑ¹ÉèÖÃ)
+  Function:         Ã‰Ã¨Ã–Ãƒ TPS65233 ÃŠÃ¤Â³Ã¶ÂµÃ§Ã‘Â¹
+  Description:      Ã‰Ã¨Ã–Ãƒ TPS65233 ÃŠÃ¤Â³Ã¶ÂµÃ§Ã‘Â¹
+  Input:                eTunerIndex, eLNBPower(LNBÃÂ¾Ã†Â¬ÃŠÃ¤Â³Ã¶ÂµÃ§Ã‘Â¹Ã‰Ã¨Ã–Ãƒ)
   Output:           NULL
-  Return:           ³É¹¦·µ»ØTRUE,·ñÔò·µ»ØFALSE
+  Return:           Â³Ã‰Â¹Â¦Â·ÂµÂ»Ã˜TRUE,Â·Ã±Ã”Ã²Â·ÂµÂ»Ã˜FALSE
 *************************************************/
 BOOL TPS65233_SetLNBPower(CSHDITunerIndex eTunerIndex, TPS65233_LNBPower_E eLNBPower)
 {
@@ -311,11 +374,11 @@ BOOL TPS65233_SetLNBPower(CSHDITunerIndex eTunerIndex, TPS65233_LNBPower_E eLNBP
 }
 
 /*************************************************
-  Function:         Tps652333 Tone Gate Ä£Ê½ÉèÖÃ
-  Description:      Tps652333 Tone Gate Ä£Ê½ÉèÖÃ
-  Input:                eTunerIndex,eToneGateMode(TONE GATE ¿ª¹ØºÍTONE MODE ÉèÖÃ)
+  Function:         Tps652333 Tone Gate Ã„Â£ÃŠÂ½Ã‰Ã¨Ã–Ãƒ
+  Description:      Tps652333 Tone Gate Ã„Â£ÃŠÂ½Ã‰Ã¨Ã–Ãƒ
+  Input:                eTunerIndex,eToneGateMode(TONE GATE Â¿ÂªÂ¹Ã˜ÂºÃTONE MODE Ã‰Ã¨Ã–Ãƒ)
   Output:           NULL
-  Return:           ³É¹¦·µ»ØTRUE,·ñÔò·µ»ØFALSE
+  Return:           Â³Ã‰Â¹Â¦Â·ÂµÂ»Ã˜TRUE,Â·Ã±Ã”Ã²Â·ÂµÂ»Ã˜FALSE
 *************************************************/
 BOOL TPS65233_SetToneGateMode(CSHDITunerIndex eTunerIndex, TPS65233_ToneGateMode_E eToneGateMode)
 {
@@ -352,11 +415,11 @@ BOOL TPS65233_SetToneGateMode(CSHDITunerIndex eTunerIndex, TPS65233_ToneGateMode
 }
 
 /*************************************************
-  Function:         Tps652333 TONE PositionÉèÖÃ
-  Description:      Tps652333Tone Gate Ä£Ê½ÉèÖÃ
+  Function:         Tps652333 TONE PositionÃ‰Ã¨Ã–Ãƒ
+  Description:      Tps652333Tone Gate Ã„Â£ÃŠÂ½Ã‰Ã¨Ã–Ãƒ
   Input:            eTunerIndex,eTonePosition
   Output:           NULL
-  Return:           ³É¹¦·µ»ØTRUE,·ñÔò·µ»ØFALSE
+  Return:           Â³Ã‰Â¹Â¦Â·ÂµÂ»Ã˜TRUE,Â·Ã±Ã”Ã²Â·ÂµÂ»Ã˜FALSE
 *************************************************/
 BOOL TPS65233_SetTonePosition(CSHDITunerIndex eTunerIndex, TPS65233_TonePosition_E eTonePosition)
 {
@@ -393,11 +456,11 @@ BOOL TPS65233_SetTonePosition(CSHDITunerIndex eTunerIndex, TPS65233_TonePosition
 }
 
 /*************************************************
-  Function:         ¶ÁÈ¡ TPS65233 ÔËÐÐ×´Ì¬Öµ
-  Description:      ¶ÁÈ¡ TPS65233 ÔËÐÐ×´Ì¬Öµ
-  Input:            eTunerIndex,psStatus(×´Ì¬´æ´¢Ö¸Õë)
+  Function:         Â¶ÃÃˆÂ¡ TPS65233 Ã”Ã‹ÃÃÃ—Â´ÃŒÂ¬Ã–Âµ
+  Description:      Â¶ÃÃˆÂ¡ TPS65233 Ã”Ã‹ÃÃÃ—Â´ÃŒÂ¬Ã–Âµ
+  Input:            eTunerIndex,psStatus(Ã—Â´ÃŒÂ¬Â´Ã¦Â´Â¢Ã–Â¸Ã•Ã«)
   Output:           NULL
-  Return:           ³É¹¦·µ»ØTRUE,·ñÔò·µ»ØFALSE
+  Return:           Â³Ã‰Â¹Â¦Â·ÂµÂ»Ã˜TRUE,Â·Ã±Ã”Ã²Â·ÂµÂ»Ã˜FALSE
 *************************************************/
 BOOL TPS65233_ReadStatus(CSHDITunerIndex eTunerIndex, TPS65233_Status_E *psStatus)
 {
@@ -435,11 +498,11 @@ BOOL TPS65233_ReadStatus(CSHDITunerIndex eTunerIndex, TPS65233_Status_E *psStatu
 
 
 /*************************************************
-  Function:         Tps652333³õÊ¼»¯
-  Description:      ³õÊ¼»¯Ê±ÉèÖÃTps652333ÎªÊ¹ÄÜI2C ¿ØÖÆ
+  Function:         Tps652333Â³ÃµÃŠÂ¼Â»Â¯
+  Description:      Â³ÃµÃŠÂ¼Â»Â¯ÃŠÂ±Ã‰Ã¨Ã–ÃƒTps652333ÃŽÂªÃŠÂ¹Ã„ÃœI2C Â¿Ã˜Ã–Ã†
   Input:            eTunerIndex
   Output:           NULL
-  Return:           ³õÊ¼»¯³É¹¦·µ»ØTRUE,·ñÔò·µ»ØFALSE
+  Return:           Â³ÃµÃŠÂ¼Â»Â¯Â³Ã‰Â¹Â¦Â·ÂµÂ»Ã˜TRUE,Â·Ã±Ã”Ã²Â·ÂµÂ»Ã˜FALSE
 *************************************************/
 BOOL TPS65233_Init(CSHDITunerIndex eTunerIndex)
 {
@@ -474,14 +537,13 @@ MS_BOOL MDrv_Dish_Init(MS_U8 u8DishIndex,DISH_MS_INIT_PARAM* pParam)
     else
         DishInitParam[u8DishIndex].pstDemodtab = pParam->pstDemodtab;
 
-	#if defined(DISH_IIC_PORT)
-		if(DISH_IIC_PORT!=FRONTEND_TUNER_PORT)
-		{
-			printf("init DISH_IIC_PORT\n");
-			MDrv_IIC_Init(DISH_IIC_PORT);
-		}
-
-	#endif
+    #if defined(DISH_IIC_PORT)
+        if(DISH_IIC_PORT!=FRONTEND_TUNER_PORT)
+        {
+            printf("init DISH_IIC_PORT\n");
+            MDrv_IIC_Init(DISH_IIC_PORT);
+        }  
+    #endif
 
     bRet = TPS65233_Init(Tuner_0);
 	printf("init TPS65233_Init ok, %d\n", bRet);
@@ -581,13 +643,19 @@ MS_BOOL MDrv_Dish_IsOverCurrent(MS_U8 u8DishIndex)
     return FALSE;
 }
 
+MS_BOOL MDrv_Dish_SetCable(MS_U8 u8DishIndex, EN_CABLE_SELECT eCableIndex)
+{       
+   return FALSE;
+}
+
 DISHTAB_ENTRY(dish_entry_DISH_TPS65233, "DISH_TPS65233", DISH_TPS65233,
               MDrv_Dish_Init,
               MDrv_Dish_SetTone,
               MDrv_Dish_SetLNBPower,
               MDrv_Dish_Set22k,
               MDrv_Dish_SendCmd,
-              MDrv_Dish_IsOverCurrent
+              MDrv_Dish_IsOverCurrent,
+              MDrv_Dish_SetCable
              );
 #endif 
 

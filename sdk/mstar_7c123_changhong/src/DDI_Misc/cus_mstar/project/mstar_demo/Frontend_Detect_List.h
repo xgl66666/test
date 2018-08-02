@@ -97,8 +97,8 @@ Note: AV2018,AV2028 can not be distinguished by SW
 //------------------------------------------------------------------------------------
 //  Frontend external demod detection list
 //------------------------------------------------------------------------------------
-#define DEMOD_00TH_SCAN_DEVICE DEMOD_NULL //DEMOD_MSB1236C
-#define DEMOD_01ST_SCAN_DEVICE DEMOD_NULL //DEMOD_MSB131X
+#define DEMOD_00TH_SCAN_DEVICE DEMOD_MSB1236C
+#define DEMOD_01ST_SCAN_DEVICE DEMOD_MSB131X
 #define DEMOD_02ND_SCAN_DEVICE DEMOD_NULL
 #define DEMOD_03RD_SCAN_DEVICE DEMOD_NULL
 #define DEMOD_04TH_SCAN_DEVICE DEMOD_NULL
@@ -123,13 +123,13 @@ DEMOD_MSB1238           DTMB
 //------------------------------------------------------------------------------------
 //  Frontend tuner detection list
 //------------------------------------------------------------------------------------
-#define TUNER_00TH_SCAN_DEVICE TUNER_TDA18250A//TUNER_R836//TUNER_MXL603
-#define TUNER_01ST_SCAN_DEVICE TUNER_TDA18250B //if crystal is 16,set this to TUNER_TDA18250B
-#define TUNER_02ND_SCAN_DEVICE TUNER_R820C//TUNER_PHILIPS_TDA18250HN
-#define TUNER_03RD_SCAN_DEVICE TUNER_NULL//TUNER_TDA18260
-#define TUNER_04TH_SCAN_DEVICE TUNER_NULL//TUNER_AV2012
-#define TUNER_05TH_SCAN_DEVICE TUNER_NULL//TUNER_MXL608
-#define TUNER_06TH_SCAN_DEVICE TUNER_NULL//TUNER_R836
+#define TUNER_00TH_SCAN_DEVICE TUNER_MXL603
+#define TUNER_01ST_SCAN_DEVICE TUNER_TDA18250A //if crystal is 16,set this to TUNER_TDA18250B
+#define TUNER_02ND_SCAN_DEVICE TUNER_PHILIPS_TDA18250HN
+#define TUNER_03RD_SCAN_DEVICE TUNER_TDA18260
+#define TUNER_04TH_SCAN_DEVICE TUNER_AV2012
+#define TUNER_05TH_SCAN_DEVICE TUNER_MXL608
+#define TUNER_06TH_SCAN_DEVICE TUNER_NULL
 #define TUNER_07TH_SCAN_DEVICE TUNER_NULL
 #define TUNER_08TH_SCAN_DEVICE TUNER_NULL
 #define TUNER_09TH_SCAN_DEVICE TUNER_NULL

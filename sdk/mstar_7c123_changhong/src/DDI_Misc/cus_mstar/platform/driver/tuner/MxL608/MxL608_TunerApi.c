@@ -26,10 +26,13 @@
 #if IF_THIS_TUNER_INUSE(TUNER_MXL608)
 
 /* MxLWare Driver version for MxL608 */
-const UINT8 MxLWare608DrvVersion[] = {1, 1, 1, 5, 0}; 
+const UINT8 MxLWare608DrvVersion[] = {1, 1, 1, 11, 0}; 
 
 /* OEM Data pointer array */
 void * MxL608_OEM_DataPtr[MXL608_MAX_NUM_DEVICES];
+
+/* Low/High Power IF */
+MXL608_LOW_HIGH_IF_TYPE_E MxL608_Low_High_IF[MXL608_MAX_NUM_DEVICES];
 
 /*------------------------------------------------------------------------------
 --| FUNCTION NAME : MxLWare608_API_CfgDrvInit
@@ -50,8 +53,12 @@ MXL_STATUS MxLWare608_API_CfgDrvInit(UINT8 devId, void* oemDataPtr)
     MXL_STATUS status = MXL_SUCCESS;
 
     if (oemDataPtr)
-    {
-        if (devId <= MXL608_MAX_NUM_DEVICES) MxL608_OEM_DataPtr[devId] = oemDataPtr;
+  {
+    if (devId <= MXL608_MAX_NUM_DEVICES)
+	{
+		MxL608_OEM_DataPtr[devId] = oemDataPtr;
+		MxL608_Low_High_IF[devId] = MXL608_LOW_IF;
+    }
         else status = MXL_INVALID_PARAMETER;
     }
 
@@ -153,7 +160,7 @@ MXL_STATUS MxLWare608_API_CfgDevXtal(UINT8 u8TunerIndex,UINT8 devId, MXL608_XTAL
     {
         control = (UINT8)((xtalCfg.xtalFreqSel << 5) | (xtalCfg.xtalCap & 0x1F));
         control |= (xtalCfg.clkOutEnable << 7);
-    status = MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, XTAL_CAP_CTRL_REG, control);
+        status = MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, XTAL_CAP_CTRL_REG, control);
 
         // XTAL frequency div 4 setting <1>
         control = (0x01 & (UINT8)xtalCfg.clkOutDiv);
@@ -260,6 +267,7 @@ MXL_STATUS MxLWare608_API_CfgDevGPO(UINT8 u8TunerIndex,UINT8 devId, MXL608_GPO_S
 {
     UINT8 status = MXL_SUCCESS;
     UINT8 regData = 0;
+  UINT8 gpoStateData = 0;
 
     TUNER_DBG(("%s", __FUNCTION__));
 
@@ -270,11 +278,15 @@ MXL_STATUS MxLWare608_API_CfgDevGPO(UINT8 u8TunerIndex,UINT8 devId, MXL608_GPO_S
         case MXL608_GPO_LOW:
             status = MxLWare608_OEM_ReadRegister(u8TunerIndex,devId, GPO_SETTING_REG, &regData);
             if (MXL608_GPO_AUTO_CTRL == gpoState)
-                regData &= 0xFE;
+        regData &= 0xEF; // 0x0A[4]
             else
             {
-                regData &= 0xFC;
-                regData |= (UINT8)(0x01 | (gpoState << 1));
+        regData &= 0xCF; // 0x0A[5:4] is clear to 0.
+        if(gpoState == MXL608_GPO_HIGH) 
+          gpoStateData = 0;
+        else if(gpoState == MXL608_GPO_LOW) 
+		  gpoStateData = 1;
+        regData |= (0x10 | (gpoStateData << 5)); 
             }
 
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, GPO_SETTING_REG, regData);
@@ -348,6 +360,7 @@ MXL_STATUS MxLWare608_API_ReqDevGPOStatus(UINT8 u8TunerIndex, UINT8 devId,
 {
     UINT8 status = MXL_SUCCESS;
     UINT8 regData = 0;
+  UINT8 gpoStateData = 0;
 
     TUNER_DBG(("%s", __FUNCTION__));
 
@@ -355,10 +368,18 @@ MXL_STATUS MxLWare608_API_ReqDevGPOStatus(UINT8 u8TunerIndex, UINT8 devId,
     {
         status = MxLWare608_OEM_ReadRegister(u8TunerIndex,devId, GPO_SETTING_REG, &regData);
 
-        // GPO1 bit<1:0>
-        if ((regData & 0x01) == 0) *gpoStatusPtr = MXL608_GPO_AUTO_CTRL;
-        else *gpoStatusPtr = (MXL608_GPO_STATE_E)((regData & 0x02) >> 1);
+    // GPO bit<5:4>
+    if ((regData & 0x10) == 0) 
+        *gpoStatusPtr = MXL608_GPO_AUTO_CTRL;
+    else
+    {
+      gpoStateData = ((regData & 0x20) >> 5);
+      if (gpoStateData == 0)
+        *gpoStatusPtr = MXL608_GPO_HIGH;
+      else 
+        *gpoStatusPtr = MXL608_GPO_LOW;
     }
+  }
     else
         status = MXL_INVALID_PARAMETER;
 
@@ -382,7 +403,7 @@ MXL_STATUS MxLWare608_API_ReqDevPllState(UINT8 u8TunerIndex,UINT8 devId, MXL608_
 {
   UINT8 status = MXL_TRUE;
   UINT8 condition[3] = {0};
-  UINT8 regAddr[7] = {0x2B, 0x30, 0x32, 0x34, 0x2F, 0x31, 0x33};
+  UINT8 regAddr[7] = {0x2B, 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34};
   UINT8 k, regData[7] = {0}; 
 
   TUNER_DBG(("%s", __FUNCTION__)); 
@@ -401,11 +422,11 @@ MXL_STATUS MxLWare608_API_ReqDevPllState(UINT8 u8TunerIndex,UINT8 devId, MXL608_
     condition[0] = (regData[0] != 0x07)? 1 : 0;
 
     // Check if register 0x30, 0x32, 0x34 values are all 0 
-    condition[1] = ((regData[1] == 0) && (regData[2] == 0) && (regData[3] == 0)) ? 1: 0; 
+    condition[1] = ((regData[2] == 0) && (regData[4] == 0) && (regData[6] == 0)) ? 1: 0; 
 
     // Check if register 0x30, 0x32, 0x34 values are all 0 
-    condition[2] = ((regData[1] == regData[2]) && (regData[2] == regData[3]) 
-                 && (regData[4] == regData[5]) && (regData[5] == regData[6])) ? 1: 0;
+    condition[2] = ((regData[2] == regData[4]) && (regData[4] == regData[6]) 
+                 && (regData[1] == regData[3]) && (regData[3] == regData[5])) ? 1: 0;
 
     if ((condition[0] == 1) || (condition[1] == 1) || (condition[2] == 1))
       *PllStatePtr = MXL608_PLL_STATE_WRONG; 
@@ -431,9 +452,6 @@ MXL_STATUS MxLWare608_API_ReqDevPllState(UINT8 u8TunerIndex,UINT8 devId, MXL608_
 --|
 --|---------------------------------------------------------------------------*/
 
-static MS_BOOL _bIsTunerModeSetted[MXL608_MAX_NUM_DEVICES] = {0};
-static MXL608_SIGNAL_MODE_E _lastSignalMode[MXL608_MAX_NUM_DEVICES] = {0};
-
 MXL_STATUS MxLWare608_API_CfgTunerMode(UINT8 u8TunerIndex,UINT8 devId,
                                        MXL608_TUNER_MODE_CFG_T tunerModeCfg)
 {
@@ -448,16 +466,6 @@ MXL_STATUS MxLWare608_API_CfgTunerMode(UINT8 u8TunerIndex,UINT8 devId,
                                                 tunerModeCfg.xtalFreqSel,
                                                 tunerModeCfg.ifOutGainLevel));
 
-    if(_bIsTunerModeSetted[u8TunerIndex] == FALSE)
-    {
-        _lastSignalMode[u8TunerIndex] = tunerModeCfg.signalMode;
-        _bIsTunerModeSetted[u8TunerIndex] = TRUE;
-    }
-    else if(_lastSignalMode[u8TunerIndex] == tunerModeCfg.signalMode)
-    {
-        return MXL_SUCCESS;    //Same Signal Mode,do not reset         
-    }
-
     switch(tunerModeCfg.signalMode)
     {
     case MXL608_DIG_DVB_C:
@@ -470,12 +478,16 @@ MXL_STATUS MxLWare608_API_CfgTunerMode(UINT8 u8TunerIndex,UINT8 devId,
             // Low power
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_CFG_0, 0xFE);
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_CFG_1, 0x10);
+		    status |= MxLWare608_OEM_WriteRegister(u8TunerIndex, devId, DFE_CSF_IDX_BYP_REG, 0x00);
+		    MxL608_Low_High_IF[u8TunerIndex] = MXL608_LOW_IF;
         }
         else
         {
             // High power
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_CFG_0, 0xD9);
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_CFG_1, 0x16);
+		    status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DFE_CSF_IDX_BYP_REG, 0x00);
+		    MxL608_Low_High_IF[u8TunerIndex] = MXL608_HIGH_IF;
         }
 
         if (tunerModeCfg.xtalFreqSel == MXL608_XTAL_16MHz) dfeRegData = 0x0D;
@@ -496,6 +508,8 @@ MXL_STATUS MxLWare608_API_CfgTunerMode(UINT8 u8TunerIndex,UINT8 devId,
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_CFG_0, 0xF9);
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_CFG_1, 0x18);
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_PWR, 0xF1);
+            status |= MxLWare608_OEM_WriteRegister(u8TunerIndex, devId, DFE_CSF_IDX_BYP_REG, 0x00);
+		    MxL608_Low_High_IF[u8TunerIndex] = MXL608_LOW_IF;
         }
         else
         {
@@ -503,6 +517,8 @@ MXL_STATUS MxLWare608_API_CfgTunerMode(UINT8 u8TunerIndex,UINT8 devId,
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_CFG_0, 0xD9);
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_CFG_1, 0x16);
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_PWR, 0xB1);
+            status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DFE_CSF_IDX_BYP_REG, 0x00);
+		    MxL608_Low_High_IF[u8TunerIndex] = MXL608_HIGH_IF;
         }
 
         if (MXL608_XTAL_16MHz == tunerModeCfg.xtalFreqSel) dfeRegData = 0x0D;
@@ -535,6 +551,8 @@ MXL_STATUS MxLWare608_API_CfgTunerMode(UINT8 u8TunerIndex,UINT8 devId,
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_CFG_0, 0xFE);
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_CFG_1, 0x18);
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_PWR, 0xF1);
+            status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DFE_CSF_IDX_BYP_REG, 0x00);
+            MxL608_Low_High_IF[u8TunerIndex] = MXL608_LOW_IF;
         }
         else
         {
@@ -542,6 +560,8 @@ MXL_STATUS MxLWare608_API_CfgTunerMode(UINT8 u8TunerIndex,UINT8 devId,
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_CFG_0, 0xD9);
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_CFG_1, 0x16);
             status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_IF_PWR, 0xB1);
+            status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, DFE_CSF_IDX_BYP_REG, 0x00);
+            MxL608_Low_High_IF[u8TunerIndex] = MXL608_HIGH_IF;
         }
 
         if (MXL608_XTAL_16MHz == tunerModeCfg.xtalFreqSel) dfeRegData = 0x0D;
@@ -734,6 +754,7 @@ MXL_STATUS MxLWare608_API_CfgTunerChanTune(UINT8 u8TunerIndex,UINT8 devId,
   UINT8 dfeTuneData = 0;
   UINT8 dfeCdcData = 0;
   UINT8 dfeAgcRssispData = 0;
+  UINT8 bw = 0;
   MXL608_CHAN_DEPENDENT_FREQ_TABLE_T *freqLutPtr = NULL;
 
     TUNER_DBG(("%s, signal type = %d, Freq = %d, BW = %d, Xtal = %d \n",
@@ -742,6 +763,32 @@ MXL_STATUS MxLWare608_API_CfgTunerChanTune(UINT8 u8TunerIndex,UINT8 devId,
                                               chanTuneCfg.freqInHz,
                                               chanTuneCfg.bandWidth,
                                               chanTuneCfg.xtalFreqSel));
+
+  if (chanTuneCfg.signalMode == MXL608_DIG_DVB_T_DTMB){
+    if ((chanTuneCfg.bandWidth == MXL608_TERR_BW_1_7MHz) || (chanTuneCfg.bandWidth == MXL608_TERR_BW_5MHz))
+    { // In case of DVBT2 1.7MHz and 5MHz bandwidth, 0x5B/0x5C/0x8A settings should be changed.
+          status |= MxLWare608_OEM_WriteRegister(u8TunerIndex, devId, DIG_ANA_IF_CFG_1, 0x10);
+          status |= MxLWare608_OEM_WriteRegister(u8TunerIndex, devId, DIG_ANA_IF_PWR, 0xB1);
+          status |= MxLWare608_OEM_WriteRegister(u8TunerIndex, devId, DFE_CSF_IDX_BYP_REG, 0x31);  
+    }
+    else{ // for DVB-T/T2/DTMB mode, bandwidth changed but mode not change.
+      if (MxL608_Low_High_IF[u8TunerIndex] == MXL608_LOW_IF)
+        {
+          // Low power IF dependent settings
+          status |= MxLWare608_OEM_WriteRegister(u8TunerIndex, devId, DIG_ANA_IF_CFG_1, 0x18);
+          status |= MxLWare608_OEM_WriteRegister(u8TunerIndex, devId, DIG_ANA_IF_PWR, 0xF1);
+          status |= MxLWare608_OEM_WriteRegister(u8TunerIndex, devId, DFE_CSF_IDX_BYP_REG, 0x00); 
+        }
+        else
+        {
+          // High power IF dependent settings
+          status |= MxLWare608_OEM_WriteRegister(u8TunerIndex, devId, DIG_ANA_IF_CFG_1, 0x16);
+          status |= MxLWare608_OEM_WriteRegister(u8TunerIndex, devId, DIG_ANA_IF_PWR, 0xB1);
+          status |= MxLWare608_OEM_WriteRegister(u8TunerIndex, devId, DFE_CSF_IDX_BYP_REG, 0x00);
+        }  	
+    }
+  }
+
 
     // Abort Tune
     status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, START_TUNE_REG, 0x00);
@@ -804,9 +851,15 @@ MXL_STATUS MxLWare608_API_CfgTunerChanTune(UINT8 u8TunerIndex,UINT8 devId,
       }
 
       if (freqLutPtr)
-        status |= Ctrl_SetRfFreqLutTblReg(u8TunerIndex,devId, chanTuneCfg.freqInHz, freqLutPtr);
+        status |= MxL608_Ctrl_SetRfFreqLutTblReg(u8TunerIndex,devId, chanTuneCfg.freqInHz, freqLutPtr);
+
+      if ((chanTuneCfg.bandWidth == MXL608_TERR_BW_1_7MHz) || (chanTuneCfg.bandWidth == MXL608_TERR_BW_5MHz))
+        bw = (UINT8)MXL608_TERR_BW_6MHz;
+      else
+        bw = (UINT8)chanTuneCfg.bandWidth;
+      
       // Bandwidth <7:0>
-      switch(chanTuneCfg.bandWidth)
+      switch(bw)
       {
         case MXL608_CABLE_BW_6MHz:
         case MXL608_CABLE_BW_7MHz:
@@ -814,7 +867,7 @@ MXL_STATUS MxLWare608_API_CfgTunerChanTune(UINT8 u8TunerIndex,UINT8 devId,
         case MXL608_TERR_BW_6MHz:
         case MXL608_TERR_BW_7MHz:
         case MXL608_TERR_BW_8MHz:
-            status |= MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, CHAN_TUNE_BW_REG, (UINT8)chanTuneCfg.bandWidth);
+            status |= MxLWare608_OEM_WriteRegister(u8TunerIndex, devId, CHAN_TUNE_BW_REG, (UINT8)bw);
             
             // Frequency
             frequency = chanTuneCfg.freqInHz / 1000;
@@ -1003,7 +1056,7 @@ MXL_STATUS MxLWare608_API_ReqTunerAGCLock(UINT8 u8TunerIndex,UINT8 devId, MXL_BO
 
         *agcLockStatusPtr =  lockStatus;
 
-        TUNER_DBG((" Agc lock = %d", (UINT8)*agcLockStatusPtr));
+        TUNER_DBG((" Agc lock = %d\n", (UINT8)*agcLockStatusPtr));
     }
     else
         status = MXL_INVALID_PARAMETER;
@@ -1102,3 +1155,4 @@ MXL_STATUS MxLWare608_API_ReqTunerRxPower(UINT8 u8TunerIndex,UINT8 devId, SINT16
 }
 
 #endif
+

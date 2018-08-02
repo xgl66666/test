@@ -481,7 +481,7 @@ extern "C"
     tmErrorCode_t
         tmbslNT220xGetPowerLevel(
         tmUnitSelect_t  tUnit,      /* I: Unit number */
-        UInt32*         pPowerLevel /* O: Power Level in dBµV */
+        UInt32*         pPowerLevel /* O: Power Level in dBÂµV */
         );
     tmErrorCode_t
         tmbslNT220xSetIRQWait(

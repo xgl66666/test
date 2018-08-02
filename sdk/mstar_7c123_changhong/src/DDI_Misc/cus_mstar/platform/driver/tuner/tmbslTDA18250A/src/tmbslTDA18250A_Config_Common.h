@@ -37,7 +37,7 @@ extern "C"
 #define TDA18250A_SETTINGS_CUSTOMER_NUM      (0)                     /* SW Settings Customer Number */
 #define TDA18250A_SETTINGS_PROJECT_NUM       (0)                     /* SW Settings Project Number  */
 #define TDA18250A_SETTINGS_MAJOR_VER         (1)                     /* SW Settings Major Version   */
-#define TDA18250A_SETTINGS_MINOR_VER         (6)                     /* SW Settings Minor Version   */
+#define TDA18250A_SETTINGS_MINOR_VER         (7)                     /* SW Settings Minor Version   */
 
 #define TDA18250A_INSTANCE_CUSTOM_COMMON_LVL_REF_GAIN_MAX 19
 #define TDA18250A_INSTANCE_CUSTOM_COMMON_LVL_AGC1_MAX 12
@@ -338,6 +338,7 @@ extern "C"
 
 
 #define TDA18250A_CONFIG_MASTER \
+    TDA18250A_Scanning_Mode_Disabled,                       /* AGC Fact mode activated */        \
     TDA18250A_CONFIG_POWER_DEF_MASTER, \
     TDA18250A_CONFIG_RF_DEF,                                /* uRF */                            \
     TDA18250A_CONFIG_PROG_RF_DEF,                           /* uProgRF */                        \
@@ -347,16 +348,17 @@ extern "C"
     False,                                                  /* Manual PLL Calc */                \
     TDA18250A_LoopThrough_Enabled,                          /* single app 18274 */               \
     TDA18250A_Mode_Dual,                                    /* single app */                     \
-    TDA18250A_XtalFreq_16000000,                            /* eXtalFreq */                      \
+    TDA18250A_XtalFreq_27000000,                            /* eXtalFreq */                      \
     TDA18250A_XTOUT_Amp_400mV,                              /* eXTOutAmp */                      \
     TDA18250A_XTOUT_Sinusoidal,                             /* eXTOut */                         \
-    TDA18250A_LNA_RANGE_Minus8dB_Plus22dB,					/* eLNA_Range */                     \
+    TDA18250A_LNA_RANGE_Minus8dB_Plus22dB,                  /* eLNA_Range */                     \
     TDA18250A_IRQ_POLARITY_LOW,                             /* eIRQPolarity */                   \
     TDA18250A_HwState_InitNotDone,                          /* eHwState */                       \
     TDA18250A_CONFIG_STD_DEF_VCO_PULLING_MINUS, \
     TDA18250A_CONFIG_REGMAP_DEF
 
 #define TDA18250A_CONFIG_SLAVE \
+    TDA18250A_Scanning_Mode_Disabled,                       /* AGC Fact mode activated */        \
     TDA18250A_CONFIG_POWER_DEF_SLAVE, \
     TDA18250A_CONFIG_RF_DEF,                                /* uRF */                            \
     TDA18250A_CONFIG_PROG_RF_DEF,                           /* uProgRF */                        \
@@ -366,10 +368,10 @@ extern "C"
     False,                                                  /* Manual PLL Calc */                \
     TDA18250A_LoopThrough_Disabled,                         /* single app 18274 */               \
     TDA18250A_Mode_Dual,                                    /* single app */                     \
-    TDA18250A_XtalFreq_16000000,                            /* eXtalFreq */                      \
+    TDA18250A_XtalFreq_27000000,                            /* eXtalFreq */                      \
     TDA18250A_XTOUT_Amp_400mV,                              /* eXTOutAmp */                      \
     TDA18250A_XTOUT_Sinusoidal,                             /* eXTOut */                         \
-    TDA18250A_LNA_RANGE_Minus8dB_Plus22dB,					/* eLNA_Range */                     \
+    TDA18250A_LNA_RANGE_Minus8dB_Plus22dB,                  /* eLNA_Range */                     \
     TDA18250A_IRQ_POLARITY_LOW,                             /* eIRQPolarity */                   \
     TDA18250A_HwState_InitNotDone,                          /* eHwState */                       \
     TDA18250A_CONFIG_STD_DEF_VCO_PULLING_PLUS, \

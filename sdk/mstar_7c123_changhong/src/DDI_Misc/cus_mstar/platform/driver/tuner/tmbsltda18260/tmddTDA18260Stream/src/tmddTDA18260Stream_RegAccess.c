@@ -24,8 +24,6 @@
 
 /* File generated automatically from register description file */
 
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_TDA18260)
 
 /*============================================================================*/
 /* Standard include files:                                                    */
@@ -8107,4 +8105,4 @@ tmddTDA18260Stream_Get_rc_lpf_offset
     
     return err;
 }
-#endif
+

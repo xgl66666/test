@@ -138,18 +138,25 @@ TUNER_ErrorCode Time_DELAY_MS (UINT32 ms);
 
 bool MDrv_Tuner_SetFreq(MS_U16 u16CenterFreq, MS_U32 u32SymbolRate_Hz);
 */
-TUNER_ErrorCode Tuner_I2C_Write (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT8 reg_start, UINT8* buff, UINT8 length);
-TUNER_ErrorCode Tuner_I2C_Read (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT8 reg_start, UINT8* buff, UINT8 length);
-TUNER_ErrorCode Tuner_Set_Fine_Tune (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t);
-TUNER_ErrorCode Time_DELAY_MS (UINT32 ms);
-MS_BOOL MDrv_Tuner_AV2028_Initial (MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam);
-TUNER_ErrorCode Tuner_Register_Initial (MS_U8 u8TunerIndex);
-MS_BOOL MDrv_Tuner_AV2028_SetFreq_S2(MS_U8 u8TunerIndex, MS_U32 u16CenterFreq, MS_U32 u32SymbolRate_Hz);
-TUNER_ErrorCode Tuner_Set_Channel_Frequency (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT32 channel_freq_mhz);
-TUNER_ErrorCode Tuner_Set_Filter_Bandwith (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT32 filter_BW_khz);
-MS_BOOL MDrv_Tuner_AV2028_CheckLock(MS_U8 u8TunerIndex);
-TUNER_ErrorCode Tuner_Set_RFLP (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t);
+TUNER_ErrorCode AV2028_Tuner_I2C_Write (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT8 reg_start, UINT8* buff, UINT8 length);
+TUNER_ErrorCode AV2028_Tuner_I2C_Read (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT8 reg_start, UINT8* buff, UINT8 length);
+TUNER_ErrorCode AV2028_Tuner_Set_Fine_Tune (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t);
+TUNER_ErrorCode AV2028_Tuner_Register_Initial (MS_U8 u8TunerIndex);
+TUNER_ErrorCode AV2028_Tuner_Set_Channel_Frequency (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT32 channel_freq_mhz);
+TUNER_ErrorCode AV2028_Tuner_Set_Filter_Bandwith (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT32 filter_BW_khz);
+TUNER_ErrorCode AV2028_Time_DELAY_MS (UINT32 ms);
+TUNER_ErrorCode AV2028_Tuner_Set_RFLP (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t);
 
+
+MS_BOOL MDrv_Tuner_AV2028_Initial (MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam);
+
+MS_BOOL MDrv_Tuner_AV2028_SetFreq_S2(MS_U8 u8TunerIndex, MS_U32 u16CenterFreq, MS_U32 u32SymbolRate_Hz);
+
+MS_BOOL MDrv_Tuner_AV2028_CheckLock(MS_U8 u8TunerIndex);
+
+MS_BOOL AV2028_WriteReg(MS_U8 u8SlaveID, MS_U8 u8Addr, MS_U8 u8Data);
+
+MS_BOOL AV2028_ReadReg(MS_U8 u8TunerIndex, MS_U8 u8SlaveID, MS_U8 u8Addr, MS_U8 *u8Data);
 
 
 #ifdef _CPLUSPLUS

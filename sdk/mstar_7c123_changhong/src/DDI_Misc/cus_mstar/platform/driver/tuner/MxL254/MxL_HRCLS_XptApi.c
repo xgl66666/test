@@ -11,8 +11,6 @@
  *****************************************************************************************
  *                Copyright (c) 2011, MaxLinear, Inc.
  ****************************************************************************************/
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_MXL254)
 
 #include "MxL_HRCLS_Common.h"
 
@@ -24,6 +22,11 @@
 // OutClockInMHz = [10.55 21.09 25.96 28.16 42.18 56.21 84.37 112.50]
 // ClockDiv      = round(InClockInMHz ./ OutClockInMHz) = [32 16 13 12 8 6 4 3]
 //static UINT8 MxL_XptClockDiv[8] = {32, 16, 13, 12, 8, 6, 4, 3};
+static const MXL_HRCLS_FIELD32_T ncoCountMin[] = {{NCO_COUNT_MIN0}, {NCO_COUNT_MIN1},
+                                             {NCO_COUNT_MIN2}, {NCO_COUNT_MIN3},
+                                             {NCO_COUNT_MIN4}, {NCO_COUNT_MIN5},
+                                             {NCO_COUNT_MIN6}, {NCO_COUNT_MIN7}};
+static const MXL_HRCLS_FIELD32_T enable[] = {{ENABLE_OUTPUT0}, {ENABLE_OUTPUT1}, {ENABLE_OUTPUT2}, {ENABLE_OUTPUT3}, {ENABLE_OUTPUT4}, {ENABLE_OUTPUT5}, {ENABLE_OUTPUT6}, {ENABLE_OUTPUT7}};
 
 /*----------------------------------------------------------------------------------------
 --| FUNCTION NAME : MxL_HRCLS_Ctrl_WriteXptRegister
@@ -268,6 +271,7 @@ MXL_BOOL_E MxLWare_HRCLS_Ctrl_ValidateXPTMode(MXL_HRCLS_DEV_CONTEXT_T * devConte
       devContextPtr->demodsCnt = devContextPtr->xpt.currentMode->demodsCnt;
       devContextPtr->dfeChanCount = devContextPtr->xpt.currentMode->dfeChanCount;
       devContextPtr->dfeChanMap = devContextPtr->xpt.currentMode->dfeChanMap;
+      devContextPtr->xpt.commonClockEnabled = MXL_FALSE;
     }
   }
   MXLEXITSTR(result);
@@ -417,6 +421,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgXpt(
             status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, ENABLE_PARALLEL_OUTPUT, 0);
             status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, TS_CLK_OUT_EN_PARALLEL, 0);
             status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, MODE_27MHZ, 0);
+            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MPEG_TS_MODE, 2);
             MXLDBG2(MxL_HRCLS_DEBUG("XPT config: 1-to-1 mode\n"););
             break;
 
@@ -426,6 +431,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgXpt(
             status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, ENABLE_PARALLEL_OUTPUT, 0);
             status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, TS_CLK_OUT_EN_PARALLEL, 0);
             status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, MODE_27MHZ, 0);
+            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MPEG_TS_MODE, 2);
             MXLDBG2(MxL_HRCLS_DEBUG("XPT config: 2-to-1 mode\n"););
             break;
 
@@ -435,6 +441,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgXpt(
             status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, ENABLE_PARALLEL_OUTPUT, 0);
             status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, TS_CLK_OUT_EN_PARALLEL, 0);
             status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, MODE_27MHZ, 0);
+            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MPEG_TS_MODE, 2);
             MXLDBG2(MxL_HRCLS_DEBUG("XPT config: 4-to-1 mode\n"););
             break;
 
@@ -454,6 +461,19 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgXpt(
             status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, TS_CLK_OUT_EN_PARALLEL, 1);
             status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, MODE_27MHZ, 1);
             MXLDBG2(MxL_HRCLS_DEBUG("XPT config: cable card mode\n"););
+            break;
+
+          case MXL_HRCLS_XPT_MAP_1_TO_1_NO_XPT:
+            /* Do: 
+            (i) Turn off XPT (FW does this) 
+            (ii)Set 4 bits in MPEG4WIRE_EN to 0 
+            (iii) set XPT_TS_MODE = 0 (serial) 
+            (iv) set MPEG_TS_MODE = 1 (demod 3-wire serial) */
+
+            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MPEG4WIRE_EN, 0);
+            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPT_TS_MODE, 0);
+            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MPEG_TS_MODE, 1);
+            MXLDBG2(MxL_HRCLS_DEBUG("XPT config: 3-wire, XPT bypass.\n"););
             break;
 
           case MXL_HRCLS_XPT_MAP_INVALID:
@@ -521,6 +541,101 @@ static UINT8 MxL_HRCLS_Ctrl_XptGetClockDivider(MXL_HRCLS_MPEG_CLK_RATE_E clkFreq
   return divider;
 }
 
+MXL_STATUS_E MxLWare_Ctrl_ConfigureCommonClock(MXL_HRCLS_DEV_CONTEXT_T * devContextPtr, MXL_HRCLS_MPEG_CLK_RATE_E mpegClkFreq, MXL_HRCLS_MPEG_CLK_FMT_E mpegClkPol, MXL_HRCLS_MPEG_DRV_MODE_E mpegClkPadDrv)
+{
+  UINT8 status = (UINT8) MXL_SUCCESS;
+  UINT16 eco_value = 0;
+  UINT32 regData;
+  UINT8 devId;
+  UINT8 clockDivider = MxL_HRCLS_Ctrl_XptGetClockDivider(mpegClkFreq);
+  UINT8 i;
+  MXL_HRCLS_XPT_OUTPUT_ID_E physicalOutputId = MXL_HRCLS_XPT_OUT_INVALID;
+
+  MXLENTERSTR;
+  MXLENTER(MxL_HRCLS_DEBUG("mpegClkFreq=%d, mpegClkPol=%d, mpegClkPadDrv=%d\n", mpegClkFreq, mpegClkPol, mpegClkPadDrv););
+  devId = devContextPtr->devId;
+
+  // Select output clock source - first valid (as per mux-mode) outputId 
+  for (i = 0; (i < devContextPtr->xpt.outputsCnt) && (status == MXL_SUCCESS); i++)
+  {
+    physicalOutputId = MxLWare_HRCLS_Ctrl_GetPhysicalXptOutputId(devContextPtr, (MXL_HRCLS_XPT_OUTPUT_ID_E)i); 
+    if (physicalOutputId !=  MXL_HRCLS_XPT_OUT_INVALID)
+    {
+      devContextPtr->xpt.clkSrcOutputId = (MXL_HRCLS_XPT_OUTPUT_ID_E)i;
+      break;
+    }
+  }
+
+  if (physicalOutputId <  MXL_HRCLS_XPT_OUT_INVALID)
+  {
+    // ECO_8[7] Set MPEG_CLK polarity using 
+    status |= MxLWare_HRCLS_OEM_ReadRegister(devId, EXTRACT_ADDR(ECO_8), &eco_value);
+    eco_value &= ~(1U<<7);
+    eco_value |= (mpegClkPol == MXL_HRCLS_MPEG_CLK_POSITIVE)?(0):(1U<<7);
+    status |= MxLWare_HRCLS_OEM_WriteRegister(devId, EXTRACT_ADDR(ECO_8), eco_value);
+
+    // Update CLK pad drive strength
+    status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, PAD_MPEG_CLK_DRV, MxL_HRCLS_Ctrl_GetPadDrvValue(mpegClkPadDrv));
+
+    // Set clock frequency for clock source
+    MXLDBG2(MxL_HRCLS_DEBUG("[HRCLS][%d]: Set ncoCountMin[%d] with this value %d [%d] in Titan\n", __LINE__, physicalOutputId, clockDivider, mpegClkFreq););
+    status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, 
+        ncoCountMin[(UINT8)physicalOutputId].regAddr, 
+        ncoCountMin[(UINT8)physicalOutputId].lsbPos, 
+        ncoCountMin[(UINT8)physicalOutputId].fieldWidth,
+        clockDivider);
+
+    // Enable TS ouput for clock source
+    status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, enable[(UINT8) physicalOutputId].regAddr,
+        enable[(UINT8) physicalOutputId].lsbPos,
+        enable[(UINT8) physicalOutputId].fieldWidth, 1);
+
+    // ECO_4[3:2] used to select clock source (fix to 0 = TS2)
+    status |= MxLWare_HRCLS_OEM_ReadRegister(devId, EXTRACT_ADDR(ECO_4), &eco_value);
+    if (status == MXL_SUCCESS)
+    {
+      eco_value &= ~((1U<<2) | (1U<<3));
+      eco_value |= ((devContextPtr->xpt.clkSrcOutputId & 0x03) << 2);
+      status |= MxLWare_HRCLS_OEM_WriteRegister(devId, EXTRACT_ADDR(ECO_4), (UINT16)eco_value);
+    }
+
+    // Enable 4-wire mode for all valid outputs
+    for (i = 0; (i < devContextPtr->xpt.outputsCnt) && (status == MXL_SUCCESS); i++)
+    {
+      physicalOutputId = MxLWare_HRCLS_Ctrl_GetPhysicalXptOutputId(devContextPtr, (MXL_HRCLS_XPT_OUTPUT_ID_E)i); 
+      if (physicalOutputId !=  MXL_HRCLS_XPT_OUT_INVALID)
+      {
+        status = MxLWare_HRCLS_OEM_ReadRegister(devId, EXTRACT_ADDR(ECO_4), &eco_value);
+        if (status == MXL_SUCCESS)
+        {
+          // According to PG, TS2 -> ECO_4[4]; TS3 -> ECO_4[5]
+          eco_value &= ~(1U << (physicalOutputId + 2));
+          status |= MxLWare_HRCLS_OEM_WriteRegister(devId, EXTRACT_ADDR(ECO_4) , (UINT16)eco_value);
+          eco_value |=  (1U << (physicalOutputId + 2));
+          status |= MxLWare_HRCLS_OEM_WriteRegister(devId, EXTRACT_ADDR(ECO_4) , (UINT16)eco_value);
+        }
+
+        // Enable TS_CLK_OUT_EN for all TS (sets correct VAL signal + continuous clock for the TS out, needed for 4-wire mode) 
+        status |= MxL_HRCLS_Ctrl_ReadXptRegister(devId, EXTRACT_ADDR32(TS_CLK_OUT_EN0), &regData);
+        regData |= (1UL << physicalOutputId);
+        status |= MxL_HRCLS_Ctrl_WriteXptRegister(devId, EXTRACT_ADDR32(TS_CLK_OUT_EN0), regData);
+      }
+    }
+    if (devContextPtr->threeWireModeXptBypassSupported ==  MXL_TRUE)
+    {
+      // This is for Titan.
+      status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MPEG_TS_MODE, 2); // 4-wire serial mode
+      status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MPEG4WIRE_CLK_INV, mpegClkPol == MXL_HRCLS_MPEG_CLK_INVERTED ? 1 : 0);
+      status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, MPEG_CLK_DIV, clockDivider);
+    }
+    devContextPtr->xpt.commonClkFreq = mpegClkFreq;
+  } else status = MXL_FAILURE; 
+
+  MXLEXITSTR(status);
+
+  return (MXL_STATUS_E) status;
+}
+
 /*----------------------------------------------------------------------------------------
 --| FUNCTION NAME : MxLWare_HRCLS_API_CfgXptOutput
 --| 
@@ -538,26 +653,28 @@ static UINT8 MxL_HRCLS_Ctrl_XptGetClockDivider(MXL_HRCLS_MPEG_CLK_RATE_E clkFreq
 MXL_STATUS_E MxLWare_HRCLS_API_CfgXptOutput(
     UINT8   devId,
     MXL_HRCLS_XPT_OUTPUT_ID_E outputId,
-    MXL_HRCLS_XPT_MPEGOUT_PARAM_T * outMpegParams)
+    MXL_HRCLS_XPT_MPEGOUT_PARAM_T * outMpegParamsPtr)
 {
+  UINT8  i;
   UINT8  cond1;
   UINT8  cond2;
-  UINT32 regData;
+  UINT8  cond3;
+  UINT8  cond4;
+  UINT16 regData;
+  UINT16 eco_value;
   MXL_HRCLS_XPT_OUTPUT_ID_E physicalOutputId;
+  MXL_BOOL_E mpegClk;
+  UINT32 clockVal;
   UINT8  status = MXL_SUCCESS;
-  
-  const MXL_HRCLS_FIELD32_T ncoCountMin[] = {{NCO_COUNT_MIN0}, {NCO_COUNT_MIN1},
-                                             {NCO_COUNT_MIN2}, {NCO_COUNT_MIN3},
-                                             {NCO_COUNT_MIN4}, {NCO_COUNT_MIN5},
-                                             {NCO_COUNT_MIN6}, {NCO_COUNT_MIN7}};
   
   const MXL_HRCLS_FIELD32_T lsbOrMsbFirst[] = {{LSB_FIRST0}, {LSB_FIRST1}, {LSB_FIRST2}, {LSB_FIRST3}, {LSB_FIRST4}, {LSB_FIRST5}, {LSB_FIRST6}, {LSB_FIRST7}};
   const MXL_HRCLS_FIELD32_T mpegSyncPulseWidth[] = {{SYNC_FULL_BYTE0}, {SYNC_FULL_BYTE1}, {SYNC_FULL_BYTE2}, {SYNC_FULL_BYTE3}, {SYNC_FULL_BYTE4}, {SYNC_FULL_BYTE5}, {SYNC_FULL_BYTE6}, {SYNC_FULL_BYTE7}};
   const MXL_HRCLS_FIELD32_T mpegValidPol[] = {{VALID_POLARITY0}, {VALID_POLARITY1}, {VALID_POLARITY2}, {VALID_POLARITY3}, {VALID_POLARITY4}, {VALID_POLARITY5}, {VALID_POLARITY6}, {VALID_POLARITY7}};
   const MXL_HRCLS_FIELD32_T mpegSyncPol[] = {{SYNC_POLARITY0}, {SYNC_POLARITY1}, {SYNC_POLARITY2}, {SYNC_POLARITY3}, {SYNC_POLARITY4}, {SYNC_POLARITY5}, {SYNC_POLARITY6}, {SYNC_POLARITY7}};
   const MXL_HRCLS_FIELD32_T mpegClkPol[] = {{CLOCK_POLARITY0}, {CLOCK_POLARITY1}, {CLOCK_POLARITY2}, {CLOCK_POLARITY3}, {CLOCK_POLARITY4}, {CLOCK_POLARITY5}, {CLOCK_POLARITY6}, {CLOCK_POLARITY7}};
-  const MXL_HRCLS_FIELD32_T enable[] = {{ENABLE_OUTPUT0}, {ENABLE_OUTPUT1}, {ENABLE_OUTPUT2}, {ENABLE_OUTPUT3}, {ENABLE_OUTPUT4}, {ENABLE_OUTPUT5}, {ENABLE_OUTPUT6}, {ENABLE_OUTPUT7}};
-                                             
+  const MXL_HRCLS_FIELD_T   mpeg_oe[] = {{MPEG0_OE}, {MPEG1_OE}, {MPEG2_OE}, {MPEG3_OE}, {MPEG4_OE}, {MPEG5_OE}, {MPEG6_OE}, {MPEG7_OE}, {MPEG8_OE}};
+
+
   const MXL_HRCLS_FIELD_T padSynDrv[] = {{PAD_MPEG_1_SYN_DRV}, {PAD_MPEG_2_SYN_DRV},
                                            {PAD_MPEG_3_SYN_DRV}, {PAD_MPEG_4_SYN_DRV},
                                            {PAD_MPEG_5_SYN_DRV}, {PAD_MPEG_6_SYN_DRV},
@@ -582,187 +699,334 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgXptOutput(
   MXL_HRCLS_DEV_CONTEXT_T * devContextPtr = MxL_HRCLS_Ctrl_GetDeviceContext(devId);
   
   MXLENTERAPISTR(devId);
+
   MXLENTERAPI(MxL_HRCLS_DEBUG("outputId=%d, enable=%d, lsbOrMsbFirst=%d, mpegSyncPulseWidth=%d, mpegValidPol=%d, mpegSyncPol=%d, mpegClkPol=%d, clkFreq=%d, SYN pad drv=%d, VAL pad drv=%d, DAT pad drv=%d\n", 
                                outputId, 
-                               outMpegParams->enable,
-                               outMpegParams->lsbOrMsbFirst,
-                               outMpegParams->mpegSyncPulseWidth,
-                               outMpegParams->mpegValidPol,
-                               outMpegParams->mpegSyncPol,
-                               outMpegParams->mpegClkPol,
-                               outMpegParams->clkFreq,
-                               outMpegParams->mpegPadDrv.padDrvMpegSyn,
-                               outMpegParams->mpegPadDrv.padDrvMpegVal,
-                               outMpegParams->mpegPadDrv.padDrvMpegDat););
+                               outMpegParamsPtr ? outMpegParamsPtr->enable : 0,
+                               outMpegParamsPtr ? outMpegParamsPtr->lsbOrMsbFirst : 0,
+                               outMpegParamsPtr ? outMpegParamsPtr->mpegSyncPulseWidth : 0,
+                               outMpegParamsPtr ? outMpegParamsPtr->mpegValidPol : 0,
+                               outMpegParamsPtr ? outMpegParamsPtr->mpegSyncPol : 0,
+                               outMpegParamsPtr ? outMpegParamsPtr->mpegClkPol : 0,
+                               outMpegParamsPtr ? outMpegParamsPtr->clkFreq : 0,
+                               outMpegParamsPtr ? outMpegParamsPtr->mpegPadDrv.padDrvMpegSyn : 0,
+                               outMpegParamsPtr ? outMpegParamsPtr->mpegPadDrv.padDrvMpegVal : 0,
+                               outMpegParamsPtr ? outMpegParamsPtr->mpegPadDrv.padDrvMpegDat : 0););
 
-  if (devContextPtr->driverInitialized)
+  if (devContextPtr && devContextPtr->driverInitialized)
   {    
     if (devContextPtr->xpt.supported == MXL_TRUE)
     {
       if (devContextPtr->xpt.currentMode)
       {
-        UINT8 clockDivider = MxL_HRCLS_Ctrl_XptGetClockDivider(outMpegParams->clkFreq);
-        physicalOutputId = MxLWare_HRCLS_Ctrl_GetPhysicalXptOutputId(devContextPtr, outputId); 
-
-        cond1 =  (physicalOutputId != MXL_HRCLS_XPT_OUT_INVALID)
-              || (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD) 
-              || (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_PARALLEL);       // valid physicalOutputId for any serial mode
-        
-        cond2 =  (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD) 
-              && (outMpegParams->clkFreq != MXL_HRCLS_MPEG_CLK_25_96MHz);  // invalid clock for cable-card mode 
-
-        // Confirm valid parameters
-        if ((cond1) && (!cond2))
+        if (outMpegParamsPtr == NULL)
         {
-          status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, lsbOrMsbFirst[(UINT8) physicalOutputId].regAddr,
-                                                         lsbOrMsbFirst[(UINT8) physicalOutputId].lsbPos,
-                                                         lsbOrMsbFirst[(UINT8) physicalOutputId].fieldWidth, (outMpegParams->lsbOrMsbFirst == MXL_HRCLS_MPEG_SERIAL_LSB_1ST)?1:0);
+          status = MXL_INVALID_PARAMETER;
+        }
+        else if (devContextPtr->xpt.currentMode->xptMap == MXL_HRCLS_XPT_MAP_1_TO_1_NO_XPT)
+        {
+      	  /* Customer wants 3-wire XPT bypass. */
+ 
+      	  MXL_HRCLS_DMD_ID_E demodId = (MXL_HRCLS_DMD_ID_E) outputId; // Set logic demodId to logical output Id
+      	  MXL_HRCLS_MPEGOUT_PARAM_T mpegOut;
+
+      	  mpegOut.enable = outMpegParamsPtr->enable;
+      	  mpegOut.lsbOrMsbFirst = outMpegParamsPtr->lsbOrMsbFirst;
+      	  mpegOut.mpegSyncPulseWidth = outMpegParamsPtr->mpegSyncPulseWidth;
+      	  mpegOut.mpegValidPol = outMpegParamsPtr->mpegValidPol;
+      	  mpegOut.mpegSyncPol = outMpegParamsPtr->mpegSyncPol;
+      	  mpegOut.mpegErrorIndication = MXL_FALSE;// How to pass this from an XPT Out structure?
+      	  mpegOut.mpeg3WireModeEnable = MXL_TRUE;
+      	  mpegOut.mpegPadDrv = outMpegParamsPtr->mpegPadDrv;
+      	  mpegOut.mpeg3WireModeClkPol = outMpegParamsPtr->mpegClkPol;
+      	  
+      	  if (MxL_HRCLS_Ctrl_ConvertAndValidateDemodId(devContextPtr, &demodId) == MXL_SUCCESS)
+      	  {
+      	    status = MxL_HRCLS_Ctrl_CfgDemod3WireMpegOutParams(devContextPtr, demodId, &mpegOut);
+      	  }
+      	  else status = MXL_INVALID_PARAMETER;
+        }
+        else
+        {
+          UINT8 clockDivider = MxL_HRCLS_Ctrl_XptGetClockDivider(outMpegParamsPtr->clkFreq);
+          physicalOutputId = MxLWare_HRCLS_Ctrl_GetPhysicalXptOutputId(devContextPtr, outputId); 
+			
+          cond1 =  (physicalOutputId != MXL_HRCLS_XPT_OUT_INVALID)
+                                || (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD) 
+                                || (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_PARALLEL); 	  // valid physicalOutputId for any serial mode
+			
+          cond2 =  (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD) 
+                                && (outMpegParamsPtr->clkFreq != MXL_HRCLS_MPEG_CLK_25_96MHz);  // invalid clock for cable-card mode 
+			
+          // cond3 - check if Hercules_V3. Then if the requested frequency is the same as already set
+          cond3 = ((devContextPtr->xpt.commonClockEnabled == MXL_FALSE) || (outMpegParamsPtr->enable == MXL_DISABLE) || (outMpegParamsPtr->clkFreq == devContextPtr->xpt.commonClkFreq));
+          MXLERR(
+            if (cond3 == 0)
+            {
+              MxL_HRCLS_ERROR("[HRCLS] Common clock frequency is already set to (%d). It cannot be changed while at least one output is on.\n", devContextPtr->xpt.commonClkFreq);
+            }
+            ) 
+
+          // cond4 - If it is a 4-wire mode on Titan, then the clockDivider must be <= 15
+          cond4 = (devContextPtr->threeWireModeXptBypassSupported == MXL_TRUE ? ((clockDivider <= 15) ? 1 : 0) : 1);
+          MXLERR(
+            if (cond4 == 0)
+            {
+              MxL_HRCLS_ERROR("[HRCLS]: Can't set MPEG_CLK_DIV with this value %d in Titan\n", clockDivider);
+            }
+            )
+            
+          // Confirm valid parameters
+          if ((cond1) && (!cond2) && (cond3) && (cond4))
+          {
+            status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, lsbOrMsbFirst[(UINT8) physicalOutputId].regAddr,
+                                                           lsbOrMsbFirst[(UINT8) physicalOutputId].lsbPos,
+                                                           lsbOrMsbFirst[(UINT8) physicalOutputId].fieldWidth, (outMpegParamsPtr->lsbOrMsbFirst == MXL_HRCLS_MPEG_SERIAL_LSB_1ST)?1:0);
           
-          status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, mpegSyncPulseWidth[(UINT8) physicalOutputId].regAddr,
-                                                         mpegSyncPulseWidth[(UINT8) physicalOutputId].lsbPos,
-                                                         mpegSyncPulseWidth[(UINT8) physicalOutputId].fieldWidth, (outMpegParams->mpegSyncPulseWidth == MXL_HRCLS_MPEG_SYNC_WIDTH_BYTE)?1:0);
+            status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, mpegSyncPulseWidth[(UINT8) physicalOutputId].regAddr,
+                                                           mpegSyncPulseWidth[(UINT8) physicalOutputId].lsbPos,
+                                                           mpegSyncPulseWidth[(UINT8) physicalOutputId].fieldWidth, (outMpegParamsPtr->mpegSyncPulseWidth == MXL_HRCLS_MPEG_SYNC_WIDTH_BYTE)?1:0);
           
-          status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, mpegValidPol[(UINT8) physicalOutputId].regAddr,
-                                                         mpegValidPol[(UINT8) physicalOutputId].lsbPos,
-                                                         mpegValidPol[(UINT8) physicalOutputId].fieldWidth, (outMpegParams->mpegValidPol == MXL_HRCLS_MPEG_ACTIVE_HIGH)?1:0);
+            status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, mpegValidPol[(UINT8) physicalOutputId].regAddr,
+                                                           mpegValidPol[(UINT8) physicalOutputId].lsbPos,
+                                                           mpegValidPol[(UINT8) physicalOutputId].fieldWidth, (outMpegParamsPtr->mpegValidPol == MXL_HRCLS_MPEG_ACTIVE_HIGH)?1:0);
 
-          status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, mpegSyncPol[(UINT8) physicalOutputId].regAddr,
-                                                         mpegSyncPol[(UINT8) physicalOutputId].lsbPos,
-                                                         mpegSyncPol[(UINT8) physicalOutputId].fieldWidth, (outMpegParams->mpegSyncPol == MXL_HRCLS_MPEG_ACTIVE_HIGH)?1:0);
+            status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, mpegSyncPol[(UINT8) physicalOutputId].regAddr,
+                                                           mpegSyncPol[(UINT8) physicalOutputId].lsbPos,
+                                                           mpegSyncPol[(UINT8) physicalOutputId].fieldWidth, (outMpegParamsPtr->mpegSyncPol == MXL_HRCLS_MPEG_ACTIVE_HIGH)?1:0);
 
-          status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, mpegClkPol[(UINT8) physicalOutputId].regAddr,
-                                                         mpegClkPol[(UINT8) physicalOutputId].lsbPos,
-                                                         mpegClkPol[(UINT8) physicalOutputId].fieldWidth, ((outMpegParams->mpegClkPol == MXL_HRCLS_MPEG_CLK_POSITIVE) && (devContextPtr->xpt.currentMode->mode != MXL_HRCLS_XPT_MODE_CABLECARD))?1:0);
-
-#if 0
-          // Configure XPTO fifo (cable card mode)
-          if (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD)
-          {
-            status |= MxL_HRCLS_Ctrl_ReadXptRegister(devId, EXTRACT_ADDR32(XPTO_FIFO_BYP), &regData);
-            if (status == MXL_SUCCESS)
+            if (devContextPtr->xpt.commonClockEnabled == MXL_FALSE)
             {
-              regData &= ~(1UL << EXTRACT_LSBLOC32(XPTO_FIFO_BYP));  // do-not bypass fifo
-              regData |=  (1UL << EXTRACT_LSBLOC32(XPTO_FIFO_RST));  // keep in reset
-              status  |= MxL_HRCLS_Ctrl_WriteXptRegister(devId, EXTRACT_ADDR32(XPTO_FIFO_BYP), regData);
+              status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, mpegClkPol[(UINT8) physicalOutputId].regAddr,
+                                                             mpegClkPol[(UINT8) physicalOutputId].lsbPos,
+                                                             mpegClkPol[(UINT8) physicalOutputId].fieldWidth, ((outMpegParamsPtr->mpegClkPol == MXL_HRCLS_MPEG_CLK_POSITIVE) && (devContextPtr->xpt.currentMode->mode != MXL_HRCLS_XPT_MODE_CABLECARD))?1:0);
             }
-          }
-#endif          
 
-          // Configure xpto clock polarity, xpto sync polarity, xpto valid polarity
-          if   ((devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_PARALLEL)
-             || (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD))
-          {
-            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_VALID_POLARITY, (MXL_HRCLS_MPEG_ACTIVE_LOW   == outMpegParams->mpegValidPol)?0:1);
-            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_SYNC_POLARITY,  (MXL_HRCLS_MPEG_ACTIVE_LOW   == outMpegParams->mpegSyncPol)?0:1);
-            regData  = (MXL_HRCLS_MPEG_CLK_POSITIVE != outMpegParams->mpegClkPol)?(0xFF):(0x00);
-          }
-          else // serial mode
-          {
-            status  |= MxL_HRCLS_Ctrl_ReadRegisterField(devId, XPTO_CLK_POLARITY,   (UINT16*)&regData);
-            if (MXL_HRCLS_MPEG_CLK_POSITIVE != outMpegParams->mpegClkPol)
+            // Configure xpto clock polarity, xpto sync polarity, xpto valid polarity
+            if   ((devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_PARALLEL)
+               || (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD))
             {
-              regData |=  (1UL << physicalOutputId);
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_VALID_POLARITY, (MXL_HRCLS_MPEG_ACTIVE_LOW   == outMpegParamsPtr->mpegValidPol)?0:1);
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_SYNC_POLARITY,  (MXL_HRCLS_MPEG_ACTIVE_LOW   == outMpegParamsPtr->mpegSyncPol)?0:1);
+              regData  = (MXL_HRCLS_MPEG_CLK_POSITIVE != outMpegParamsPtr->mpegClkPol)?(0xFF):(0x00);
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_CLK_POLARITY, regData);
             }
-            else // (MXL_HRCLS_MPEG_CLK_POSITIVE != outMpegParams->mpegClkPol)
+            else // serial mode
             {
-              regData &= ~(1UL << physicalOutputId);
+              if (devContextPtr->xpt.commonClockEnabled == MXL_FALSE)
+              {
+                status  |= MxL_HRCLS_Ctrl_ReadRegisterField(devId, XPTO_CLK_POLARITY,   &regData);
+                if (MXL_HRCLS_MPEG_CLK_POSITIVE != outMpegParamsPtr->mpegClkPol)
+                {
+                  regData |=  (1UL << physicalOutputId);
+                }
+                else // (MXL_HRCLS_MPEG_CLK_POSITIVE != outMpegParamsPtr->mpegClkPol)
+                {
+                  regData &= ~(1UL << physicalOutputId);
+                }
+                if (status == MXL_SUCCESS)
+                {
+                  status = MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_CLK_POLARITY, regData);
+                }
+              }
             }
-          }
-          if (status == MXL_SUCCESS)
-          {
-            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_CLK_POLARITY, regData);
-          }
 
-          // Configure xpto ts mode, xpto fifo byp
-          if (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_PARALLEL)
-          {
-            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPT_TS_MODE, 1);
-            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_FIFO_BYP, 1);
-            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_FIFO_RST, 1);
-          }
-          else if (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD)
-          {
-            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPT_TS_MODE, 1);
-            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_FIFO_RST, 0);
-            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_FIFO_BYP, 0);
-          }
-          else // serial mode
-          {
-            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPT_TS_MODE, 0);
-          }
+            // Configure xpto ts mode, xpto fifo byp
+            if (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_PARALLEL)
+            {
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPT_TS_MODE, 1);
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_FIFO_BYP, 1);
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_FIFO_RST, 1);
+            }
+            else if (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD)
+            {
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPT_TS_MODE, 1);
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_FIFO_RST, 0);
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_FIFO_BYP, 0);
+            }
+            else // serial mode
+            {
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPT_TS_MODE, 0);
+            }
 
 
-          // Configure nco clock divider
-          status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, 
-                                                  ncoCountMin[(UINT8)physicalOutputId].regAddr, 
-                                                  ncoCountMin[(UINT8)physicalOutputId].lsbPos, 
-                                                  ncoCountMin[(UINT8)physicalOutputId].fieldWidth,
-                                                  clockDivider);
+            // Configure nco clock divider
+            MXLDBG2(MxL_HRCLS_DEBUG("[HRCLS][%d]: Set ncoCountMin[%d] with this value %d [%d] in Titan\n", __LINE__, physicalOutputId, clockDivider, outMpegParamsPtr->clkFreq););
+            status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, 
+                                                    ncoCountMin[(UINT8)physicalOutputId].regAddr, 
+                                                    ncoCountMin[(UINT8)physicalOutputId].lsbPos, 
+                                                    ncoCountMin[(UINT8)physicalOutputId].fieldWidth,
+                                                    clockDivider);
           
-          // Configure pad strength
-          if   ((devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_PARALLEL)
-             || (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD))
-          {
-            UINT8 i;
-            for (i = 0; (i < MXL_HRCLS_PARALLEL_PAD_DRV_COUNT) && (status == MXL_SUCCESS); i++)
+            // Configure pad strength
+            if   ((devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_PARALLEL)
+               || (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD))
             {
-              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, parallelPadDrv[i].regAddr,
-                                                                  parallelPadDrv[i].lsbPos,
-                                                                  parallelPadDrv[i].fieldWidth,
-                                                                  MxL_HRCLS_Ctrl_GetPadDrvValue(outMpegParams->mpegPadDrv.padDrvMpegSyn));
-            }
-          }
-          else
-          {
-            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, padSynDrv[(UINT8) physicalOutputId].regAddr,
-                                                                padSynDrv[(UINT8) physicalOutputId].lsbPos,
-                                                                padSynDrv[(UINT8) physicalOutputId].fieldWidth,
-                                                                MxL_HRCLS_Ctrl_GetPadDrvValue(outMpegParams->mpegPadDrv.padDrvMpegSyn));
-            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, padValDrv[(UINT8) physicalOutputId].regAddr,
-                                                                padValDrv[(UINT8) physicalOutputId].lsbPos,
-                                                                padValDrv[(UINT8) physicalOutputId].fieldWidth,
-                                                                MxL_HRCLS_Ctrl_GetPadDrvValue(outMpegParams->mpegPadDrv.padDrvMpegVal));
-            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, padDatDrv[(UINT8) physicalOutputId].regAddr,
-                                                                padDatDrv[(UINT8) physicalOutputId].lsbPos,
-                                                                padDatDrv[(UINT8) physicalOutputId].fieldWidth,
-                                                                MxL_HRCLS_Ctrl_GetPadDrvValue(outMpegParams->mpegPadDrv.padDrvMpegDat));
-          }
-
-          // Configure xpto clock extend
-          if   ((devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_PARALLEL)
-             || (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD))
-          {
-            regData = (clockDivider & 0x1)?0xff:0x00;
-          }
-          else // serial mode
-          {
-            status  |= MxL_HRCLS_Ctrl_ReadRegisterField(devId, XPTO_CLOCK_EXTEND, (UINT16*)&regData);
-
-            if (clockDivider & 0x1) 
-            {
-              regData |=  (1U << physicalOutputId); // odd frequency divider,  clock extend = 1
+              for (i = 0; (i < MXL_HRCLS_PARALLEL_PAD_DRV_COUNT) && (status == MXL_SUCCESS); i++)
+              {
+                status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, parallelPadDrv[i].regAddr,
+                                                                    parallelPadDrv[i].lsbPos,
+                                                                    parallelPadDrv[i].fieldWidth,
+                                                                    MxL_HRCLS_Ctrl_GetPadDrvValue(outMpegParamsPtr->mpegPadDrv.padDrvMpegSyn));
+              }
             }
             else
             {
-              regData &= ~(1U << physicalOutputId); // even frequency divider, clock extend = 0
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, padSynDrv[(UINT8) physicalOutputId].regAddr,
+                                                                  padSynDrv[(UINT8) physicalOutputId].lsbPos,
+                                                                  padSynDrv[(UINT8) physicalOutputId].fieldWidth,
+                                                                  MxL_HRCLS_Ctrl_GetPadDrvValue(outMpegParamsPtr->mpegPadDrv.padDrvMpegSyn));
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, padValDrv[(UINT8) physicalOutputId].regAddr,
+                                                                  padValDrv[(UINT8) physicalOutputId].lsbPos,
+                                                                  padValDrv[(UINT8) physicalOutputId].fieldWidth,
+                                                                  MxL_HRCLS_Ctrl_GetPadDrvValue(outMpegParamsPtr->mpegPadDrv.padDrvMpegVal));
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, padDatDrv[(UINT8) physicalOutputId].regAddr,
+                                                                  padDatDrv[(UINT8) physicalOutputId].lsbPos,
+                                                                  padDatDrv[(UINT8) physicalOutputId].fieldWidth,
+                                                                  MxL_HRCLS_Ctrl_GetPadDrvValue(outMpegParamsPtr->mpegPadDrv.padDrvMpegDat));
             }
-          }
-          if (status == MXL_SUCCESS)
-          {
-            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_CLOCK_EXTEND, regData);
-          }
 
-          // Configure topad xtal clk inv
-          if (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD)
-          {
-            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, TOPAD_XTAL_CLK_INV, (MXL_HRCLS_MPEG_CLK_POSITIVE == outMpegParams->mpegClkPol));
-          }
+            // Configure xpto clock extend
+            if   ((devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_PARALLEL)
+               || (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD))
+            {
+              regData = (clockDivider & 0x1)?0xff:0x00;
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_CLOCK_EXTEND, regData);
+            }
+            else // serial mode
+            {
+              if (devContextPtr->xpt.commonClockEnabled == MXL_FALSE)
+              {
+                status  |= MxL_HRCLS_Ctrl_ReadRegisterField(devId, XPTO_CLOCK_EXTEND, &regData);
 
-          // Enable/disable output
-          status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, enable[(UINT8) physicalOutputId].regAddr,
-                                                         enable[(UINT8) physicalOutputId].lsbPos,
-                                                         enable[(UINT8) physicalOutputId].fieldWidth, (outMpegParams->enable == MXL_ENABLE)?1:0);
-        } else status = MXL_INVALID_PARAMETER;
+                if (clockDivider & 0x1) 
+                {
+                  regData |=  (1U << physicalOutputId); // odd frequency divider,  clock extend = 1
+                }
+                else
+                {
+                  regData &= ~(1U << physicalOutputId); // even frequency divider, clock extend = 0
+                }
+                if (status == MXL_SUCCESS)
+                {
+                  status = MxL_HRCLS_Ctrl_UpdateRegisterField(devId, XPTO_CLOCK_EXTEND, regData);
+                }
+              }
+            }
+
+            // Configure topad xtal clk inv
+            if (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD)
+            {
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devId, TOPAD_XTAL_CLK_INV, (MXL_HRCLS_MPEG_CLK_POSITIVE == outMpegParamsPtr->mpegClkPol));
+            }
+
+            // Enable/disable 27MHz clock for cablecard mode
+            if (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD)
+            {
+              status |= MxL_HRCLS_Ctrl_ReadClockRegister(devId, &clockVal);
+              if (MXL_SUCCESS == status)
+              {
+                if (outMpegParamsPtr->enable == MXL_ENABLE)
+                {
+                  clockVal |= (1UL<<14);  // tsp0_clk
+                }
+                else
+                {
+                  clockVal &= ~(1UL<<14); // tsp0_clk
+                }
+                status |= MxL_HRCLS_Ctrl_WriteClockRegister(devId, clockVal);
+              }
+            }
+
+            // Enable/disable output
+            if ((devContextPtr->xpt.commonClockEnabled == MXL_FALSE) || 
+                (MxLWare_HRCLS_Ctrl_GetPhysicalXptOutputId(devContextPtr, devContextPtr->xpt.clkSrcOutputId) != physicalOutputId) || 
+                (outMpegParamsPtr->enable == MXL_ENABLE))
+            {
+              status |= MxL_HRCLS_Ctrl_UpdateXptField(devId, enable[(UINT8) physicalOutputId].regAddr,
+                  enable[(UINT8) physicalOutputId].lsbPos,
+                  enable[(UINT8) physicalOutputId].fieldWidth, (outMpegParamsPtr->enable == MXL_ENABLE)?1:0);
+            }
+
+            // Titan PG on 090414, Table 4.
+            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devContextPtr->devId, MCLK_SEL, 1);
+            status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devContextPtr->devId, DMD_MCLK_INV, 0); 
+                      
+            // Enable/disable pads
+            if ((devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_PARALLEL)
+               || (devContextPtr->xpt.currentMode->mode == MXL_HRCLS_XPT_MODE_CABLECARD))
+            {
+              // Parallel mode - mpeg3_oe, mpeg4_oe, mpeg5_oe, mpeg6_oe
+              for (i = 3; i <= 6; i++)
+              {
+                status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devContextPtr->devId, mpeg_oe[i].regAddr,
+                    mpeg_oe[i].lsbPos,
+                    mpeg_oe[i].fieldWidth,
+                    (outMpegParamsPtr->enable == MXL_ENABLE)?1:0);
+              }
+            }
+            else
+            {
+              // Serial mode - physical xpt-output0->mpeg1_oe, physical xpt-output1->mpeg2_oe
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devContextPtr->devId, mpeg_oe[((UINT8)physicalOutputId) + 1].regAddr,
+                  mpeg_oe[((UINT8)physicalOutputId) + 1].lsbPos,
+                  mpeg_oe[((UINT8)physicalOutputId) + 1].fieldWidth,
+                  (outMpegParamsPtr->enable == MXL_ENABLE)?1:0);
+            }
+		  
+            // MPEG clock pad: Disable- if all MPEG outputs disabled, Enable- if one or more MPEG outputs enabled
+            mpegClk = MXL_DISABLE;
+            for (i = 0; i <= 8; i++)
+            {
+              regData = 0;
+              status |= MxL_HRCLS_Ctrl_ReadRegisterField(devContextPtr->devId, mpeg_oe[i].regAddr,
+                  mpeg_oe[i].lsbPos,
+                  mpeg_oe[i].fieldWidth,
+                  &regData);
+              if ((MXL_SUCCESS == status) && (1 == regData))
+              {
+                mpegClk = MXL_ENABLE;
+                break;
+              }
+            }
+            if (MXL_ENABLE == mpegClk)
+            {
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devContextPtr->devId, MCK_OE, 1);
+            }
+            else
+            {
+              status |= MxL_HRCLS_Ctrl_UpdateRegisterField(devContextPtr->devId, MCK_OE, 0);
+            }
+
+
+            if ((status == MXL_SUCCESS) && (devContextPtr->xpt.commonClockEnabled == MXL_TRUE))
+            {
+              status = MxLWare_HRCLS_OEM_ReadRegister(devId, EXTRACT_ADDR(ECO_4), &eco_value);
+              if (status == MXL_SUCCESS)
+              {
+                // According to PG, TS2 -> ECO_4[4]; TS3 -> ECO_4[5]
+                eco_value &= ~(1U << (physicalOutputId + 2));
+                status |= MxLWare_HRCLS_OEM_WriteRegister(devId, EXTRACT_ADDR(ECO_4) , (UINT16)eco_value);
+                eco_value |=  (1U << (physicalOutputId + 2));
+                status |= MxLWare_HRCLS_OEM_WriteRegister(devId, EXTRACT_ADDR(ECO_4) , (UINT16)eco_value);
+              }
+              
+              if (status == MXL_SUCCESS && devContextPtr->threeWireModeXptBypassSupported ==  MXL_TRUE)
+              {
+                // This is for Titan.
+                UINT16 dataRb, temp;
+
+                status |= MxLWare_HRCLS_OEM_ReadRegister(devId, EXTRACT_ADDR(MPEG4WIRE_EN), &dataRb);
+                temp = dataRb;
+                dataRb &= ~(1U << (outputId + 4));
+                status |= MxLWare_HRCLS_OEM_WriteRegister(devId, EXTRACT_ADDR(MPEG4WIRE_EN), dataRb);
+                dataRb = temp | (1U << (outputId + 4));
+                status |= MxLWare_HRCLS_OEM_WriteRegister(devId, EXTRACT_ADDR(MPEG4WIRE_EN), dataRb);
+                MxL_HRCLS_DEBUG("[HRCLS][%d]: Set MPEG4WIRE_EN[%d] with this value %04x [%04x] in Titan\n", __LINE__, outputId, dataRb, temp );
+              }
+            }
+          } else status = MXL_INVALID_PARAMETER;
+        }
       } else status = MXL_NOT_READY;
     } else status = MXL_NOT_SUPPORTED;
   } else status = MXL_NOT_INITIALIZED;
@@ -811,7 +1075,6 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgXptPidTable(
   MXLENTERAPISTR(devId);
   MXLENTERAPI(
     {
-      UINT8 i;
       MxL_HRCLS_DEBUG("demodId=%d, pidCnt=%d\n", demodId, pidCnt);
       for (i = 0; i < pidCnt; i++) MxL_HRCLS_DEBUG("%d. %5d -> %5d\n", i, pidsPtr[i].pidValue, pidsPtr[i].pidRemapValue);
     }
@@ -921,7 +1184,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgXptPidTable(
               {
                 regData &= ~(EXTRACT_MASK32(PID_DEFAULT_DROP0) << (physicalDemodId-MXL_HRCLS_DEMOD1));
               }
-              MxL_HRCLS_Ctrl_WriteXptRegister(devId, EXTRACT_ADDR32(PID_CONTEXT_SELECT0), regData);
+              status = MxL_HRCLS_Ctrl_WriteXptRegister(devId, EXTRACT_ADDR32(PID_CONTEXT_SELECT0), regData);
             }
           }
           else // (physicalDemodId >= MXL_HRCLS_DEMOD5) 
@@ -942,7 +1205,7 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgXptPidTable(
               {
                 regData &= ~(EXTRACT_MASK32(PID_DEFAULT_DROP4) << (physicalDemodId-MXL_HRCLS_DEMOD5));
               }
-              MxL_HRCLS_Ctrl_WriteXptRegister(devId, EXTRACT_ADDR32(PID_CONTEXT_SELECT1), regData);
+              status = MxL_HRCLS_Ctrl_WriteXptRegister(devId, EXTRACT_ADDR32(PID_CONTEXT_SELECT1), regData);
             }
           }
         } else status = MXL_INVALID_PARAMETER;
@@ -980,7 +1243,6 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgXptHeaderWords(UINT8 devId,
   MXLENTERAPISTR(devId);
   MXLENTERAPI(
     {
-      UINT8 i;
       MxL_HRCLS_DEBUG("demodId=%d, wordCnt=%x\n", demodId, wordCnt);
       if (wordPtr)
       {
@@ -1027,5 +1289,3 @@ MXL_STATUS_E MxLWare_HRCLS_API_CfgXptHeaderWords(UINT8 devId,
 }
 
 #endif
-#endif
-

@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (¡§MStar Confidential Information¡¨) by the recipient.
+// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -211,6 +211,7 @@ typedef enum
 
 } IR_EXT_FORMAT;
 
+#ifndef _DRV_IR_H_
 /// emurate IR fucntion return result
 typedef enum
 {
@@ -223,6 +224,7 @@ typedef enum
 
 /// Callback function which is called in IR ISR.
 typedef void ( *IR_Callback ) (MS_U8 u8Key, MS_U8 u8RepeatFlag);
+#endif
 typedef void ( *IR_RawModCallback ) (MS_U8* pu8RawData, MS_U8 u8RepeatFlag);
 typedef void ( *IR_RawModCallback64 ) (unsigned long long u64RawData);
 //-------------------------------------------------------------------------------------------------
@@ -295,6 +297,121 @@ IR_Result MDrv_IR_HK_SetProtocol(MS_MultiProtocolCfg *pstProtocolCfg);
 IR_Result MDrv_IR_HK_SetRawModCallback64(IR_RawModCallback64 pRawModCallback);
 
 #ifdef DDI_MISC_INUSE
+typedef enum
+{
+    KEY_TV_RADIO,
+    KEY_TV,
+    KEY_RADIO,
+    KEY_CHANNEL_LIST,
+    KEY_CHANNEL_FAV_LIST,
+    KEY_CHANNEL_RETURN,
+    KEY_CHANNEL_PLUS,
+    KEY_CHANNEL_MINUS,
+
+    KEY_AUDIO,
+    KEY_VOLUME_PLUS ,
+    KEY_VOLUME_MINUS,
+
+    KEY_UP,
+    KEY_POWER,
+    KEY_EXIT,
+    //KEY_HOME,
+    KEY_PLAYPAUSE,
+    KEY_MENU,
+    KEY_DOWN,
+    KEY_LEFT,
+    KEY_SELECT,
+    KEY_RIGHT,
+
+    KEY_NUMERIC_0,
+    KEY_NUMERIC_1,
+    KEY_NUMERIC_2,
+    KEY_NUMERIC_3,
+    KEY_NUMERIC_4,
+    KEY_NUMERIC_5,
+    KEY_NUMERIC_6,
+    KEY_NUMERIC_7,
+    KEY_NUMERIC_8,
+    KEY_NUMERIC_9,
+    KEY_EPG,
+    KEY_MUTE,
+    KEY_PAGE_UP,
+    KEY_PAGE_DOWN,
+    KEY_CLOCK,
+
+    KEY_INFO,
+    KEY_RED,
+    KEY_GREEN,
+    KEY_YELLOW,
+    KEY_BLUE,
+    KEY_MTS,
+    KEY_NINE_LATTICE,
+    KEY_TTX,
+    KEY_CC,
+    KEY_SUBTITLE,
+    KEY_OUTPUT_SOURCE,
+    KEY_CRADRD,
+  //KEY_PICTURE,
+    KEY_ZOOM,
+    KEY_DASH,
+    KEY_SLEEP,
+    //KEY_EPG,
+    KEY_PIP,
+
+    KEY_MIX,
+    KEY_INDEX,
+    KEY_HOLD,
+    KEY_PREVIOUS,
+    KEY_NEXT,
+    KEY_BACKWARD,
+    KEY_FORWARD,
+    KEY_PLAY,
+    KEY_RECORD,
+    KEY_PVR_LIST,
+    KEY_STOP,
+    KEY_PAUSE,
+
+    KEY_SIZE,
+    KEY_REVEAL,
+    KEY_SUBCODE,
+
+    KEY_BROWSER,
+    KEY_NVOD,
+
+    KEY_GOTOROOT,
+    KEY_UPDATE,
+    //KEY_CLOCK,
+    KEY_LIST,
+    KEY_GUIDE,
+    KEY_FREEZE,
+    KEY_REPEAT,
+    KEY_REPEATAB,
+    KEY_SLOW,
+    KEY_STEP,
+    KEY_SHIFT,
+    KEY_COPY,
+    KEY_GOTO,
+    KEY_DEVICE,
+    KEY_SLIDESHOW,
+    KEY_THUMBNAIL,
+    KEY_TIMER,
+    KEY_TVSYSTEM,
+    KEY_SHUTDOWN,
+    KEY_ASPECT_RATIO,
+    KEY_CAPTURE,
+    //KEY_DIGEST,
+    //KEY_SCAN,
+
+    //Dummy key only for pop msg.
+    KEY_POP_RELEASE_START,
+    KEY_POP_RELEASE_END,
+
+
+
+    KEY_DUMMY,
+    KEY_NUM,
+} TEST_KEY;
+
 #if (IR_MODE_SEL==IR_TYPE_FULLDECODE_MODE)
 void MDrv_IR_HK_SetDelayTime(MS_U32 u32_1stDelayTimeMs, MS_U32 u32_2ndDelayTimeMs);
 #endif

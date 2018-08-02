@@ -21,9 +21,6 @@
  * \section info Change Information
  *
 */
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_TDA18260)
-
 
 /*============================================================================*/
 /* Standard include files:                                                    */
@@ -42,6 +39,7 @@
 #include "tmddTDA18260Shared_Local.h"
 #include "tmddTDA18260Shared_Instance.h"
 #include <tmddTDA18260Shared_InstanceCustom.h>
+
 
 /*============================================================================*/
 /* Global data:                                                               */
@@ -312,5 +310,4 @@ ddTDA18260Shared_GetInstance
 
     return err;
 }
-#endif
 

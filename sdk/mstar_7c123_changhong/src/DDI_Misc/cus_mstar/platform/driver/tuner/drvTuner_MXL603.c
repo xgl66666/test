@@ -11,11 +11,12 @@
 #include "drvTunerNull.h"
 
 static TUNER_MS_INIT_PARAM InitParam[MAX_FRONTEND_NUM];
-
+static MS_U8 u8Possible_SLAVE_IDs[4] = {0xC0, 0xC2, 0xC4, 0xC6};
 
 #define EXAMPLE_DEV_MAX   2
-#define MXL603_I2C_ADDR   0xC0
-
+//#define MXL603_I2C_ADDR   0xC0
+#define MXL603_CHIP_ID 0x01
+MS_BOOL MXL603_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt);
 //-------------------------------------------------------------------------------------------------
 //  Global Variables
 //-------------------------------------------------------------------------------------------------
@@ -68,8 +69,8 @@ static MXL_STATUS MDrv_Tuner_IncCurrent(MS_U8 u8TunerIndex)
 {
     UINT8 status = MXL_SUCCESS;
 
-    status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,MXL603_I2C_ADDR, 0x5B, 0x10);
-    status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,MXL603_I2C_ADDR, 0x5C, 0xB1);
+    status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,InitParam[u8TunerIndex].u8SlaveID, 0x5B, 0x10);
+    status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,InitParam[u8TunerIndex].u8SlaveID, 0x5C, 0xB1);
 
     return (MXL_STATUS) status;
 }
@@ -115,7 +116,7 @@ int MxL603_init_main(MS_U8 u8TunerIndex)
 
     status = MxLWare603_API_CfgDrvInit(devId, (void *) &device_context[devId]);
 
-    // if you don’t want to pass any oem data, just use NULL as a parameter:
+    // if you donÂ’t want to pass any oem data, just use NULL as a parameter:
     // status = MxLWare603_API_CfgDrvInit(devId, NULL);
     }
 
@@ -123,7 +124,7 @@ int MxL603_init_main(MS_U8 u8TunerIndex)
 
     /* If OEM data is not required, customer should treat devId as
      I2C slave Address */
-    devId = MXL603_I2C_ADDR;
+    devId = InitParam[u8TunerIndex].u8SlaveID;
 
     //Step 1 : Soft Reset MxL603
     status = MxLWare603_API_CfgDevSoftReset(u8TunerIndex,devId);
@@ -169,7 +170,7 @@ int MxL603_init_main(MS_U8 u8TunerIndex)
     #if defined(KGC_USE_ON_CHIP_MSB1237) && (KGC_USE_ON_CHIP_MSB1237 == 1)
     ifOutCfg.gainLevel = 13;//3;
     #else
-    ifOutCfg.gainLevel = 11;//3;
+    ifOutCfg.gainLevel = 8;//3;
     #endif
     ifOutCfg.manualFreqSet = MXL_DISABLE;//MXL_DISABLE;
     ifOutCfg.manualIFOutFreqInKHz = 5000;//4570;
@@ -198,7 +199,7 @@ int MxL603_init_main(MS_U8 u8TunerIndex)
 	}
 	else if ((*InitParam[u8TunerIndex].pCur_Broadcast_type == DVBT)||(*InitParam[u8TunerIndex].pCur_Broadcast_type == DVBT2) || (*InitParam[u8TunerIndex].pCur_Broadcast_type == INTERNAL_DVBT) || (*InitParam[u8TunerIndex].pCur_Broadcast_type == DTMB))
 	{
-		tunerModeCfg.signalMode = MXL603_DIG_DVB_T;
+		tunerModeCfg.signalMode = MXL603_DIG_DVB_T_DTMB;
 	}
 	else if (*InitParam[u8TunerIndex].pCur_Broadcast_type == ISDBT|| *InitParam[u8TunerIndex].pCur_Broadcast_type == INTERNAL_ISDBT||*InitParam[u8TunerIndex].pCur_Broadcast_type == ATSC)
 	{
@@ -232,6 +233,26 @@ int MxL603_init_main(MS_U8 u8TunerIndex)
 
 MS_BOOL MDrv_Tuner_Init(MS_U8 u8TunerIndex, TUNER_MS_INIT_PARAM* pParam)
 {
+    MXL603_PLL_STATE_E pllstatus;
+    MXL_BOOL agcLock;
+
+    // Double Confirm Tuner I2C is normal
+
+    if(MXL603_CheckExist(u8TunerIndex, NULL) != TRUE)
+    {
+       TUNER_ERR(("[mxl608] Chip ID is incorrect\n"));
+       return FALSE;
+    }
+    // Check PLL lock status, if PLL have locked before tuner init, it might be in used
+
+    MxLWare603_API_ReqDevPllState(u8TunerIndex,InitParam[u8TunerIndex].u8SlaveID,&pllstatus);
+    MxLWare603_API_ReqTunerAGCLock(u8TunerIndex,InitParam[u8TunerIndex].u8SlaveID,&agcLock);
+
+    if((MXL603_PLL_STATE_NORMAL == pllstatus) || (MXL_LOCKED == agcLock))
+    {
+        TUNER_ERR(("[mxl603] Tuner might be in use\n"));
+        return FALSE;
+    }
 
     if(pParam->pCur_Broadcast_type == NULL)
         return FALSE;
@@ -269,7 +290,7 @@ MS_U32 MDrv_Tuner_Wake_Up(void)
 
 MS_BOOL MDrv_Tuner_SetTuner(MS_U8 u8TunerIndex,MS_U32 dwFreq /*Khz*/, MS_U8 ucBw /*MHz*/)
 {
-    UINT8 devId = MXL603_I2C_ADDR;
+    UINT8 devId = InitParam[u8TunerIndex].u8SlaveID;
     MXL_STATUS status = MXL_FALSE;
     MXL603_BW_E eBw = 0;//(ucBw - 6);
     MXL603_CHAN_TUNE_CFG_T chanTuneCfg;
@@ -310,7 +331,7 @@ MS_BOOL MDrv_Tuner_SetTuner(MS_U8 u8TunerIndex,MS_U32 dwFreq /*Khz*/, MS_U8 ucBw
     }
     else if ((*InitParam[u8TunerIndex].pCur_Broadcast_type == DVBT)||(*InitParam[u8TunerIndex].pCur_Broadcast_type == DVBT2) || (*InitParam[u8TunerIndex].pCur_Broadcast_type == INTERNAL_DVBT) || (*InitParam[u8TunerIndex].pCur_Broadcast_type == DTMB))
     {
-        chanTuneCfg.signalMode = MXL603_DIG_DVB_T;
+        chanTuneCfg.signalMode = MXL603_DIG_DVB_T_DTMB;
     }
     else if (*InitParam[u8TunerIndex].pCur_Broadcast_type == ISDBT||*InitParam[u8TunerIndex].pCur_Broadcast_type == INTERNAL_ISDBT||*InitParam[u8TunerIndex].pCur_Broadcast_type == ATSC)
     {
@@ -340,7 +361,7 @@ MS_BOOL MDrv_Tuner_SetTuner(MS_U8 u8TunerIndex,MS_U32 dwFreq /*Khz*/, MS_U8 ucBw
             }
             break;
         }
-        case MXL603_DIG_DVB_T:
+        case MXL603_DIG_DVB_T_DTMB:
         {
             eBw = eBw + MXL603_TERR_BW_6MHz;
             switch(eBw)
@@ -398,7 +419,7 @@ MS_BOOL MDrv_Tuner_SetTuner(MS_U8 u8TunerIndex,MS_U32 dwFreq /*Khz*/, MS_U8 ucBw
     }
     else if ((*InitParam[u8TunerIndex].pCur_Broadcast_type == DVBT)||(*InitParam[u8TunerIndex].pCur_Broadcast_type == DVBT2) || (*InitParam[u8TunerIndex].pCur_Broadcast_type == INTERNAL_DVBT) || (*InitParam[u8TunerIndex].pCur_Broadcast_type == DTMB))
     {
-        tunerModeCfg.signalMode = MXL603_DIG_DVB_T;
+        tunerModeCfg.signalMode = MXL603_DIG_DVB_T_DTMB;
     }
     else if (*InitParam[u8TunerIndex].pCur_Broadcast_type == ISDBT||*InitParam[u8TunerIndex].pCur_Broadcast_type == INTERNAL_ISDBT||*InitParam[u8TunerIndex].pCur_Broadcast_type == ATSC)
     {
@@ -473,14 +494,24 @@ MS_BOOL MDrv_Tuner_SetTuner(MS_U8 u8TunerIndex,MS_U32 dwFreq /*Khz*/, MS_U8 ucBw
     return TRUE;
 }
 
-#define MXL603_CHIP_ID 0x01
 MS_BOOL MXL603_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt)
 {
     UINT8 regData = 0;
+    MS_U8 i, u8CurID;
 
-    if(MxLWare603_OEM_ReadRegister(u8TunerIndex,MXL603_I2C_ADDR, 0x18, &regData)!=MXL_TRUE )
+    
+    for(i=0; i< sizeof(u8Possible_SLAVE_IDs); i++)
     {
-        TUNER_ERR(("[mxl603] Read chip ID fail \n"));
+        u8CurID = u8Possible_SLAVE_IDs[i];
+        if(MxLWare603_OEM_ReadRegister(u8TunerIndex,u8CurID, 0x18, &regData)!=MXL_TRUE )
+        {
+            TUNER_ERR(("[mxl603] Read chip ID fail with slave ID 0x%x \n", u8CurID));
+        }
+        else
+        {
+            InitParam[u8TunerIndex].u8SlaveID = u8CurID;
+            break;
+        }
     }
 
     TUNER_DBG(("[mxl603] read id =0x%x\n",regData));
@@ -502,22 +533,22 @@ MS_BOOL MXL603_GetTunerIF(MS_U8 u8TunerIndex, MS_U32* u32IF_Freq)
     UINT8 readData = 0;
 
   // Read back register for manual IF Out
-  status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,MXL603_I2C_ADDR, IF_FREQ_SEL_REG, &readData);
+  status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,InitParam[u8TunerIndex].u8SlaveID, IF_FREQ_SEL_REG, &readData);
      // IF out manual setting : bit<5>
   if((readData & 0x20) == 0x20)
   {
       //Get low 8 bit
-      status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,MXL603_I2C_ADDR, IF_FCW_LOW_REG, &readData);
+      status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,InitParam[u8TunerIndex].u8SlaveID, IF_FCW_LOW_REG, &readData);
       ifFcw = (UINT16)readData;
       // Get high 4 bit
-      status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,MXL603_I2C_ADDR, IF_FCW_HIGH_REG, &readData);
+      status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,InitParam[u8TunerIndex].u8SlaveID, IF_FCW_HIGH_REG, &readData);
       ifFcw |= ((UINT16)(readData) & 0x0f) << 8;
       *u32IF_Freq = (MS_U32)((ifFcw * 216000)/8192);
   }
   else
   {
       // IF Freq <4:0>
-      status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,MXL603_I2C_ADDR, IF_FREQ_SEL_REG, &readData);
+      status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,InitParam[u8TunerIndex].u8SlaveID, IF_FREQ_SEL_REG, &readData);
       readData &= 0x1f;
       switch(readData)
       {
@@ -589,7 +620,7 @@ MS_BOOL TUNER_MXL603_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_T
     switch(fuction_type)
     {
         case TUNER_EXT_FUNC_GET_POWER_LEVEL:
-            if( MXL_SUCCESS != MxLWare603_API_ReqTunerRxPower(u8TunerIndex,MXL603_I2C_ADDR, (float*)data))
+            if( MXL_SUCCESS != MxLWare603_API_ReqTunerRxPower(u8TunerIndex,InitParam[u8TunerIndex].u8SlaveID, (short*)data))
                 return FALSE;
             break;
         default:

@@ -30,55 +30,55 @@ void Delay1(void);
 #define HIGH 1
 #define LOW  0
 
-/* 接口的PIO操作，与平台IO操作有关 */
-#define     FD650_SCL_SET       {mdrv_gpio_set_low(FD650_SCL);}   //将SCL设置为高电平
-#define     FD650_SCL_CLR       {mdrv_gpio_set_high(FD650_SCL);}   //将SCL设置为低电平
-#define     FD650_SCL_D_OUT {}  // 设置SCL为输出方向,对于双向I/O需切换为输出
-#define     FD650_SDA_SET       {mdrv_gpio_set_high(FD650_SDA);}   //将SDA设置为高电平
-#define     FD650_SDA_CLR       {mdrv_gpio_set_low(FD650_SDA);}   //将SDA设置为低电平
-#define     FD650_SDA_IN        mdrv_gpio_get_level(FD650_SDA)  //当SDA设为输入方向时，读取的电平值
-#define     FD650_SDA_D_OUT {}  // 设置SDA为输出方向,对于双向I/O需切换为输出
-#define     FD650_SDA_D_IN      {mdrv_gpio_set_input(FD650_SDA);}   // 设置SDA为输入方向,对于双向I/O需切换为输入
-/* **************************************硬件相关*********************************************** */
+/* 陆脫驴脷碌脛PIO虏脵脳梅拢卢脫毛脝陆脤篓IO虏脵脳梅脫脨鹿脴 */
+#define     FD650_SCL_SET       {mdrv_gpio_set_low(FD650_SCL);}   //陆芦SCL脡猫脰脙脦陋赂脽碌莽脝陆
+#define     FD650_SCL_CLR       {mdrv_gpio_set_high(FD650_SCL);}   //陆芦SCL脡猫脰脙脦陋碌脥碌莽脝陆
+#define     FD650_SCL_D_OUT {}  // 脡猫脰脙SCL脦陋脢盲鲁枚路陆脧貌,露脭脫脷脣芦脧貌I/O脨猫脟脨禄禄脦陋脢盲鲁枚
+#define     FD650_SDA_SET       {mdrv_gpio_set_high(FD650_SDA);}   //陆芦SDA脡猫脰脙脦陋赂脽碌莽脝陆
+#define     FD650_SDA_CLR       {mdrv_gpio_set_low(FD650_SDA);}   //陆芦SDA脡猫脰脙脦陋碌脥碌莽脝陆
+#define     FD650_SDA_IN        mdrv_gpio_get_level(FD650_SDA)  //碌卤SDA脡猫脦陋脢盲脠毛路陆脧貌脢卤拢卢露脕脠隆碌脛碌莽脝陆脰碌
+#define     FD650_SDA_D_OUT {}  // 脡猫脰脙SDA脦陋脢盲鲁枚路陆脧貌,露脭脫脷脣芦脧貌I/O脨猫脟脨禄禄脦陋脢盲鲁枚
+#define     FD650_SDA_D_IN      {mdrv_gpio_set_input(FD650_SDA);}   // 脡猫脰脙SDA脦陋脢盲脠毛路陆脧貌,露脭脫脷脣芦脧貌I/O脨猫脟脨禄禄脦陋脢盲脠毛
+/* **************************************脫虏录镁脧脿鹿脴*********************************************** */
 
 /* ********************************************************************************************* */
-// 设置系统参数命令
+// 脡猫脰脙脧碌脥鲁虏脦脢媒脙眉脕卯
 
-#define FD650_BIT_ENABLE    0x01        // 开启/关闭位
-#define FD650_BIT_SLEEP     0x04        // 睡眠控制位
-#define FD650_BIT_7SEG      0x08        // 7段控制位
-#define FD650_BIT_INTENS1   0x10        // 1级亮度
-#define FD650_BIT_INTENS2   0x20        // 2级亮度
-#define FD650_BIT_INTENS3   0x30        // 3级亮度
-#define FD650_BIT_INTENS4   0x40        // 4级亮度
-#define FD650_BIT_INTENS5   0x50        // 5级亮度
-#define FD650_BIT_INTENS6   0x60        // 6级亮度
-#define FD650_BIT_INTENS7   0x70        // 7级亮度
-#define FD650_BIT_INTENS8   0x00        // 8级亮度
+#define FD650_BIT_ENABLE    0x01        // 驴陋脝么/鹿脴卤脮脦禄
+#define FD650_BIT_SLEEP     0x04        // 脣炉脙脽驴脴脰脝脦禄
+#define FD650_BIT_7SEG      0x08        // 7露脦驴脴脰脝脦禄
+#define FD650_BIT_INTENS1   0x10        // 1录露脕脕露脠
+#define FD650_BIT_INTENS2   0x20        // 2录露脕脕露脠
+#define FD650_BIT_INTENS3   0x30        // 3录露脕脕露脠
+#define FD650_BIT_INTENS4   0x40        // 4录露脕脕露脠
+#define FD650_BIT_INTENS5   0x50        // 5录露脕脕露脠
+#define FD650_BIT_INTENS6   0x60        // 6录露脕脕露脠
+#define FD650_BIT_INTENS7   0x70        // 7录露脕脕露脠
+#define FD650_BIT_INTENS8   0x00        // 8录露脕脕露脠
 
-#define FD650_SYSOFF    0x0400          // 关闭显示、关闭键盘
-#define FD650_SYSON     ( FD650_SYSOFF | FD650_BIT_ENABLE ) // 开启显示、键盘
-#define FD650_SLEEPOFF  FD650_SYSOFF    // 关闭睡眠
-#define FD650_SLEEPON   ( FD650_SYSOFF | FD650_BIT_SLEEP )  // 开启睡眠
-#define FD650_7SEG_ON   ( FD650_SYSON | FD650_BIT_7SEG )    // 开启七段模式
-#define FD650_8SEG_ON   ( FD650_SYSON | 0x00 )  // 开启八段模式
-#define FD650_SYSON_1   ( FD650_SYSON | FD650_BIT_INTENS1 ) // 开启显示、键盘、1级亮度
-//以此类推
-#define FD650_SYSON_4   ( FD650_SYSON | FD650_BIT_INTENS4 ) // 开启显示、键盘、4级亮度
-//以此类推
-#define FD650_SYSON_8   ( FD650_SYSON | FD650_BIT_INTENS8 ) // 开启显示、键盘、8级亮度
+#define FD650_SYSOFF    0x0400          // 鹿脴卤脮脧脭脢戮隆垄鹿脴卤脮录眉脜脤
+#define FD650_SYSON     ( FD650_SYSOFF | FD650_BIT_ENABLE ) // 驴陋脝么脧脭脢戮隆垄录眉脜脤
+#define FD650_SLEEPOFF  FD650_SYSOFF    // 鹿脴卤脮脣炉脙脽
+#define FD650_SLEEPON   ( FD650_SYSOFF | FD650_BIT_SLEEP )  // 驴陋脝么脣炉脙脽
+#define FD650_7SEG_ON   ( FD650_SYSON | FD650_BIT_7SEG )    // 驴陋脝么脝脽露脦脛拢脢陆
+#define FD650_8SEG_ON   ( FD650_SYSON | 0x00 )  // 驴陋脝么掳脣露脦脛拢脢陆
+#define FD650_SYSON_1   ( FD650_SYSON | FD650_BIT_INTENS1 ) // 驴陋脝么脧脭脢戮隆垄录眉脜脤隆垄1录露脕脕露脠
+//脪脭麓脣脌脿脥脝
+#define FD650_SYSON_4   ( FD650_SYSON | FD650_BIT_INTENS4 ) // 驴陋脝么脧脭脢戮隆垄录眉脜脤隆垄4录露脕脕露脠
+//脪脭麓脣脌脿脥脝
+#define FD650_SYSON_8   ( FD650_SYSON | FD650_BIT_INTENS8 ) // 驴陋脝么脧脭脢戮隆垄录眉脜脤隆垄8录露脕脕露脠
 
 
-// 加载字数据命令
-#define FD650_DIG0      0x1400          // 数码管位0显示,需另加8位数据
-#define FD650_DIG1      0x1500          // 数码管位1显示,需另加8位数据
-#define FD650_DIG2      0x1600          // 数码管位2显示,需另加8位数据
-#define FD650_DIG3      0x1700          // 数码管位3显示,需另加8位数据
+// 录脫脭脴脳脰脢媒戮脻脙眉脕卯
+#define FD650_DIG0      0x1400          // 脢媒脗毛鹿脺脦禄0脧脭脢戮,脨猫脕铆录脫8脦禄脢媒戮脻
+#define FD650_DIG1      0x1500          // 脢媒脗毛鹿脺脦禄1脧脭脢戮,脨猫脕铆录脫8脦禄脢媒戮脻
+#define FD650_DIG2      0x1600          // 脢媒脗毛鹿脺脦禄2脧脭脢戮,脨猫脕铆录脫8脦禄脢媒戮脻
+#define FD650_DIG3      0x1700          // 脢媒脗毛鹿脺脦禄3脧脭脢戮,脨猫脕铆录脫8脦禄脢媒戮脻
 
-#define FD650_DOT       0x0080          // 数码管小数点显示
+#define FD650_DOT       0x0080          // 脢媒脗毛鹿脺脨隆脢媒碌茫脧脭脢戮
 
-// 读取按键代码命令
-#define FD650_GET_KEY   0x0700                  // 获取按键,返回按键代码
+// 露脕脠隆掳麓录眉麓煤脗毛脙眉脕卯
+#define FD650_GET_KEY   0x0700                  // 禄帽脠隆掳麓录眉,路碌禄脴掳麓录眉麓煤脗毛
 
 MS_BOOL MDrv_FD650_Init(void);
 void    MDrv_FD650_Display(char *FPStr, MS_U8 sec_flag);

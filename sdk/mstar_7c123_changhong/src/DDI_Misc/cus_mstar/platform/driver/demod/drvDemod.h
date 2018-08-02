@@ -92,13 +92,13 @@
 #if (DMD_DEBUG_OPTIONS & DMD_EN_ERR)
 #define DMD_ERR(x) printf("[DEMOD ERR]");printf x
 #else
-#define DMD_ERR(x) 
+#define DMD_ERR(x)
 #endif
 
 #if (DMD_DEBUG_OPTIONS & DMD_EN_DBG)
 #define DMD_DBG(x) printf("[DEMOD DBG]");printf x
 #else
-#define DMD_DBG(x) 
+#define DMD_DBG(x)
 #endif
 
 
@@ -138,6 +138,7 @@ typedef enum
     E_DEMOD_CHECKING,
     E_DEMOD_CHECKEND,
     E_DEMOD_UNLOCK,
+    E_DEMOD_T_T2_UNLOCK,
     E_DEMOD_NULL,
 } EN_LOCK_STATUS;
 
@@ -157,23 +158,28 @@ typedef enum
     DEMOD_EXT_FUNC_GET_RF_OFFSET,
     DEMOD_EXT_FUNC_SET_TS_SERIAL,
     DEMOD_EXT_FUNC_FINALIZE,
-#ifdef DDI_MISC_INUSE
+    DEMOD_EXT_FUNC_CLEAR_STATUS,
 #ifdef MS_DVBT2_INUSE
-    DEMOD_EXT_FUNC_GetPlpIDList,
-    DEMOD_EXT_FUNC_CtrlResetDJBFlag,
-    DEMOD_EXT_FUNC_T2MI_Restart,
-    DEMOD_EXT_FUNC_InitParameter,
-    DEMOD_EXT_FUNC_SetScanTypeStatus,
-    DEMOD_EXT_FUNC_GetScanTypeStatus,
-    DEMOD_EXT_FUNC_GetNextPlpID,
-
-#endif
+    DEMOD_EXT_FUNC_GET_PLPID_LIST,
+    DEMOD_EXT_FUNC_CTRL_RESET_DJB_FLAG,
+    DEMOD_EXT_FUNC_T2MI_RESTART,
+    DEMOD_EXT_FUNC_INIT_PARAMETER,
+    DEMOD_EXT_FUNC_T2_RESET,
+    DEMOD_EXT_FUNC_T2_RESTART,
 #endif
     DEMOD_EXT_FUNC_EXISTED,
     //DEMOD_EXT_FUNC_IIC_BYPASS_ON,
     //DEMOD_EXT_FUNC_IIC_BYPASS_OFF,
     DEMOD_EXT_FUNC_ATSC_GET_PRELOCK,           //pilot lock
     DEMOD_EXT_FUNC_ATSC_GET_FLAME_SYNC_LOCK,  //timing recovery lock
+    DEMOD_EXT_FUNC_GET_PACKET_ERR,
+    DEMOD_EXT_FUNC_GET_CFO,
+    DEMOD_EXT_FUNC_GET_PACKGE_INFO, // MCP or External
+    DEMOD_EXT_FUNC_SET_ISDBT_LAYER, // for ISDBT layer switch
+    DEMOD_EXT_FUNC_SET_BUFFER_ADDR, //set demod buffer address
+    //PID Filter
+    DEMOD_EXT_FUNC_SET_PID_FILTER,
+    DEMOD_EXT_FUNC_SET_DISEQC_TX,
 } DEMOD_EXT_FUNCTION_TYPE;
 
 
@@ -186,7 +192,12 @@ typedef enum
     DEMOD_CONV_CODE_RATE_5_6,                                                 ///< Code rate = 5/6
     DEMOD_CONV_CODE_RATE_7_8,                                                 ///< Code rate = 7/8
     DEMOD_CONV_CODE_RATE_3_5,                                                 ///< Code rate = 3/5
-    DEMOD_CONV_CODE_RATE_4_5,                                                 ///< Code rate = 4/5
+    DEMOD_CONV_CODE_RATE_4_5,                                                 ///< Code rate = 1/3
+    DEMOD_CONV_CODE_RATE_1_3,                                                 ///< Code rate =  8/9
+    DEMOD_CONV_CODE_RATE_1_4,                                                 ///< Code rate =  1/4
+    DEMOD_CONV_CODE_RATE_2_5,                                                 ///< Code rate =  2/5
+    DEMOD_CONV_CODE_RATE_8_9,                                                 ///< Code rate =  8/9
+    DEMOD_CONV_CODE_RATE_9_10,                                                ///< Code rate =  9/10
 } DEMOD_EN_CONV_CODE_RATE_TYPE;
 
 /// Define terrestrial band width
@@ -283,7 +294,7 @@ typedef enum
 {
     DEMOD_SAT_QPSK,                                                           ///< QPSK
     DEMOD_SAT_8PSK,                                                           ///< 8PSK
-    DEMOD_SAT_QAM16                                                           ///< QAM16
+    DEMOD_SAT_16APSK                                                         ///< 16APSK
 } DEMOD_EN_SAT_CONSTEL_TYPE;
 
 /// Define DVB-S Roll-Off factor
@@ -361,6 +372,22 @@ typedef enum
 	DEMOD_CAB_BW_NUM
 } DEMOD_CAB_BW;
 
+typedef enum
+{
+    DEMOD_ISDBT_Layer_A = 0x00,
+    DEMOD_ISDBT_Layer_B = 0x01,
+    DEMOD_ISDBT_Layer_C = 0x02,
+    DEMOD_ISDBT_Layer_INVALID,
+} DEMOD_ISDBT_Layer;
+
+typedef enum
+{
+    DEMOD_DVBT2_PLP_TYPE_COMMON = 0x00,
+    DEMOD_DVBT2_PLP_TYPE_1 = 0x01,
+    DEMOD_DVBT2_PLP_TYPE_2 = 0x02,
+    DEMOD_DVBT2_PLP_TYPE_INVALID,
+} DEMOD_DVBT2_PLP_TYPE;
+
 /// Define tuning paramter of DVB-T front-end
 typedef struct
 {
@@ -384,12 +411,13 @@ typedef struct
     DEMOD_EN_CAB_CONSTEL_TYPE             eConstellation;                     ///< Constellation type
     MS_U16                          u16SymbolRate;                      ///< Symbol rate (Ksym/sec)
 
-    DEMOD_EN_CAB_IQ_MODE                  eIQMode;                            ///< IQ Mode
+    DEMOD_EN_CAB_IQ_MODE            eIQMode;                            ///< IQ Mode
     MS_U8                           u8TapAssign;                        ///< Tap assign
     MS_U32                          u32FreqOffset;                      ///< Carrier frequency offset
     MS_U8                           u8TuneFreqOffset;                       ///< Requeset tuner freq offset
-#ifdef SUPPORT_DVBC_DMD_BW_CHANGE    
-#if SUPPORT_DVBC_DMD_BW_CHANGE     
+    float                           fCFO;                                //Carrier frequency offset, kHz 
+#ifdef SUPPORT_DVBC_DMD_BW_CHANGE
+#if SUPPORT_DVBC_DMD_BW_CHANGE
     DEMOD_CAB_BW                    eBandWidth;
 #endif
 #endif
@@ -403,14 +431,17 @@ typedef struct
     DEMOD_EN_SAT_IQ_MODE                  eIQ_Mode;                           ///< IQ mode
     DEMOD_EN_CONV_CODE_RATE_TYPE          eCodeRate;                          ///< Converlution code rate
     MS_U32                                u32SymbolRate;
+    MS_BOOL                               bIsDVBS2;                           //DVBS or DVBS2
 #if MS_DVBS_INUSE
     MS_U8                                 u8Polarity;                         // 0: Horizon; > 0(default 1): Vertical;
 #endif
+    float                                 fCFO;                                //Carrier frequency offset, kHz 
 } DEMOD_MS_SAT_CARRIER_PARAM;
 
 typedef struct
 {
     struct drv_tunertab_entry*                    pstTunertab;
+    MS_U8                                         u32DmxInputPath;
 } DEMOD_MS_INIT_PARAM;
 
 /// Define carrier paramter of digital tuner
@@ -460,6 +491,14 @@ typedef struct
     MS_U32           u32IFFreq; //kHz
 } DEMOD_MS_FE_IF;
 
+typedef struct
+{
+  MS_U16      u16PIDValue;
+  MS_U16      u16PIDRemapValue;
+  MS_BOOL     bPIDDrop;
+} DEMOD_PID_FILTER;
+
+
 
 #define _GET_DEMOD_ENTRY_NODE(var, Name) var##Name
 #define GET_DEMOD_ENTRY_NODE(Name) _GET_DEMOD_ENTRY_NODE(demod_entry_,Name)
@@ -484,18 +523,15 @@ typedef MS_BOOL     drv_demodop_GetSignalQuality(MS_U8 u8DemodIndex,MS_U16 *pu16
 typedef MS_BOOL     drv_demodop_GetParam(MS_U8 u8DemodIndex,DEMOD_MS_FE_CARRIER_PARAM* pParam); // MS_BOOL MDrv_Demod_GetParam(DMD_Param *pParam);
 typedef MS_BOOL     drv_demodop_Restart(MS_U8 u8DemodIndex,DEMOD_MS_FE_CARRIER_PARAM* pParam,MS_U32 u32BroadCastType); // MS_BOOL MDrv_Demod_Restart(DMD_Param *pParam);
 typedef MS_BOOL     drv_demodop_I2C_ByPass(MS_U8 u8DemodIndex,MS_BOOL bOn);
-typedef MS_BOOL     drv_demodop_CheckExist(MS_U8 u8DemodIndex);
+typedef MS_BOOL     drv_demodop_CheckExist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID);
 typedef MS_BOOL     drv_demodop_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE fuction_type, void *data);
 
-
-#ifdef DDI_MISC_INUSE
 #ifdef FE_AUTO_TEST
 typedef MS_U16      drv_demodop_ReadReg(MS_U8 u8DemodIndex, MS_U16 RegAddr, MS_U8 *pu8Data);
 typedef MS_BOOL     drv_demodop_WriteReg(MS_U8 u8DemodIndex, MS_U16 RegAddr, MS_U16 RegData);
-typedef MS_BOOL     drv_demodop_Get_Packet_Error(MS_U8 u8DemodIndex, MS_U16 *u16_data);
-#endif
 #endif
 
+typedef MS_BOOL     drv_demodop_Get_Packet_Error(MS_U8 u8DemodIndex, MS_U16 *u16_data);
 
 #if MS_DVBT2_INUSE
 typedef MS_BOOL     drv_demodop_SetCurrentDemodType(MS_U8 u8DemodIndex, MS_U8 type);
@@ -503,13 +539,10 @@ typedef MS_U8       drv_demodop_GetCurrentDemodType(MS_U8 u8DemodIndex);
 typedef MS_BOOL     drv_demodop_GetPlpBitMap(MS_U8 u8DemodIndex, MS_U8* u8PlpBitMap);
 typedef MS_BOOL     drv_demodop_GetPlpGroupID(MS_U8 u8DemodIndex, MS_U8 u8PlpID, MS_U8* u8GroupID);
 typedef MS_BOOL     drv_demodop_SetPlpGroupID(MS_U8 u8DemodIndex, MS_U8 u8PlpID, MS_U8 u8GroupID);
-
-#ifdef DDI_MISC_INUSE
 typedef MS_BOOL     drv_demod_SetScanTypeStatus(MS_U8 u8DemodIndex, MS_U8 status);
 typedef MS_U8       drv_demod_GetScanTypeStatus(MS_U8 u8DemodIndex);
 typedef MS_BOOL     drv_demod_GetNextPLPID(MS_U8 u8DemodIndex, MS_U8 Index, MS_U8* pu8PLPID);
-#endif
-
+typedef MS_BOOL     drv_demod_GetPLPType(MS_U8 u8DemodIndex, DEMOD_DVBT2_PLP_TYPE* ePLPTYPE);
 #endif
 
 #if MS_DVBS_INUSE
@@ -551,11 +584,10 @@ typedef struct drv_demodtab_entry
     drv_demodop_GetPlpBitMap *GetPlpBitMap;
     drv_demodop_GetPlpGroupID *GetPlpGroupID;
     drv_demodop_SetPlpGroupID *SetPlpGroupID;
-    #ifdef DDI_MISC_INUSE
     drv_demod_SetScanTypeStatus *SetScanTypeStatus;
     drv_demod_GetScanTypeStatus *GetScanTypeStatus;
     drv_demod_GetNextPLPID *GetNextPLPID;
-    #endif
+    drv_demod_GetPLPType *GetPLPType;
     #endif
     #if MS_DVBS_INUSE
     drv_demodop_BlindScan_Start *BlindScanStart;
@@ -572,13 +604,10 @@ typedef struct drv_demodtab_entry
     drv_demodop_DiSEqC_Get22kOnOff  *DiSEqCGet22kOnOff;
     drv_demodop_DiSEqC_SendCmd  *DiSEqC_SendCmd;
     #endif
-
-    #ifdef DDI_MISC_INUSE
+    drv_demodop_Get_Packet_Error *Get_Packet_Error;
     #ifdef FE_AUTO_TEST
     drv_demodop_ReadReg  *ReadReg;
     drv_demodop_WriteReg *WriteReg;
-    drv_demodop_Get_Packet_Error *Get_Packet_Error;
-    #endif
     #endif
 } DRV_DEMOD_TABLE_TYPE;
 

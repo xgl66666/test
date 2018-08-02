@@ -303,7 +303,7 @@ AVL_DVBSx_ErrorCode Tuner_control(AVL_uint32 channel_freq, AVL_uint32 bb_sym, st
 	AVL_uint32 BW;
 	AVL_uint32 BF;
 	AVL_DVBSx_ErrorCode r;
-	//AVL_uchar auto_scan = 0;// Add flag for "��̨"
+	//AVL_uchar auto_scan = 0;// Add flag for "ßÌ¨"
 	// Register initial flag;
 
 	//when sym is 0 or 45000, means auto-scan channel.
@@ -324,7 +324,7 @@ AVL_DVBSx_ErrorCode Tuner_control(AVL_uint32 channel_freq, AVL_uint32 bb_sym, st
    	reg[3]=(char) (((fracN<<7)&0x80) | 0x50); // default is 0x50
    	// Channel Filter Bandwidth Setting.
    	//"sym" unit is Hz;
-   	if(auto_scan)//��̨ requested by BB
+   	if(auto_scan)//ßÌ¨ requested by BB
    	{
    		reg[5] = 0xA3; //BW=27MHz
    	}

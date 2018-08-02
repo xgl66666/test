@@ -84,7 +84,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (¡§MStar Confidential Information¡¨) by the recipient.
+// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -321,6 +321,50 @@ HWI2C_PORT getI2CPort(MS_U8 drv_frontend_index)
         break;
         case 3:
             ePort = FRONTEND_TUNER_PORT3;
+        break;
+        default:
+            ePort = FRONTEND_TUNER_PORT0;
+            break;
+    }
+    return ePort;
+}
+
+HWI2C_PORT getDishI2CPort(MS_U8 drv_frontend_index)
+{
+    HWI2C_PORT ePort;
+    switch(drv_frontend_index)
+    {
+        case 0:
+        #ifdef DISH_IIC_PORT
+            ePort = DISH_IIC_PORT;
+        #else
+            ePort = FRONTEND_TUNER_PORT0;
+        #endif
+        break;
+        
+        case 1:
+        #ifdef DISH_IIC_PORT1
+             ePort = DISH_IIC_PORT1;
+        #else
+             ePort = FRONTEND_TUNER_PORT1;
+        #endif
+
+        break;  
+        case 2:
+        #ifdef DISH_IIC_PORT2
+             ePort = DISH_IIC_PORT2;
+        #else
+             ePort = FRONTEND_TUNER_PORT2;
+        #endif
+
+        break;
+        case 3:
+        #ifdef DISH_IIC_PORT3
+              ePort = DISH_IIC_PORT3;
+        #else
+              ePort = FRONTEND_TUNER_PORT3;
+        #endif
+
         break;
         default:
             ePort = FRONTEND_TUNER_PORT0;

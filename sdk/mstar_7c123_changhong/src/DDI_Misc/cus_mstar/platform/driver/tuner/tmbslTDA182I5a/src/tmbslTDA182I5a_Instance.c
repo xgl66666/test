@@ -21,8 +21,6 @@
  * \section info Change Information
  *
 */
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_TDA18250A)
 
 /*============================================================================*/
 /* Standard include files:                                                    */
@@ -293,5 +291,4 @@ iTDA182I5a_ResetInstance(
 
     return err;
 }
-#endif
 

@@ -21,8 +21,6 @@
  * \section info Change Information
  *
 */
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_TDA18260)
 
 /*============================================================================*/
 /* Standard include files:                                                    */
@@ -41,7 +39,6 @@
 #include "tmddTDA18260Stream_Local.h"
 #include "tmddTDA18260Stream_Instance.h"
 #include <tmddTDA18260Stream_InstanceCustom.h>
-
 
 
 /*============================================================================*/
@@ -522,5 +519,4 @@ ddTDA18260Stream_MutexRelease
 
     return err;
 }
-#endif
 

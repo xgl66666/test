@@ -4,10 +4,33 @@
 
 //----------------------------------------------------------//
 //                   Define                                 //
+//v2.5h Multi Tuner//
 //----------------------------------------------------------//
+/*
+Internal xtal cap is 10pF for all tuner.
+
+If define R848_TUNER1_CLK_OUT TRUE 
+CHIP_1 tuner xtal driver current is (High,Highest).
+Other tuner xtal driver current is (High,Lowest).
+
+If define R848_TUNER1_CLK_OUT FALSE
+Do Xtal check function
+*/
+#define FOR_KOREA_CTMR  FALSE
 #define FOR_TDA10024    0
 
-#define VERSION   "R848_GUI_2.3A"
+#define VERSION   "R848_GUI_v2.5I_Multi_Tuner"
+
+//R848 only support 16MHz(16000), 24MHz(24000), 27MHz(27000)
+#define R848_Xtal	 16000     
+
+
+//If the multi-tuner applications, do not care this set.
+//#define R848_SHARE_XTAL_OUT    FALSE     //self-oscillation  ()
+//#define R848_SHARE_XTAL_OUT    TRUE     //share Xtal, ext clk connect to XTAL_OUT
+
+//If the multi-tuner applications, please set TRUE.
+#define R848_TUNER1_CLK_OUT      FALSE    //if(multi-tuner application & tuner1 clk out to tuner2 and tuner3...), set to TRUE
 
 #define R848_REG_NUM         40
 #define R848_TF_HIGH_NUM  8  
@@ -18,7 +41,6 @@
 #define R848_RING_POWER_FREQ_HIGH 450000
 #define R848_IMR_IF              5300         
 #define R848_IMR_TRIAL       9
-#define R848_Xtal	                   16000
 
 #define R848_S_MAX_INPUT_FREQ 2300 //Mhz
 #define R848_S_MIN_INPUT_FREQ 850  //Mhz
@@ -108,6 +130,16 @@ typedef struct _R848_TF_Result
     UINT8   TF_Value;
 }R848_TF_Result;
 
+
+typedef enum _TUNER_NUM
+{
+	R848_TUNER_1 = 0,   //master
+	R848_TUNER_2,
+	R848_TUNER_3,
+	R848_TUNER_4,
+	R848_MAX_TUNER_NUM
+}R848_TUNER_NUM;
+
 typedef enum _R848_TF_Band_Type
 {
     TF_HIGH = 0,
@@ -165,6 +197,7 @@ enum XTAL_PWR_VALUE
     XTAL_SMALL_HIGH,
     XTAL_SMALL_HIGHEST,
     XTAL_LARGE_HIGHEST,
+	XTAL_LARGE_STRONG,
     XTAL_CHECK_SIZE
 };
 
@@ -193,7 +226,25 @@ typedef enum _R848_ErrCode
 
 typedef enum _R848_Standard_Type  //Don't remove standand list!!
 {
-    R848_DVB_T_6M = 0,
+	R848_MN_5100 = 0,          //for NTSC_MN, PAL_M (IF=5.1M)
+	R848_MN_5800,              //for NTSC_MN, PLA_M (IF=5.8M)
+	R848_PAL_I,                //for PAL-I
+	R848_PAL_DK,               //for PAL DK in non-"DTMB+PAL DK" case
+	R848_PAL_B_7M,             //no use
+	R848_PAL_BGH_8M,           //for PAL B/G, PAL G/H
+	R848_SECAM_L,              //for SECAM L
+	R848_SECAM_L1,             //for SECAM L'
+	R848_SECAM_L1_INV,       
+	R848_MN_CIF_5M,             //for NTSC_MN, PLA_M (CIF=5.0M)
+	R848_PAL_I_CIF_5M,          //for PAL-I (CIF=5.0M)
+	R848_PAL_DK_CIF_5M,         //for PAL DK (CIF=5M)
+	R848_PAL_B_7M_CIF_5M,       //for PAL-B 7M (CIF=5M)
+	R848_PAL_BGH_8M_CIF_5M,     //for PAL G/H 8M (CIF=5M)
+	R848_SECAM_L_CIF_5M,        //for SECAM L (CIF=5M)
+	R848_SECAM_L1_CIF_5M,       //for SECAM L' (CIF=5M)
+	R848_SECAM_L1_INV_CIF_5M,   //(CIF=5M)
+	R848_ATV_SIZE,
+	R848_DVB_T_6M = R848_ATV_SIZE,
     R848_DVB_T_7M,
     R848_DVB_T_8M, 
     R848_DVB_T2_6M,//IF=4.57M
@@ -211,7 +262,7 @@ typedef enum _R848_Standard_Type  //Don't remove standand list!!
     R848_DTMB_6M_BW_IF_5M,   //IF=5.0M, BW=6M
     R848_DTMB_6M_BW_IF_4500, //IF=4.5M, BW=6M
     R848_ATSC,
-    R848_DVB_S,
+    R848_SATELLITE,
     R848_DVB_T_6M_IF_5M,
     R848_DVB_T_7M_IF_5M,
     R848_DVB_T_8M_IF_5M,
@@ -241,27 +292,48 @@ typedef enum _R848_RF_Gain_TYPE
     RF_MANUAL
 }R848_RF_Gain_TYPE;
 
-typedef enum _R848_DVBS_OutputSignal_Type
+typedef enum _R848_Xtal_Cap_TYPE
 {
-    DIFFERENTIALOUT = TRUE,
-    SINGLEOUT     = FALSE
-}R848_DVBS_OutputSignal_Type;
+	XTAL_CAP_LARGE = 0,
+	XTAL_CAP_SMALL
+}R848_Xtal_Cap_TYPE;
 
-typedef enum _R848_DVBS_AGC_Type
+typedef enum _R848_SATELLITE_OutputSignal_Type
 {
-    AGC_NEGATIVE = TRUE,
-    AGC_POSITIVE = FALSE
-}R848_DVBS_AGC_Type;
+	DIFFERENTIALOUT = TRUE,
+	SINGLEOUT     = FALSE
+}R848_SATELLITE_OutputSignal_Type;
 
+typedef enum _R848_SATELLITE_AGC_Type
+{
+	AGC_NEGATIVE = TRUE,
+	AGC_POSITIVE = FALSE
+}R848_SATELLITE_AGC_Type;
+
+typedef enum _R848_SATELLITE_AttenVga_Type
+{
+	ATTENVGAON = TRUE,
+	ATTENVGAOFF= FALSE
+}R848_SATELLITE_AttenVga_Type;
+
+typedef enum _R848_SATELLITE_FineGain_Type
+{
+	FINEGAIN_3DB = 0,
+	FINEGAIN_2DB,
+	FINEGAIN_1DB,
+	FINEGAIN_0DB
+}R848_SATELLITE_FineGain_Type;
 
 
 typedef struct _R848_Set_Info
 {
-    UINT32                       RF_KHz;
-    UINT32                       DVBS_BW;
-    R848_Standard_Type           R848_Standard;
-    R848_DVBS_OutputSignal_Type  R848_DVBS_OutputSignal_Mode;
-    R848_DVBS_AGC_Type           R848_DVBS_AGC_Mode; 
+	UINT32                       RF_KHz;
+	UINT32                       SATELLITE_BW;
+	R848_Standard_Type           R848_Standard;
+	R848_SATELLITE_OutputSignal_Type  R848_SATELLITE_OutputSignal_Mode;
+	R848_SATELLITE_AGC_Type           R848_SATELLITE_AGC_Mode; 
+	R848_SATELLITE_AttenVga_Type      R848_SATELLITE_AttenVga_Mode;
+	R848_SATELLITE_FineGain_Type      R848_SATELLITE_FineGain;
 }R848_Set_Info;
 
 typedef struct _R848_RF_Gain_Info
@@ -288,7 +360,7 @@ typedef struct _I2C_TYPE
 //----------------------------------------------------------//
 //                   R848 Public Function                       //
 //----------------------------------------------------------//
-#define R848_Delay_MS	MsOS_DelayTask
+#define R848_Delay_MS MsOS_DelayTask
 
 /*R848_ErrCode R848_Init();
 R848_ErrCode R848_SetPllData(R848_Set_Info R848_INFO);

@@ -1,0 +1,7 @@
+# <- this is for comment / total file size must be less than 4KB
+
+#application
+tftp $(App_Dram_Address) ./kirin_ecos.zip
+spi_wrc $(App_Dram_Address) 100000 $(SIZE_APP)
+
+% <- this is end of file symbol

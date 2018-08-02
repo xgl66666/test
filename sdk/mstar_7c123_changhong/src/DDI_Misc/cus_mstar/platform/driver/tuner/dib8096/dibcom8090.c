@@ -75,10 +75,6 @@
 //
 //******************************************************************************
 //<MStar Software>
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_DIBCOM_DIB8096)
-
-
 #include "platform_dibcom.h"
 #include "dibcom_i2c_app.h"
 #include "dibcom8090.h"
@@ -4421,6 +4417,5 @@ void dib7000_print_monitor(struct dibDemodMonitor m[], int stat_count)
         Out(printf("\n"));
     }
 }
-#endif
 #endif
 

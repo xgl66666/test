@@ -1,0 +1,16 @@
+# <- this is for comment / total file size must be less than 4KB
+
+udstar /Target/script/parameters.txt
+
+#application
+udstar /Target/script/[[application
+
+#config & bootargs
+udstar /Target/script/set_config
+
+udstar /Target/script/miu_setting.txt
+
+printenv
+reset
+% <- this is end of file symbol
+

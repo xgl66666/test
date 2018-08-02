@@ -177,13 +177,13 @@ tmbslTDA182I5a_GetLockStatus(
 tmErrorCode_t
 tmbslTDA182I5a_GetPowerLevel(
     tmUnitSelect_t  tUnit,      /* I: Unit number */
-    UInt8*          pPowerLevel /* O: Power Level in 1/2 steps dBµV */
+    UInt8*          pPowerLevel /* O: Power Level in 1/2 steps dBÂµV */
 );
 
 tmErrorCode_t
 tmbslTDA182I5a_GetThermo(
     tmUnitSelect_t  tUnit,      /* I: Unit number */
-    UInt8*          pThermo /* O: temperature in °C */
+    UInt8*          pThermo /* O: temperature in Â°C */
 );
 
 /* You can only add one step (-1 or +1) at a time along -125 KHz <-> -62.5 KHz <-> 0 <-> 62.5 KHz <-> 125 KHz */

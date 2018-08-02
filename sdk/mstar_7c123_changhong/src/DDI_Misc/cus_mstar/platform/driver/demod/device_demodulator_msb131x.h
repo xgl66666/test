@@ -101,6 +101,8 @@ MS_U16  MSB131X_DTV_GetSignalQuality(MS_BOOL bDemodType);
 MS_BOOL MSB131X_DTV_GetLock(void);
 MS_BOOL MSB131X_DiSEqC_Init(void);
 #endif
+MS_BOOL MDrv_Demod_MSB131X_SetTsSerial(MS_U8 u8DemodIndex, MS_BOOL bSerial);
+
 /*
 MS_BOOL MDrv_Demod_GetRollOff(MS_U8 *pRollOff);
 MS_BOOL MDrv_Demod_GetRFOffset(MS_S16 *ps16RFOff);

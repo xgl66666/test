@@ -118,6 +118,17 @@ typedef struct
     E_ICE_NETWORK_TYPE  network_type;
 } ICE_TuneToParams;
 
+typedef struct
+{
+    MS_U8 u8SlaveID;
+    MS_BOOL bInUse;
+}SLAVE_ID_USAGE;
+
+typedef struct
+{
+  SLAVE_ID_USAGE stID_Tbl[5]; // slave ID list may need to enlarge, must be larger than size of MSB124X_possible_slave_ID
+}SLAVE_ID_TBL;
+
 typedef enum
 {
     COFDM_FEC_LOCK,
@@ -135,6 +146,7 @@ typedef enum
     COFDM_L1_CRC_LOCK,
     COFDM_DVBT2_NOCH_FLAG,
     COFDM_DVBT_NOCH_FLAG,
+    COFDM_DETECT_DONE_FLAG,
 } COFDM_LOCK_STATUS;
 
 typedef struct
@@ -284,6 +296,7 @@ typedef enum
     E_DVBT_FFT_INVALID,
 } EN_DVBT_FFT_VAL;
 
+
 typedef enum
 {
     T2_MODUL_MODE,
@@ -296,6 +309,7 @@ typedef enum
     T2_BW_EXT,
     T2_PAPR_REDUCTION,
     T2_OFDM_SYMBOLS_PER_FRAME,
+    T2_PLP_TYPE,
     T2_PARAM_MAX_NUM
 } E_SIGNAL_TYPE;
 
@@ -593,6 +607,37 @@ typedef struct
     float    cn_ref;
 } S_SQI_CN_NORDIGP1;
 
+//DVBC SSI  ==================================================================
+typedef struct
+{
+    float    power_db;
+    MS_U8  agc_val;
+} DVBC_IFAGC_SSI;
+
+typedef struct
+{
+    float    power_db;
+    MS_U8  sar3_val;
+} DVBC_RFAGC_SSI;
+
+typedef struct
+{
+    MS_U8     constel;
+    float  p_ref;
+} DVBC_SSI_PREF;
+
+typedef enum 
+{
+	DVBC_16QAM=0x0,
+	DVBC_32QAM,
+	DVBC_64QAM,
+	DVBC_128QAM,
+	DVBC_256QAM
+} DVBC_QAM_MODE;
+
+	
+
+//DVBC SSI  ==================================================================
 typedef enum
 {
     _QPSK_1     = 0x0,
@@ -649,6 +694,21 @@ typedef struct
     float                  cn_ref;
 } S_DVBT2_SQI_CN_NORDIGP1;
 
+typedef void (*fpSPIPAD_En)(MS_BOOL bOnOff);
+
+#if ((!defined(SUPPORT_MULTI_DEMOD)) || (defined(SUPPORT_MULTI_DEMOD) && (SUPPORT_MULTI_DEMOD == 0)))
+#define MDrv_DMD_MSB124X_Init_EX(x, y, z)  MDrv_DMD_MSB124X_Init(y, z)
+#define MDrv_DMD_MSB124X_Exit_EX(x)        MDrv_DMD_MSB124X_Exit()
+#define MDrv_DMD_MSB124X_GetReg_EX(x,y,z)  MDrv_DMD_MSB124X_GetReg(y,z)
+#define MDrv_DMD_MSB124X_SetReg_EX(x,y,z)  MDrv_DMD_MSB124X_SetReg(y,z)
+#define MDrv_DMD_MSB124X_SetReg2Bytes_EX(x,y,z) MDrv_DMD_MSB124X_SetReg2Bytes(y,z) 
+#define MDrv_DMD_MSB124X_GetDSPReg_EX(x,y,z) MDrv_DMD_MSB124X_GetDSPReg(y,z)
+#define MDrv_DMD_MSB124X_SetDSPReg_EX(x,y,z) MDrv_DMD_MSB124X_SetDSPReg(y,z)
+#define MDrv_DMD_MSB124X_SetCurrentDemodulatorType_EX(x, y) MDrv_DMD_MSB124X_SetCurrentDemodulatorType(y)
+#define MDrv_DMD_MSB124X_LoadDSPCode_EX(x) MDrv_DMD_MSB124X_LoadDSPCode() 
+#define MDrv_DMD_MSB124X_Power_On_Initialization_EX(x) MDrv_DMD_MSB124X_Power_On_Initialization()
+#define MDrv_DMD_MSB1245_LoadDSPCodeToSram_EX(x) MDrv_DMD_MSB1245_LoadDSPCodeToSram()
+#endif
 
 /////////////// CONSTANT /////////////////
 

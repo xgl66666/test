@@ -115,7 +115,7 @@ MS_BOOL MSB1238_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
     DMD_DTMB_InitData sDMD_DTMB_InitData;
     static MS_U8 u8DMD_DTMB_InitExt[]={1};
 
-    bInited = FALSE;
+    //bInited = FALSE;
     printf("-----%s start-----\n", __FUNCTION__);
 
     if (_s32TaskId >= 0)
@@ -127,7 +127,7 @@ MS_BOOL MSB1238_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
 
     if (_s32MutexId < 0)
     {
-        GEN_EXCEP;
+        DMD_ERR(("-----%s _s32MutexId < 0-----\n", __FUNCTION__));
         return FALSE;
     }
 
@@ -275,7 +275,7 @@ MS_BOOL MSB1238_Demod_I2C_ByPass(MS_U8 u8DemodIndex, MS_BOOL bEnable)
             bret &= MSB1238_I2C_WriteByte(DTMB_CASHMERE_SLAVE_ID,0x0910, 0x10);
         else
             bret &= MSB1238_I2C_WriteByte(DTMB_CASHMERE_SLAVE_ID,0x0910, 0x00);
-        return bret;          
+        return bret;
     }
 }
 
@@ -682,7 +682,7 @@ MS_BOOL MSB1238_I2C_CH_Reset(MS_U8 ch_num,MS_BOOL enable)
 
 
 #define MSB1238_CHIP_ID 0x63
-MS_BOOL MSB1238_Check_Exist(MS_U8 u8DemodIndex)
+MS_BOOL MSB1238_Check_Exist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
 {
     MS_U8 u8_tmp = 0;
 
@@ -700,6 +700,7 @@ MS_BOOL MSB1238_Check_Exist(MS_U8 u8DemodIndex)
 
     printf("[MSB1238] read id :%x \n",u8_tmp );
 
+    *pu8SlaveID = DTMB_CASHMERE_SLAVE_ID;
     return (u8_tmp == MSB1238_CHIP_ID);
 }
 
@@ -707,13 +708,23 @@ MS_BOOL MSB1238_Check_Exist(MS_U8 u8DemodIndex)
 //=======================================================================================
 MS_BOOL MSB1238_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE fuction_type, void *data)
 {
+    MS_BOOL bret = TRUE;
     switch(fuction_type)
     {
+            case DEMOD_EXT_FUNC_FINALIZE:
+            if (_s32MutexId >= 0)
+            {
+               bret &= MsOS_DeleteMutex(_s32MutexId);
+               _s32MutexId = -1;
+            }
+            bInited = FALSE;
+            bret &= MDrv_DMD_DTMB_Exit();
+            break;
         default:
             printf("Request extension function (%x) does not exist\n",fuction_type);
             break;
     }
-    return TRUE;
+    return bret;
 }
 
 DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB1238) DDI_DRV_TABLE_ENTRY(demodtab) =
@@ -725,7 +736,7 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB1238) DDI_DRV_TABLE_ENTRY(dem
      .GetSNR                       = MDrv_Demod_null_GetSNR,
      .GetBER                       = MSB1238_Demod_GetBER,
      .GetPWR                       = MSB1238_Demod_GetPWR,
-     .GetQuality                   = MDrv_Demod_null_GetSignalQuality,
+     .GetQuality                   = MSB1238_Demod_GetSignalQuality,
      .GetParam                     = MSB1238_Demod_GetParam,
      .Restart                      = MSB1238_Demod_Restart,
      .CheckExist                   = MSB1238_Check_Exist,
@@ -733,12 +744,15 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB1238) DDI_DRV_TABLE_ENTRY(dem
      .I2CByPassPreSetting          = NULL,
      .Extension_Function           = MSB1238_Extension_Function,
      .Extension_FunctionPreSetting = NULL,
+     .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error,      
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
      .GetPlpBitMap                 = MDrv_Demod_null_GetPlpBitMap,
      .GetPlpGroupID                = MDrv_Demod_null_GetPlpGroupID,
      .SetPlpGroupID                = MDrv_Demod_null_SetPlpGroupID,
+     .GetNextPLPID                 = MDrv_Demod_null_GetNextPLPID,
+     .GetPLPType                   = MDrv_Demod_null_GetPLPType,
 #endif
 #if MS_DVBS_INUSE
      .BlindScanStart               = MDrv_Demod_null_BlindScan_Start,

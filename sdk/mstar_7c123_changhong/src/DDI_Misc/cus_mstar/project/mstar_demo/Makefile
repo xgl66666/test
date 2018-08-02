@@ -25,8 +25,10 @@ DDI_MISC_CUS_DIR = $(DDI_MISC_DIR)/cus_mstar
 
 
 # Source files
-HB_DDI_MISC = $(CFG_DDI_MISC)
-ifneq ($(HB_DDI_MISC),ENABLE)
+
+HB_DDI_MISC = $(CFG_FE_DDI_MISC_ENABLE)
+
+ifneq ($(HB_DDI_MISC),1)
 ifeq ($(MI_BSP), )
 DDI_MISC_SRCDIR = $(DDI_MISC_CUS_DIR)/app/demo
 else
@@ -42,9 +44,6 @@ DDI_MISC_SRCDIR += \
             $(DDI_MISC_CUS_DIR)/platform/driver/ir                                             \
             $(DDI_MISC_CUS_DIR)/platform/driver/frontpnl                                       \
             $(DDI_MISC_CUS_DIR)/platform/driver/demod                                          \
-            $(DDI_MISC_CUS_DIR)/platform/driver/demod/avl_dvbsx                                \
-            $(DDI_MISC_CUS_DIR)/platform/driver/demod/avl_dvbsx/avl_dvbsx/src                  \
-            $(DDI_MISC_CUS_DIR)/platform/driver/demod/avl_dvbsx/bsp                            \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner                                          \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/mxl5007t_api_files_v4.1.3                \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/tmbsltda18250/src                        \
@@ -61,28 +60,39 @@ DDI_MISC_SRCDIR += \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/MxL603                                   \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/MxL608                                   \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/MxL254                                   \
+            $(DDI_MISC_CUS_DIR)/platform/driver/tuner/MxL542                                   \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/tmbsltda18260/tmbslTDA18260/src          \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/tmbsltda18260/tmddTDA18260Shared/src     \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/tmbsltda18260/tmddTDA18260Stream/src     \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner                               \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/av2011                        \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/av2012                        \
+            $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/av2017                        \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/av2018                        \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/av2028                        \
+            $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/av2035                        \
+            $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/RT710                         \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/sharp7306                     \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/sharp7801                     \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/tda20152                      \
+            $(DDI_MISC_CUS_DIR)/platform/driver/tuner/si2144                                   \
             $(DDI_MISC_CUS_DIR)/platform/driver/dish
 
 ifeq ($(OS_TYPE),ecos)
-JFFS2_CHIPS = keltic kaiser keres kappa kriti
+JFFS2_CHIPS = keltic kaiser keres kappa kriti clippers kratos kano kiwi kastor
 ifneq ($(CHIP), $(filter $(CHIP),$(JFFS2_CHIPS)))
 DDI_MISC_SRCDIR += $(DDI_MISC_CUS_DIR)/platform/driver/jffs2
+endif
+ifeq ($(ECOS_WIFI_SUPPORT),enable)
+DDI_MISC_SRCDIR += \
+            $(DDI_MISC_CUS_DIR)/api/wlan                                                       \
+            $(DDI_MISC_CUS_DIR)/platform/driver/wlan                                           \
+            $(DDI_MISC_CUS_DIR)/platform/driver/wlan/MT7601U                                  
 endif
 endif
 
 #Headers
-ifneq ($(HB_DDI_MISC),ENABLE)
+ifneq ($(HB_DDI_MISC),1)
 ifeq ($(MI_BSP), )
 DDI_MISC_INCDIR = $(DDI_MISC_CUS_DIR)/app/demo
 else
@@ -100,9 +110,6 @@ DDI_MISC_INCDIR += \
             $(DDI_MISC_CUS_DIR)/platform/driver/frontpnl                                           \
             $(DDI_MISC_CUS_DIR)/platform/driver/ir                                                 \
             $(DDI_MISC_CUS_DIR)/platform/driver/demod                                              \
-            $(DDI_MISC_CUS_DIR)/platform/driver/demod/avl_dvbsx                                    \
-            $(DDI_MISC_CUS_DIR)/platform/driver/demod/avl_dvbsx/avl_dvbsx/include                  \
-            $(DDI_MISC_CUS_DIR)/platform/driver/demod/avl_dvbsx/bsp                                \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner                                              \
             $(DDI_MISC_CUS_DIR)/platform/driver/driver/tuner/inc                                   \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/mxl5007t_api_files_v4.1.3                    \
@@ -122,6 +129,7 @@ DDI_MISC_INCDIR += \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/MxL603                                       \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/MxL608                                       \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/MxL254                                       \
+            $(DDI_MISC_CUS_DIR)/platform/driver/tuner/MxL542                                       \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/tmbsltda18260/inc                            \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/tmbsltda18260/tmbslTDA18260/inc              \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/tmbsltda18260/tmbslTDA18260/cfg              \
@@ -134,14 +142,30 @@ DDI_MISC_INCDIR += \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner                                   \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/av2011                            \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/av2012                            \
+            $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/av2017                            \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/av2018                            \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/av2028                            \
+            $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/av2035                            \
+            $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/RT710                             \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/sharp7306                         \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/sharp7801                         \
             $(DDI_MISC_CUS_DIR)/platform/driver/tuner/dvbs_tuner/tda20152                          \
-            $(DDI_MISC_CUS_DIR)/platform/driver/dish
+            $(DDI_MISC_CUS_DIR)/platform/driver/tuner/si2144                                      \
+            $(DDI_MISC_CUS_DIR)/platform/driver/dish                                               \
+            $(DDI_MISC_CUS_DIR)/platform/driver/dtc
 
 #ifeq ($(CFG_FE_AUTO_TEST), enable)
 #SRCDIR      += $(DDI_MISC_DIR)/platform/driver/demod/autotest
 #INCDIR      += $(DDI_MISC_DIR)/platform/driver/demod/autotest
 #ndif
+
+ifeq ($(ECOS_WIFI_SUPPORT),enable)
+DDI_MISC_INCDIR += \
+            $(DDI_MISC_CUS_DIR)/api/wlan                                                           \
+            $(DDI_MISC_CUS_DIR)/platform/driver/wlan                                           \
+            $(DDI_MISC_CUS_DIR)/platform/driver/wlan/MT7601U      
+CFG_CC_OPTS += -D'ECOS_WIFI_SUPPORT=1'
+else
+CFG_CC_OPTS += -D'ECOS_WIFI_SUPPORT=0'                        
+endif
+

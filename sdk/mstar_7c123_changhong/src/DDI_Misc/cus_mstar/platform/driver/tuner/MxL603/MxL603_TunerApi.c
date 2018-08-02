@@ -24,7 +24,7 @@
 #if IF_THIS_TUNER_INUSE(TUNER_MXL603)
 
 /* MxLWare Driver version for MxL603 */
-static const UINT8 MxLWare603DrvVersion[] = {2, 1, 1, 2, 0};
+const UINT8 MxLWare603DrvVersion[5] = {2, 1, 3, 6, 0}; 
 
 /* OEM Data pointer array */
 void * MxL603_OEM_DataPtr[MXL603_MAX_NUM_DEVICES];
@@ -157,11 +157,20 @@ MXL_STATUS MxLWare603_API_CfgDevXtal(UINT8 u8TunerIndex,UINT8 devId, MXL603_XTAL
     control = (0x01 & (UINT8)xtalCfg.clkOutDiv);
 
     // XTAL sharing mode
-    if (xtalCfg.XtalSharingMode == MXL_ENABLE) control |= 0x40;
-    else control &= 0x01;
-
-    // program Clock out div & Xtal sharing
-    status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, XTAL_ENABLE_DIV_REG, control);
+    if (xtalCfg.XtalSharingMode == MXL_ENABLE) 
+    {
+      control |= 0x40;
+      // program Clock out div & Xtal sharing
+      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, XTAL_ENABLE_DIV_REG, control);
+      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, XTAL_EXT_BIAS_REG, 0x80);
+    }
+    else 
+    {
+      control &= 0x01;
+      // program Clock out div & Xtal sharing
+      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, XTAL_ENABLE_DIV_REG, control); 
+      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, XTAL_EXT_BIAS_REG, 0x0A);
+    }
 
     // Main regulator re-program
     if (MXL_ENABLE == xtalCfg.singleSupply_3_3V)
@@ -186,7 +195,10 @@ MXL_STATUS MxLWare603_API_CfgDevXtal(UINT8 u8TunerIndex,UINT8 devId, MXL603_XTAL
 --|
 --|---------------------------------------------------------------------------*/
 
-MXL_STATUS MxLWare603_API_CfgDevPowerMode(UINT8 u8TunerIndex,UINT8 devId, MXL603_PWR_MODE_E powerMode)
+MXL_STATUS MxLWare603_API_CfgDevPowerMode(UINT8 u8TunerIndex,UINT8 devId, 
+                                          MXL603_PWR_MODE_E powerMode, 
+                                          MXL_BOOL enableLoopthrough, 
+                                          UINT8 standbyLt)
 {
   UINT8 status = MXL_SUCCESS;
 
@@ -200,11 +212,24 @@ MXL_STATUS MxLWare603_API_CfgDevPowerMode(UINT8 u8TunerIndex,UINT8 devId, MXL603
     case MXL603_PWR_MODE_ACTIVE:
       status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, TUNER_ENABLE_REG, MXL_ENABLE);
       status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, START_TUNE_REG, MXL_ENABLE);
+
+      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, PAGE_CHANGE_REG, 0x01);
+      if (enableLoopthrough == MXL_ENABLE)     
+        status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId,DFE_SEQ_TUNE_RF1_BO_REG,0x0E);
+      else 
+        status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId,DFE_SEQ_TUNE_RF1_BO_REG,0x37);
+      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, PAGE_CHANGE_REG, 0x00);   
       break;
 
     case MXL603_PWR_MODE_STANDBY:
       status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, START_TUNE_REG, MXL_DISABLE);
       status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, TUNER_ENABLE_REG, MXL_DISABLE);
+      if ((standbyLt != 0) && (enableLoopthrough == MXL_ENABLE))
+      {
+        status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, PAGE_CHANGE_REG, 0x01);
+        status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId,DFE_SEQ_TUNE_RF1_BO_REG,(standbyLt & 0x3F));
+        status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, PAGE_CHANGE_REG, 0x00);
+      } 
       break;
 
     default:
@@ -232,6 +257,7 @@ MXL_STATUS MxLWare603_API_CfgDevGPO(UINT8 u8TunerIndex,UINT8 devId, MXL603_GPO_S
 {
   UINT8 status = MXL_SUCCESS;
   UINT8 regData = 0;
+  UINT8 gpoStateData = 0;
 
   TUNER_DBG(("%s\n", __FUNCTION__));
 
@@ -242,11 +268,15 @@ MXL_STATUS MxLWare603_API_CfgDevGPO(UINT8 u8TunerIndex,UINT8 devId, MXL603_GPO_S
     case MXL603_GPO_LOW:
       status = MxLWare603_OEM_ReadRegister(u8TunerIndex,devId, GPO_SETTING_REG, &regData);
       if (MXL603_GPO_AUTO_CTRL == gpoState)
-        regData &= 0xFE;
+        regData &= 0xEF; // 0x0A[4]
       else
       {
-        regData &= 0xFC;
-        regData |= (UINT8)(0x01 | (gpoState << 1));
+        regData &= 0xCF; // 0x0A[5:4] is clear to 0.
+        if(gpoState == MXL603_GPO_HIGH) 
+          gpoStateData = 0;
+        else if(gpoState == MXL603_GPO_LOW) 
+		  gpoStateData = 1;
+        regData |= (0x10 | (gpoStateData << 5)); 
       }
 
       status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, GPO_SETTING_REG, regData);
@@ -321,6 +351,7 @@ MXL_STATUS MxLWare603_API_ReqDevGPOStatus(UINT8 u8TunerIndex, UINT8 devId,
 {
   UINT8 status = MXL_SUCCESS;
   UINT8 regData = 0;
+  UINT8 gpoStateData = 0;
 
   TUNER_DBG(("%s\n", __FUNCTION__));
 
@@ -329,13 +360,73 @@ MXL_STATUS MxLWare603_API_ReqDevGPOStatus(UINT8 u8TunerIndex, UINT8 devId,
     status = MxLWare603_OEM_ReadRegister(u8TunerIndex,devId, GPO_SETTING_REG, &regData);
 
     // GPO1 bit<1:0>
-    if ((regData & 0x01) == 0) *gpoStatusPtr = MXL603_GPO_AUTO_CTRL;
-    else *gpoStatusPtr = (MXL603_GPO_STATE_E)((regData & 0x02) >> 1);
+    if ((regData & 0x10) == 0) 
+		*gpoStatusPtr = MXL603_GPO_AUTO_CTRL;
+    else
+    {
+      gpoStateData = ((regData & 0x20) >> 5);
+      if (gpoStateData == 0)
+        *gpoStatusPtr = MXL603_GPO_HIGH;
+      else 
+        *gpoStatusPtr = MXL603_GPO_LOW;
+	}
   }
   else
     status = MXL_INVALID_PARAMETER;
 
   return (MXL_STATUS)status;
+}
+
+/*------------------------------------------------------------------------------
+--| FUNCTION NAME : MxLWare603_API_ReqDevPllState
+--| 
+--| AUTHOR        : Joy Zhang
+--|
+--| DATE CREATED  : 8/14/2014
+--|
+--| DESCRIPTION   : This API is used to check PLL state is normal or wrong. 
+--|
+--| RETURN VALUE  : MXL_SUCCESS, MXL_INVALID_PARAMETER, MXL_FAILED
+--|
+--|---------------------------------------------------------------------------*/
+
+MXL_STATUS MxLWare603_API_ReqDevPllState(UINT8 u8TunerIndex,UINT8 devId, MXL603_PLL_STATE_E* PllStatePtr)
+{
+  UINT8 status = MXL_TRUE;
+  UINT8 condition[3] = {0};
+  UINT8 regAddr[7] = {0x2B, 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34};
+  UINT8 k, regData[7] = {0}; 
+
+  TUNER_DBG(("%s", __FUNCTION__)); 
+
+  *PllStatePtr = MXL603_PLL_STATE_NA; 
+
+  for (k = 0; k < 7; k++)
+  {
+    // inquire PLL circuitry status and RSSI read back registers  
+    status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,devId, regAddr[k], &regData[k]);
+  }
+
+  if ((MXL_STATUS)status == MXL_SUCCESS)
+  {
+    // Check 0x2B register 
+    condition[0] = (regData[0] != 0x07)? 1 : 0;
+
+    // Check if register 0x30, 0x32, 0x34 values are all 0 
+    condition[1] = ((regData[2] == 0) && (regData[4] == 0) && (regData[6] == 0)) ? 1: 0; 
+
+    // Check if register 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34 values are all 0 
+    condition[2] = ((regData[2] == regData[4]) && (regData[4] == regData[6]) 
+                 && (regData[1] == regData[3]) && (regData[3] == regData[5])) ? 1: 0;
+
+    if ((condition[0] == 1) || (condition[1] == 1) || (condition[2] == 1))
+      *PllStatePtr = MXL603_PLL_STATE_WRONG; 
+    else 
+      *PllStatePtr = MXL603_PLL_STATE_NORMAL; 
+  }
+
+  TUNER_DBG(("Tuner PLL state = %d (0:Normal, 1:Wrong) \n", *PllStatePtr));
+  return (MXL_STATUS)status;  
 }
 
 /*------------------------------------------------------------------------------
@@ -419,7 +510,7 @@ MXL_STATUS MxLWare603_API_CfgTunerMode(UINT8 u8TunerIndex, UINT8 devId,
 
       status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, DFE_CSF_SS_SEL, dfeRegData);
 
-      dfeRegData = 0;
+      dfeRegData = 0x1C;
       switch(tunerModeCfg.ifOutGainLevel)
       {
         case 0x09:
@@ -444,7 +535,7 @@ MXL_STATUS MxLWare603_API_CfgTunerMode(UINT8 u8TunerIndex, UINT8 devId,
 
       break;
 
-    case MXL603_DIG_DVB_T:
+    case MXL603_DIG_DVB_T_DTMB:
       tmpRegTable = MxL603_DigitalDvbt;
       status = MxL603_Ctrl_ProgramRegisters(u8TunerIndex,devId, tmpRegTable);
 
@@ -577,7 +668,7 @@ MXL_STATUS MxLWare603_API_CfgTunerAGC(UINT8 u8TunerIndex,UINT8 devId, MXL603_AGC
 --|
 --|---------------------------------------------------------------------------*/
 
-MXL_STATUS MxLWare603_API_CfgTunerLoopThrough(UINT8 u8TunerIndex,UINT8 devId, MXL_BOOL loopThroughCtrl)
+MXL_STATUS MxLWare603_API_CfgTunerLoopThrough(UINT8 u8TunerIndex,UINT8 devId, MXL_BOOL loopThroughCtrl, UINT8* gainArray, UINT8* attArray)
 {
     UINT8 status = MXL_SUCCESS, regData;
 
@@ -585,19 +676,54 @@ MXL_STATUS MxLWare603_API_CfgTunerLoopThrough(UINT8 u8TunerIndex,UINT8 devId, MX
 
   if (loopThroughCtrl <= MXL_ENABLE)
   {
-    status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, 0x00, 0x01);
+    status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, PAGE_CHANGE_REG, 0x01);
 
-        status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,devId, 0x96, &regData);
+    status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,devId, DIG_ANA_GINJO_LT_REG, &regData);
     if (loopThroughCtrl == MXL_ENABLE)
             regData |= 0x10;  // Bit<4> = 1
     else
             regData &= 0xEF;  // Bit<4> = 0
-        status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, 0x96, regData);
+    status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, DIG_ANA_GINJO_LT_REG, regData);
 
-    status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, 0x00, 0x00);
+    if ((loopThroughCtrl == MXL_ENABLE) && (gainArray != NULL) && (attArray != NULL))
+    {
+      regData = (gainArray[3]<<6 ) | (gainArray[2] <<4 ) | (gainArray[1] <<2 ) | gainArray[0] ;
+      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, DFE_SEQ_DIGANA_LT_GAIN_REG, regData);
+      regData = (attArray[3]<<6 ) | (attArray[2] <<4 ) | (attArray[1] <<2 ) | attArray[0] ;
+      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, DFE_SEQ_DIGANA_LT_ATTN_REG, regData);
+    }
+    status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, PAGE_CHANGE_REG, 0x00);
   }
   else
     status = MXL_INVALID_PARAMETER;
+
+  return (MXL_STATUS)status;
+}
+
+/*------------------------------------------------------------------------------
+--| FUNCTION NAME : MxLWare603_API_CfgTunerSouthAfricaLT
+--| 
+--| AUTHOR        : Dong Liu
+--|
+--| DATE CREATED  : 03/21/2013   
+--|
+--| DESCRIPTION   : This function is used to set Loop-Through settings of 
+--|                 MxL603 tuner device for South Africa.
+--|
+--| RETURN VALUE  : MXL_SUCCESS, MXL_FAILED
+--|
+--|---------------------------------------------------------------------------*/
+
+MXL_STATUS MxLWare603_API_CfgTunerSouthAfricaLT(UINT8 u8TunerIndex,UINT8 devId)
+{
+  UINT8 status = MXL_SUCCESS;
+  
+  TUNER_DBG(("%s", __FUNCTION__)); 
+
+  status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, PAGE_CHANGE_REG, 0x01);
+  status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, DFE_SEQ_DIGANA_LT_GAIN_REG, 0x95);
+  status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, DFE_SEQ_DIGANA_LT_ATTN_REG, 0x00);
+  status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, PAGE_CHANGE_REG, 0x00);
 
   return (MXL_STATUS)status;
 }
@@ -619,13 +745,14 @@ MXL_STATUS MxLWare603_API_CfgTunerLoopThrough(UINT8 u8TunerIndex,UINT8 devId, MX
 MXL_STATUS MxLWare603_API_CfgTunerChanTune(UINT8 u8TunerIndex,UINT8 devId,
                                            MXL603_CHAN_TUNE_CFG_T chanTuneCfg)
 {
-  UINT64 frequency;
+  UINT32 frequency;
   UINT32 freq = 0;
   UINT8 status = MXL_SUCCESS;
   UINT8 regData = 0;
   UINT8 agcData = 0;
   UINT8 dfeTuneData = 0;
   UINT8 dfeCdcData = 0;
+  MXL603_CHAN_DEPENDENT_FREQ_TABLE_T *freqLutPtr = NULL;
 
   TUNER_DBG(("%s, signal type = %d, Freq = %d, BW = %d, Xtal = %d \n",
                                               __FUNCTION__,
@@ -642,7 +769,7 @@ MXL_STATUS MxLWare603_API_CfgTunerChanTune(UINT8 u8TunerIndex,UINT8 devId,
     if (chanTuneCfg.signalMode <= MXL603_DIG_J83B)
     {
       // RF Frequency VCO Band Settings
-      if (chanTuneCfg.freqInHz < 700000000)
+      if (chanTuneCfg.freqInHz < APP_MODE_FREQ_HZ_THRESHOLD_3) 
       {
         status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, 0x7C, 0x1F);
         if ((chanTuneCfg.signalMode == MXL603_DIG_DVB_C) || (chanTuneCfg.signalMode == MXL603_DIG_J83B))
@@ -664,6 +791,23 @@ MXL_STATUS MxLWare603_API_CfgTunerChanTune(UINT8 u8TunerIndex,UINT8 devId,
       status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, 0x00, 0x01);
       status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, 0x31, regData);
       status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, 0x00, 0x00);
+      
+      // Process spur table programming 
+      switch (chanTuneCfg.signalMode) 
+      {
+        case MXL603_DIG_DVB_C:
+        case MXL603_DIG_J83B:
+          freqLutPtr = MXL603_DIG_CABLE_FREQ_LUT;
+          break; 
+
+        case MXL603_DIG_ISDBT_ATSC:
+        case MXL603_DIG_DVB_T_DTMB:
+          freqLutPtr = MXL603_DIG_TERR_FREQ_LUT;
+          break; 
+      }
+
+      if (freqLutPtr)
+        status |= MxL603_Ctrl_SetRfFreqLutTblReg(u8TunerIndex,devId, chanTuneCfg.freqInHz, freqLutPtr);
 
       // Bandwidth <7:0>
       switch(chanTuneCfg.bandWidth)
@@ -677,11 +821,11 @@ MXL_STATUS MxLWare603_API_CfgTunerChanTune(UINT8 u8TunerIndex,UINT8 devId,
             status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, CHAN_TUNE_BW_REG, (UINT8)chanTuneCfg.bandWidth);
 
             // Frequency
-            frequency = chanTuneCfg.freqInHz;
+            frequency = chanTuneCfg.freqInHz / 1000;
 
             /* Calculate RF Channel = DIV(64*RF(Hz), 1E6) */
             frequency *= 64;
-            freq = (UINT32)(frequency / 1000000);
+            freq = (UINT32)((frequency + 500) / 1000); // Round operation 
 
             // Set RF
             status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, CHAN_TUNE_LOW_REG, (UINT8)(freq & 0xFF));
@@ -697,12 +841,12 @@ MXL_STATUS MxLWare603_API_CfgTunerChanTune(UINT8 u8TunerIndex,UINT8 devId,
       status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, TUNER_ENABLE_REG, 0x01);
 
       // Start Sequencer settings
-      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, 0x00, 0x01);
-      status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,devId, 0x96, &regData);
-      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, 0x00, 0x00);
+      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, PAGE_CHANGE_REG, 0x01); 
+      status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,devId, DIG_ANA_GINJO_LT_REG, &regData);
+      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, PAGE_CHANGE_REG, 0x00); 
 
       status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,devId, 0xB6, &agcData);
-      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, 0x00, 0x01);
+      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, PAGE_CHANGE_REG, 0x01); 
       status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,devId, 0x60, &dfeTuneData);
       status |= MxLWare603_OEM_ReadRegister(u8TunerIndex,devId, 0x5F, &dfeCdcData);
 
@@ -738,7 +882,7 @@ MXL_STATUS MxLWare603_API_CfgTunerChanTune(UINT8 u8TunerIndex,UINT8 devId,
 
       status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, 0x60, dfeTuneData);
       status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, 0x5F, dfeCdcData);
-      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, 0x00, 0x00);
+      status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, PAGE_CHANGE_REG, 0x00); 
       status |= MxLWare603_OEM_WriteRegister(u8TunerIndex,devId, 0xB6, agcData);
 
       // Bit <0> 1 : start , 0 : abort calibrations
@@ -865,7 +1009,7 @@ MXL_STATUS MxLWare603_API_ReqTunerAGCLock(UINT8 u8TunerIndex,UINT8 devId, MXL_BO
 
     *agcLockStatusPtr =  lockStatus;
 
-    TUNER_DBG((" Agc lock = %d", (UINT8)*agcLockStatusPtr));
+    TUNER_DBG((" Agc lock = %d\n", (UINT8)*agcLockStatusPtr));
   }
   else
     status = MXL_INVALID_PARAMETER;
@@ -899,7 +1043,7 @@ MXL_STATUS MxLWare603_API_ReqTunerLockStatus(UINT8 u8TunerIndex,UINT8 devId, MXL
   if ((rfLockPtr) && (refLockPtr))
   {
     status = MxLWare603_OEM_ReadRegister(u8TunerIndex,devId, RF_REF_STATUS_REG, &regData);
-    printf("regData:%x\n",regData);
+
     if ((regData & 0x02) == 0x02) rfLockStatus = MXL_LOCKED;
     if ((regData & 0x01) == 0x01) refLockStatus = MXL_LOCKED;
 
@@ -927,7 +1071,7 @@ MXL_STATUS MxLWare603_API_ReqTunerLockStatus(UINT8 u8TunerIndex,UINT8 devId, MXL
 --|
 --|---------------------------------------------------------------------------*/
 
-MXL_STATUS MxLWare603_API_ReqTunerRxPower(UINT8 u8TunerIndex,UINT8 devId, REAL32* rxPwrPtr)
+MXL_STATUS MxLWare603_API_ReqTunerRxPower(UINT8 u8TunerIndex,UINT8 devId, SINT16* rxPwrPtr)
 {
   UINT8 status = MXL_SUCCESS;
   UINT8 regData = 0;
@@ -946,12 +1090,12 @@ MXL_STATUS MxLWare603_API_ReqTunerRxPower(UINT8 u8TunerIndex,UINT8 devId, REAL32
     tmpData |= (regData & 0x03) << 8;
 
     // Fractional last 2 bits
-    *rxPwrPtr = (REAL32)((tmpData & 0x01FF) >> 2);
+    *rxPwrPtr = (tmpData & 0x01FF) * 25;  //100 times dBm
 
-    if (tmpData & 0x02) *rxPwrPtr += 0.5;
-    if (tmpData & 0x01) *rxPwrPtr += 0.25;
-    if (tmpData & 0x0200) *rxPwrPtr -= 128;
-
+    if (tmpData & 0x02) *rxPwrPtr += 50;;
+    if (tmpData & 0x01) *rxPwrPtr += 25;
+    if (tmpData & 0x0200) *rxPwrPtr -= 128*100;
+      
         // MxL_DLL_DEBUG0(" Rx power = %f dBm \n", *rxPwrPtr);
   }
   else

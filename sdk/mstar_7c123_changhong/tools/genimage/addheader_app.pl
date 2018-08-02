@@ -19,7 +19,7 @@
 #   File Name: addheader.pl
 #
 #   Perl script used for adding Compressing flag and file length at the start of file.
-#   App Magic flag(4 bytes)+the lengthe of file uraus.zip/compression flag(4 bytes)+Uranus.zip
+#   App Magic flag(4 bytes)+the length of file uraus.zip/compression flag(4 bytes)+Uranus.zip
 #   The first 4 bytes is the length of the file 
 #   #####################################################################
 $magic_id = 0x21234;
@@ -31,7 +31,7 @@ $version_4 =0x1;
 $arc_cnt = @ARGV;
 if ($arc_cnt<3) {
     print ("\n\n This program usage\n");
-    print (" Useage $0 <in_file> <out_file> <file len> <file checksum>\n\n");
+    print (" Usage $0 <in_file> <out_file> <file len> <file checksum>\n\n");
     exit -1;
 }
 $input_file  = $ARGV[0];
@@ -49,7 +49,7 @@ close (CRCFILE);
 open (IFILE, "<$input_file") ||
     die("Error: can't open file $input_file \n");
 binmode(IFILE);
-$length = read(IFILE,$buffer,0x4400000);
+$length = read(IFILE,$buffer, -s $input_file);
 close (IFILE);
 @istream = unpack("C*",$buffer);
 # Make sure we got a whole number of words in array

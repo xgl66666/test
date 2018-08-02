@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (¡§MStar Confidential Information¡¨) by the recipient.
+// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -172,7 +172,11 @@ typedef enum
     TUNER_EXT_FUNC_LOOP_THROUGH,
     TUNER_EXT_FUNC_POWER_ON_OFF,
     TUNER_EXT_FUNC_GET_POWER_LEVEL,
-    TUNER_EXT_FUNC_DECIDE_LNB_LO
+    TUNER_EXT_FUNC_DECIDE_LNB_LO,
+    TUNER_EXT_FUNC_FINALIZE,
+    TUNER_EXT_FUNC_BLIND_SCAN_MODE,
+    TUNER_EXT_FUNC_GET_RFAGC_STATUS,
+    TUNER_EXT_FUNC_SET_CABLE_INDEX
 } TUNER_EXT_FUNCTION_TYPE;
 
 typedef enum
@@ -186,6 +190,9 @@ typedef enum
 typedef struct
 {
     MS_U32* pCur_Broadcast_type;
+    MS_U8 u8SlaveID;
+    MS_U8 u8SlaveID_EXT;
+    MS_U8 u8Cable_Index;  //for tuner that is with more than one connectors
 } TUNER_MS_INIT_PARAM;
 
 typedef struct

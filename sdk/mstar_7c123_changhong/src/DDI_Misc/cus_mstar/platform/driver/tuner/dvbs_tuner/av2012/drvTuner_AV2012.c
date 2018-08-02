@@ -82,6 +82,7 @@
 #include "drvTuner_AV2012.h"
 #include "drvTuner.h"
 #include "drvTunerNull.h"
+#include "drvDTC.h"
 
 
 #if IF_THIS_TUNER_INUSE(TUNER_AV2012) || IF_THIS_TUNER_INUSE(TUNER_AV2011)
@@ -94,14 +95,14 @@ static MS_U8 _u8SlaveID = TUNER_AV2012_SLAVE_ID;
 MS_U8 TunerInitialSetting_0[2][42]=
 {
     {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B,  0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29},
-    {0x38, 0x00, 0x00, 0x50, 0x1F, 0xA3, 0xFD, 0x58, 0x0E, 0x82, 0x88, 0xB4, 0xD6, 0x40, 0x94,0x9A, 0x66, 0x40, 0x80, 0x2B, 0x6A, 0x50, 0x91, 0x27, 0x8F, 0xCC, 0x21, 0x10, 0x80,0x02, 0xF5, 0x7F, 0x4A, 0x9B, 0xE0, 0xE0, 0x36, 0x00, 0xAB, 0x97, 0xC5, 0xA8}
+    {0x50, 0xA1, 0x2F, 0x50, 0x1F, 0xA3, 0xFD, 0x58, 0x0E, 0x82, 0x88, 0xB4, 0xD6, 0x40, 0x94,0x9A, 0x66, 0x40, 0x80, 0x2B, 0x6A, 0x50, 0x91, 0x27, 0x8F, 0xCC, 0x21, 0x10, 0x80,0x02, 0xF5, 0x7F, 0x4A, 0x9B, 0xE0, 0xE0, 0x36, 0x00, 0xAB, 0x97, 0xC5, 0xA8}
 };
 
 #else
 MS_U8 TunerInitialSetting_0[2][42]=
 {
     {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B,  0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29},
-    {0x38, 0x00, 0x00, 0x50, 0x1F, 0xA3, 0xFD, 0x00, 0x0E, 0x82, 0x88, 0xB4, 0x96, 0x40, 0x5B,0x6A, 0x66, 0x40, 0x80, 0x2B, 0x6A, 0x50, 0x91, 0x27, 0x8F, 0xCC, 0x21, 0x10, 0x80,0x00, 0xF5, 0x7F, 0x4A, 0x9B, 0xE0, 0xE0, 0x36, 0x02, 0xAB, 0x97, 0xC5, 0xA8}
+    {0x50, 0xA1, 0x2F, 0x50, 0x1F, 0xA3, 0xFD, 0x00, 0x2E, 0x82, 0x88, 0xB4, 0x96, 0x40, 0x5B,0x6A, 0x66, 0x40, 0x80, 0x2B, 0x6A, 0x50, 0x91, 0x27, 0x8F, 0xCC, 0x21, 0x10, 0x80,0x00, 0xF5, 0x7F, 0x4A, 0x9B, 0xE0, 0xE0, 0x36, 0x02, 0xAB, 0x97, 0xC5, 0xA8}
 };
 #endif
 
@@ -187,7 +188,7 @@ static  void AV2012_SlaveID_Check(MS_U8 u8TunerIndex)
       }
 }
 
-MS_BOOL MDrv_Tuner_AV2012_Initial(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam)
+static MS_BOOL AV2012_Init(MS_U8 u8TunerIndex)
 {
     MS_BOOL bRet=TRUE;
     MS_U8 index;
@@ -221,6 +222,11 @@ MS_BOOL MDrv_Tuner_AV2012_Initial(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam
     return bRet;
 }
 
+MS_BOOL MDrv_Tuner_AV2012_Initial(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam)
+{
+    return AV2012_Init(u8TunerIndex);
+}
+
 MS_BOOL MDrv_Tuner_AV2012_SetFreq_S2(MS_U8 u8TunerIndex, MS_U32 u32CenterFreq, MS_U32 u32SymbolRate_Hz)
 {
     MS_BOOL bRet=TRUE;
@@ -230,18 +236,18 @@ MS_BOOL MDrv_Tuner_AV2012_SetFreq_S2(MS_U8 u8TunerIndex, MS_U32 u32CenterFreq, M
     MS_U32 BF;
     MS_U8 u8Reg[7];
 
-    TUNER_DBG(("u16CenterFreq:%ld u32SymbolRate_Hz:%ld\n",u32CenterFreq,u32SymbolRate_Hz));
+    TUNER_DBG(("u16CenterFreq:%"DTC_MS_U32_d" u32SymbolRate_Hz:%"DTC_MS_U32_d"\n",u32CenterFreq,u32SymbolRate_Hz));
     if((u32CenterFreq > MAX_INPUT_FREQ) || (u32CenterFreq < MIN_INPUT_FREQ))
         return FALSE;
     if (u32SymbolRate_Hz == 0 || u32SymbolRate_Hz == 45000) //auto-scan mode
     {
-	    bAutoScan = TRUE;
+        bAutoScan = TRUE;
     }
 
     u32FracN = (u32CenterFreq + TUNER_CRYSTAL_FREQ/2)/TUNER_CRYSTAL_FREQ;
     if(u32FracN > 0xff)
     {
-   	   u32FracN = 0xff;
+        u32FracN = 0xff;
     }
     u8Reg[0]=(MS_U8) (u32FracN & 0xff);
     u32FracN = (u32CenterFreq<<17)/TUNER_CRYSTAL_FREQ;
@@ -265,9 +271,9 @@ MS_BOOL MDrv_Tuner_AV2012_SetFreq_S2(MS_U8 u8TunerIndex, MS_U32 u32CenterFreq, M
    	    	BW = BW + 6000;
    	    }
    	    	// add 2M for LNB frequency shifting
-   	    BW = BW + 2000;
+            BW = BW + 1000;
    	    	// add 8% margin since fc is not very accurate
-   	    BW = BW*108/100;
+   	   // BW = BW*108/100;
    	    	// Bandwidth can be tuned from 4M to 40M
    	    if( BW< 4000)
    	    {
@@ -283,6 +289,11 @@ MS_BOOL MDrv_Tuner_AV2012_SetFreq_S2(MS_U8 u8TunerIndex, MS_U32 u32CenterFreq, M
     // Sequence 4
     // Send Reg0 ->Reg4
     MsOS_DelayTask(5);
+    bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x00, u8Reg[0]);
+    bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x01, u8Reg[1]);
+    bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x02, u8Reg[2]);
+    bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x03, u8Reg[3]);
+    MsOS_DelayTask(100);
     bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x00, u8Reg[0]);
     bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x01, u8Reg[1]);
     bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x02, u8Reg[2]);
@@ -371,12 +382,44 @@ MS_BOOL AV2012_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE fu
 {
     TUNER_MS_SAT_PARAM* SAT_PARAM;
     MS_BOOL bret = TRUE;
+    MS_U8 regData = 0;
     switch(fuction_type)
     {
          case TUNER_EXT_FUNC_DECIDE_LNB_LO:
             SAT_PARAM = data;
             bret &= _DigiTuner_Decide_LNB_LO(SAT_PARAM);
             break;
+            
+         case TUNER_EXT_FUNC_POWER_ON_OFF:
+             bret &= AV2012_ReadReg(u8TunerIndex,_u8SlaveID, 0x0C, &regData);
+            if(FALSE == *(MS_BOOL *)data)   //power off
+            {
+               regData |= (0x1<<5);
+               bret &= AV2012_WriteReg(u8TunerIndex,_u8SlaveID, 0x0C, regData);
+            }
+            else
+            {
+               if((regData & (0x1<<5)) >>5)
+               {
+                  bret &= AV2012_Init(u8TunerIndex);
+               }
+            }
+            break;
+            
+         case TUNER_EXT_FUNC_LOOP_THROUGH:
+             bret &= AV2012_ReadReg(u8TunerIndex,_u8SlaveID, 0x0C, &regData);
+            if(FALSE == *(MS_BOOL *)data)   //LT off
+            {
+               regData &= (~(0x1<<6));
+            }
+            else
+            {
+               regData |= (0x1<<6);
+            }
+
+            bret &= AV2012_WriteReg(u8TunerIndex,_u8SlaveID, 0x0C, regData);
+            break;
+            
          default:
             break;
     }

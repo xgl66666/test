@@ -1,0 +1,16 @@
+# <- this is for comment / total file size must be less than 4KB
+
+mstar parameters.txt
+
+#application
+mstar [[application
+
+#config & bootargs
+mstar set_config
+
+mstar miu_setting.txt
+
+printenv
+reset
+% <- this is end of file symbol
+

@@ -57,12 +57,14 @@ typedef signed long long     SINT64;
 // MXL_DIV_ROUND_S round div operation - use only for signed types
 #define MXL_DIV_ROUND_S(x, y)           (((y)!=0)?(((x) + ((((x)>=0)?1:-1)*(y)/2)) / (y)):0)
 
-#if (((!defined __MXL_WIN__) || (defined _WIN_CLI_)) && (!defined _KEEP_STDCALL_))
-#undef  __stdcall
-#define __stdcall
-#endif // (((!defined __MXL_WIN__) || (defined _WIN_CLI_)) && (!defined _KEEP_STDCALL_))
+// define _MXL_CALL_TYPE_ externally if any specific calling convention is required. 
+#ifdef _MXL_CALL_TYPE_
+#define _MXL_INT_CALL_TYPE_ _MXL_CALL_TYPE_
+#else
+#define _MXL_INT_CALL_TYPE_
+#endif
 
-typedef UINT32 (__stdcall *MXL_CALLBACK_FN_T)(UINT8 devId, UINT32 callbackType, void * callbackPayload);
+typedef UINT32 (_MXL_INT_CALL_TYPE_ *MXL_CALLBACK_FN_T)(UINT8 devId, UINT32 callbackType, void * callbackPayload);
 
 typedef enum 
 {
@@ -72,7 +74,8 @@ typedef enum
   MXL_NOT_INITIALIZED,
   MXL_ALREADY_INITIALIZED,
   MXL_NOT_SUPPORTED,
-  MXL_NOT_READY
+  MXL_NOT_READY,
+  MXL_DATA_ERROR
 } MXL_STATUS_E;
 
 typedef enum 

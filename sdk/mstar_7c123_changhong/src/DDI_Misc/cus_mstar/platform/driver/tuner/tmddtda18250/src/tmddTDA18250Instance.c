@@ -98,8 +98,6 @@
  * \section info Change Information
  *
 */
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_TDA18250A) 
 
 /*============================================================================*/
 /* Standard include files:                                                    */
@@ -118,8 +116,6 @@
 #include "tmddTDA18250local.h"
 #include "tmddTDA18250Instance.h"
 #include <tmddTDA18250InstanceCustom.h>
-
-
 
 /*============================================================================*/
 /* Global data:                                                               */
@@ -348,5 +344,4 @@ ddTDA18250GetInstance
     /* return value */
     return err;
 }
-#endif
 

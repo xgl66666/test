@@ -41,10 +41,10 @@ elif [ "$CHIP" == "k2" ]
  		echo "CFG_FOLDER_NAME=conf" >> $VAR_LIST
 
     if [ "$MIU_INTERVAL" == "0x00000000" ]
-      then
-        MIU_TYPE=_single
+        then
+            MIU_TYPE=_single
     else
-        MIU_TYPE=_dual
+            MIU_TYPE=_dual
     fi
 elif [ "$CHIP" == "kaiser" ]
 	then
@@ -64,7 +64,16 @@ elif [ "$CHIP" == "keres" ]
 		echo "CFG_FOLDER_NAME=config" >> $VAR_LIST
 elif [ "$CHIP" == "kirin" ]
 	then
+        if [ "$DDI_TEE" == "enable" ]; then
+            MIU_TYPE=_512_TEE
+        fi
 		echo "CFG_FOLDER_NAME=config" >> $VAR_LIST
+elif [ "$CHIP" == "kris" ]
+    then
+        if [ "$DDI_TEE" == "enable" ]; then
+            MIU_TYPE=_512_TEE
+        fi
+        echo "CFG_FOLDER_NAME=config" >> $VAR_LIST
 elif [ "$CHIP" == "clippers" ]
 	then
 		if [ "$CFG_MEMORY_MAP" == "MMAP_512MB" ]
@@ -75,6 +84,25 @@ elif [ "$CHIP" == "clippers" ]
 				MIU_TYPE=_512_512
 		fi
 		echo "CFG_FOLDER_NAME=config" >> $VAR_LIST
+elif [ "$CHIP" == "muji" ]
+    then
+        if [ "$CFG_MEMORY_MAP" == "MMAP_512MB_512MB" ]
+            then
+                MIU_TYPE=_512_512
+        fi
+        echo "CFG_FOLDER_NAME=config" >> $VAR_LIST
+elif [ "$CHIP" == "kratos" ]
+    then
+        echo "CFG_FOLDER_NAME=config" >> $VAR_LIST
+elif [ "$CHIP" == "kano" ]
+    then
+        echo "CFG_FOLDER_NAME=config" >> $VAR_LIST
+elif [ "$CHIP" == "kiwi" ]
+    then
+        echo "CFG_FOLDER_NAME=config" >> $VAR_LIST        
+elif [ "$CHIP" == "kastor" ]
+    then
+        echo "CFG_FOLDER_NAME=config" >> $VAR_LIST
 else
 		echo "Unknow CHIP ${CHIP} !!"
 		exit 1
@@ -104,6 +132,9 @@ if [ "$FS_TYPE" == "ramdisk" ]
 		if [ "$FLASH_TYPE" == "SPI" ]
 			then
 				PART_EXT_NAME=sqsh
+		elif [ "$FLASH_TYPE" == "EMMC" ]
+			then
+				PART_EXT_NAME=ext4
 		else
 				PART_EXT_NAME=ubifs
 		fi
@@ -111,7 +142,31 @@ else
 		PART_EXT_NAME=${FS_TYPE}
 fi
 
+if [ "$FS_TYPE" == "ramdisk" ]
+then
+    if [ "$CHIP" == "kaiser" ]
+    then
+    echo "KERNEL_START=0x25000000" >> $VAR_LIST
+    else
 echo "KERNEL_START=0x81000000" >> $VAR_LIST
+    fi
+else
+    if [ "$CHIP" == "kano" ]
+    then
+    echo "KERNEL_START=0x25000000" >> $VAR_LIST
+    else
+	    if [ "$CHIP" == "kastor" ]
+        then
+        echo "KERNEL_START=0x25000000" >> $VAR_LIST
+        else
+			if [ "$DDI_SECURE_UBOOT" == "enable" ]; then
+				echo "KERNEL_START=0x80400000" >> $VAR_LIST
+			else
+				echo "KERNEL_START=0x81000000" >> $VAR_LIST
+			fi
+		fi
+    fi
+fi
 echo "PART_EXT_NAME=${PART_EXT_NAME}" >> $VAR_LIST
 if [ "$MW_FLOW" == "enable" ]
 	then
@@ -144,6 +199,14 @@ echo "EXT_KERNEL_SIZE=${EXT_KERNEL_SIZE}" >> $VAR_LIST
 echo "EXT_RFS_SIZE=${EXT_RFS_SIZE}" >> $VAR_LIST
 echo "EXT_MWLIB_SIZE=${EXT_MWLIB_SIZE}" >> $VAR_LIST
 echo "EXT_LIB_SIZE=${EXT_LIB_SIZE}" >> $VAR_LIST
+
+echo "EXT_NAND_APP_PARTITION_SIZE=${EXT_NAND_APP_PARTITION_SIZE}" >> $VAR_LIST
+echo "EXT_NAND_CONF_PARTITION_SIZE=${EXT_NAND_CONF_PARTITION_SIZE}" >> $VAR_LIST
+echo "EXT_NAND_KERNEL_PARTITION_SIZE=${EXT_NAND_KERNEL_PARTITION_SIZE}" >> $VAR_LIST
+echo "EXT_NAND_RFS_PARTITION_SIZE=${EXT_NAND_RFS_PARTITION_SIZE}" >> $VAR_LIST
+echo "EXT_NAND_MWLIB_PARTITION_SIZE=${EXT_NAND_MWLIB_PARTITION_SIZE}" >> $VAR_LIST
+echo "EXT_NAND_LIB_PARTITION_SIZE=${EXT_NAND_LIB_PARTITION_SIZE}" >> $VAR_LIST
+
 echo "UTOPIA_PATH=${UTOPIA_PATH}" >> $VAR_LIST
 
 # setup RESERVED_SIZE for different file system type
@@ -158,6 +221,9 @@ if [ "$FS_TYPE" == "ubifs" ]
 elif [ "$FS_TYPE" == "ext4" ]
 	then
 			RESERVED_SIZE=0x600000
+elif [ "$FS_TYPE" == "sqsh" ]
+	then
+			RESERVED_SIZE=0x000000
 else
 			RESERVED_SIZE=0x300000
 fi

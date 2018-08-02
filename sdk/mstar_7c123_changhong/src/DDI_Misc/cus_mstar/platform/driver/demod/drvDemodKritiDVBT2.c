@@ -93,20 +93,40 @@
 
 
 #define COFDMDMD_MUTEX_TIMEOUT       (2000)
+#define KRITI_DVBT2_TDI_LEN 0x600000
+#define KRITI_DVBT2_DJB_LEN 0xC8000
+#define KRITI_DVBT2_EQ_LEN  0x96000
+#define KRITI_DVBT2_FW_LEN  0x8000
+
+
+
 static MS_BOOL KritiDMD_Init = FALSE;
 static MS_S32 _s32MutexId = -1;
 static EN_DEMOD_TYPE eCurDemodType = E_DEMOD_TYPE_T;
+static MS_U32 u32INTERNAL_DVBT2_EQ_ADR = NULL;
+static MS_U32 u32INTERNAL_DVBT2_TDI_ADR = NULL;
+static MS_U32 u32INTERNAL_DVBT2_DJB_ADR = NULL;
+static MS_U32 u32INTERNAL_DVBT2_FW_ADR = NULL;
+
+
+#if MS_DVBT2_INUSE
+static MS_U8       PLPIDList[256];
+static MS_U8       PLPIDSize = 0;
+static MS_U8       stu8ScanStatus = 0;
+#endif
 
 #define IF_FREQUENCY  5000//KHz for demod restart&init
 #define FS_FREQUENCY 24000
 #define usleep(x)                   MsOS_DelayTask(x/1000)
 
+#define MSKRITI_NO_CHANNEL_CHECK 1
+
 MS_S32 _u32LockTimeMax;
 DEMOD_MS_INIT_PARAM Kriti_DVBT_INIT_PARAM;
 static DMD_RFAGC_SSI TUNER_RfagcSsi[] =
 {
-    {0,    0xff},  
-    {0,    0xff},  
+    {0,    0xff},
+    {0,    0xff},
 
 };
 
@@ -189,13 +209,13 @@ static DMD_SQI_CN_NORDIGP1 DvbtSqiCnNordigP1[] =
     {_QPSK,  _CR3Y4, 7.9 },
     {_QPSK,  _CR5Y6, 8.9 },
     {_QPSK,  _CR7Y8, 9.7 },
-    
+
     {_16QAM, _CR1Y2, 10.8},
     {_16QAM, _CR2Y3, 13.1},
     {_16QAM, _CR3Y4, 12.2},
     {_16QAM, _CR5Y6, 15.6},
     {_16QAM, _CR7Y8, 16.0},
-    
+
     {_64QAM, _CR1Y2, 16.5},
     {_64QAM, _CR2Y3, 16.3},
     {_64QAM, _CR3Y4, 17.8},
@@ -236,145 +256,162 @@ static DMD_T2_SQI_CN_NORDIGP1 Dvbt2SqiCnNordigP1[] =
     {_T2_256QAM, _T2_CR5Y6, 25.1},
 };
 #endif
-static MS_U8 u8DMD_DVBT_InitExt[]={ 4, // version
-                                        0, // reserved
-                                        0x15, // TS_CLK
-                                        1 , // RFAGC tristate control default value, 1:trisate 0:non-tristate,never modify unless you know the meaning
-                                        (MS_U8)(IF_FREQUENCY>>24), // IF Frequency
-                                        (MS_U8)(IF_FREQUENCY>>16),
-                                        (MS_U8)(IF_FREQUENCY>>8),
-                                        (MS_U8)(IF_FREQUENCY>>0),
-                                        (MS_U8)(24000>>24), // FS Frequency
-                                        (MS_U8)(24000>>16),
-                                        (MS_U8)(24000>>8),
-                                        (MS_U8)(24000>>0),
-                                        FRONTEND_DEMOD_IQ_SWAP, // IQ Swap
-                                        FRONTEND_DEMOD_IQ_TYPE, // u8ADCIQMode : 0=I path, 1=Q path, 2=both IQ
-                                        0, // u8PadSel : 0=Normal, 1=analog pad
-                                        0, // bPGAEnable : 0=disable, 1=enable
-                                        5, // u8PGAGain : default 5
-                                        (MS_U8)(DVBT_TPS_timeout>>8), // TPS timeout 700ms~
-                                        (MS_U8)(DVBT_TPS_timeout>>0),
-                                        (MS_U8)(DVBT_FEC_timeout>>8), // FEC timeout 6000ms~
-                                        (MS_U8)(DVBT_FEC_timeout>>0),
-                                  };
+static MS_U8 u8DMD_DVBT_InitExt[]= { 4, // version
+                                     0, // reserved
+                                     0x15, // TS_CLK
+                                     1 , // RFAGC tristate control default value, 1:trisate 0:non-tristate,never modify unless you know the meaning
+                                     (MS_U8)(IF_FREQUENCY>>24), // IF Frequency
+                                     (MS_U8)(IF_FREQUENCY>>16),
+                                     (MS_U8)(IF_FREQUENCY>>8),
+                                     (MS_U8)(IF_FREQUENCY>>0),
+                                     (MS_U8)(24000>>24), // FS Frequency
+                                     (MS_U8)(24000>>16),
+                                     (MS_U8)(24000>>8),
+                                     (MS_U8)(24000>>0),
+                                     FRONTEND_DEMOD_IQ_SWAP, // IQ Swap
+                                     FRONTEND_DEMOD_IQ_TYPE, // u8ADCIQMode : 0=I path, 1=Q path, 2=both IQ
+                                     0, // u8PadSel : 0=Normal, 1=analog pad
+                                     0, // bPGAEnable : 0=disable, 1=enable
+                                     5, // u8PGAGain : default 5
+                                     (MS_U8)(DVBT_TPS_timeout>>8), // TPS timeout 700ms~
+                                     (MS_U8)(DVBT_TPS_timeout>>0),
+                                     (MS_U8)(DVBT_FEC_timeout>>8), // FEC timeout 6000ms~
+                                     (MS_U8)(DVBT_FEC_timeout>>0),
+                                   };
 
-static MS_U8 u8DMD_DVBT_DSPRegInitExt[]={ 1, // version, should be matched with library
-                                                0, // reserved
-                                                
-                                                E_DMD_DVBT_CFG_FC_L,    // Addr_L
-                                                E_DMD_DVBT_CFG_FC_L>>8, // Addr_H
-                                                0xFF, // Mask
-                                                0x88,
-                                                E_DMD_DVBT_CFG_FC_H,    // Addr_L
-                                                E_DMD_DVBT_CFG_FC_H>>8, // Addr_H
-                                                0xFF, // Mask
-                                                0x13,
-                                                E_DMD_DVBT_CFG_IQ_SWAP,    // Addr_L
-                                                E_DMD_DVBT_CFG_IQ_SWAP>>8, // Addr_H
-                                                0xFF, // Mask
-                                                0x01, // 0x00=I path, 0x01=Q path
-}; // Value
+static MS_U8 u8DMD_DVBT_DSPRegInitExt[]= { 1, // version, should be matched with library
+                                           0, // reserved
+
+                                           E_DMD_DVBT_CFG_FC_L,    // Addr_L
+                                           E_DMD_DVBT_CFG_FC_L>>8, // Addr_H
+                                           0xFF, // Mask
+                                           0x88,
+                                           E_DMD_DVBT_CFG_FC_H,    // Addr_L
+                                           E_DMD_DVBT_CFG_FC_H>>8, // Addr_H
+                                           0xFF, // Mask
+                                           0x13,
+                                           E_DMD_DVBT_CFG_IQ_SWAP,    // Addr_L
+                                           E_DMD_DVBT_CFG_IQ_SWAP>>8, // Addr_H
+                                           0xFF, // Mask
+                                           0x01, // 0x00=I path, 0x01=Q path
+                                         }; // Value
 
 #if (MS_DVBT2_INUSE == 1)
-static MS_U8 u8DMD_DVBT2_InitExt[]={ 3, // version
-                                        0, // reserved
-                                        0x15, // TS_CLK
-                                        1 , // RFAGC tristate control default value, 1:trisate 0:non-tristate,never modify unless you know the meaning
-                                        (MS_U8)(IF_FREQUENCY>>24), // IF Frequency
-                                        (MS_U8)(IF_FREQUENCY>>16),
-                                        (MS_U8)(IF_FREQUENCY>>8),
-                                        (MS_U8)(IF_FREQUENCY>>0),
-                                        (MS_U8)(24000>>24), // FS Frequency
-                                        (MS_U8)(24000>>16),
-                                        (MS_U8)(24000>>8),
-                                        (MS_U8)(24000>>0),
-                                        FRONTEND_DEMOD_IQ_TYPE, // u8ADCIQMode : 0=I path, 1=Q path, 2=both IQ
-                                        0, // u8PadSel : 0=Normal, 1=analog pad
-                                        0, // bPGAEnable : 0=disable, 1=enable
-                                        5, // u8PGAGain : default 5
-                                        (MS_U8)(DVBT_TPS_timeout>>8), // P1 timeout 700ms~
-                                        (MS_U8)(DVBT_TPS_timeout>>0),
-                                        (MS_U8)(DVBT_FEC_timeout>>8), // FEC timeout 6000ms~
-                                        (MS_U8)(DVBT_FEC_timeout>>0),
-                                  };
+static MS_U8 u8DMD_DVBT2_InitExt[]= { 3, // version
+                                      0, // reserved
+                                      0x15, // TS_CLK
+                                      1 , // RFAGC tristate control default value, 1:trisate 0:non-tristate,never modify unless you know the meaning
+                                      (MS_U8)(IF_FREQUENCY>>24), // IF Frequency
+                                      (MS_U8)(IF_FREQUENCY>>16),
+                                      (MS_U8)(IF_FREQUENCY>>8),
+                                      (MS_U8)(IF_FREQUENCY>>0),
+                                      (MS_U8)(24000>>24), // FS Frequency
+                                      (MS_U8)(24000>>16),
+                                      (MS_U8)(24000>>8),
+                                      (MS_U8)(24000>>0),
+                                      FRONTEND_DEMOD_IQ_TYPE, // u8ADCIQMode : 0=I path, 1=Q path, 2=both IQ
+                                      0, // u8PadSel : 0=Normal, 1=analog pad
+                                      0, // bPGAEnable : 0=disable, 1=enable
+                                      5, // u8PGAGain : default 5
+                                      (MS_U8)(DVBT_TPS_timeout>>8), // P1 timeout 700ms~
+                                      (MS_U8)(DVBT_TPS_timeout>>0),
+                                      (MS_U8)(DVBT_FEC_timeout>>8), // FEC timeout 6000ms~
+                                      (MS_U8)(DVBT_FEC_timeout>>0),
+                                    };
 
-static MS_U8 u8DMD_DVBT2_DSPRegInitExt[]={ 1, // version, should be matched with library
-                                                0, // reserved
+static MS_U8 u8DMD_DVBT2_DSPRegInitExt[]= { 1, // version, should be matched with library
+                                            0, // reserved
 
-                                                E_DMD_T2_FC_L,    // Addr_L
-                                                E_DMD_T2_FC_L>>8, // Addr_H
-                                                0xFF, // Mask
-                                                0x88,
-                                                E_DMD_T2_FC_H,    // Addr_L
-                                                E_DMD_T2_FC_H>>8, // Addr_H
-                                                0xFF, // Mask
-                                                0x13,
-}; // Value
+                                            E_DMD_T2_FC_L,    // Addr_L
+                                            E_DMD_T2_FC_L>>8, // Addr_H
+                                            0xFF, // Mask
+                                            0x88,
+                                            E_DMD_T2_FC_H,    // Addr_L
+                                            E_DMD_T2_FC_H>>8, // Addr_H
+                                            0xFF, // Mask
+                                            0x13,
+                                          }; // Value
 #endif
 
 DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKRITI_DVBT2) DDI_DRV_TABLE_ENTRY(demodtab);
 
 static MS_BOOL _InitInternalDVBT(void)
 {
-          MS_BOOL bret = TRUE;
-          DMD_DVBT_InitData sDMD_DVBT_InitData;    
-          // tuner parameter
-          sDMD_DVBT_InitData.u8SarChannel=1; // 0xFF means un-connected
-          sDMD_DVBT_InitData.pTuner_RfagcSsi=TUNER_RfagcSsi;
-          sDMD_DVBT_InitData.u16Tuner_RfagcSsi_Size=sizeof(TUNER_RfagcSsi)/sizeof(DMD_RFAGC_SSI);
-          sDMD_DVBT_InitData.pTuner_IfagcSsi_LoRef=TUNER_IfagcSsi_LoRef;
-          sDMD_DVBT_InitData.u16Tuner_IfagcSsi_LoRef_Size=sizeof(TUNER_IfagcSsi_LoRef)/sizeof(DMD_IFAGC_SSI);
-          sDMD_DVBT_InitData.pTuner_IfagcSsi_HiRef=TUNER_IfagcSsi_HiRef;
-          sDMD_DVBT_InitData.u16Tuner_IfagcSsi_HiRef_Size=sizeof(TUNER_IfagcSsi_HiRef)/sizeof(DMD_IFAGC_SSI);
-          sDMD_DVBT_InitData.pTuner_IfagcErr_LoRef=TUNER_IfagcErr_LoRef;
-          sDMD_DVBT_InitData.u16Tuner_IfagcErr_LoRef_Size=sizeof(TUNER_IfagcErr_LoRef)/sizeof(DMD_IFAGC_SSI);
-          sDMD_DVBT_InitData.pTuner_IfagcErr_HiRef=TUNER_IfagcErr_HiRef;
-          sDMD_DVBT_InitData.u16Tuner_IfagcErr_HiRef_Size=sizeof(TUNER_IfagcErr_HiRef)/sizeof(DMD_IFAGC_SSI);
-          sDMD_DVBT_InitData.pSqiCnNordigP1=DvbtSqiCnNordigP1;
-          sDMD_DVBT_InitData.u16SqiCnNordigP1_Size=sizeof(DvbtSqiCnNordigP1)/sizeof(DMD_SQI_CN_NORDIGP1);
-          
-          // register init
-          sDMD_DVBT_InitData.u8DMD_DVBT_DSPRegInitExt=u8DMD_DVBT_DSPRegInitExt; 
+    MS_BOOL bret = TRUE;
+    DMD_DVBT_InitData sDMD_DVBT_InitData;
+    // tuner parameter
+    sDMD_DVBT_InitData.u8SarChannel=0xff; // 0xFF means un-connected
+    sDMD_DVBT_InitData.pTuner_RfagcSsi=TUNER_RfagcSsi;
+    sDMD_DVBT_InitData.u16Tuner_RfagcSsi_Size=sizeof(TUNER_RfagcSsi)/sizeof(DMD_RFAGC_SSI);
+    sDMD_DVBT_InitData.pTuner_IfagcSsi_LoRef=TUNER_IfagcSsi_LoRef;
+    sDMD_DVBT_InitData.u16Tuner_IfagcSsi_LoRef_Size=sizeof(TUNER_IfagcSsi_LoRef)/sizeof(DMD_IFAGC_SSI);
+    sDMD_DVBT_InitData.pTuner_IfagcSsi_HiRef=TUNER_IfagcSsi_HiRef;
+    sDMD_DVBT_InitData.u16Tuner_IfagcSsi_HiRef_Size=sizeof(TUNER_IfagcSsi_HiRef)/sizeof(DMD_IFAGC_SSI);
+    sDMD_DVBT_InitData.pTuner_IfagcErr_LoRef=TUNER_IfagcErr_LoRef;
+    sDMD_DVBT_InitData.u16Tuner_IfagcErr_LoRef_Size=sizeof(TUNER_IfagcErr_LoRef)/sizeof(DMD_IFAGC_SSI);
+    sDMD_DVBT_InitData.pTuner_IfagcErr_HiRef=TUNER_IfagcErr_HiRef;
+    sDMD_DVBT_InitData.u16Tuner_IfagcErr_HiRef_Size=sizeof(TUNER_IfagcErr_HiRef)/sizeof(DMD_IFAGC_SSI);
+    sDMD_DVBT_InitData.pSqiCnNordigP1=DvbtSqiCnNordigP1;
+    sDMD_DVBT_InitData.u16SqiCnNordigP1_Size=sizeof(DvbtSqiCnNordigP1)/sizeof(DMD_SQI_CN_NORDIGP1);
+
+    // register init
+    sDMD_DVBT_InitData.u8DMD_DVBT_DSPRegInitExt=u8DMD_DVBT_DSPRegInitExt;
     // TODO use system variable type
-          sDMD_DVBT_InitData.u8DMD_DVBT_DSPRegInitSize=(sizeof(u8DMD_DVBT_DSPRegInitExt)-2)/4;
-          sDMD_DVBT_InitData.u8DMD_DVBT_InitExt=u8DMD_DVBT_InitExt; // TODO use system variable type
-          bret &= MDrv_DMD_DVBT_Init(&sDMD_DVBT_InitData, sizeof(sDMD_DVBT_InitData));
-          return bret;
+    sDMD_DVBT_InitData.u8DMD_DVBT_DSPRegInitSize=(sizeof(u8DMD_DVBT_DSPRegInitExt)-2)/4;
+    sDMD_DVBT_InitData.u8DMD_DVBT_InitExt=u8DMD_DVBT_InitExt; // TODO use system variable type
+    bret &= MDrv_DMD_DVBT_Init(&sDMD_DVBT_InitData, sizeof(sDMD_DVBT_InitData));
+    return bret;
 }
 
-#if MS_DVBT2_INUSE 
+#if MS_DVBT2_INUSE
 static MS_BOOL _InitInternalDVBT2(void)
-    {
-          MS_BOOL bret = TRUE;
-          DMD_DVBT2_InitData sDMD_DVBT2_InitData;    
-          // tuner parameter
-          sDMD_DVBT2_InitData.u8SarChannel=1; // 0xFF means un-connected
-          sDMD_DVBT2_InitData.pTuner_RfagcSsi=TUNER_RfagcSsi;
-          sDMD_DVBT2_InitData.u16Tuner_RfagcSsi_Size=sizeof(TUNER_RfagcSsi)/sizeof(DMD_RFAGC_SSI);
-          sDMD_DVBT2_InitData.pTuner_IfagcSsi_LoRef=TUNER_IfagcSsi_LoRef;
-          sDMD_DVBT2_InitData.u16Tuner_IfagcSsi_LoRef_Size=sizeof(TUNER_IfagcSsi_LoRef)/sizeof(DMD_IFAGC_SSI);
-          sDMD_DVBT2_InitData.pTuner_IfagcSsi_HiRef=TUNER_IfagcSsi_HiRef;
-          sDMD_DVBT2_InitData.u16Tuner_IfagcSsi_HiRef_Size=sizeof(TUNER_IfagcSsi_HiRef)/sizeof(DMD_IFAGC_SSI);
-          sDMD_DVBT2_InitData.pTuner_IfagcErr_LoRef=TUNER_IfagcErr_LoRef;
-          sDMD_DVBT2_InitData.u16Tuner_IfagcErr_LoRef_Size=sizeof(TUNER_IfagcErr_LoRef)/sizeof(DMD_IFAGC_SSI);
-          sDMD_DVBT2_InitData.pTuner_IfagcErr_HiRef=TUNER_IfagcErr_HiRef;
-          sDMD_DVBT2_InitData.u16Tuner_IfagcErr_HiRef_Size=sizeof(TUNER_IfagcErr_HiRef)/sizeof(DMD_IFAGC_SSI);
-          sDMD_DVBT2_InitData.pSqiCnNordigP1=Dvbt2SqiCnNordigP1;
-          sDMD_DVBT2_InitData.u16SqiCnNordigP1_Size=sizeof(Dvbt2SqiCnNordigP1)/sizeof(DMD_SQI_CN_NORDIGP1);
-          
-          // register init
-          sDMD_DVBT2_InitData.u8DMD_DVBT2_DSPRegInitExt=u8DMD_DVBT2_DSPRegInitExt; // TODO use system variable type
-          sDMD_DVBT2_InitData.u8DMD_DVBT2_DSPRegInitSize=(sizeof(u8DMD_DVBT2_DSPRegInitExt)-2)/4;
-          sDMD_DVBT2_InitData.u8DMD_DVBT2_InitExt=u8DMD_DVBT2_InitExt; // TODO use system variable type
-          sDMD_DVBT2_InitData.u32EqStartAddr = (MS_U32)INTERNAL_DVBT2_EQ_ADR;
-          sDMD_DVBT2_InitData.u32TdiStartAddr= (MS_U32)INTERNAL_DVBT2_TDI_ADR;
-          sDMD_DVBT2_InitData.u32DjbStartAddr= (MS_U32)INTERNAL_DVBT2_DJB_ADR;
-          sDMD_DVBT2_InitData.u32FwStartAddr= (MS_U32)INTERNAL_DVBT2_FW_ADR;
-          bret &= MDrv_DMD_DVBT2_Init(&sDMD_DVBT2_InitData, sizeof(sDMD_DVBT2_InitData));
-          return bret;
+{
+    MS_BOOL bret = TRUE;
+    DMD_DVBT2_InitData sDMD_DVBT2_InitData;
+    // tuner parameter
+    sDMD_DVBT2_InitData.u8SarChannel=0xff; // 0xFF means un-connected
+    sDMD_DVBT2_InitData.pTuner_RfagcSsi=TUNER_RfagcSsi;
+    sDMD_DVBT2_InitData.u16Tuner_RfagcSsi_Size=sizeof(TUNER_RfagcSsi)/sizeof(DMD_RFAGC_SSI);
+    sDMD_DVBT2_InitData.pTuner_IfagcSsi_LoRef=TUNER_IfagcSsi_LoRef;
+    sDMD_DVBT2_InitData.u16Tuner_IfagcSsi_LoRef_Size=sizeof(TUNER_IfagcSsi_LoRef)/sizeof(DMD_IFAGC_SSI);
+    sDMD_DVBT2_InitData.pTuner_IfagcSsi_HiRef=TUNER_IfagcSsi_HiRef;
+    sDMD_DVBT2_InitData.u16Tuner_IfagcSsi_HiRef_Size=sizeof(TUNER_IfagcSsi_HiRef)/sizeof(DMD_IFAGC_SSI);
+    sDMD_DVBT2_InitData.pTuner_IfagcErr_LoRef=TUNER_IfagcErr_LoRef;
+    sDMD_DVBT2_InitData.u16Tuner_IfagcErr_LoRef_Size=sizeof(TUNER_IfagcErr_LoRef)/sizeof(DMD_IFAGC_SSI);
+    sDMD_DVBT2_InitData.pTuner_IfagcErr_HiRef=TUNER_IfagcErr_HiRef;
+    sDMD_DVBT2_InitData.u16Tuner_IfagcErr_HiRef_Size=sizeof(TUNER_IfagcErr_HiRef)/sizeof(DMD_IFAGC_SSI);
+    sDMD_DVBT2_InitData.pSqiCnNordigP1=Dvbt2SqiCnNordigP1;
+    sDMD_DVBT2_InitData.u16SqiCnNordigP1_Size=sizeof(Dvbt2SqiCnNordigP1)/sizeof(DMD_SQI_CN_NORDIGP1);
 
+    // register init
+    sDMD_DVBT2_InitData.u8DMD_DVBT2_DSPRegInitExt=u8DMD_DVBT2_DSPRegInitExt; // TODO use system variable type
+    sDMD_DVBT2_InitData.u8DMD_DVBT2_DSPRegInitSize=(sizeof(u8DMD_DVBT2_DSPRegInitExt)-2)/4;
+    sDMD_DVBT2_InitData.u8DMD_DVBT2_InitExt=u8DMD_DVBT2_InitExt; // TODO use system variable type
+
+#if defined(INTERNAL_DVBT2_EQ_ADR) && defined(INTERNAL_DVBT2_TDI_ADR) &&\
+    defined(INTERNAL_DVBT2_DJB_ADR) && defined(INTERNAL_DVBT2_FW_ADR)
+    sDMD_DVBT2_InitData.u32EqStartAddr = (MS_U32)INTERNAL_DVBT2_EQ_ADR;
+    sDMD_DVBT2_InitData.u32TdiStartAddr= (MS_U32)INTERNAL_DVBT2_TDI_ADR;
+    sDMD_DVBT2_InitData.u32DjbStartAddr= (MS_U32)INTERNAL_DVBT2_DJB_ADR;
+    sDMD_DVBT2_InitData.u32FwStartAddr= (MS_U32)INTERNAL_DVBT2_FW_ADR;
+#else
+    if((NULL == u32INTERNAL_DVBT2_EQ_ADR) || (NULL == u32INTERNAL_DVBT2_TDI_ADR) ||\
+        (NULL == u32INTERNAL_DVBT2_DJB_ADR) || (NULL == u32INTERNAL_DVBT2_FW_ADR))
+    {
+       return FALSE;
     }
+    else
+    {
+       sDMD_DVBT2_InitData.u32EqStartAddr = (MS_U32)u32INTERNAL_DVBT2_EQ_ADR;
+       sDMD_DVBT2_InitData.u32TdiStartAddr= (MS_U32)u32INTERNAL_DVBT2_TDI_ADR;
+       sDMD_DVBT2_InitData.u32DjbStartAddr= (MS_U32)u32INTERNAL_DVBT2_DJB_ADR;
+       sDMD_DVBT2_InitData.u32FwStartAddr= (MS_U32)u32INTERNAL_DVBT2_FW_ADR;
+    }
+#endif
+    bret &= MDrv_DMD_DVBT2_Init(&sDMD_DVBT2_InitData, sizeof(sDMD_DVBT2_InitData));
+    return bret;
+
+}
 #endif
 MS_BOOL MDrv_Kriti_DVBT2_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
 {
@@ -386,7 +423,7 @@ MS_BOOL MDrv_Kriti_DVBT2_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pPar
 
         if (_s32MutexId < 0)
         {
-            GEN_EXCEP;
+            DMD_ERR(("%s: Create mutex failed.\n", __FUNCTION__));
             return FALSE;
         }
 
@@ -399,20 +436,18 @@ MS_BOOL MDrv_Kriti_DVBT2_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pPar
     MDrv_SYS_DMD_VD_MBX_Init();
 
 
-    MDrv_SAR_Kpd_Init();
-
     if( E_DEMOD_TYPE_T == eCurDemodType)
         ret = _InitInternalDVBT();
-#if MS_DVBT2_INUSE         
+#if MS_DVBT2_INUSE
     else if(E_DEMOD_TYPE_T2 == eCurDemodType)
         ret = _InitInternalDVBT2();
-#endif   
-  
+#endif
+
     if(ret == TRUE)
     {
         KritiDMD_Init = TRUE;
     }
-     DMD_DBG(("Kriti Internal DMD init OK\n"));
+    DMD_DBG(("Kriti Internal DMD init OK\n"));
     return ret;
 
 }
@@ -421,7 +456,7 @@ MS_BOOL MDrv_Kriti_DVBT2_Demod_Open(MS_U8 u8DemodIndex)
 {
     if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
     {
-         DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
+        DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
         return FALSE;
     }
     HB_ReleaseMutex(_s32MutexId);
@@ -434,12 +469,12 @@ MS_BOOL MDrv_Kriti_DVBT2_Demod_Close(MS_U8 u8DemodIndex)
 
     if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
     {
-         DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
+        DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
         return FALSE;
     }
 
     ret &= MDrv_DMD_DVBT_Exit();
-#if MS_DVBT2_INUSE 
+#if MS_DVBT2_INUSE
     ret &= MDrv_DMD_DVBT2_Exit();
 #endif
     if(ret == TRUE)
@@ -456,7 +491,7 @@ MS_BOOL MDrv_Kriti_DVBT2_Demod_PowerOnOff(MS_U8 u8DemodIndex, MS_BOOL bPowerOn)
 {
     if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
     {
-         DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
         return FALSE;
     }
 
@@ -465,157 +500,257 @@ MS_BOOL MDrv_Kriti_DVBT2_Demod_PowerOnOff(MS_U8 u8DemodIndex, MS_BOOL bPowerOn)
     return TRUE;
 }
 
+#if MS_DVBT2_INUSE
+#if MSKRITI_NO_CHANNEL_CHECK
+MS_BOOL MDrv_Demod_GetNoChannelFlag(EN_DEVICE_DEMOD_TYPE system, COFDM_LOCK_STATUS eStatus)
+{
+    MS_U16        u16Address = 0;
+    MS_U8         cData = 0;
+    MS_U8         cBitMask = 0;
+    MS_U8         use_dsp_reg = 0;
+    switch (eStatus)
+    {
+    case COFDM_DVBT2_NOCH_FLAG:
+        use_dsp_reg = 1;
+        u16Address = T_DVBT2_NOCHAN_Flag; //Pl ever lock,
+        cBitMask = 0x0001;
+        break;
+
+    case COFDM_DVBT_NOCH_FLAG:
+        use_dsp_reg = 1;
+        u16Address = T_DVBT_NOCHAN_Flag; // No DVBT CH Flag,
+        cBitMask = 0x0001;
+        break;
+    case COFDM_DETECT_DONE_FLAG:
+        use_dsp_reg = 1;
+        u16Address = T_DETECT_DONE_FLAG; // No DVBT CH Flag,
+        cBitMask = 0x0001;
+        break;
+
+    default:
+        return FALSE;
+    }
+
+    if (use_dsp_reg == 1)
+    {
+        if (MDrv_SYS_DMD_VD_MBX_ReadDSPReg(u16Address, &cData) == FALSE)
+        {
+            printf(">INTERN_DVBT2_GetLock MBX_ReadDspReg fail \n");
+            return FALSE;
+        }
+    }
+    else
+    {
+        if (MDrv_SYS_DMD_VD_MBX_ReadReg(u16Address, &cData) == FALSE)
+        {
+            printf(">INTERN_DVBT2_GetLock MBX_ReadReg fail \n");
+            return FALSE;
+        }
+    }
+    if ((cData & cBitMask) == cBitMask)
+    {
+        return TRUE;
+    }
+    return FALSE;
+}
+#endif
+#endif
+
 MS_BOOL MDrv_Kriti_DVBT2_Demod_GetLock(MS_U8 u8DemodIndex, EN_LOCK_STATUS *peLockStatus)
 {
-        DMD_LOCK_STATUS LockStatus;
-#if MS_DVBT2_INUSE     
-        DMD_T2_LOCK_STATUS T2LockStatus;
+    DMD_LOCK_STATUS LockStatus;
+#if MS_DVBT2_INUSE
+    DMD_T2_LOCK_STATUS T2LockStatus;
 #endif
-    
-        if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
-        {
-             DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
-            return FALSE;
-        }
-    
-    
-        if(KritiDMD_Init == FALSE)
-        {
-            HB_ReleaseMutex(_s32MutexId);
-            return FALSE;
-        }
-        if(E_DEMOD_TYPE_T == eCurDemodType)
-        {
-            MDrv_DMD_DVBT_GetLock(E_DMD_DMD_DVBT_GETLOCK, &LockStatus);
-            switch (LockStatus)
-            {
-                case E_DMD_LOCK:
-                    *peLockStatus = E_DEMOD_LOCK;
-                    //_u32LockTimeMax = DVBT_FEC_timeout;
-                    break;
-                case E_DMD_CHECKEND:
-                    *peLockStatus = E_DEMOD_CHECKEND;
-                    break;
-                case E_DMD_UNLOCK:         
-                    *peLockStatus = E_DEMOD_UNLOCK;
-                    //_u32LockTimeMax = DVBT_TPS_timeout;
-                    break;
-                case E_DMD_CHECKING:
-                default:
-                    *peLockStatus = E_DEMOD_CHECKING;
-                    break;
-            }
-        }
-#if MS_DVBT2_INUSE 
-        else
-        {
-            MDrv_DMD_DVBT2_GetLock(E_DMD_DVBT2_GETLOCK, &T2LockStatus);
-            switch (T2LockStatus)
-            {
-                case E_DMD_T2_LOCK:
-                    *peLockStatus = E_DEMOD_LOCK;
-                    //_u32LockTimeMax = DVBT_FEC_timeout;
-                    break;
-                case E_DMD_T2_CHECKEND:
-                    *peLockStatus = E_DEMOD_CHECKEND;
-                    break;
-                case E_DMD_T2_UNLOCK:         
-                    *peLockStatus = E_DEMOD_UNLOCK;
-                    //_u32LockTimeMax = DVBT_TPS_timeout;
-                    break;
-                case E_DMD_T2_CHECKING:
-                default:
-                    *peLockStatus = E_DEMOD_CHECKING;
-                    break;
-            }
-        }
-#endif    
+
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+        DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+
+    if(KritiDMD_Init == FALSE)
+    {
         HB_ReleaseMutex(_s32MutexId);
-    
-        return TRUE;
+        return FALSE;
+    }
+    if(E_DEMOD_TYPE_T == eCurDemodType)
+    {
+#if (MS_DVBT2_INUSE == 1)
+#if MSKRITI_NO_CHANNEL_CHECK
+        MS_BOOL doneFlag;
+
+        MS_BOOL tChannelFlag=FALSE;
+        MS_BOOL t2ChannelFlag=FALSE;
+
+        doneFlag = MDrv_Demod_GetNoChannelFlag(E_DEVICE_DEMOD_DVB_T,COFDM_DETECT_DONE_FLAG);
+        if (doneFlag)
+        {
+            tChannelFlag = MDrv_Demod_GetNoChannelFlag(E_DEVICE_DEMOD_DVB_T,COFDM_DVBT_NOCH_FLAG);
+            t2ChannelFlag = MDrv_Demod_GetNoChannelFlag(E_DEVICE_DEMOD_DVB_T,COFDM_DVBT2_NOCH_FLAG);
+
+            DMD_DBG(("NoChannel stable .... T[%d] T2[%d] \n",tChannelFlag,t2ChannelFlag));
+        }
+#endif
+#endif
+
+        MDrv_DMD_DVBT_GetLock(E_DMD_DMD_DVBT_GETLOCK, &LockStatus);
+        switch (LockStatus)
+        {
+        case E_DMD_LOCK:
+            *peLockStatus = E_DEMOD_LOCK;
+            //_u32LockTimeMax = DVBT_FEC_timeout;
+            break;
+        case E_DMD_CHECKEND:
+            *peLockStatus = E_DEMOD_CHECKEND;
+            break;
+        case E_DMD_UNLOCK:
+            *peLockStatus = E_DEMOD_UNLOCK;
+#if (MS_DVBT2_INUSE == 1)
+#if MSKRITI_NO_CHANNEL_CHECK
+            if ( doneFlag )
+            {
+                if ( t2ChannelFlag )
+                {
+                    *peLockStatus = E_DEMOD_T_T2_UNLOCK;
+                }
+            }
+#endif
+#endif
+            break;
+        case E_DMD_CHECKING:
+#if (MS_DVBT2_INUSE == 1)
+#if MSKRITI_NO_CHANNEL_CHECK
+            if ( doneFlag && tChannelFlag )
+            {
+                if ( t2ChannelFlag )
+                {
+                    *peLockStatus = E_DEMOD_T_T2_UNLOCK;
+                }
+                else
+                {
+                    *peLockStatus = E_DEMOD_UNLOCK;
+                }
+                break;
+            }
+#endif
+#endif
+        default:
+            *peLockStatus = E_DEMOD_CHECKING;
+            break;
+        }
+    }
+#if MS_DVBT2_INUSE
+    else
+    {
+        MDrv_DMD_DVBT2_GetLock(E_DMD_DVBT2_GETLOCK, &T2LockStatus);
+        switch (T2LockStatus)
+        {
+        case E_DMD_T2_LOCK:
+            *peLockStatus = E_DEMOD_LOCK;
+            //_u32LockTimeMax = DVBT_FEC_timeout;
+            break;
+        case E_DMD_T2_CHECKEND:
+            *peLockStatus = E_DEMOD_CHECKEND;
+            break;
+        case E_DMD_T2_UNLOCK:
+            *peLockStatus = E_DEMOD_UNLOCK;
+            //_u32LockTimeMax = DVBT_TPS_timeout;
+            break;
+        case E_DMD_T2_CHECKING:
+        default:
+            *peLockStatus = E_DEMOD_CHECKING;
+            break;
+        }
+    }
+#endif
+    HB_ReleaseMutex(_s32MutexId);
+
+    return TRUE;
 
 }
 
 MS_BOOL MDrv_Kriti_DVBT2_Demod_GetSNR(MS_U8 u8DemodIndex, float *pfSNR)
 {
-        MS_BOOL ret = TRUE;
-    
-        if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
-        {
-             DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
-            return FALSE;
-        }
-    
-        if(KritiDMD_Init == FALSE)
-        {
-            *pfSNR = 0;
-            HB_ReleaseMutex(_s32MutexId);
-            return FALSE;
-        }
-        
-        if(E_DEMOD_TYPE_T == eCurDemodType)
-            ret = MDrv_DMD_DVBT_GetSNR(pfSNR);
-#if MS_DVBT2_INUSE 
-        else    
-            ret = MDrv_DMD_DVBT2_GetSNR(pfSNR);
-#endif            
+    MS_BOOL ret = TRUE;
+
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+        DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    if(KritiDMD_Init == FALSE)
+    {
+        *pfSNR = 0;
         HB_ReleaseMutex(_s32MutexId);
-        return ret;
+        return FALSE;
+    }
+
+    if(E_DEMOD_TYPE_T == eCurDemodType)
+        ret = MDrv_DMD_DVBT_GetSNR(pfSNR);
+#if MS_DVBT2_INUSE
+    else
+        ret = MDrv_DMD_DVBT2_GetSNR(pfSNR);
+#endif
+    HB_ReleaseMutex(_s32MutexId);
+    return ret;
 
 }
 
 MS_BOOL MDrv_Kriti_DVBT2_Demod_GetBER(MS_U8 u8DemodIndex, float *pfBER)
+{
+    MS_BOOL ret= TRUE;
+
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
     {
-        MS_BOOL ret= TRUE;
-    
-        if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
-        {
-             DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
-            return FALSE;
-        }
-    
-        if(KritiDMD_Init == FALSE)
-        {
-            *pfBER = 0;
-            HB_ReleaseMutex(_s32MutexId);
-            return FALSE;
-        }
-        
-        if(E_DEMOD_TYPE_T == eCurDemodType)
-            ret = MDrv_DMD_DVBT_GetPostViterbiBer(pfBER);  
-#if MS_DVBT2_INUSE   
-        else
-            ret = MDrv_DMD_DVBT2_GetPostLdpcBer(pfBER);
-#endif    
-        HB_ReleaseMutex(_s32MutexId);
-        return ret;
+        DMD_ERR( ("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
     }
+
+    if(KritiDMD_Init == FALSE)
+    {
+        *pfBER = 0;
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+
+    if(E_DEMOD_TYPE_T == eCurDemodType)
+        ret = MDrv_DMD_DVBT_GetPostViterbiBer(pfBER);
+#if MS_DVBT2_INUSE
+    else
+        ret = MDrv_DMD_DVBT2_GetPostLdpcBer(pfBER);
+#endif
+    HB_ReleaseMutex(_s32MutexId);
+    return ret;
+}
 
 
 MS_BOOL MDrv_Kriti_DVBT2_Demod_GetPWR(MS_U8 u8DemodIndex, MS_S32 *ps32Signal)
 {
-        MS_BOOL ret= TRUE;
-    
-        if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
-        {
-             DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
-            return FALSE;
-        }
-    
-        if(KritiDMD_Init == FALSE)
-        {
-            *ps32Signal = 0;
-            HB_ReleaseMutex(_s32MutexId);
-            return FALSE;
-        }
-        if(E_DEMOD_TYPE_T == eCurDemodType)
-            ret = MDrv_DMD_DVBT_GetSignalStrength((MS_U16 *)ps32Signal);
-#if MS_DVBT2_INUSE    
-        else
-            ret = MDrv_DMD_DVBT2_GetSignalStrength((MS_U16 *)ps32Signal); 
-#endif    
+    MS_BOOL ret= TRUE;
+
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+        DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    if(KritiDMD_Init == FALSE)
+    {
+        *ps32Signal = 0;
         HB_ReleaseMutex(_s32MutexId);
-        return ret;
+        return FALSE;
+    }
+    if(E_DEMOD_TYPE_T == eCurDemodType)
+        ret = MDrv_DMD_DVBT_GetSignalStrength((MS_U16 *)ps32Signal);
+#if MS_DVBT2_INUSE
+    else
+        ret = MDrv_DMD_DVBT2_GetSignalStrength((MS_U16 *)ps32Signal);
+#endif
+    HB_ReleaseMutex(_s32MutexId);
+    return ret;
 }
 
 
@@ -624,7 +759,7 @@ MS_BOOL MDrv_Kriti_DVBT2_Demod_GetSignalQuality(MS_U8 u8DemodIndex,MS_U16 *pu16q
     MS_BOOL ret = FALSE;
     if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
     {
-         DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
+        DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
         return FALSE;
     }
 
@@ -635,162 +770,265 @@ MS_BOOL MDrv_Kriti_DVBT2_Demod_GetSignalQuality(MS_U8 u8DemodIndex,MS_U16 *pu16q
         return FALSE;
     }
 
-    if(E_DEMOD_TYPE_T == eCurDemodType)    
+    if(E_DEMOD_TYPE_T == eCurDemodType)
         ret = MDrv_DMD_DVBT_GetSignalQuality(pu16quality);
-#if MS_DVBT2_INUSE         
+#if MS_DVBT2_INUSE
     else
         ret = MDrv_DMD_DVBT2_GetSignalQuality(pu16quality);
-#endif        
+#endif
     HB_ReleaseMutex(_s32MutexId);
     return ret;
 }
 
 
 MS_BOOL MDrv_Kriti_DVBT2_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM* pParam,MS_U32 u32BroadCastType)
-    {
-        MS_BOOL bPalBG = FALSE; //unknown variable
-        DMD_RF_CHANNEL_BANDWIDTH BW = E_DMD_RF_CH_BAND_8MHz;
-#if MS_DVBT2_INUSE 
-        DMD_DVBT2_RF_CHANNEL_BANDWIDTH BWT2 = E_DMD_T2_RF_BAND_8MHz;
-        //DMD_T2_LOCK_STATUS LockStatus = E_DMD_T2_NULL;
+{
+    MS_BOOL bPalBG = FALSE; //unknown variable
+    DMD_RF_CHANNEL_BANDWIDTH BW = E_DMD_RF_CH_BAND_8MHz;
+#if MS_DVBT2_INUSE
+    DMD_DVBT2_RF_CHANNEL_BANDWIDTH BWT2 = E_DMD_T2_RF_BAND_8MHz;
+    //DMD_T2_LOCK_STATUS LockStatus = E_DMD_T2_NULL;
 #endif
-        MS_BOOL bret = TRUE;
-        //static DEMOD_EN_TER_BW_MODE cur_BW = 0xff;
-    
-    
-        if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
-        {
-             DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
-            return FALSE;
-        }
-    
-        if(KritiDMD_Init == FALSE)
-        {
-            HB_ReleaseMutex(_s32MutexId);
-            return FALSE;
-        }
+    MS_BOOL bret = TRUE;
+    //static DEMOD_EN_TER_BW_MODE cur_BW = 0xff;
 
-#if 0        
-#ifdef DVBT2_STYLE    
-        if (DEMOD_BW_MODE_1_7MHZ == pParam->TerParam.eBandWidth)
-        {
-            _SetCurrentDemodType(E_DEMOD_TYPE_T2);
-        }
-        else if ((E_DEMOD_TYPE_T == pParam->TerParam.u8ScanType) && (eCurDemodType != pParam->TerParam.u8ScanType))
-        {
-            _SetCurrentDemodType(E_DEMOD_TYPE_T);
-        }
-        else if ((E_DEMOD_TYPE_T2 == pParam->TerParam.u8ScanType) && (eCurDemodType != pParam->TerParam.u8ScanType))
-        {
-            _SetCurrentDemodType(E_DEMOD_TYPE_T2);
-        }
-#endif
-         //set freq and bw to tuner
-    
+
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+        DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    if(KritiDMD_Init == FALSE)
+    {
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+
+#if 0
 #ifdef DVBT2_STYLE
-        if(MDrv_DMD_DVBT2_GetLock(E_DMD_DVBT2_GETLOCK, &LockStatus) && (eCurDemodType == E_DEMOD_TYPE_T2))
-        {
-            if((E_DMD_T2_LOCK != LockStatus) || (eCurDemodType != pParam->TerParam.u8ScanType) ||\
+    if (DEMOD_BW_MODE_1_7MHZ == pParam->TerParam.eBandWidth)
+    {
+        _SetCurrentDemodType(E_DEMOD_TYPE_T2);
+    }
+    else if ((E_DEMOD_TYPE_T == pParam->TerParam.u8ScanType) && (eCurDemodType != pParam->TerParam.u8ScanType))
+    {
+        _SetCurrentDemodType(E_DEMOD_TYPE_T);
+    }
+    else if ((E_DEMOD_TYPE_T2 == pParam->TerParam.u8ScanType) && (eCurDemodType != pParam->TerParam.u8ScanType))
+    {
+        _SetCurrentDemodType(E_DEMOD_TYPE_T2);
+    }
+#endif
+    //set freq and bw to tuner
+
+#ifdef DVBT2_STYLE
+    if(MDrv_DMD_DVBT2_GetLock(E_DMD_DVBT2_GETLOCK, &LockStatus) && (eCurDemodType == E_DEMOD_TYPE_T2))
+    {
+        if((E_DMD_T2_LOCK != LockStatus) || (eCurDemodType != pParam->TerParam.u8ScanType) ||\
                 (tuner_config.u32CurrFreq != pParam->u32Frequency) || (tuner_config.enCurrBW != pParam->TerParam.eBandWidth))
-            {
-                 MDrv_Tuner_SetTuner( pParam->u32Frequency, pParam->TerParam.eBandWidth);
-            }
-        }
-        else       
         {
             MDrv_Tuner_SetTuner( pParam->u32Frequency, pParam->TerParam.eBandWidth);
         }
-#else
+    }
+    else
+    {
         MDrv_Tuner_SetTuner( pParam->u32Frequency, pParam->TerParam.eBandWidth);
+    }
+#else
+    MDrv_Tuner_SetTuner( pParam->u32Frequency, pParam->TerParam.eBandWidth);
 #endif
-    
-         tuner_config.u32CurrFreq = pParam->u32Frequency;
-         tuner_config.enCurrBW = pParam->TerParam.eBandWidth;
-#endif    
-        // ("------pParam->u32Frequency [%d] pParam->TerParam.eBandWidth[%d] ------\n",pParam->u32Frequency,pParam->TerParam.eBandWidth);
-      
-        //if(cur_BW != pParam->TerParam.eBandWidth)
+
+    tuner_config.u32CurrFreq = pParam->u32Frequency;
+    tuner_config.enCurrBW = pParam->TerParam.eBandWidth;
+#endif
+    // ("------pParam->u32Frequency [%d] pParam->TerParam.eBandWidth[%d] ------\n",pParam->u32Frequency,pParam->TerParam.eBandWidth);
+#if MS_DVBT2_INUSE
+    extern MS_BOOL MDrv_Kriti_DVBT2_Demod_SetCurrentDemodType(MS_U8 u8DemodIndex, MS_U8  type);
+    if ( u32BroadCastType == DVBT )
+    {
+        MDrv_Kriti_DVBT2_Demod_SetCurrentDemodType(u8DemodIndex,E_DEMOD_TYPE_T);
+    }
+    else
+    {
+        MDrv_Kriti_DVBT2_Demod_SetCurrentDemodType(u8DemodIndex,E_DEMOD_TYPE_T2);
+    }
+#endif
+
+    //if(cur_BW != pParam->TerParam.eBandWidth)
+    {
+        switch (pParam->TerParam.eBandWidth)
         {
-            switch (pParam->TerParam.eBandWidth)
-            {
-                case DEMOD_BW_MODE_6MHZ:
-                    BW = E_DMD_RF_CH_BAND_6MHz;
+        case DEMOD_BW_MODE_6MHZ:
+            BW = E_DMD_RF_CH_BAND_6MHz;
 #if MS_DVBT2_INUSE
-                    BWT2 = E_DMD_T2_RF_BAND_6MHz;
+            BWT2 = E_DMD_T2_RF_BAND_6MHz;
 #endif
-                    break;
-                case DEMOD_BW_MODE_7MHZ:
-                    BW = E_DMD_RF_CH_BAND_7MHz;
+            break;
+        case DEMOD_BW_MODE_7MHZ:
+            BW = E_DMD_RF_CH_BAND_7MHz;
 #if MS_DVBT2_INUSE
-                    BWT2 = E_DMD_T2_RF_BAND_7MHz;
+            BWT2 = E_DMD_T2_RF_BAND_7MHz;
 #endif
-                    break;
-#if MS_DVBT2_INUSE 
-                case DEMOD_BW_MODE_1_7MHZ:
-                    BWT2 = E_DMD_T2_RF_BAND_1p7MHz;
-                    break;
-#endif                
-                case DEMOD_BW_MODE_8MHZ:
-                default:
-                    BW = E_DMD_RF_CH_BAND_8MHz;
+            break;
 #if MS_DVBT2_INUSE
-                    BWT2 = E_DMD_T2_RF_BAND_8MHz;
+        case DEMOD_BW_MODE_1_7MHZ:
+            BWT2 = E_DMD_T2_RF_BAND_1p7MHz;
+            break;
 #endif
-                    break;
-            }
-    
+        case DEMOD_BW_MODE_8MHZ:
+        default:
+            BW = E_DMD_RF_CH_BAND_8MHz;
+#if MS_DVBT2_INUSE
+            BWT2 = E_DMD_T2_RF_BAND_8MHz;
+#endif
+            break;
+        }
+
         if(E_DEMOD_TYPE_T == eCurDemodType)
         {
-            bret &= MDrv_DMD_DVBT_SetConfig(BW, FALSE, bPalBG );
+            //bret &= MDrv_DMD_DVBT_SetConfig(BW, FALSE, bPalBG );
+            bret &= MDrv_DMD_DVBT_SetConfigHPLP(BW, FALSE, bPalBG, pParam->TerParam.eLevelSel);
             bret &= MDrv_DMD_DVBT_SetActive(TRUE);
         }
-#if MS_DVBT2_INUSE    
+#if MS_DVBT2_INUSE
         else
         {
             bret &= MDrv_DMD_DVBT2_SetConfig(BWT2, FALSE, pParam->TerParam.u8PlpID);
             bret &= MDrv_DMD_DVBT2_SetActive(TRUE);
         }
-            //cur_BW = pParam->TerParam.eBandWidth;
-    
+        //cur_BW = pParam->TerParam.eBandWidth;
+
 #endif
-        }
-    
-        HB_ReleaseMutex(_s32MutexId);
-        return TRUE;
     }
+
+    HB_ReleaseMutex(_s32MutexId);
+    return TRUE;
+}
 
 
 #if MS_DVBT2_INUSE
+MS_BOOL  MDrv_Kriti_DVBT2_Demod_SetT2Reset(MS_U8 u8DemodIndex)
+{
+    if (E_DEMOD_TYPE_T2 == eCurDemodType)
+        return MDrv_DMD_DVBT2_SetReset();
+    else
+        return FALSE;
+}
+
+MS_BOOL MDrv_Kriti_DVBT2_Demod_SetT2Restart(MS_U8 u8DemodIndex)
+{
+    MS_BOOL bret = TRUE;
+
+    if (E_DEMOD_TYPE_T == eCurDemodType)
+        return bret;
+
+    bret &= MDrv_DMD_DVBT2_SetActive(TRUE);
+    return bret;
+}
+
+MS_BOOL MDrv_Kriti_DVBT2_Demod_InitParameter(MS_U8 u8DemodIndex)
+{
+    stu8ScanStatus = 0;
+    return TRUE;
+}
+
+MS_BOOL MDrv_Kriti_DVBT2_Demod_GetNextPlpID(MS_U8 u8DemodIndex, MS_U8 u8Index, MS_U8* pList)
+{
+    *pList = PLPIDList[u8Index];
+    return TRUE;
+}
+
+MS_U8 MDrv_Kriti_DVBT2_Demod_GetScanTypeStatus(MS_U8 u8DemodIndex)
+{
+    return stu8ScanStatus;
+}
+
+MS_BOOL MDrv_Kriti_DVBT2_Demod_SetScanTypeStatus(MS_U8 u8DemodIndex, MS_U8 status)
+{
+    switch (status)
+    {
+    case 0:
+        stu8ScanStatus = 0;
+        break;
+    case 1:
+        stu8ScanStatus = 1;
+        break;
+
+    case 2:
+        stu8ScanStatus = 2;
+        break;
+
+    case 3:
+        stu8ScanStatus = 3;
+        break;
+    default:
+        return FALSE;
+    }
+    return TRUE;
+}
+
+MS_BOOL MDrv_Kriti_DVBT2_Demod_GetPlpIDList(MS_U8 u8DemodIndex, MS_U8 *pSize)
+{
+    MS_U8 i, j, u8PlpBitMap[32];
+
+    PLPIDSize = 0;
+    memset(u8PlpBitMap, 0xff, sizeof(u8PlpBitMap));
+    if (FALSE == MDrv_DMD_DVBT2_GetPlpBitMap(u8PlpBitMap))
+    {
+        DMD_ERR(("MDrv_Kriti_DVBT2_Demod_GetPlpIDList fail\n"));
+        return FALSE;
+    }
+
+    for (i = 0; i < 32; i++)
+    {
+        for (j = 0; j < 8; j++)
+        {
+            if ((u8PlpBitMap[i] >> j) & 1)
+            {
+                PLPIDList[PLPIDSize] = i * 8 + j;
+                PLPIDSize++;
+            }
+        }
+    }
+
+    *pSize = PLPIDSize;
+    return TRUE;
+}
+
 MS_BOOL MDrv_Kriti_DVBT2_Demod_SetCurrentDemodType(MS_U8 u8DemodIndex, MS_U8  type)
 {
     MS_BOOL bret = TRUE;
-    if(eCurDemodType == type)
+
+    if (eCurDemodType == type)
+    {
         return bret;
+    }
     else
     {
-     if(E_DEMOD_TYPE_T == eCurDemodType)
-     {
-         bret &= MDrv_DMD_DVBT_Exit();
-         bret = _InitInternalDVBT2();
-         eCurDemodType = type;
-     }
-     else
-     {
-         bret &= MDrv_DMD_DVBT2_Exit();
-         bret = _InitInternalDVBT();
-         eCurDemodType = type;
-     }
-      
-
+        if (E_DEMOD_TYPE_T == eCurDemodType)
+        {
+            bret &= MDrv_DMD_DVBT_Exit();
+            bret = _InitInternalDVBT2();
+            eCurDemodType = type;
+        }
+        else
+        {
+            bret &= MDrv_DMD_DVBT2_Exit();
+            bret = _InitInternalDVBT();
+            eCurDemodType = type;
+        }
     }
-    if(bret == FALSE)
-         DMD_ERR(("Set Demod Type %x ERROR\n",eCurDemodType));
+
+    if (bret == FALSE)
+        DMD_ERR(("Set Demod Type %x ERROR\n",eCurDemodType));
+
     return bret;
 }
 
 MS_U8 MDrv_Kriti_DVBT2_Demod_GetCurrentDemodType(MS_U8 u8DemodIndex)
 {
-  return eCurDemodType;
+    return eCurDemodType;
 }
 
 MS_BOOL MDrv_Kriti_DVBT2_Demod_GetPlpBitMap(MS_U8 u8DemodIndex,MS_U8* u8PlpBitMap)
@@ -810,8 +1048,9 @@ MS_BOOL MDrv_Kriti_DVBT2_Demod_GetPlpGroupID(MS_U8 u8DemodIndex,MS_U8 u8PlpID, M
             u16Retry++;
             usleep(100 * 1000);
             bRet = MDrv_DMD_DVBT2_GetPlpGroupID(u8PlpID, u8GroupID);
-        }while ((bRet == FALSE) && (u16Retry < 60));
-        
+        }
+        while ((bRet == FALSE) && (u16Retry < 60));
+
         if (bRet == FALSE)
         {
             return FALSE;
@@ -832,62 +1071,99 @@ MS_BOOL MDrv_Kriti_DVBT2_Demod_SetPlpGroupID(MS_U8 u8DemodIndex,MS_U8 u8PlpID, M
 #endif
 MS_BOOL DEMOD_MSKRITI_DVBT2_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE fuction_type, void *data)
 {
+    MS_BOOL bret = TRUE;
+
     switch(fuction_type)
-    { 
-        default:
-             DMD_DBG(("Request extension function (%x) does not exist\n",fuction_type));
-            return TRUE;
-    } 
+    {
+    case DEMOD_EXT_FUNC_FINALIZE:
+        MDrv_Kriti_DVBT2_Demod_Close(u8DemodIndex);
+        if(_s32MutexId >= 0)
+        {
+            bret &= MsOS_DeleteMutex(_s32MutexId);
+            _s32MutexId = -1;
+        }
+        break;
+#ifdef MS_DVBT2_INUSE
+    case DEMOD_EXT_FUNC_T2_RESET:
+        bret &= MDrv_Kriti_DVBT2_Demod_SetT2Reset(u8DemodIndex);
+        break;
+    case DEMOD_EXT_FUNC_T2_RESTART:
+        bret &= MDrv_Kriti_DVBT2_Demod_SetT2Restart(u8DemodIndex);
+        break;
+    case DEMOD_EXT_FUNC_INIT_PARAMETER:
+        bret &= MDrv_Kriti_DVBT2_Demod_InitParameter(u8DemodIndex);
+        break;
+    case DEMOD_EXT_FUNC_GET_PLPID_LIST:
+        bret &= MDrv_Kriti_DVBT2_Demod_GetPlpIDList(u8DemodIndex, (MS_U8 *)data);
+        break;
+#endif
+    case DEMOD_EXT_FUNC_SET_BUFFER_ADDR:
+        u32INTERNAL_DVBT2_TDI_ADR = *(MS_U32*)data;
+        u32INTERNAL_DVBT2_DJB_ADR = u32INTERNAL_DVBT2_TDI_ADR + (MS_U32)KRITI_DVBT2_TDI_LEN;
+        u32INTERNAL_DVBT2_FW_ADR =  u32INTERNAL_DVBT2_DJB_ADR +(MS_U32)KRITI_DVBT2_DJB_LEN;
+        u32INTERNAL_DVBT2_EQ_ADR = u32INTERNAL_DVBT2_FW_ADR + (MS_U32)KRITI_DVBT2_FW_LEN;
+        break;
+    default:
+        DMD_DBG(("Request extension function (%x) does not exist\n",fuction_type));
+        break;
+    }
+    return bret;
 }
 
 MS_BOOL MDrv_Kriti_DVBT2_Demod_I2C_ByPass(MS_U8 u8DemodIndex,MS_BOOL bOn)
 {
-  if(GET_DEMOD_ENTRY_NODE(DEMOD_MSKRITI_DVBT2).I2CByPassPreSetting != NULL)
-  {
-      return GET_DEMOD_ENTRY_NODE(DEMOD_MSKRITI_DVBT2).I2CByPassPreSetting(u8DemodIndex,bOn);
-  }
-  else
-      return MDrv_Demod_null_I2C_ByPass(u8DemodIndex,bOn);
+    if(GET_DEMOD_ENTRY_NODE(DEMOD_MSKRITI_DVBT2).I2CByPassPreSetting != NULL)
+    {
+        return GET_DEMOD_ENTRY_NODE(DEMOD_MSKRITI_DVBT2).I2CByPassPreSetting(u8DemodIndex,bOn);
+    }
+    else
+        return MDrv_Demod_null_I2C_ByPass(u8DemodIndex,bOn);
 }
 
 
-DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKRITI_DVBT2) DDI_DRV_TABLE_ENTRY(demodtab) = 
-{  
-     .name                         = "DEMOD_MSKRITI_DVBT2",
-     .data                         = DEMOD_MSKRITI_DVBT2,        
-     .init                         = MDrv_Kriti_DVBT2_Demod_Init,
-     .GetLock                      = MDrv_Kriti_DVBT2_Demod_GetLock,
-     .GetSNR                       = MDrv_Kriti_DVBT2_Demod_GetSNR,
-     .GetBER                       = MDrv_Kriti_DVBT2_Demod_GetBER,
-     .GetPWR                       = MDrv_Kriti_DVBT2_Demod_GetPWR,
-     .GetQuality                   = MDrv_Kriti_DVBT2_Demod_GetSignalQuality,
-     .GetParam                     = MDrv_Demod_null_GetParam,
-     .Restart                      = MDrv_Kriti_DVBT2_Demod_Restart,
-     .I2CByPass                    = MDrv_Kriti_DVBT2_Demod_I2C_ByPass,
-     .I2CByPassPreSetting          = NULL,
-     .Extension_Function           = DEMOD_MSKRITI_DVBT2_Extension_Function,
-     .Extension_FunctionPreSetting = NULL,
+DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKRITI_DVBT2) DDI_DRV_TABLE_ENTRY(demodtab) =
+{
+    .name                         = "DEMOD_MSKRITI_DVBT2",
+    .data                         = DEMOD_MSKRITI_DVBT2,
+    .init                         = MDrv_Kriti_DVBT2_Demod_Init,
+    .GetLock                      = MDrv_Kriti_DVBT2_Demod_GetLock,
+    .GetSNR                       = MDrv_Kriti_DVBT2_Demod_GetSNR,
+    .GetBER                       = MDrv_Kriti_DVBT2_Demod_GetBER,
+    .GetPWR                       = MDrv_Kriti_DVBT2_Demod_GetPWR,
+    .GetQuality                   = MDrv_Kriti_DVBT2_Demod_GetSignalQuality,
+    .GetParam                     = MDrv_Demod_null_GetParam,
+    .Restart                      = MDrv_Kriti_DVBT2_Demod_Restart,
+    .I2CByPass                    = MDrv_Kriti_DVBT2_Demod_I2C_ByPass,
+    .I2CByPassPreSetting          = NULL,
+    .Extension_Function           = DEMOD_MSKRITI_DVBT2_Extension_Function,
+    .Extension_FunctionPreSetting = NULL,
+    .Get_Packet_Error              = MDrv_Demod_null_Get_Packet_Error,    
 #if MS_DVBT2_INUSE
-     .SetCurrentDemodType          = MDrv_Kriti_DVBT2_Demod_SetCurrentDemodType,
-     .GetCurrentDemodType          = MDrv_Kriti_DVBT2_Demod_GetCurrentDemodType,
-     .GetPlpBitMap                 = MDrv_Kriti_DVBT2_Demod_GetPlpBitMap,
-     .GetPlpGroupID                = MDrv_Kriti_DVBT2_Demod_GetPlpGroupID,
-     .SetPlpGroupID                = MDrv_Kriti_DVBT2_Demod_SetPlpGroupID,
+    .SetCurrentDemodType          = MDrv_Kriti_DVBT2_Demod_SetCurrentDemodType,
+    .GetCurrentDemodType          = MDrv_Kriti_DVBT2_Demod_GetCurrentDemodType,
+    .GetPlpBitMap                 = MDrv_Kriti_DVBT2_Demod_GetPlpBitMap,
+    .GetPlpGroupID                = MDrv_Kriti_DVBT2_Demod_GetPlpGroupID,
+    .SetPlpGroupID                = MDrv_Kriti_DVBT2_Demod_SetPlpGroupID,
+    .SetScanTypeStatus            = MDrv_Kriti_DVBT2_Demod_SetScanTypeStatus,
+    .GetScanTypeStatus            = MDrv_Kriti_DVBT2_Demod_GetScanTypeStatus,
+    .GetNextPLPID                 = MDrv_Kriti_DVBT2_Demod_GetNextPlpID,
+    .GetNextPLPID                 = MDrv_Demod_null_GetNextPLPID,
+    .GetPLPType                   = MDrv_Demod_null_GetPLPType,
 #endif
 #if MS_DVBS_INUSE
-     .BlindScanStart               = MDrv_Demod_null_BlindScan_Start,
-     .BlindScanNextFreq            = MDrv_Demod_null_BlindScan_NextFreq,
-     .BlindScanWaitCurFreqFinished = MDrv_Demod_null_BlindScan_WaitCurFreqFinished,
-     .BlindScanCancel              = MDrv_Demod_null_BlindScan_Cancel,
-     .BlindScanEnd                 = MDrv_Demod_null_BlindScan_End,
-     .BlindScanGetChannel          = MDrv_Demod_null_BlindScan_GetChannel,
-     .BlindScanGetCurrentFreq      = MDrv_Demod_null_BlindScan_GetCurrentFreq,
-     .DiSEqCSetTone                = MDrv_Demod_null_DiSEqC_SetTone,
-     .DiSEqCSetLNBOut              = MDrv_Demod_null_DiSEqC_SetLNBOut,
-     .DiSEqCGetLNBOut              = MDrv_Demod_null_DiSEqC_GetLNBOut,
-     .DiSEqCSet22kOnOff            = MDrv_Demod_null_DiSEqC_Set22kOnOff,
-     .DiSEqCGet22kOnOff            = MDrv_Demod_null_DiSEqC_Get22kOnOff,
-     .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd
+    .BlindScanStart               = MDrv_Demod_null_BlindScan_Start,
+    .BlindScanNextFreq            = MDrv_Demod_null_BlindScan_NextFreq,
+    .BlindScanWaitCurFreqFinished = MDrv_Demod_null_BlindScan_WaitCurFreqFinished,
+    .BlindScanCancel              = MDrv_Demod_null_BlindScan_Cancel,
+    .BlindScanEnd                 = MDrv_Demod_null_BlindScan_End,
+    .BlindScanGetChannel          = MDrv_Demod_null_BlindScan_GetChannel,
+    .BlindScanGetCurrentFreq      = MDrv_Demod_null_BlindScan_GetCurrentFreq,
+    .DiSEqCSetTone                = MDrv_Demod_null_DiSEqC_SetTone,
+    .DiSEqCSetLNBOut              = MDrv_Demod_null_DiSEqC_SetLNBOut,
+    .DiSEqCGetLNBOut              = MDrv_Demod_null_DiSEqC_GetLNBOut,
+    .DiSEqCSet22kOnOff            = MDrv_Demod_null_DiSEqC_Set22kOnOff,
+    .DiSEqCGet22kOnOff            = MDrv_Demod_null_DiSEqC_Get22kOnOff,
+    .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd
 #endif
 };
 

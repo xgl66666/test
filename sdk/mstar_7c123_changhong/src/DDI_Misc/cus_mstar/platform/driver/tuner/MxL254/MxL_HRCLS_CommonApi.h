@@ -38,7 +38,7 @@
 #define MXL_HRCLS_MAX_COMMAND_DATA_SIZE       252
 
 /** @brief Max number of DFE channels */
-#define MXL_HRCLS_MAX_NUM_CHANNELS            25
+#define MXL_HRCLS_MAX_NUM_CHANNELS            33
 
 /** @brief Output interface MPEG enable bit */
 #define MXL_HRCLS_OUTPUT_ENABLE_MPEG          (1<<0)
@@ -65,6 +65,7 @@
 #define MXL_HRCLS_INTR_MASK_FB_TUNER_LOCK       (1 << 11)
 #define MXL_HRCLS_INTR_MASK_US_SERDES_UNLOCKED  (1 << 12)
 
+
 /*****************************************************************************************
     User-Defined Types (Typedefs)
 *****************************************************************************************/
@@ -83,7 +84,8 @@ typedef enum
   MXL_HRCLS_DEVICE_252,
   MXL_HRCLS_DEVICE_212,
   MXL_HRCLS_DEVICE_213,
-  MXL_HRCLS_DEVICE_214
+  MXL_HRCLS_DEVICE_214,
+  MXL_HRCLS_DEVICE_268
 } MXL_HRCLS_DEVICE_E;
 
 
@@ -114,8 +116,15 @@ typedef enum
   MXL_HRCLS_CHAN21 = 21,  
   MXL_HRCLS_CHAN22 = 22,  
   MXL_HRCLS_CHAN23 = 23,
-  
-  MXL_HRCLS_CHAN_NB = 24
+  MXL_HRCLS_CHAN24 = 24,  
+  MXL_HRCLS_CHAN25 = 25,  
+  MXL_HRCLS_CHAN26 = 26,  
+  MXL_HRCLS_CHAN27 = 27,  
+  MXL_HRCLS_CHAN28 = 28,  
+  MXL_HRCLS_CHAN29 = 29,  
+  MXL_HRCLS_CHAN30 = 30,  
+  MXL_HRCLS_CHAN31 = 31,  
+  MXL_HRCLS_CHAN_NB 
 } MXL_HRCLS_CHAN_ID_E;
 
 /** @brief Spectrum API windowing schemes */
@@ -153,7 +162,9 @@ typedef enum
 typedef enum
 {
   MXL_HRCLS_HERCULES_CHIP_ID = 0,
-  MXL_HRCLS_MINOS_CHIP_ID
+  MXL_HRCLS_MINOS_CHIP_ID,
+  MXL_HRCLS_ATLAS_CHIP_ID,
+  MXL_HRCLS_TITAN_CHIP_ID
 } MXL_HRCLS_CHIP_ID_E;
 
 /** @brief Device version info struct */

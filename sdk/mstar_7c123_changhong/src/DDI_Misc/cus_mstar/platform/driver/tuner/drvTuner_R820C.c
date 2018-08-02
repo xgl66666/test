@@ -20,16 +20,11 @@
 #include "drvTuner.h"
 #include "drvTunerNull.h"
 #include "apiDigiTuner.h"
+#include "drvTuner_R82x.h"
 
 #define R820C_CHIP_ID 0x96
 
-#define R820C_DEBUG  1
 
-#if R820C_DEBUG
-#define R820C_DBG(fmt, args...)       printf(fmt, ##args)
-#else
-#define R820C_DBG(fmt, args...)       {}
-#endif
 
 
 //***************************************************************
@@ -82,103 +77,8 @@ typedef enum _Rafael_Chip_Type  //Don't modify chip list
 //                   R828 Parameter                        //
 //----------------------------------------------------------//
 
-#define DIP_FREQ      320000
-#define IMR_TRIAL    9
-#define VCO_pwr_ref   0x01
 
-typedef enum _R828_Standard_Type  //Don't remove standand list!!
-{
-    NTSC_MN = 0,
-    PAL_I,
-    PAL_DK,
-    PAL_B_7M,       //no use
-    PAL_BGH_8M,     //for PAL B/G, PAL G/H
-    SECAM_L,
-    SECAM_L1_INV,   //for SECAM L'
-    SECAM_L1,       //no use
-    ATV_SIZE,
-    DVB_T_6M = ATV_SIZE,
-    DVB_T_7M,
-    DVB_T_7M_2,   //default for DVB-T 7M, IF=4.57MHz
-    DVB_T_8M,
-    DVB_T2_6M,
-    DVB_T2_7M,
-    DVB_T2_7M_2,  //default for DVB-T2 7M, IF=4.57MHz
-    DVB_T2_8M,
-    DVB_T2_1_7M,
-    DVB_T2_10M,
-    DVB_C_8M,
-    DVB_C_6M_4063,
-    DVB_C_6M_5070, //default for DVB-C 6M, IF=5.07MHz
-    J83B,
-    ISDB_T,
-    DTMB_,
-    ATSC_4063,
-    ATSC_5070,  //default for ATSC, IF=5.07MHz
-    FM,
-    STD_SIZE
-}R828_Standard_Type;
 
-extern UINT8  R828_Fil_Cal_flag[STD_SIZE];
-
-typedef enum _R828_SetFreq_Type
-{
-	FAST_MODE = TRUE,
-	NORMAL_MODE = FALSE
-}R828_SetFreq_Type;
-
-typedef enum _R828_LoopThrough_Type
-{
-    LOOP_THROUGH = TRUE,
-    SIGLE_IN     = FALSE
-}R828_LoopThrough_Type;
-
-typedef enum _R828_LoopThroughAtt_Type
-{
-    LT_ATT_ON = TRUE,
-    LT_ATT_OFF = FALSE
-}R828_LoopThroughAtt_Type;
-
-typedef enum _R828_InputMode_Type
-{
-    AIR_IN = 0,
-    CABLE_IN_1,
-    CABLE_IN_2
-}R828_InputMode_Type;
-
-typedef enum _R828_IfAgc_Type
-{
-	IF_AGC1 = 0,
-	IF_AGC2
-}R828_IfAgc_Type;
-
-typedef enum _R828_GPIO_Type
-{
-	HI_SIG = TRUE,
-	LO_SIG = FALSE
-}R828_GPIO_Type;
-
-typedef struct _R828_Set_Info
-{
-	UINT32        RF_KHz;
-	R828_Standard_Type R828_Standard;
-	R828_LoopThrough_Type RT_Input;
-	R828_InputMode_Type   RT_InputMode;
-	R828_IfAgc_Type R828_IfAgc_Select; 
-}R828_Set_Info;
-
-typedef struct _R828_RF_Gain_Info
-{
-	UINT8   RF_gain1;
-	UINT8   RF_gain2;
-	UINT8   RF_gain_comb;
-}R828_RF_Gain_Info;
-
-typedef enum _R828_RF_Gain_TYPE
-{
-	RF_AUTO = 0,
-	RF_MANUAL
-}R828_RF_Gain_TYPE;
 
 //----------------------------------------------------------//
 //                   R828 Function                         //
@@ -402,7 +302,7 @@ static MS_BOOL IIC_READ(MS_U8 u8SlaveID, MS_U8* paddr, MS_U8 u8AddrNum, MS_U8* p
 {
     if (FALSE == MDrv_IIC_ReadBytes(hwi2c_port,u8SlaveID, u8AddrNum, paddr, u16size, (MS_U8*)pu8data))
     {
-        R820C_DBG("MDrv_IIC_ReadBytes Error \n");
+        R82X_DBG("MDrv_IIC_ReadBytes Error \n");
         return FALSE;
     }
 
@@ -419,7 +319,7 @@ static MS_BOOL I2C_Read_Len(I2C_LEN_TYPE *I2C_Info)
 
     if(FALSE == IIC_READ(u8SlaveID, paddr, 1, pu8data, u16size))
     {
-         R820C_DBG("IIC Read Len error\n");
+         R82X_DBG("IIC Read Len error\n");
          return FALSE;
     }
 
@@ -441,7 +341,7 @@ static MS_BOOL I2C_Write_Len(I2C_LEN_TYPE *I2C_Info)
 
      if (FALSE == MDrv_IIC_WriteBytes(hwi2c_port,u8SlaveID, 1, paddr, u16size, pu8data))
      {
-         R820C_DBG("devCOFDM_PassThroughIIC_WRITEBytes Error \n");
+         R82X_DBG("devCOFDM_PassThroughIIC_WRITEBytes Error \n");
          return FALSE;
      }
 
@@ -459,7 +359,7 @@ static MS_BOOL IIC_WRITE(I2C_TYPE *I2C_Info)
 
      if (FALSE == MDrv_IIC_WriteBytes(hwi2c_port,u8SlaveID, 1, paddr, u16size, pu8data))
      {
-         R820C_DBG("devCOFDM_PassThroughIIC_WRITEBytes Error \n");
+         R82X_DBG("devCOFDM_PassThroughIIC_WRITEBytes Error \n");
          return FALSE;
      }
 
@@ -3281,7 +3181,7 @@ MS_BOOL MDrv_Tuner_R820C_Init(MS_U8 u8TunerIndex, TUNER_MS_INIT_PARAM* pParam)
 
     if(RT_Success != R828_Init())
     {
-         R820C_DBG("Tuner R820 Init error\n");
+         R82X_DBG("Tuner R820 Init error\n");
 
          return FALSE;
     }
@@ -3289,11 +3189,11 @@ MS_BOOL MDrv_Tuner_R820C_Init(MS_U8 u8TunerIndex, TUNER_MS_INIT_PARAM* pParam)
     //R828 Standard Setting
     if (RT_Success != R828_SetStandard(DVB_C_8M))
     {
-        R820C_DBG("R828_Standard error\n");
+        R82X_DBG("R828_Standard error\n");
         return FALSE;
     }
 
-    R820C_DBG("Tuner R820 Init ok\n");
+    R82X_DBG("Tuner R820 Init ok\n");
 
     return TRUE;
 }
@@ -3305,11 +3205,11 @@ MS_BOOL MDrv_Tuner_R820C_Tune(MS_U8 u8TunerIndex,MS_U32 u32Freq /*Khz*/, MS_U8 u
 
     hwi2c_port = getI2CPort(u8TunerIndex);
 
-    R820C_DBG("\n u32Freq %lu\n",u32Freq);
+    R82X_DBG("\n u32Freq %lu\n",u32Freq);
 
     if ((40000 > u32Freq) || (900000 < u32Freq))
     {
-        R820C_DBG("input frequency error\n");
+        R82X_DBG("input frequency error\n");
         return FALSE;
     }
 
@@ -3317,7 +3217,7 @@ MS_BOOL MDrv_Tuner_R820C_Tune(MS_U8 u8TunerIndex,MS_U32 u32Freq /*Khz*/, MS_U8 u
     R828_Standard_Set           = DVB_C_8M;
     if (RT_Success != R828_SetStandard(R828_Standard_Set))
     {
-        R820C_DBG("R828_Standard error\n");
+        R82X_DBG("R828_Standard error\n");
         return FALSE;
     }
 
@@ -3328,7 +3228,7 @@ MS_BOOL MDrv_Tuner_R820C_Tune(MS_U8 u8TunerIndex,MS_U32 u32Freq /*Khz*/, MS_U8 u
 
     if (RT_Success != R828_SetFrequency(R828_Info_Msg, NORMAL_MODE))
     {
-        R820C_DBG("R282 Set Freq error\n");
+        R82X_DBG("R282 Set Freq error\n");
         return FALSE;
     }
 

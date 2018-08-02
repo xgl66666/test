@@ -76,7 +76,7 @@
 //******************************************************************************
 //<MStar Software>
 #ifndef __DRV_DISH_H__
-#define __DRV_Dish_H__
+#define __DRV_DISH_H__
 #include "drvDemod.h"
 
 typedef enum
@@ -103,6 +103,13 @@ typedef enum
     EN_TONEBURST_NUM
 }EN_TONEBURST_TYPE;
 
+typedef enum
+{
+    EN_CABLE_LNB_NOT_SET,
+    EN_CABLE_LNB_1,
+    EN_CABLE_LNB_2,
+    EN_CABLE_LNB_NUM
+}EN_CABLE_SELECT;
 
 #define DDIBLD_ATTRIB_DISH_SECTION(__sect__) __attribute__((section (__sect__)))
 
@@ -117,6 +124,8 @@ typedef enum
 typedef struct
 {
     struct drv_demodtab_entry*                    pstDemodtab;
+    MS_U8 u8CableIndex;                          //LNB IC to Cable connector, depend on Layout
+    MS_U8 u8CurControlReg;
 } DISH_MS_INIT_PARAM;
 
 typedef MS_BOOL     drv_dishop_Init(MS_U8 u8DishIndex, DISH_MS_INIT_PARAM* pParam);
@@ -125,6 +134,8 @@ typedef MS_BOOL     drv_dishop_SetLNBPower(MS_U8 u8DishIndex, DISH_LNBPWR_TYPE e
 typedef MS_BOOL     drv_dishop_Set22k(MS_U8 u8DishIndex, DISH_LNB22K_TYPE enLNB22k);
 typedef MS_BOOL     drv_dishop_SendCmd(MS_U8 u8DishIndex, MS_U8* pCmd,MS_U8 u8CmdSize);
 typedef MS_BOOL     drv_dishop_IsOverCurrent(MS_U8 u8DishIndex);
+typedef MS_BOOL     drv_dishop_SetCable(MS_U8 u8DishIndex, EN_CABLE_SELECT eCableIndex);
+
 
 
 
@@ -140,6 +151,7 @@ typedef struct drv_dishtab_entry
     drv_dishop_Set22k           *Set22k;
     drv_dishop_SendCmd          *SendCmd;
     drv_dishop_IsOverCurrent    *IsOverCurrent;
+    drv_dishop_SetCable       *SetCable;
 } DRV_DISH_TABLE_TYPE;
 
 #define DISHTAB_ENTRY(                         \
@@ -151,7 +163,8 @@ typedef struct drv_dishtab_entry
         _SetLNBPower,                                 \
         _Set22k,                                 \
         _SendCmd,                                 \
-        _IsOverCurrent                                 \
+        _IsOverCurrent,                                 \
+        _SetCable                                 \
 )                                                                   \
 struct drv_dishtab_entry _l DDI_DRV_DISH_TABLE_ENTRY(dishtab) =            \
 {                                                                       \
@@ -162,7 +175,8 @@ struct drv_dishtab_entry _l DDI_DRV_DISH_TABLE_ENTRY(dishtab) =            \
     _SetLNBPower,                                                               \
     _Set22k,                                                               \
     _SendCmd,                                                               \
-    _IsOverCurrent                                                               \
+    _IsOverCurrent,                                                               \
+    _SetCable                                 \
 };
 
 

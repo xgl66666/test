@@ -1,0 +1,101 @@
+# Board type select
+CFG_BOARD       = BD_MST221D_D01A
+CFG_DVB_TYPE    = DVBT2
+
+
+# **********************************************
+# Build Configuration
+# **********************************************
+# Build Type: debug / retail
+BLT_TYPE    ?= retail
+
+# OS: ecos / linux / nos
+OS_TYPE     = ecos
+
+# Chip: u2 / u3 / t2 / t3
+CHIP        = kirin
+
+# CPU: arm / mips
+CPU        = mips
+
+# Project name
+PROJNAME    = MSTAR
+
+# Image name
+IMAGENAME   = $(CHIP)_$(OS_TYPE)
+
+# RELEASE_MW_LIB: enable / disable
+RELEASE_MW_LIB   = enable
+
+# static got some problems
+# Link Type: static / dynamic
+LINK_TYPE = static
+
+# **********************************************
+# End Build Configuration
+# **********************************************
+# Frontend auto test : enable /disable
+CFG_FE_AUTO_TEST = disable
+#**************************************************************
+# Module Options
+#**************************************************************
+# Local Frontend Detection List : enable /disable
+CFG_FE_LOCAL_DETECTION_LIST = enable
+#**************************************************************
+# DDR freq (for diff MIU setting)
+#   1. 1866
+#
+# Memory Map
+#   1.  MMAP_128MB
+#**************************************************************
+CFG_DDR_FREQ = 1866
+CFG_MEMORY_MAP = MMAP_128MB
+
+#**************************************************************
+# TV function
+#   1. TVfunc_Normal
+#   2. TVfunc_MpegSD
+#
+# LCN Configuration
+#   1. enable
+#   2. disable
+#
+# MIPS 288
+#   1. enable
+#   2. disable
+#
+# New EPG scheme
+#   1. enable
+#   2. disable
+#
+# Mosaic program
+#   -  add this config to support mosaic program related function
+#   1.  enable
+#   2.  disable
+#
+# LOGO decode type
+#   1. LOGO_DECODE_TYPE_MPEG    (decode with MPEG)
+#   2. LOGO_DECODE_TYPE_JPEG    (decode with JPD)
+#   3. LOGO_DECODE_TYPE_H264    (decode with H264 but not implement)
+#**************************************************************
+CFG_TVfunc = TVfunc_Normal
+CFG_MIPS_288 = disable
+
+#**************************************************************
+# USB
+#   1. enable
+#   2. disable
+#**************************************************************
+CFG_USB_ENABLE = enable
+# Load demod firmware via MSPI : enable /disable
+CFG_DEMOD_USE_MSPI = disable
+# Performance test : enable / disable
+PERFORMANCE_TEST = disable
+# **********************************************
+# Module Configuration
+# **********************************************
+# MI integraion interafces: enable / disable
+MI_BSP = disable
+
+# utopia type: UTOPIA (including utopia2) / UTOPIA2L_32BIT / UTOPIA2L_64BIT
+UTOPIA_TYPE = UTOPIA

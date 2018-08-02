@@ -17,6 +17,7 @@
 #include "drvIIC.h"
 #include "drvTuner_AV2028.h"
 #include "drvTunerNull.h"
+#include "drvDTC.h"
 
 
 TunerPara AV2028_Para;
@@ -49,37 +50,7 @@ static  MS_BOOL  _DigiTuner_Decide_LNB_LO(TUNER_MS_SAT_PARAM *pSATParam)
      }
      return TRUE;
 }
-/*******************************************************************
-* Tuner parameter initialization:
-* Paramter1:    pTunerPara : pointer of Tuner parameter structure
-* Return value: TUNER_ErrorCode : error code of definition
-* Description: Initialize all the parameters in the data structure of pAVtuner
-********************************************************************/
 
-MS_BOOL MDrv_Tuner_AV2028_Initial (MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam)
-{
-    //TUNER_ErrorCode result = Tuner_No_Error;
-    pTunerPara pAVtuner = &AV2028_Para;
-    pAVtuner->crystal_khz   = 27000;                // (default 27000 KHz)
-    pAVtuner->I2C_ADDR      = ADDR1_H_ADDR0_H;    // Tuner I2C address at write mode
-    pAVtuner->PGA_Gain      = PGA_1_5dB ;            // PGA_GAIN
-    pAVtuner->PGA_Current   = PGA_1_5mA ;            // PGA_DRIVE_CURRENT
-    pAVtuner->XO_Current    = HIGH;              // XO_DRIVE_CURRENT
-    pAVtuner->XO_EN         = XO_ON;                // XO_ENABLE Setting
-    pAVtuner->RFLP_EN       = RFLP_OFF;            // RFLP_ENABLE Setting
-
-    pAVtuner->FT            = FT_ON;                // TUNER_Fine_Tune
-    pAVtuner->blind_scan    = 0;                    // blind_scan
-    TUNER_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
-
-    if (Tuner_Register_Initial(u8TunerIndex) == Tuner_Error )
-    {
-        TUNER_ERR(("Tuner_Register_Initial error \n"));
-        return FALSE;
-    }
-
-    return TRUE;
-}
 
 /*******************************************************************************
 * Tuner Power-ON registers initialization
@@ -87,7 +58,7 @@ MS_BOOL MDrv_Tuner_AV2028_Initial (MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pPara
 * Return value: TUNER_ErrorCode : error code of definition
 * Description: Initialize all registers of the Tuner
 ********************************************************************************/
-TUNER_ErrorCode Tuner_Register_Initial (MS_U8 u8TunerIndex)
+TUNER_ErrorCode AV2028_Tuner_Register_Initial (MS_U8 u8TunerIndex)
 {
     TUNER_ErrorCode result = Tuner_No_Error;
     UINT8 reg[50];
@@ -137,83 +108,59 @@ TUNER_ErrorCode Tuner_Register_Initial (MS_U8 u8TunerIndex)
     reg[41]= 0xa8;
     /* Sequence 1*/
     /* Send Reg0 ->Reg11*/
-    result = Tuner_I2C_Write(u8TunerIndex, pAVtuner,0,reg,12);
+    result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner,0,reg,12);
     if(result!=Tuner_No_Error){ return result; }
 
     /* Sequence 2*/
     /* Send Reg13 ->Reg24*/
-    result = Tuner_I2C_Write(u8TunerIndex, pAVtuner,13,reg+13,12);
+    result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner,13,reg+13,12);
     if(result!=Tuner_No_Error){ return result; }
 
       /* Send Reg25 ->Reg35*/
-    result = Tuner_I2C_Write(u8TunerIndex, pAVtuner,25,reg+25,11);
+    result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner,25,reg+25,11);
     if(result!=Tuner_No_Error){ return result; }
 
     /* Send Reg36 ->Reg41*/
-    result = Tuner_I2C_Write(u8TunerIndex, pAVtuner,36,reg+36,6);
+    result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner,36,reg+36,6);
     if(result!=Tuner_No_Error){ return result; }
 
     /* Sequence 3*/
     /* Send reg12*/
-    result = Tuner_I2C_Write(u8TunerIndex, pAVtuner,12,reg+12,1);
+    result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner,12,reg+12,1);
     if(result!=Tuner_No_Error){ return result; }
 
     /* Time delay ms*/
-    Time_DELAY_MS(100);
+    AV2028_Time_DELAY_MS(100);
     /*Reinitial again*/
     {
         /* Sequence 1*/
         /* Send Reg0 ->Reg11*/
-        result = Tuner_I2C_Write(u8TunerIndex, pAVtuner,0,reg,12);
+        result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner,0,reg,12);
         if(result!=Tuner_No_Error){ return result; }
 
         /* Sequence 2*/
         /* Send Reg13 ->Reg24*/
-        result = Tuner_I2C_Write(u8TunerIndex, pAVtuner,13,reg+13,12);
+        result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner,13,reg+13,12);
         if(result!=Tuner_No_Error){ return result; }
 
         /* Send Reg25 ->Reg35*/
-        result = Tuner_I2C_Write(u8TunerIndex, pAVtuner,25,reg+25,11);
+        result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner,25,reg+25,11);
         if(result!=Tuner_No_Error){ return result; }
 
         /* Send Reg36 ->Reg41*/
-        result = Tuner_I2C_Write(u8TunerIndex, pAVtuner,36,reg+36,6);
+        result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner,36,reg+36,6);
         if(result!=Tuner_No_Error){ return result; }
 
          /* Sequence 3*/
          /* Send reg12*/
-         result = Tuner_I2C_Write(u8TunerIndex, pAVtuner,12,reg+12,1);
+         result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner,12,reg+12,1);
     }
      /* Time delay ms*/
-    Time_DELAY_MS(5);
+    AV2028_Time_DELAY_MS(5);
     return result;
 }
 
-MS_BOOL MDrv_Tuner_AV2028_SetFreq_S2(MS_U8 u8TunerIndex, MS_U32 u32CenterFreq, MS_U32 u32SymbolRate_Hz)
-{
-    pTunerPara pAVtuner = &AV2028_Para;
-    TUNER_DBG(("u16CenterFreq:%ld u32SymbolRate_Hz:%ld\n",u32CenterFreq,u32SymbolRate_Hz));
-    if((u32CenterFreq > MAX_INPUT_FREQ) || (u32CenterFreq < MIN_INPUT_FREQ))
-        return FALSE;
-    
-    if (Tuner_Set_Channel_Frequency(u8TunerIndex, pAVtuner,u32CenterFreq) == Tuner_Error )
-    {
-        TUNER_ERR(("Tuner_Set_Channel_Frequency error \n"));
-        return FALSE;
-    }
 
-    if (Tuner_Set_Filter_Bandwith(u8TunerIndex, pAVtuner,u32SymbolRate_Hz) == Tuner_Error )
-    {
-        TUNER_ERR(("Tuner_Set_Filter_Bandwith error \n"));
-        return FALSE;
-    }
-
-
-    pAVtuner->RFLP_EN = RFLP_ON;
-    Tuner_Set_RFLP(u8TunerIndex, pAVtuner);
-
-    return TRUE;
-}
 
 
 
@@ -226,7 +173,7 @@ MS_BOOL MDrv_Tuner_AV2028_SetFreq_S2(MS_U8 u8TunerIndex, MS_U32 u32CenterFreq, M
 * 1. Send reg3,2,1,0 to set tuner at the channel frequency.
 *    reg0 is int<7:0>; reg1 is frac<16:9>; reg2 is frac<8:1>; reg3_D7 is frac<0>
 **********************************************************************************/
-TUNER_ErrorCode Tuner_Set_Channel_Frequency (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT32 channel_freq_mhz)
+TUNER_ErrorCode AV2028_Tuner_Set_Channel_Frequency (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT32 channel_freq_mhz)
 {
     TUNER_ErrorCode result = Tuner_No_Error;
     UINT8 reg0;
@@ -254,18 +201,18 @@ TUNER_ErrorCode Tuner_Set_Channel_Frequency (MS_U8 u8TunerIndex, pTunerPara pAVt
       reg3= (0x50)|(fracN<<7);
     /* Sequence 4*/
     /* Send Reg3*/
-    result = Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,3,&reg3,1);
+    result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,3,&reg3,1);
     if(result!=Tuner_No_Error){ return result; }
     /* Send Reg2*/
-    result = Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,2,&reg2,1);
+    result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,2,&reg2,1);
     if(result!=Tuner_No_Error){ return result; }
     /* Send Reg1*/
-    result = Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,1,&reg1,1);
+    result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,1,&reg1,1);
     if(result!=Tuner_No_Error){ return result; }
     /* Send Reg0*/
-    result = Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,0,&reg0,1);
+    result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,0,&reg0,1);
     /* Time delay ms*/
-    Time_DELAY_MS(4);
+    AV2028_Time_DELAY_MS(4);
     return result;
 }
 
@@ -278,7 +225,7 @@ TUNER_ErrorCode Tuner_Set_Channel_Frequency (MS_U8 u8TunerIndex, pTunerPara pAVt
 * 1. Calculate the filter reference clk from XO. Transfer Filter BW setting to register5
 * 2. Add Fine-tune function after Bandwidth setting.
 **********************************************************************************/
-TUNER_ErrorCode Tuner_Set_Filter_Bandwith (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT32 filter_BW_khz)
+TUNER_ErrorCode AV2028_Tuner_Set_Filter_Bandwith (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT32 filter_BW_khz)
 {
     TUNER_ErrorCode result = Tuner_No_Error;
     UINT32 ctrl_clk_khz;
@@ -302,10 +249,10 @@ TUNER_ErrorCode Tuner_Set_Filter_Bandwith (MS_U8 u8TunerIndex, pTunerPara pAVtun
     reg5 = (UINT8)BF;
     /* Sequence 5*/
     /* Send Reg5*/
-    result = Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,5, &reg5, 1);
+    result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,5, &reg5, 1);
     if(result!=Tuner_No_Error){ return result; }
     /* Time delay ms*/
-    Time_DELAY_MS(4);
+    AV2028_Time_DELAY_MS(4);
 
     /* Reset FT after Filter BW setting */
     if (pAVtuner_t->blind_scan == 1)
@@ -319,7 +266,7 @@ TUNER_ErrorCode Tuner_Set_Filter_Bandwith (MS_U8 u8TunerIndex, pTunerPara pAVtun
     {
         pAVtuner_t->FT = FT_Delay_ON;
     }
-    result = Tuner_Set_Fine_Tune (u8TunerIndex, pAVtuner_t);
+    result = AV2028_Tuner_Set_Fine_Tune (u8TunerIndex, pAVtuner_t);
     if(result!=Tuner_No_Error){ return result; }
 
     return result;
@@ -341,7 +288,7 @@ TUNER_ErrorCode Tuner_Set_Filter_Bandwith (MS_U8 u8TunerIndex, pTunerPara pAVtun
 * 6. Fint-tune function take a reference to RFAGC voltage level of Hardware Pin5.
 *     When Fine-tune is enable, make sure the RFAGC do not have a sharp jump that cause a longer AGC settling time.
 ***********************************************************************************/
-TUNER_ErrorCode Tuner_Set_Fine_Tune (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t)
+TUNER_ErrorCode AV2028_Tuner_Set_Fine_Tune (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t)
 {
     TUNER_ErrorCode result = Tuner_No_Error;
     UINT32 pre_delay;
@@ -369,11 +316,11 @@ TUNER_ErrorCode Tuner_Set_Fine_Tune (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t)
 
     reg37 = pAVtuner_t->FT;
     /* Time delay ms*/
-    Time_DELAY_MS(pre_delay);
+    AV2028_Time_DELAY_MS(pre_delay);
     /* Send Fine-tune Function Control*/
-    result = Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,37, &reg37, 1);
+    result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,37, &reg37, 1);
     /* Time delay ms*/
-    Time_DELAY_MS(post_delay);
+    AV2028_Time_DELAY_MS(post_delay);
     return result;
 }
 
@@ -385,16 +332,16 @@ TUNER_ErrorCode Tuner_Set_Fine_Tune (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t)
 * 1. reg[12]_D7 is xocore_ena. Enable/disable XO section
 * 2. reg[12]_D6 is RFLP_ena.   Enable/disable Loop-through section
 **********************************************************************************/
-TUNER_ErrorCode Tuner_Set_RFLP (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t)
+TUNER_ErrorCode AV2028_Tuner_Set_RFLP (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t)
 {
     TUNER_ErrorCode result = Tuner_No_Error;
     UINT8 reg12;
 
     reg12 = (0x16)|( pAVtuner_t->XO_EN <<7)|(pAVtuner_t->RFLP_EN <<6);
 
-    result = Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,12, &reg12, 1);
+    result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,12, &reg12, 1);
        /* Time delay ms*/
-    Time_DELAY_MS(5);
+    AV2028_Time_DELAY_MS(5);
     return result;
 }
 
@@ -406,14 +353,14 @@ TUNER_ErrorCode Tuner_Set_RFLP (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t)
 * 1. reg[8]_D6~D3 is gc. PGA gain setting
 * 2. reg[8]_D1~0  is PGAout_cs. PGA output driving current setting
 **********************************************************************************/
-TUNER_ErrorCode Tuner_Set_RXout_PGA (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t)
+TUNER_ErrorCode AV2028_Tuner_Set_RXout_PGA (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t)
 {
     TUNER_ErrorCode result = Tuner_No_Error;
     UINT8 reg8;
 
     reg8 = (0x04)|(pAVtuner_t->PGA_Gain <<3)|(pAVtuner_t->PGA_Current);
 
-    result = Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,8, &reg8, 1);
+    result = AV2028_Tuner_I2C_Write(u8TunerIndex, pAVtuner_t,8, &reg8, 1);
     return result;
 }
 
@@ -428,7 +375,7 @@ TUNER_ErrorCode Tuner_Set_RXout_PGA (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t)
 * Description:
 * 1. User define
 **********************************************************************************/
-TUNER_ErrorCode Tuner_I2C_Write (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT8 reg_start, UINT8* buff, UINT8 length)
+TUNER_ErrorCode AV2028_Tuner_I2C_Write (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT8 reg_start, UINT8* buff, UINT8 length)
 {
     TUNER_ErrorCode result = Tuner_No_Error;
     UINT8 queue[16];
@@ -472,7 +419,7 @@ TUNER_ErrorCode Tuner_I2C_Write (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT
 * Description:
 * 1. User define
 **********************************************************************************/
-TUNER_ErrorCode Tuner_I2C_Read (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT8 reg_start, UINT8* buff, UINT8 length)
+TUNER_ErrorCode AV2028_Tuner_I2C_Read (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT8 reg_start, UINT8* buff, UINT8 length)
 {
     TUNER_ErrorCode result = Tuner_No_Error;
 
@@ -513,7 +460,7 @@ TUNER_ErrorCode Tuner_I2C_Read (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t, UINT8
 * Description:
 * 1. User define
 **********************************************************************************/
-TUNER_ErrorCode Time_DELAY_MS (UINT32 ms)
+TUNER_ErrorCode AV2028_Time_DELAY_MS (UINT32 ms)
 {
     TUNER_ErrorCode result = Tuner_No_Error;
     MsOS_DelayTask(ms);
@@ -531,6 +478,79 @@ MS_BOOL AV2028_ReadReg(MS_U8 u8TunerIndex, MS_U8 u8SlaveID, MS_U8 u8Addr, MS_U8 
     //bRet&=MDrv_IIC_Read(u8SlaveID, 0, 0, u8Data, 1);
 	bRet&=MDrv_IIC_ReadBytes(ePort, u8SlaveID, 0, 0, 1, u8Data);
     return bRet;
+}
+
+MS_BOOL AV2028_WriteReg(MS_U8 u8SlaveID, MS_U8 u8Addr, MS_U8 u8Data)
+{
+    MS_BOOL bRet=TRUE;
+    MS_U8 u8Value[2];
+    u8Value[0]=u8Addr;
+    u8Value[1]=u8Data;
+    bRet&=MDrv_IIC_Write(u8SlaveID, 0, 0, u8Value, 2);
+    if (!bRet)
+    {
+        TUNER_ERR(("AV2028_WriteReg fail \n"));
+    }
+    return bRet;
+}
+
+/*******************************************************************
+* Tuner parameter initialization:
+* Paramter1:    pTunerPara : pointer of Tuner parameter structure
+* Return value: TUNER_ErrorCode : error code of definition
+* Description: Initialize all the parameters in the data structure of pAVtuner
+********************************************************************/
+
+MS_BOOL MDrv_Tuner_AV2028_Initial (MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam)
+{
+    //TUNER_ErrorCode result = Tuner_No_Error;
+    pTunerPara pAVtuner = &AV2028_Para;
+    pAVtuner->crystal_khz   = 27000;                // (default 27000 KHz)
+    pAVtuner->I2C_ADDR      = ADDR1_H_ADDR0_H;    // Tuner I2C address at write mode
+    pAVtuner->PGA_Gain      = PGA_1_5dB ;            // PGA_GAIN
+    pAVtuner->PGA_Current   = PGA_1_5mA ;            // PGA_DRIVE_CURRENT
+    pAVtuner->XO_Current    = HIGH;              // XO_DRIVE_CURRENT
+    pAVtuner->XO_EN         = XO_ON;                // XO_ENABLE Setting
+    pAVtuner->RFLP_EN       = RFLP_OFF;            // RFLP_ENABLE Setting
+
+    pAVtuner->FT            = FT_ON;                // TUNER_Fine_Tune
+    pAVtuner->blind_scan    = 0;                    // blind_scan
+    TUNER_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
+
+    if (AV2028_Tuner_Register_Initial(u8TunerIndex) == Tuner_Error )
+    {
+        TUNER_ERR(("Tuner_Register_Initial error \n"));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+MS_BOOL MDrv_Tuner_AV2028_SetFreq_S2(MS_U8 u8TunerIndex, MS_U32 u32CenterFreq, MS_U32 u32SymbolRate_Hz)
+{
+    pTunerPara pAVtuner = &AV2028_Para;
+    TUNER_DBG(("u16CenterFreq:%"DTC_MS_U32_d" u32SymbolRate_Hz:%"DTC_MS_U32_d"\n",u32CenterFreq,u32SymbolRate_Hz));
+
+    if((u32CenterFreq > MAX_INPUT_FREQ) || (u32CenterFreq < MIN_INPUT_FREQ))
+        return FALSE;
+    
+    if (AV2028_Tuner_Set_Channel_Frequency(u8TunerIndex, pAVtuner,u32CenterFreq) == Tuner_Error )
+    {
+        TUNER_ERR(("Tuner_Set_Channel_Frequency error \n"));
+        return FALSE;
+    }
+
+    if (AV2028_Tuner_Set_Filter_Bandwith(u8TunerIndex, pAVtuner,u32SymbolRate_Hz) == Tuner_Error )
+    {
+        TUNER_ERR(("Tuner_Set_Filter_Bandwith error \n"));
+        return FALSE;
+    }
+
+
+    pAVtuner->RFLP_EN = RFLP_ON;
+    AV2028_Tuner_Set_RFLP(u8TunerIndex, pAVtuner);
+
+    return TRUE;
 }
 
 MS_BOOL MDrv_Tuner_AV2028_CheckLock(MS_U8 u8TunerIndex)
@@ -551,20 +571,6 @@ MS_BOOL MDrv_Tuner_AV2028_CheckLock(MS_U8 u8TunerIndex)
         }
     }
     TUNER_DBG(("Tuner Status 0x%x\n", u8Data));
-    return bRet;
-}
-
-MS_BOOL AV2028_WriteReg(MS_U8 u8SlaveID, MS_U8 u8Addr, MS_U8 u8Data)
-{
-    MS_BOOL bRet=TRUE;
-    MS_U8 u8Value[2];
-    u8Value[0]=u8Addr;
-    u8Value[1]=u8Data;
-    bRet&=MDrv_IIC_Write(u8SlaveID, 0, 0, u8Value, 2);
-    if (!bRet)
-    {
-        TUNER_ERR(("AV2028_WriteReg fail \n"));
-    }
     return bRet;
 }
 
@@ -607,11 +613,43 @@ MS_BOOL AV2028_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE fu
 {
     TUNER_MS_SAT_PARAM* SAT_PARAM;
     MS_BOOL bret = TRUE;
+    MS_U8 regData = 0;
+    
     switch(fuction_type)
     {
          case TUNER_EXT_FUNC_DECIDE_LNB_LO:
             SAT_PARAM = data;
             bret &= _DigiTuner_Decide_LNB_LO(SAT_PARAM);
+            break;
+            
+         case TUNER_EXT_FUNC_POWER_ON_OFF:
+             bret &= AV2028_ReadReg(u8TunerIndex,AV2028_Para.I2C_ADDR, 0x0C, &regData);
+            if(FALSE == *(MS_BOOL *)data)   //power off
+            {
+               regData |= (0x1<<5);
+               bret &= AV2028_WriteReg(AV2028_Para.I2C_ADDR, 0x0C, regData);
+            }
+            else
+            {
+               if((regData & (0x1<<5)) >>5)
+               {
+                  bret &= AV2028_Tuner_Register_Initial(u8TunerIndex);
+               }
+            }
+            break;
+            
+         case TUNER_EXT_FUNC_LOOP_THROUGH:
+             bret &= AV2028_ReadReg(u8TunerIndex,AV2028_Para.I2C_ADDR, 0x0C, &regData);
+            if(FALSE == *(MS_BOOL *)data)   //LT off
+            {
+               regData &= (~(0x1<<6));
+            }
+            else
+            {
+               regData |= (0x1<<6);
+            }
+
+            bret &= AV2028_WriteReg(AV2028_Para.I2C_ADDR, 0x0C, regData);
             break;
          default:
             break;

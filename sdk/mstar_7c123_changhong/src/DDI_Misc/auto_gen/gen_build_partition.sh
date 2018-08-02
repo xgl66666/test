@@ -17,18 +17,34 @@ if [ "$FLASH_TYPE" == "SPI" ]
 		if [ "$FS_TYPE" == "sqsh" ] || [ "$FS_TYPE" == "ramdisk" ]
 			then
 				printf "rm -f ../usb_update/Target/image/$4.sqsh\n" >> $1
-				if [ "$CHIP" == "keltic" ]
+				if [ "$CHIP" == "keltic" ] || [ "$CHIP" == "kratos" ]
 					then
 						printf "./mksquashfs_4 $2 ../usb_update/Target/image/$4.sqsh -comp xz -b 512k" >> $1
 				else
 						printf "./mksquashfs $2 ../usb_update/Target/image/$4.sqsh -lzmadic 1048576 -b 1048576" >> $1
 				fi
 		fi
+elif [ "$FLASH_TYPE" == "EMMC" ]
+    then
+        if [ "$FS_TYPE" == "ext4" ] || [ "$FS_TYPE" == "ramdisk" ]
+            then
+                printf "printf \"\nGenerate $4 partition ...\"\n" >> $1
+                if [ "$DDI_DEMO_SERAPHIC" == "enable" ]
+                    then
+                        echo "./make_ext4fs -l $3 -b 1024 ../usb_update/Target/image/$4.ext4 $2" >> $1
+                else
+                        echo "./make_ext4fs -l $3 ../usb_update/Target/image/$4.ext4 $2" >> $1
+                fi
+        fi
 else		
 		if [ "$FS_TYPE" == "ubifs" ] || [ "$FS_TYPE" == "ramdisk" ]
 			then
-				let UBI_PEB_SIZE=$((131072 * ($NAND_PAGE_SIZE / 2048)))
-		
+				
+                if [ "$CHIP" == "kiwi" ]; then
+                    let UBI_PEB_SIZE=$(($NAND_PAGE_SIZE * 256))
+                else
+                    let UBI_PEB_SIZE=$((131072 * ($NAND_PAGE_SIZE / 2048)))
+		        fi
 				printf "#NAND Page size\n" >> $1
 				printf "NAND_PAGE_SIZE=$NAND_PAGE_SIZE\n" >> $1
 				printf "\n" >> $1
@@ -53,7 +69,11 @@ else
 				printf "    OUTPUT=\${TARGET}/\$(basename $4.ubifs)\n" >> $1
 				printf "\n" >> $1
 				printf "    echo \" \${ROOT} -> \${OUTPUT}\"\n" >> $1
-				printf "    ./mkfs.ubifs -r \${ROOT} -o \${OUTPUT} -m $NAND_PAGE_SIZE \\" >> $1
+				if [ "$CHIP" == "kiwi" ]; then
+				    printf "    ./mkfs.ubifs_no_1M_block_size_limit -r \${ROOT} -o \${OUTPUT} -m $NAND_PAGE_SIZE \\" >> $1
+				else
+				    printf "    ./mkfs.ubifs -r \${ROOT} -o \${OUTPUT} -m $NAND_PAGE_SIZE \\" >> $1
+				fi
 				printf "\n" >> $1
 				printf "    	-e \${UBI_LEB_SIZE} -c \${MAX_LEB_CNT} -v\n" >> $1
 				printf "}\n" >> $1

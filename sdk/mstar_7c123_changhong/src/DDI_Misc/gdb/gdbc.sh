@@ -2,15 +2,16 @@
 
 function gdbc_usage()
 {
-	echo
+	echo "gdbc.sh  [v1.1]"
+    echo
 	echo $PRJ_NAME
 	echo
 	echo "Usage:"
-	echo "    gdbc.sh <cmd-type> [server-ip] [port-no] [core-file]"
+	echo "    gdbc.sh <cmd-type> [server-ip] [port-no] [core-file] [<host_ap_path_name> <target_ap_path_name>]"
 	echo "Example:"
-	echo "    gdbc.sh cmd  172.16.8.32 6315 [host_ap_path_name] [target_ap_path_name]   "
+	echo "    gdbc.sh cmd  172.16.8.32 6315 [<host_ap_path_name> <target_ap_path_name>]   "
 	echo "    gdbc.sh gui "
-	echo "    gdbc.sh core Coredump.gz [host_ap_path_name] [target_ap_path_name]    "
+	echo "    gdbc.sh core <Coredump.XXX> [<host_ap_path_name> <target_ap_path_name>]    "
 	echo "    gdbc.sh clean"
 	exit 1
 }
@@ -49,8 +50,8 @@ if [ "$1" == "core" ]
         echo "TARGET_AP=$TARGET_AP"
     elif [ "$#" == "2" ]
       then
-        echo "Coredump file is $2"  
-    else  
+        echo "Coredump file is $2"
+    else
       gdbc_usage "!! Invalid input format !!"
     fi
 fi
@@ -65,8 +66,8 @@ if [ "$1" == "cmd" ]
         echo "TARGET_AP=$TARGET_AP"
     elif [ "$#" == "3" ]
       then
-        echo "Connect to s"  
-    else  
+        echo "Connect to s"
+    else
       gdbc_usage "!! Invalid input format !!"
     fi
 fi
@@ -74,7 +75,7 @@ PRJ_DIR=`pwd | sed -e 's/ddi_pkg_linux\/\(.*\)/ddi_pkg_linux/g'`
 #PRJ_DIR=`${PWD%/cus_mstar*}`
 
 #prepare sysroot folder
-if [ ! -d ${MISC_DIR}/gdb/ROOTFS ] 
+if [ ! -d ${MISC_DIR}/gdb/ROOTFS ]
 	then
 		construct_rootfs
 else
@@ -102,21 +103,48 @@ echo "set sysroot ${MISC_DIR}/gdb/ROOTFS" >> gdbc_cmd
 
 echo "TOOLCHAIN=${TOOLCHAIN}"
 
+#replace current utopia lib absolute path
+if [ "$TOOLCHAIN" == "arm-none-linux-gnueabi" ]
+	then
+		FROM_PATH=`${TOOLCHAIN}-readelf ../../../bsp/lib_dynamic/liblinux.so --debug-dump | grep "drvSysInfo.c" | grep "DW_AT_name" | awk '{print $8}' | sed 's/THEALE.*//g'`
+else
+		FROM_PATH=`${TOOLCHAIN}-objdump ../../../bsp/lib_dynamic/liblinux.so -x | grep "drvSysInfo.c" | awk '{print $6}' | sed 's/THEALE.*//g'`
+fi
+TO_PATH=`pwd | sed 's/THEALE.*//g'`
+echo FROM_PATH=$FROM_PATH
+echo TO_PATH=$TO_PATH
+
 CMD_TYPE=$1
 if [ "$CMD_TYPE" == "core" ]
 	then
-		CORE_FILE=$2
+	    CORE_FILE=$2
 		if [[ "$CORE_FILE" == *".gz" ]]
 			then
+                echo "Unzip $CORE_FILE"
 				gunzip $CORE_FILE
 				CORE_FILE=`printf "%s" ${CORE_FILE:0:$((${#CORE_FILE}-3))}`
-		fi
+        fi
+
+		if [ -f "${CORE_FILE}.gz" ]
+            then
+                echo "!!unzip ${CORE_FILE}.gz"
+                gunzip ${CORE_FILE}.gz
+        fi
+
+        if [ ! -f $CORE_FILE ]
+            then
+                echo "Coredump File ${CORE_FILE} does not exist !!"
+                exit
+        fi
+
 		echo "core ${CORE_FILE}" >> gdbc_cmd
+		echo "set substitute-path ${FROM_PATH} ${TO_PATH}" >> gdbc_cmd
+		echo "fs n" >> gdbc_cmd
 		${TOOLCHAIN}-gdb $HOST_AP -x gdbc_cmd
 elif [ "$CMD_TYPE" == "clean" ]
 	then
 		echo "Clean sysroot folder ..."
-		[ -d ${MISC_DIR}/gdb/ROOTFS ] && `rm -rf ${MISC_DIR}/gdb/ROOTFS`		
+		[ -d ${MISC_DIR}/gdb/ROOTFS ] && `rm -rf ${MISC_DIR}/gdb/ROOTFS`
 else
 		IP=$2
 		PORT=$3
@@ -125,19 +153,9 @@ else
 		  then
 				echo "target remote ${IP}:${PORT}" >> gdbc_cmd
 				echo "shell cp -rf ../../../bsp/lib_dynamic/* ${MISC_DIR}/gdb/ROOTFS/vendor/lib/utopia" >> gdbc_cmd
-				
-				#replace current utopia lib absolute path
-				if [ "$TOOLCHAIN" == "arm-none-linux-gnueabi" ]
-					then
-						FROM_PATH=`${TOOLCHAIN}-readelf ../../../bsp/lib_dynamic/liblinux.so --debug-dump | grep "drvSysInfo.c" | grep "filename" | awk '{print $8}' | sed 's/THEALE.*/THEALE/g'`
-				else
-						FROM_PATH=`${TOOLCHAIN}-objdump ../../../bsp/lib_dynamic/liblinux.so -x | grep "drvSysInfo.c" | awk '{print $6}' | sed 's/THEALE.*/THEALE/g'`
-				fi
-				TO_PATH=`pwd | sed 's/THEALE.*/THEALE/g'`
-				echo FROM_PATH=$FROM_PATH
-				echo TO_PATH=$TO_PATH
-				echo "set substitute-path ${FROM_PATH} ${TO_PATH}" >> gdbc_cmd  
-		    
+				echo "fs n" >> gdbc_cmd
+				echo "set substitute-path ${FROM_PATH} ${TO_PATH}" >> gdbc_cmd
+
 				${TOOLCHAIN}-gdb $HOST_AP -x gdbc_cmd
 		elif [ "$CMD_TYPE" == "gui" ]
 		  then

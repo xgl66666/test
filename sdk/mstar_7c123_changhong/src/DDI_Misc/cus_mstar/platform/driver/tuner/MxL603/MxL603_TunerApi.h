@@ -75,11 +75,18 @@ typedef enum
 
 typedef enum
 {
-  MXL603_DIG_DVB_C,         /* DVB-C mode */
+  MXL603_PLL_STATE_NORMAL = 0,
+  MXL603_PLL_STATE_WRONG  = 1,
+  MXL603_PLL_STATE_NA = 2
+} MXL603_PLL_STATE_E;
+
+typedef enum
+{
+  MXL603_DIG_DVB_C = 0,     /* DVB-C mode */
   MXL603_DIG_ISDBT_ATSC,    /* ATSC/ISDB-T mode */
-  MXL603_DIG_DVB_T,         /* DVB-T/DVB-T2/DTMB mode */
+  MXL603_DIG_DVB_T_DTMB,    /* DVB-T/DVB-T2 and DTMB mode */
   MXL603_DIG_J83B           /* J.83B mode */
-} MXL603_SIGNAL_MODE_E;   /* MxL603 Application mode */
+} MXL603_SIGNAL_MODE_E;     /* MxL603 Application mode */
 
 typedef enum
 {
@@ -154,6 +161,7 @@ typedef struct
 /******************************************************************************
     Global Variable Declarations
 ******************************************************************************/
+extern const UINT8 MxLWare603DrvVersion[5];
 
 /******************************************************************************
     Prototypes
@@ -163,21 +171,26 @@ MXL_STATUS MxLWare603_API_CfgDrvInit(UINT8 devId, void* oemDataPtr);
 MXL_STATUS MxLWare603_API_CfgDevSoftReset(UINT8 u8TunerIndex,UINT8 devId);
 MXL_STATUS MxLWare603_API_CfgDevOverwriteDefaults(UINT8 u8TunerIndex,UINT8 devId, MXL_BOOL singleSupply_3_3V);
 MXL_STATUS MxLWare603_API_CfgDevXtal(UINT8 u8TunerIndex,UINT8 devId, MXL603_XTAL_SET_CFG_T xtalCfg);
-MXL_STATUS MxLWare603_API_CfgDevPowerMode(UINT8 u8TunerIndex,UINT8 devId, MXL603_PWR_MODE_E powerMode);
+MXL_STATUS MxLWare603_API_CfgDevPowerMode(UINT8 u8TunerIndex,UINT8 devId, 
+                                          MXL603_PWR_MODE_E powerMode, 
+                                          MXL_BOOL enableLoopthrough, 
+                                          UINT8 standbyLt);
 MXL_STATUS MxLWare603_API_CfgDevGPO(UINT8 u8TunerIndex,UINT8 devId, MXL603_GPO_STATE_E gpoState);
 
 MXL_STATUS MxLWare603_API_ReqDevVersionInfo(UINT8 u8TunerIndex,UINT8 devId, MXL603_VER_INFO_T* mxlDevVerInfoPtr);
 MXL_STATUS MxLWare603_API_ReqDevGPOStatus(UINT8 u8TunerIndex,UINT8 devId, MXL603_GPO_STATE_E* gpoStatusPtr);
+MXL_STATUS MxLWare603_API_ReqDevPllState(UINT8 u8TunerIndex,UINT8 devId, MXL603_PLL_STATE_E* PllStatePtr);
 
 MXL_STATUS MxLWare603_API_CfgTunerMode(UINT8 u8TunerIndex,UINT8 devId, MXL603_TUNER_MODE_CFG_T tunerModeCfg);
 MXL_STATUS MxLWare603_API_CfgTunerAGC(UINT8 u8TunerIndex,UINT8 devId, MXL603_AGC_CFG_T agcCfg);
-MXL_STATUS MxLWare603_API_CfgTunerLoopThrough(UINT8 u8TunerIndex,UINT8 devId, MXL_BOOL loopThroughCtrl);
+MXL_STATUS MxLWare603_API_CfgTunerLoopThrough(UINT8 u8TunerIndex,UINT8 devId, MXL_BOOL loopThroughCtrl, UINT8* gainArray, UINT8* attArray);
 MXL_STATUS MxLWare603_API_CfgTunerIFOutParam(UINT8 u8TunerIndex,UINT8 devId, MXL603_IF_OUT_CFG_T ifOutCfg);
+MXL_STATUS MxLWare603_API_CfgTunerSouthAfricaLT(UINT8 u8TunerIndex,UINT8 devId);
 MXL_STATUS MxLWare603_API_CfgTunerChanTune(UINT8 u8TunerIndex,UINT8 devId, MXL603_CHAN_TUNE_CFG_T chanTuneCfg);
 
 MXL_STATUS MxLWare603_API_ReqTunerAGCLock(UINT8 u8TunerIndex,UINT8 devId, MXL_BOOL* agcLockStatusPtr);
 MXL_STATUS MxLWare603_API_ReqTunerLockStatus(UINT8 u8TunerIndex,UINT8 devId, MXL_BOOL* rfLockPtr, MXL_BOOL* refLockPtr);
-MXL_STATUS MxLWare603_API_ReqTunerRxPower(UINT8 u8TunerIndex,UINT8 devId, REAL32* rxPwrPtr);
+MXL_STATUS MxLWare603_API_ReqTunerRxPower(UINT8 u8TunerIndex,UINT8 devId, SINT16* rxPwrPtr);
 
 #endif /* __MXL603_TUNER_API_H__*/
 

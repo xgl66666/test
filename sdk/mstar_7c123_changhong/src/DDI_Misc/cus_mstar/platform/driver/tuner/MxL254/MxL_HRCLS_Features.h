@@ -30,7 +30,7 @@
 // Utility macro to extract product specific compiler switch setting based on MXL_HRCLS_PROD_ID
 // --------------------------------------------------------------------------------------
 
-#if defined(MXL_HRCLS_265_ENABLE) || defined(MXL_HRCLS_267_ENABLE) || defined(MXL_HRCLS_269_ENABLE)
+#if defined(MXL_HRCLS_265_ENABLE) || defined(MXL_HRCLS_267_ENABLE) || defined(MXL_HRCLS_269_ENABLE) || defined(MXL_HRCLS_268_ENABLE)
 #define _MXL_HRCLS_SERDES_ENABLED_
 #endif
 
@@ -47,10 +47,11 @@
     defined(MXL_HRCLS_212_ENABLE) || \
     defined(MXL_HRCLS_213_ENABLE) || \
     defined(MXL_HRCLS_214_ENABLE) || \
-    defined(_MXL_HRCLS_WAKE_ON_WAN_ENABLED_)
-#ifndef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
-  #define _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
-#endif
+    defined(MXL_HRCLS_268_ENABLE)
+//    defined(_MXL_HRCLS_WAKE_ON_WAN_ENABLED_)
+//#ifndef _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
+//  #define _MXL_HRCLS_WAKE_ON_WAN_ENABLED_
+//#endif
 #define _MXL_HRCLS_DEMOD_ENABLED_
 #endif
 
@@ -70,7 +71,9 @@
     defined(MXL_HRCLS_269_ENABLE) || \
     defined(MXL_HRCLS_212_ENABLE) || \
     defined(MXL_HRCLS_213_ENABLE) || \
-    defined(MXL_HRCLS_214_ENABLE) 
+    defined(MXL_HRCLS_214_ENABLE) || \
+    defined(MXL_HRCLS_254_ENABLE) || \
+    defined(MXL_HRCLS_268_ENABLE) 
 #define _MXL_HRCLS_IFOUT_ENABLED_
 #endif
 

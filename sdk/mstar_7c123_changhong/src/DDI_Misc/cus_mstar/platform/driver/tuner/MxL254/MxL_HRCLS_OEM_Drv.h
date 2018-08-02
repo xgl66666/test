@@ -29,6 +29,7 @@
 /*****************************************************************************************
     User-Defined Types (Typedefs)
 *****************************************************************************************/
+#define MXL254_SLAVE_ID 0x50
 
 /*****************************************************************************************
     Global Variable Declarations
@@ -49,7 +50,7 @@ MXL_STATUS_E MxLWare_HRCLS_OEM_LoadNVRAMFile(UINT8 devId, UINT8 *bufPtr, UINT32 
 MXL_STATUS_E MxLWare_HRCLS_OEM_SaveNVRAMFile(UINT8 devId, UINT8 *bufPtr, UINT32 bufLen);
 void MxLWare_HRCLS_OEM_DelayUsec(UINT32 usec);
 void MxLWare_HRCLS_OEM_GetCurrTimeInUsec(/*@out@*/ UINT64* usecPtr);
-
+MXL_STATUS_E MxLWare_HRCLS_OEM_DrvDeInit(UINT8 devId);
 #endif /* __MXL_HRCLS_OEM_DRV_H__*/
 
 

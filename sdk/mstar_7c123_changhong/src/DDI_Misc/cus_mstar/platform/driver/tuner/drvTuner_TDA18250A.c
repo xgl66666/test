@@ -6,7 +6,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (¡§MStar Confidential Information¡¨) by the recipient.
+// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -92,8 +92,14 @@ static tmErrorCode_t     UserWrittenMutexRelease(ptmbslFrontEndMutexHandle pMute
 #define IIC_READ                    MDrv_IIC_Read
 #define IIC1_WRITE                  MDrv_IIC1_Write
 #define IIC1_READ                   MDrv_IIC1_Read
-
-
+#define TDA18250A_CHIP_ID_1 0x4a
+#define TDA18250A_CHIP_ID_0 0xc7
+#define TDA18250A_REVISION_0 0x20
+#define TDA18250B_REVISION_0 0x21
+#define TDA18250AB_PLL_LOCK 0x1
+#define REG_POWER_STATE 0x5
+MS_BOOL TDA18250A_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt);
+MS_BOOL TDA18250B_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt);
 
 //-------------------------------------------------------------------------------------------------
 //  Local Structurs
@@ -150,11 +156,11 @@ static MS_U8 _get_Tuner_Instance_Index(MS_U8 u8TunerIndex)
 MS_BOOL MDrv_Tuner_TDA18250A_SetFreq(MS_U8 u8TunerIndex, MS_U32 u32Freq)
 {
     tmErrorCode_t err = TM_OK;
-    tmbslFrontEndState_t PLLLockMaster = tmbslFrontEndStateUnknown;  
+    tmbslFrontEndState_t PLLLockMaster = tmbslFrontEndStateUnknown;
     UInt32 uIFMaster = 0;
 
 
-    
+
     err = tmbslTDA18250A_SetRF(_get_Tuner_Instance_Index(u8TunerIndex),0, u32Freq*1000);
     if(err != TM_OK)
         return err;
@@ -215,7 +221,7 @@ MS_BOOL MDrv_Tuner_TDA18250A_SetTuner(MS_U8 u8TunerIndex, MS_U32 u32Freq, MS_U8 
             case TUNER_BW_MODE_1_7MHZ:
                 TUNER_DBG(("=== TDA18250A_DVBT_1_7MHz\n"));
                 standard_mode = TDA18250A_DVBT_1_7MHz;
-                break;     
+                break;
            case TUNER_BW_MODE_8MHZ:
            default:
                 TUNER_DBG(("=== TDA18250A_DVBT_8MHz\n"));
@@ -237,7 +243,7 @@ MS_BOOL MDrv_Tuner_TDA18250A_SetTuner(MS_U8 u8TunerIndex, MS_U32 u32Freq, MS_U8 
         {
         TUNER_ERR(("!!!!! standard_mode error\n"));
         }
-    
+
     return MDrv_Tuner_TDA18250A_SetFreq(u8TunerIndex,u32Freq);
 }
 
@@ -254,7 +260,16 @@ MS_BOOL MDrv_Tuner_TDA18250B_Init(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam
     TDA18250AStandardMode_t     TDA18250AStdMode = TDA18250A_QAM_8MHz;
     //UInt32                      uRF = 0;
     //tmbslFrontEndState_t        PLLLock = tmbslFrontEndStateUnknown;
+    MS_U8 Addr = REG_POWER_STATE;
+    MS_U8 Data = 0;
     HWI2C_PORT hwi2c_port;
+
+    if(TDA18250B_CheckExist(u8TunerIndex, NULL) != TRUE)
+    {
+       TUNER_ERR(("Tuner ID is incorrect\n"));
+       return FALSE;
+    }
+
     hwi2c_port = getI2CPort(u8TunerIndex);
     if (hwi2c_port < E_HWI2C_PORT_1)
     {
@@ -271,14 +286,30 @@ MS_BOOL MDrv_Tuner_TDA18250B_Init(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam
         TUNER_ERR(("hwi2c_port number exceeds limitation\n"));
         return FALSE;
     }
-    
+
+    // Check PLL lock status, if PLL have locked before tuner init, it might be in used
+    if (hwi2c_port < E_HWI2C_PORT_1)
+    {
+        IIC_READ(TDA18250A_ADDR, &Addr,1, &Data,1);
+    }
+    else if (hwi2c_port < E_HWI2C_PORT_2)
+    {
+        IIC1_READ(TDA18250A_ADDR, &Addr,1, &Data,1);
+    }
+
+    if(TDA18250AB_PLL_LOCK & Data)
+    {
+       TUNER_ERR(("Tuner might be in use\n"));
+       return FALSE;
+    }
+
     if(pParam->pCur_Broadcast_type == NULL)
         return FALSE;
     else
         InitParam[u8TunerIndex].pCur_Broadcast_type = pParam->pCur_Broadcast_type;
 
     DrvInstance[u8TunerIndex] = DrvInstance_acc;
-     
+
     sSrvTunerFunc.sTime.Get             = Null;
     sSrvTunerFunc.sTime.Wait            = UserWrittenWait;
     sSrvTunerFunc.sDebug.Print          = UserWrittenPrint;
@@ -289,7 +320,7 @@ MS_BOOL MDrv_Tuner_TDA18250B_Init(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam
     sSrvTunerFunc.dwAdditionalDataSize  = 0;
     sSrvTunerFunc.pAdditionalData       = Null;
 
-#ifdef DDI_MISC_INUSE    
+#ifdef DDI_MISC_INUSE
   #ifndef TUNER_18250AB_XTAL_27MHZ
     tmbslTDA18250B_ResetConfig(_get_Tuner_Instance_Index(u8TunerIndex));
   #endif
@@ -298,7 +329,7 @@ MS_BOOL MDrv_Tuner_TDA18250B_Init(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam
     tmbslTDA18250B_ResetConfig(_get_Tuner_Instance_Index(u8TunerIndex));
 #endif
 
-    
+
     /* Open TDA18250A driver instance */
     err = tmbslTDA18250A_Open(_get_Tuner_Instance_Index(u8TunerIndex),TunerUnit, &sSrvTunerFunc);
     TUNER_DBG(("\n=== TDA18250B open, result[0x%lX]. \n", err));
@@ -369,7 +400,16 @@ MS_BOOL MDrv_Tuner_TDA18250A_Init(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam
     TDA18250AStandardMode_t     TDA18250AStdMode = TDA18250A_QAM_8MHz;
     //UInt32                      uRF = 0;
     //tmbslFrontEndState_t        PLLLock = tmbslFrontEndStateUnknown;
+    MS_U8 Addr = REG_POWER_STATE;
+    MS_U8 Data = 0;
     HWI2C_PORT hwi2c_port;
+
+    if(TDA18250A_CheckExist(u8TunerIndex, NULL) != TRUE)
+    {
+       TUNER_ERR(("Tuner ID is incorrect\n"));
+       return FALSE;
+    }
+
     hwi2c_port = getI2CPort(u8TunerIndex);
     if (hwi2c_port < E_HWI2C_PORT_1)
     {
@@ -387,6 +427,23 @@ MS_BOOL MDrv_Tuner_TDA18250A_Init(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam
         return FALSE;
     }
 
+    // Check PLL lock status, if PLL have locked before tuner init, it might be in used
+    if (hwi2c_port < E_HWI2C_PORT_1)
+    {
+        IIC_READ(TDA18250A_ADDR, &Addr,1, &Data,1);
+    }
+    else if (hwi2c_port < E_HWI2C_PORT_2)
+    {
+        IIC1_READ(TDA18250A_ADDR, &Addr,1, &Data,1);
+    }
+
+    if(TDA18250AB_PLL_LOCK & Data)
+    {
+       TUNER_ERR(("Tuner might be in use\n"));
+       return FALSE;
+    }
+
+
     if(pParam->pCur_Broadcast_type == NULL)
         return FALSE;
     else
@@ -394,7 +451,7 @@ MS_BOOL MDrv_Tuner_TDA18250A_Init(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam
 
 
     DrvInstance[u8TunerIndex] = DrvInstance_acc;
-    
+
     sSrvTunerFunc.sTime.Get             = Null;
     sSrvTunerFunc.sTime.Wait            = UserWrittenWait;
     sSrvTunerFunc.sDebug.Print          = UserWrittenPrint;
@@ -405,8 +462,8 @@ MS_BOOL MDrv_Tuner_TDA18250A_Init(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam
     sSrvTunerFunc.dwAdditionalDataSize  = 0;
     sSrvTunerFunc.pAdditionalData       = Null;
 
-#ifdef DDI_MISC_INUSE    
-  #ifndef TUNER_18250AB_XTAL_27MHZ 
+#ifdef DDI_MISC_INUSE
+  #if (TUNER_18250AB_XTAL_27MHZ_ENABLE==1)
     // default 27M
     tmbslTDA18250B_ResetConfig(_get_Tuner_Instance_Index(u8TunerIndex));
   #endif
@@ -706,11 +763,6 @@ tmErrorCode_t             UserWrittenPrint(UInt32 level, const char* format, ...
     //return err;
 //}
 
-#define TDA18250A_CHIP_ID_1 0x4a
-#define TDA18250A_CHIP_ID_0 0xc7
-#define TDA18250A_REVISION_0 0x20
-#define TDA18250B_REVISION_0 0x21
-
 
 MS_BOOL TDA18250A_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt)
 {
@@ -719,7 +771,7 @@ MS_BOOL TDA18250A_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt)
 
     HWI2C_PORT hwi2c_port;
     hwi2c_port = getI2CPort(u8TunerIndex);
-    
+
     if (hwi2c_port < E_HWI2C_PORT_1)
     {
         IIC_READ(TDA18250A_ADDR, &Addr,1, &Data[0],1);
@@ -762,13 +814,13 @@ MS_BOOL TDA18250A_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt)
         return FALSE;
     }
 
-    
+
 
     TUNER_DBG(("[18250a] read id =0x%x 0x%x , 0x%x\n",Data[0],Data[1],Data[2]));
 
     if((Data[0] == TDA18250A_CHIP_ID_0) && (Data[1] == TDA18250A_CHIP_ID_1) && (NULL != pu32channel_cnt))
     {
-            *(pu32channel_cnt) += 1; 
+            *(pu32channel_cnt) += 1;
     }
     return (Data[0] == TDA18250A_CHIP_ID_0) && (Data[1] == TDA18250A_CHIP_ID_1) ;
 }
@@ -780,7 +832,7 @@ MS_BOOL TDA18250B_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt)
 
     HWI2C_PORT hwi2c_port;
     hwi2c_port = getI2CPort(u8TunerIndex);
-    
+
     if (hwi2c_port < E_HWI2C_PORT_1)
     {
         IIC_READ(TDA18250A_ADDR, &Addr,1, &Data[0],1);
@@ -823,12 +875,12 @@ MS_BOOL TDA18250B_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt)
         return FALSE;
     }
 
-    
+
 
     TUNER_DBG(("[18250b] read id =0x%x 0x%x , 0x%x\n",Data[0],Data[1],Data[2]));
     if((Data[0] == TDA18250A_CHIP_ID_0) && (Data[1] == TDA18250A_CHIP_ID_1) && (NULL != pu32channel_cnt))
     {
-            *(pu32channel_cnt) += 1; 
+            *(pu32channel_cnt) += 1;
     }
 
     return (Data[0] == TDA18250A_CHIP_ID_0) && (Data[1] == TDA18250A_CHIP_ID_1) ;
@@ -895,14 +947,14 @@ MS_BOOL TDA18250A_GetPowerLevel(MS_U8 u8TunerIndex,float *Level)
     }
     Int32 orlLevel = 0;
     MS_FLOAT x = 0;
-    
+
     tmbslTDA18250A_GetPowerLevel(_get_Tuner_Instance_Index(u8TunerIndex),0,&orlLevel);
-    
+
     TUNER_DBG(("[%s][%d]original level:%ld\t",__FUNCTION__,__LINE__,orlLevel ));
-    
+
     x = (MS_FLOAT)orlLevel;
-    
-    
+
+
     *Level = 0.0101 * x -1.3813;//DATA FROM HW INSTRUMENT SFU
 
     *Level -= 108.7506; //transfer unit dBuV to dBmW
@@ -933,6 +985,9 @@ MS_BOOL TDA18250A_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE
             {
                  tmbslTDA18250A_SetPowerState(_get_Tuner_Instance_Index(u8TunerIndex), 0, tmPowerOn);
             }
+            break;
+        case TUNER_EXT_FUNC_FINALIZE:
+            tmbslTDA18250A_Close(_get_Tuner_Instance_Index(u8TunerIndex), 0);
             break;
         default:
             TUNER_DBG(("Request extension function (%x) does not exist\n",fuction_type));

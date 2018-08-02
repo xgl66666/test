@@ -23,6 +23,8 @@
 
 #include "MaxLinearDataTypes.h"
 #include "MxL603_OEM_Drv.h"
+#include "MxL603_Features.h"
+#include "MxL603_TunerSpurTable.h"
 
 /******************************************************************************
     Macros
@@ -79,8 +81,13 @@
 #define DFE_DACIF_BYP_GAIN_REG         0x43 
 #define DIG_ANA_RFRSSI_REG             0x57 
 
-#define RSSI_RESET_REG                 0x78
+#define DFE_SEQ_TUNE_RF1_BO_REG        0x60 
+#define DFE_SEQ_DIGANA_LT_GAIN_REG     0x62
+#define DFE_SEQ_DIGANA_LT_ATTN_REG     0x63
+#define XTAL_EXT_BIAS_REG              0x6D 
 
+#define RSSI_RESET_REG                 0x78
+#define DIG_ANA_GINJO_LT_REG           0x96 
 #define FINE_TUNE_INIT1_REG            0xA9 
 #define FINE_TUNE_INIT2_REG            0xAA
 
@@ -101,6 +108,9 @@
 
 #define APP_MODE_FREQ_HZ_THRESHOLD_1   358000000
 #define APP_MODE_FREQ_HZ_THRESHOLD_2   625000000
+#define APP_MODE_FREQ_HZ_THRESHOLD_3   700000000
+
+#define MXL603_SPUR_SHIFT_FREQ_WINDOW  500000  // +- 0.5MHz
 
 #define IF_GAIN_SET_POINT1             10 
 #define IF_GAIN_SET_POINT2             11 
@@ -147,6 +157,8 @@ extern MXL603_REG_CTRL_INFO_T MxL603_DigitalDvbt[];
 // Functions for register write operation 
 MXL_STATUS MxL603_Ctrl_ProgramRegisters(UINT8 u8TunerIndex,UINT8 devId, PMXL603_REG_CTRL_INFO_T ctrlRegInfoPtr);
 MXL_STATUS MxL603_Ctrl_WriteRegField(UINT8 u8TunerIndex,UINT8 devId, PMXL603_REG_CTRL_INFO_T ctrlRegInfoPtr); 
+
+MXL_STATUS MxL603_Ctrl_SetRfFreqLutTblReg(UINT8 u8TunerIndex,UINT8 devId, UINT32 FreqInHz, PMXL603_CHAN_DEPENDENT_FREQ_TABLE_T freqLutPtr);
 
 #endif /* __MXL603_TUNER_CFG_H__*/
 

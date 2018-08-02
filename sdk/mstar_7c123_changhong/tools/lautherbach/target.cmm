@@ -1,6 +1,6 @@
 
 SYSTEM.DOWN 
-System.cpu MIPS34K
+System.cpu MIPS4K
 SYSTEM.JTAGCLOCK 20.0MHz
 system.mode NODEBUG
 system.mode ATTACH
@@ -27,7 +27,7 @@ ELSE IF ("&objname"=="dalts")
 ELSE IF ("&objname"=="keltic_ecos")
 (
   SYStem.Option MonBase 0x83000000
-  &topath="Y:\sdkmstar\Keltic\DDI_Package\ddi_pkg_ecos\cus_mstar\project\mstar_demo\bin\"
+  &topath="Y:\sdk\mstar_5c59_kaon\src\DDI_Misc\cus_mstar\project\mstar_demo\bin\"
   &ext=".elf"
 )
 

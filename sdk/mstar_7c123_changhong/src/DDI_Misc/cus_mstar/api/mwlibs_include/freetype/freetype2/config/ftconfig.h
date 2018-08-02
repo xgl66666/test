@@ -60,7 +60,7 @@ FT_BEGIN_HEADER
 
 #define HAVE_UNISTD_H 1
 #define HAVE_FCNTL_H 1
-#define HAVE_STDINT_H 1
+/* #undef HAVE_STDINT_H */
 
 
   /* There are systems (like the Texas Instruments 'C54x) where a `char' */

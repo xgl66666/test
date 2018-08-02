@@ -84,7 +84,11 @@
 #include "drvIIC.h"
 #include "drvDishNull.h"
 
-#if(DISH_TYPE == DISH_A8296) //CUS_MICO
+#if(DISH_TYPE == DISH_A8296) ||\
+   (defined(DISH_TYPE1) && (DISH_TYPE1 == DISH_A8296)) || \
+   (defined(DISH_TYPE2) && (DISH_TYPE2 == DISH_A8296)) || \
+   (defined(DISH_TYPE3) && (DISH_TYPE3 == DISH_A8296))
+
 #define A8296_SLAVE_ADDR_R   0x11
 #define A8296_SLAVE_ADDR   0x10
 
@@ -124,10 +128,10 @@ VSEL2 VSEL1 VSEL0 LNB (V)
 2 OCP 		This bit will be set to a 1 if the LNB output current exceeds the overcurrent threshold (IOUT(MAX)) for more than
 			the overcurrent disable time (tDIS). If the OCP bit is set to 1, then the DIS bit is also set to 1.
 3 TRIMS 	Factory use only.
-4 PNG		Set to 1 when the A8296 is enabled and the LNB output voltage is either too low or too high (nominally ¡À9%
+4 PNG		Set to 1 when the A8296 is enabled and the LNB output voltage is either too low or too high (nominally Â¡Ã€9%
 			from the LNB DAC setting). Set to 0 when the A8296 is enabled and the LNB voltage is within the acceptable
-			range (nominally ¡À5% from the LNB DAC setting).
-5 ¨C 		Not used.
+			range (nominally Â¡Ã€5% from the LNB DAC setting).
+5 Â¨C 		Not used.
 6 TSD 		The TSD bit is set to 1 if the A8296 has detected an overtemperature condition. If the TSD bit is set to 1, then
 			the DIS bit is also set to 1.
 7 UVLO 		The UVLO bit is set to 1 if either the voltage at the VIN pin or the voltage at the VREG pin is too low. If the
@@ -153,9 +157,51 @@ VSEL2 VSEL1 VSEL0 LNB (V)
 #else
 #define A8296_IIC_PORT FRONTEND_TUNER_PORT
 #endif
+
+#ifdef DISH_IIC_PORT1
+#define A8296_IIC_PORT1 DISH_IIC_PORT1
+#else
+#define A8296_IIC_PORT1 FRONTEND_TUNER_PORT1
+#endif
+
+#ifdef DISH_IIC_PORT2
+#define A8296_IIC_PORT2 DISH_IIC_PORT2
+#else
+#define A8296_IIC_PORT2 FRONTEND_TUNER_PORT2
+#endif
+
+#ifdef DISH_IIC_PORT3
+#define A8296_IIC_PORT3 DISH_IIC_PORT3
+#else
+#define A8296_IIC_PORT3 FRONTEND_TUNER_PORT3
+#endif
+
  
 /************************************************************************************/
 static DISH_MS_INIT_PARAM DishInitParam[MAX_FRONTEND_NUM];
+
+static HWI2C_PORT _get_I2C_port(MS_U8 u8DishIndex)
+{
+    HWI2C_PORT ehwI2c_port;
+    switch(u8DishIndex)
+    {
+        case 1:
+            ehwI2c_port = A8296_IIC_PORT1;
+            break;
+        case 2:
+            ehwI2c_port = A8296_IIC_PORT2;
+            break;
+        case 3:
+            ehwI2c_port = A8296_IIC_PORT3;
+            break;
+        case 0:
+        default:    
+            ehwI2c_port = A8296_IIC_PORT;
+            break;
+    }
+    return ehwI2c_port;
+}
+
 MS_BOOL MDrv_Dish_Init(MS_U8 u8DishIndex,DISH_MS_INIT_PARAM* pParam)
 {
     MS_U8 u8Data=0;
@@ -177,18 +223,18 @@ MS_BOOL MDrv_Dish_Init(MS_U8 u8DishIndex,DISH_MS_INIT_PARAM* pParam)
     	}
 	#endif
 
-	if(!MDrv_IIC_ReadBytes(A8296_IIC_PORT,A8296_SLAVE_ADDR_R, 0, NULL, 1, &u8Data))
+	if(!MDrv_IIC_ReadBytes(_get_I2C_port(u8DishIndex),A8296_SLAVE_ADDR_R, 0, NULL, 1, &u8Data))
 	{
 		HB_printf("\n MDrv_Dish_Init failed-1-ReadBytes fail!\n");
 	}	
 	u8Data = DATA_13V_OUT; 
 	u8BuffTemp[1]=u8Data;
-	if(!MDrv_IIC_WriteBytes(A8296_IIC_PORT, A8296_SLAVE_ADDR, 0, NULL, 2, &u8BuffTemp[0]))
+	if(!MDrv_IIC_WriteBytes(_get_I2C_port(u8DishIndex), A8296_SLAVE_ADDR, 0, NULL, 2, &u8BuffTemp[0]))
 	{
 		HB_printf("\n MDrv_Dish_Init failed-2-WriteBytes fail!");
 		return FALSE;
 	}
-	if(!MDrv_IIC_ReadBytes(A8296_IIC_PORT,A8296_SLAVE_ADDR_R, 0, NULL, 1, &u8Data))
+	if(!MDrv_IIC_ReadBytes(_get_I2C_port(u8DishIndex),A8296_SLAVE_ADDR_R, 0, NULL, 1, &u8Data))
 	{
 		HB_printf("\n MDrv_Dish_Init failed-3-ReadBytes fail!");
 	}
@@ -240,7 +286,7 @@ MS_BOOL MDrv_Dish_SetLNBPower(MS_U8 u8DishIndex, DISH_LNBPWR_TYPE enLNBPwr)
 
 		u8BuffTemp[1]=u8Data;
 		u8PowerData=u8Data;
-	  	b8result=MDrv_IIC_WriteBytes(A8296_IIC_PORT, A8296_SLAVE_ADDR, 0, NULL, 2, &u8BuffTemp[0]);
+	  	b8result=MDrv_IIC_WriteBytes(_get_I2C_port(u8DishIndex), A8296_SLAVE_ADDR, 0, NULL, 2, &u8BuffTemp[0]);
 		if(0==b8result)
 		{
 			 HB_printf("\n MDrv_Dish_SetLNBPower failed-!");
@@ -283,8 +329,8 @@ MS_BOOL MDrv_Dish_IsOverCurrent(MS_U8 u8DishIndex)
 	u8BuffTemp[0]=0x00;
 	u8BuffTemp[1]=u8PowerData;
 	//note: before read need to write first 
-	MDrv_IIC_WriteBytes(A8296_IIC_PORT, A8296_SLAVE_ADDR, 0, NULL, 2, &u8BuffTemp[0]);
-    if(MDrv_IIC_ReadBytes(A8296_IIC_PORT, A8296_SLAVE_ADDR_R, 0, NULL, 1, &u8Status))
+	MDrv_IIC_WriteBytes(_get_I2C_port(u8DishIndex), A8296_SLAVE_ADDR, 0, NULL, 2, &u8BuffTemp[0]);
+    if(MDrv_IIC_ReadBytes(_get_I2C_port(u8DishIndex), A8296_SLAVE_ADDR_R, 0, NULL, 1, &u8Status))
     {
          if(u8Status&OVERCURRENT)
          {
@@ -295,13 +341,19 @@ MS_BOOL MDrv_Dish_IsOverCurrent(MS_U8 u8DishIndex)
     return FALSE;
 }
 
+MS_BOOL MDrv_Dish_SetCable(MS_U8 u8DishIndex, EN_CABLE_SELECT eCableIndex)
+{       
+   return FALSE;
+}
+
 DISHTAB_ENTRY(dish_entry_DISH_A8296,"DISH_A8296", DISH_A8296,
             MDrv_Dish_Init,
             MDrv_Dish_SetTone,
             MDrv_Dish_SetLNBPower,
             MDrv_Dish_Set22k,
             MDrv_Dish_SendCmd,
-            MDrv_Dish_IsOverCurrent
+            MDrv_Dish_IsOverCurrent,
+            MDrv_Dish_SetCable
 );
 
 #endif 

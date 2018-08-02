@@ -104,6 +104,9 @@ MS_U8 MDrv_Demod_null_GetCurrentDemodType(MS_U8 u8DemodIndex);
 MS_BOOL MDrv_Demod_null_GetPlpBitMap(MS_U8 u8DemodIndex, MS_U8* u8PlpBitMap);
 MS_BOOL MDrv_Demod_null_GetPlpGroupID(MS_U8 u8DemodIndex, MS_U8 u8PlpID, MS_U8* u8GroupID);
 MS_BOOL MDrv_Demod_null_SetPlpGroupID(MS_U8 u8DemodIndex, MS_U8 u8PlpID, MS_U8 u8GroupID);
+MS_BOOL MDrv_Demod_null_GetNextPLPID(MS_U8 u8DemodIndex, MS_U8 Index, MS_U8* pu8PLPID);
+MS_BOOL MDrv_Demod_null_GetPLPType(MS_U8 u8DemodIndex, DEMOD_DVBT2_PLP_TYPE* ePLPTYPE);
+
 
 MS_BOOL MDrv_Demod_null_SetTsSerial(MS_U8 u8DemodIndex,MS_BOOL bSerial);
 MS_BOOL MDrv_Demod_null_TPSGetLock(MS_U8 u8DemodIndex,MS_BOOL *pbLock);
@@ -123,7 +126,6 @@ MS_BOOL MDrv_Demod_null_DiSEqC_GetLNBOut(MS_U8 u8DemodIndex, MS_BOOL* bLNBOutLow
 MS_BOOL MDrv_Demod_null_DiSEqC_Set22kOnOff(MS_U8 u8DemodIndex, MS_BOOL b22kOn);
 MS_BOOL MDrv_Demod_null_DiSEqC_Get22kOnOff(MS_U8 u8DemodIndex, MS_BOOL* b22kOn);
 MS_BOOL MDrv_Demod_null_DiSEqC_SendCmd(MS_U8 u8DemodIndex, MS_U8* pCmd,MS_U8 u8CmdSize);
-
-
+MS_BOOL MDrv_Demod_null_Get_Packet_Error(MS_U8 u8DemodIndex, MS_U16 *u16PktErr);
 
 #endif // #define __DRV_DEMOD_NULL_H__

@@ -97,8 +97,6 @@
  *
 */
 
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_TDA18250A)
 /*============================================================================*/
 /* Standard include files:                                                    */
 /*============================================================================*/
@@ -206,5 +204,3 @@ tmErrorCode_t tmSystem_LO_Detuning
 
     return err;
 }
-#endif
-

@@ -1,8 +1,0 @@
-#s is for comment
-PM_RTC_Init
-PM_RTC_GetTime
-PM_RTC_SetTime 20000
-PM_RTC_GetTime
-PM_RTC_SetTime 80000
-PM_RTC_GetTime
-% <- this is end of file symbol

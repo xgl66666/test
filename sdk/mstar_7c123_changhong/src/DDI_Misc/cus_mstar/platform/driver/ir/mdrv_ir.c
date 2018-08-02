@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (¡§MStar Confidential Information¡¨) by the recipient.
+// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -908,9 +908,9 @@ static BOOL _MDrv_IR_GetKey(U8 *pu8Key, U8 *pu8System, U8 *pu8Flag)
             return FALSE;
         }
         *pu8Key = REG(REG_IR_CKDIV_NUM_KEY_DATA) >> 8;
-        REG(REG_IR_FIFO_RD_PULSE) |= 0x0001; //read
         for(i=0;i<5;i++);   // Delay
         *pu8Flag = (REG(REG_IR_SHOT_CNT_H_FIFO_STATUS) & IR_RPT_FLAG)? 1 : 0;
+        REG(REG_IR_FIFO_RD_PULSE) |= 0x0001; //read
         bRet = FALSE;
         _ulPrevKeyTime = MsOS_GetSystemTime();
 
@@ -1503,19 +1503,14 @@ void MDrv_IR_HK_Init(void)
 IR_Result MDrv_IR_HK_Enable(MS_BOOL bEnable)
 {
     MS_BOOL bResult = FALSE;
+
 #if (IR_MODE_SEL==IR_TYPE_HWRC_MODE)
-    bResult = MsOS_DisableInterrupt(E_INT_FIQ_IR_INT_RC);
+    bResult = (bEnable == TRUE) ? MsOS_EnableInterrupt(E_INT_FIQ_IR_INT_RC) : MsOS_DisableInterrupt(E_INT_FIQ_IR_INT_RC);
 #else
-    bResult = MsOS_DisableInterrupt(E_INT_FIQ_IR);
+    bResult = (bEnable == TRUE) ? MsOS_EnableInterrupt(E_INT_FIQ_IR) : MsOS_DisableInterrupt(E_INT_FIQ_IR);
 #endif
-    if(bResult)
-    {
-        return E_IR_OK;
-    }
-    else
-    {
-        return E_IR_FAIL;
-    }
+
+    return (bResult == TRUE) ? E_IR_OK : E_IR_FAIL;
 }
 
 
@@ -1535,13 +1530,21 @@ IR_Result MDrv_IR_HK_SetProtocol(MS_MultiProtocolCfg *pstProtocolCfg)
     }
 
     memset(_eDetectList, 0, sizeof(_eDetectList));
-    _eDetectList[u8Count]=pstProtocolCfg->eProtocol;
-    u8Count++;
+
+    if(pstProtocolCfg->eProtocol>=E_IR_PROTOCOL_NONE && pstProtocolCfg->eProtocol<E_IR_PROTOCOL_MAX)
+    {
+        _eDetectList[u8Count]=pstProtocolCfg->eProtocol;
+        u8Count++;
+    }
+
     while(pstProtocolCfg->pNextProtCfg!=NULL && u8Count<PROTOCOL_SUPPORT_MAX)
     {
         pstProtocolCfg = (MS_MultiProtocolCfg *)pstProtocolCfg->pNextProtCfg;
-        _eDetectList[u8Count]=pstProtocolCfg->eProtocol;
-        u8Count++;
+        if(pstProtocolCfg->eProtocol>=E_IR_PROTOCOL_NONE && pstProtocolCfg->eProtocol<E_IR_PROTOCOL_MAX)
+        {
+            _eDetectList[u8Count]=pstProtocolCfg->eProtocol;
+            u8Count++;
+        }
     }
 
     return E_IR_OK;
@@ -1568,10 +1571,9 @@ IR_Result MDrv_IR_HK_SetRawModCallback64(IR_RawModCallback64 pRawModCallback)
 /// @return None
 //-------------------------------------------------------------------------------------------------
 #ifdef DDI_MISC_INUSE
-#if (IR_MODE_SEL==IR_TYPE_FULLDECODE_MODE)
-
 void MDrv_IR_HK_SetDelayTime(MS_U32 u32_1stDelayTimeMs, MS_U32 u32_2ndDelayTimeMs)
 {
+#if (IR_MODE_SEL==IR_TYPE_FULLDECODE_MODE)
     MS_U32 u32OldIntr;
 
     u32OldIntr = MsOS_DisableAllInterrupts();
@@ -1580,7 +1582,7 @@ void MDrv_IR_HK_SetDelayTime(MS_U32 u32_1stDelayTimeMs, MS_U32 u32_2ndDelayTimeM
     _u32_2ndDelayTimeMs = u32_2ndDelayTimeMs;
 
     MsOS_RestoreAllInterrupts(u32OldIntr);
-}
 #endif
+}
 #endif
 

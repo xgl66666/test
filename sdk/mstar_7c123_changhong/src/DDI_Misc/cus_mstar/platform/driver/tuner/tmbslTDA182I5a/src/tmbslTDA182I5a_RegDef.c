@@ -24,8 +24,6 @@
 
 /* File generated automatically from register description file */
 
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_TDA18250A)
 
 /*============================================================================*/
 /* Standard include files:                                                    */
@@ -40,7 +38,6 @@
 /*============================================================================*/
 #include "tmbslTDA182I5a.h"
 #include "tmbslTDA182I5a_RegDef.h"
-
 
 /*============================================================================*/
 /* Global data:                                                               */
@@ -653,5 +650,4 @@ const TDA182I5a_BitField_t gTDA182I5a_Reg_Test_byte__agck_step_sync = { 0x4E, 0x
 /* reset_i2c_dis bit(s): Defines if I2C core is reset or not when performing a Soft_reset operation */
 const TDA182I5a_BitField_t gTDA182I5a_Reg_Test_byte__reset_i2c_dis = { 0x4E, 0x04, 0x01, 0x00 };
 
-#endif
 

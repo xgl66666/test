@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (¡§MStar Confidential Information¡¨) by the recipient.
+// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -179,8 +179,8 @@ typedef enum _IrCommandType
     IRKEY_PREVIOUS          =  0x02,//0x0E,
     IRKEY_NEXT              =  0x1E,//0x12,
 
-    IRKEY_BACKWARD          = 0x12,//0x02,
-    IRKEY_FORWARD           = 0x0E,//0x1E,
+    IRKEY_FORWARD          = 0x12,//0x02,
+    IRKEY_BACKWARD           = 0x0E,//0x1E,
     
     IRKEY_PLAY              = 0x01,
     IRKEY_RECORD            = 0x0D,
@@ -203,7 +203,7 @@ typedef enum _IrCommandType
     IRKEY_SLIDESHOW         = IRKEY_DUMY,
     IRKEY_THUMBNAIL         = IRKEY_DUMY,
     IRKEY_TVSYSTEM          = IRKEY_DUMY,
-	IRKYE_ASPECT_RATIO		= IRKEY_DUMY,
+	IRKEY_ASPECT_RATIO		= IRKEY_DUMY,
 	IRKEY_CAPTURE			= IRKEY_DUMY,
 }IrCommandType;
 //-------------------------------------------------------------------------------------------

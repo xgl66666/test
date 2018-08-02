@@ -1,0 +1,7 @@
+# <- this is for comment / total file size must be less than 4KB
+
+setenv bootcmd 'spi_rdc ${LZMA_BUF_Address} 100000 ${SIZE_APP}; mscompress7 d 0 ${LZMA_BUF_Address} ${SIZE_APP} ${App_Dram_Address}; go ${App_Reset_Vector_Dram_Address}'
+
+saveenv
+
+% <- this is end of file symbol

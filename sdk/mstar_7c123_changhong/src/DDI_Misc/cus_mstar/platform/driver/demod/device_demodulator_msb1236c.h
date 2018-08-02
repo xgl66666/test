@@ -140,6 +140,9 @@ typedef enum
     COFDM_P1_LOCK_123X,
     COFDM_P1_LOCK_HISTORY_123X,
     COFDM_L1_CRC_LOCK_123X,
+    COFDM_DVBT2_NOCH_FLAG,
+    COFDM_DVBT_NOCH_FLAG,
+
 } COFDM_LOCK_STATUS;
 
 //===============================PJ add end
@@ -1022,10 +1025,6 @@ typedef enum
 //#define     DEMOD_SLAVE_ID          DEMOD_DYNAMIC_SLAVE_ID_1
 //#define     IIC_CH_MSB1236C         TUNER_IIC_BUS
 
-#define DEMOD_DYNAMIC_SLAVE_ID_1    0xD2  // 0x32 //CMD
-#define DEMOD_DYNAMIC_SLAVE_ID_2    0xA2 // 0x72 //ISP
-//    #define DEMOD_DYNAMIC_SLAVE_ID_3    0xB2
-//    #define DEMOD_DYNAMIC_SLAVE_ID_4    0xF2
 #define DEMOD_ADDR_H                0x00
 #define DEMOD_ADDR_L                0x01
 #define DEMOD_WRITE_REG             0x02
@@ -1269,6 +1268,10 @@ typedef enum
      *    ~(T_OPMODE_RFAGC_EN^T_OPMODE_HUMDET_EN^....^T_CONFIG_TS_CLK_RATE_AUTO)
      ************************/
     T_PARAM_CHECK_SUM,
+
+    T_DVBT_LOCK_HIS   = 0xF0,
+    T_DVBT2_NOCHAN_Flag = 0xF1,
+    T_DVBT_NOCHAN_Flag = 0xF2,
 
     MSB1236C_DVBT_PARAM_LEN,
 } MSB1236C_DVBT_Param;

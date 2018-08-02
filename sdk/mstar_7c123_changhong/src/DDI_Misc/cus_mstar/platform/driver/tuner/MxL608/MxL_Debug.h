@@ -27,7 +27,7 @@
     Macros
 ******************************************************************************/
 
-//#define MxL_DLL_DEBUG0 printf
+#define MxL_DLL_DEBUG0 printf
 
 
 #endif /* __MXL_DEBUG_H__*/

@@ -79,7 +79,4 @@
 #define _DRVTUNER_AV2012_H_
 #define MAX_INPUT_FREQ 2150 //Mhz
 #define MIN_INPUT_FREQ 950  //Mhz
-MS_BOOL MDrv_Tuner_SetFreq(MS_U16 u16CenterFreq, MS_U32 u32SymbolRate_Hz);
-MS_BOOL MDrv_Tuner_Initial(void);
-MS_BOOL MDrv_Tuner_CheckLock(void);
 #endif

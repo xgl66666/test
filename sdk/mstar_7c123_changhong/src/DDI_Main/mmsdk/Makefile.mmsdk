@@ -1,0 +1,152 @@
+
+################################################################################
+#
+# Copyright (c) 2006-2009 MStar Semiconductor, Inc.
+# All rights reserved.
+#
+# Unless otherwise stipulated in writing, any and all information contained
+# herein regardless in any format shall remain the sole proprietary of
+# MStar Semiconductor Inc. and be kept in strict confidence
+# ("MStar Confidential Information") by the recipient.
+# Any unauthorized act including without limitation unauthorized disclosure,
+# copying, use, reproduction, sale, distribution, modification, disassembling,
+# reverse engineering and compiling of the contents of MStar Confidential
+# Information is unlawful and strictly prohibited. MStar hereby reserves the
+# rights to any and all damages, losses, costs and expenses resulting therefrom.
+#
+#
+# Makefile used for include DDI_Main files
+#
+#
+################################################################################
+
+# Source files dir
+DDI_MAIN_MMSDK_SRCDIR = $(DDI_MAIN_MMSDK_DIR)/source
+
+
+# include files dir
+DDI_MAIN_MMSDK_INCDIR = $(DDI_MAIN_MMSDK_DIR)/include
+
+
+
+# Porting features
+ifeq ($(DDI_MMSDK_CTRL_DYNAMIC_SCALING), enable)
+CFG_CC_OPTS += -D'MMSDK_CTRL_DYNAMIC_SCALING_PORTING=1'
+else ifeq ($(DDI_MMSDK_CTRL_DYNAMIC_SCALING), disable)
+CFG_CC_OPTS += -D'MMSDK_CTRL_DYNAMIC_SCALING_PORTING=0'
+else
+$(error 'DDI_MMSDK_CTRL_DYNAMIC_SCALING not defined, please setup this at mmsdk_porting_configuration')
+endif
+
+ifeq ($(DDI_MMSDK_CTRL_MVC), enable)
+CFG_CC_OPTS += -D'MMSDK_CTRL_MVC_PORTING=1'
+else ifeq ($(DDI_MMSDK_CTRL_MVC), disable)
+CFG_CC_OPTS += -D'MMSDK_CTRL_MVC_PORTING=0'
+else
+$(error 'DDI_MMSDK_CTRL_MVC not defined, please setup this at mmsdk_porting_configuration')
+endif
+
+ifeq ($(DDI_MMSDK_CTRL_FRC), enable)
+CFG_CC_OPTS += -D'MMSDK_CTRL_FRC_PORTING=1'
+else ifeq ($(DDI_MMSDK_CTRL_FRC), disable)
+CFG_CC_OPTS += -D'MMSDK_CTRL_FRC_PORTING=0'
+else
+$(error 'DDI_MMSDK_CTRL_FRC not defined, please setup this at mmsdk_porting_configuration')
+endif
+
+ifeq ($(DDI_MMSDK_DISPLAY_DUALXC), enable)
+CFG_CC_OPTS += -D'MMSDK_DISPLAY_DUALXC_PORTING=1'
+else ifeq ($(DDI_MMSDK_DISPLAY_DUALXC), disable)
+CFG_CC_OPTS += -D'MMSDK_DISPLAY_DUALXC_PORTING=0'
+else
+$(error 'DDI_MMSDK_DISPLAY_DUALXC not defined, please setup this at mmsdk_porting_configuration')
+endif
+
+ifdef DDI_MMSDK_4K2K
+
+ifeq ($(DDI_MMSDK_4K2K), enable)
+CFG_CC_OPTS += -D'MMSDK_4K2K_ENABLE'
+else ifeq ($(DDI_MMSDK_4K2K), disable)
+else
+$(error 'DDI_MMSDK_4K2K must be enable or disable!')
+endif
+
+endif
+
+ifeq ($(DDI_MMSDK_DIVX), enable)
+CFG_CC_OPTS += -D'DIVX_ENABLE'
+else ifeq ($(DDI_MMSDK_DIVX), disable)
+else
+$(error 'DDI_MMSDK_DIVX not defined, please setup this at mmsdk_porting_configuration')
+endif
+
+ifeq ($(DDI_MMSDK_AVP), enable)
+CFG_CC_OPTS += -D'AVP_ENABLE'
+else ifeq ($(DDI_MMSDK_AVP), disable)
+else
+$(error 'DDI_MMSDK_AVP not defined, please setup this at mmsdk_porting_configuration')
+endif
+
+ifeq ($(DDI_MMSDK_OPTEE), enable)
+CFG_CC_OPTS += -D'OPTEE_ENABLE'
+else ifeq ($(DDI_MMSDK_OPTEE), disable)
+else
+$(error 'DDI_MMSDK_OPTEE not defined, please setup this at mmsdk_porting_configuration')
+endif
+
+ifeq ($(DDI_MMSDK_3D), enable)
+CFG_CC_OPTS += -D'MM_3D_ENABLE=1'
+else ifeq ($(DDI_MMSDK_3D), disable)
+CFG_CC_OPTS += -D'MM_3D_ENABLE=0'
+else
+$(error 'DDI_MMSDK_3D not defined, please setup this at mmsdk_porting_configuration')
+endif
+
+ifeq ($(DDI_MMSDK_DMS), enable)
+CFG_CC_OPTS += -D'MMSDK_DMS_ENABLE=1'
+else ifeq ($(DDI_MMSDK_DMS), disable)
+CFG_CC_OPTS += -D'MMSDK_DMS_ENABLE=0'
+else
+CFG_CC_OPTS += -D'MMSDK_DMS_ENABLE=0'
+endif
+
+ifdef DDI_MMSDK_FRC_MODE
+CFG_CC_OPTS += -D'MMSDK_FRC_MODE=$(DDI_MMSDK_FRC_MODE)'
+else
+$(error 'DDI_MMSDK_FRC_MODE not defined, please setup this at mmsdk_porting_configuration')
+endif
+
+ifdef DDI_MMSDK_HDR_MODE
+CFG_CC_OPTS += -D'MMSDK_HDR_MODE=$(DDI_MMSDK_HDR_MODE)'
+else
+$(error 'DDI_MMSDK_HDR_MODE not defined, please setup this at mmsdk_porting_configuration')
+endif
+
+ifdef DDI_MMSDK_MultiWin_MODE
+CFG_CC_OPTS += -D'MMSDK_MultiWin_MODE=$(DDI_MMSDK_MultiWin_MODE)'
+endif
+
+ifdef DDI_MMSDK_SUBTITLE_GOP
+
+# Currently for all chips, max GOP number is 6
+DDI_MMSDK_GOP_INDEX := 0 1 2 3 4 5
+
+	ifeq ($(DDI_MMSDK_SUBTITLE_GOP), $(filter $(DDI_MMSDK_SUBTITLE_GOP),$(DDI_MMSDK_GOP_INDEX)))
+CFG_CC_OPTS += -D'MMSDK_SUBTITLE_GOP_PORTING=$(DDI_MMSDK_SUBTITLE_GOP)'
+	else
+$(error 'DDI_MMSDK_SUBTITLE_GOP exceeded max GOP index')
+	endif
+
+else
+$(error 'DDI_MMSDK_SUBTITLE_GOP not defined, please setup this at mmsdk_porting_configuration')
+endif
+
+ifdef DDI_MMSDK_SUBTITLE_MW
+
+# Currently for all chips, only V2 to set the MW version if it is.
+# It is designed for future if have new MW version likes V3, V4, etc...
+DDI_MMSDK_MW_VERSION := V2
+    ifeq ($(DDI_MMSDK_SUBTITLE_MW), $(filter $(DDI_MMSDK_SUBTITLE_MW),$(DDI_MMSDK_MW_VERSION)))
+CFG_CC_OPTS += -D'DVB_SUBTITLE_V2'
+    endif
+endif

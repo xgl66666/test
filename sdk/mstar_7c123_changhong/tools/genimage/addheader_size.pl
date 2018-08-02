@@ -36,7 +36,7 @@ $app_codelen = $ARGV[2];
 open (IFILE, "<$input_file") ||
     die("Error: can't open file $input_file \n");
 binmode(IFILE);
-$length = read(IFILE,$buffer,0x2200000);
+$length = read(IFILE,$buffer,-s $input_file);
 close (IFILE);
 @istream = unpack("C*",$buffer);
 # Make sure we got a whole number of words in array

@@ -86,16 +86,17 @@
 #define DVBS                        5
 #define ATSC                        6
 #define J83B                        7
-#define DTMB                        10
-#define DVB_NULL                    255
 #define INTERNAL_DVBT               8
 #define INTERNAL_ISDBT              9
+#define DTMB                        10
+#define INTERNAL_DVBS               12
+#define DVBS2                       11
+#define INTERNAL_DVBT2              13
 
-//mike add
-#define INTERNAL_DVBS               11
-#define DVBS2                       12
-#define INTERNAL_DVBC               13
+//For Hummingbird demod compatible
+#define INTERNAL_DVBC               14
 
+#define DVB_NULL                    255
 
 //------------------------------------------------------------------------------------
 //  FRONTEND_DEMOD_TYPE
@@ -110,8 +111,8 @@
 #define DEMOD_MXL254                5
 #define DEMOD_MSB124X               6
 #define DEMOD_MSB1245               7
-
-
+#define DEMOD_MXL542                8
+#define DEMOD_MSR1742               9
 
 
 #define DEMOD_MSB1237               126             //Kappa external ATSC
@@ -129,59 +130,58 @@
 #define DEMOD_MSB1210               131
 #define DEMOD_MSB122x               132             //DVBT Demodulator
 #define DEMOD_TC90517               133
+#define DEMOD_ATBM884x              138            //DTMB
+#define DEMOD_ATBM885x              139            //DTMB
+#define DEMOD_MXL101SF              140
+#define DEMOD_IT9173                141            //ISDBT
 
-
-
-//Hummingbird Demod Defination  Need to integrate with DDI
-#ifdef DDI_MISC_INUSE
-
-
-#define DEMOD_MSDVBC_51             0x06
-#define DEMOD_MSDVBT_51             0x07
-
-#define DEMOD_DIB8096GP             0x09
-#define DEMOD_DIB8096P              0x0A
-#define DEMOD_MXL101SF              0x0B
-#define DEMOD_MSB140X               0x0C
-
-#define DEMOD_IT9173                0x0E              //ISDBT Demodulator
-
-//DVBS Demodulator
-
-//DTMB Demodulator
-#define DEMOD_ATBM884x              0x40
-#define DEMOD_ATBM885x              0x41
-
-#endif
-
+//For Hummingbird demod compatible
+#define DEMOD_DIB8096GP             DIBCOM_DIB8096_DEMOD
+#define DEMOD_DIB8096P              DIBCOM_DIB8096_DEMOD
+#define DEMOD_MSB140X               DEMOD_MSB1400
+#define DEMOD_MSB124X_DVBS2         DEMOD_MSB124X   //DVBS2+DVBT2
+#define DEMOD_MSB124X_DVBT2         DEMOD_MSB124X
+#define DEMOD_MSB1245_DVBS2         DEMOD_MSB1245
 
 //--------------- external demods end ---------------
 
+
 //--------------- internal demods start---------------
-#define DEMOD_MSKRITI_DVBT2        234
+#define DEMOD_MSINTERN_DVBT         232
+#define DEMOD_MSINTERN_DVBC         233             // Mstar internal DVBC
+#define DEMOD_MSKRITI_DVBT2         234
+#define DEMOD_MSINTERN_ISDBT        235
 //keres
-#define DEMOD_MSKERES_DVBC         235
-#define DEMOD_MSKERES_ATSC         236
+#define DEMOD_MSKERES_ATSC          236
 //kenya
 #define DEMOD_MSKENYA_DVBC          237              //Kenya internal DVBC
 //keltic
 #define DEMOD_MSKELTIC_ATSC         238              //Keltic internal ATSC
-#define DEMOD_MSKELTIC_DVBS         239              //Keltic internal DVBC
-#define DEMOD_MSKELTIC_DVBC         240              //Keltic internal DVBC
+#define DEMOD_MSKELTIC_DVBS         239              //Keltic internal DVBS
 //kappa
 #define DEMOD_MSKAPPA_ISDBT         241              //Kappa internal ISDBT
 #define DEMOD_MSATSC_C              242              //internal ATSC-Cable demod              // Kapa internal demod
 #define DEMOD_MSKAPPA_DVBT          243              //Kappa internal DVBT
-#define DEMOD_MSKAPPA_DVBC          244              //Kappa internal DVBC
 //kaiser
 #define DEMOD_MSKAISER_DVBT         245              //Kaiser internal DVBT
 #define DEMOD_MSKAISER_DVBC         246              //Kaiser internal DVBC
 //kaiserin
 #define DEMOD_MSKAISERIN_DVBT       247              //Kaiserin internal DVBT
-#define DEMOD_MSKAISERIN_DVBC       248              //Kaiserin internal DVBC
 //krnous
 #define DEMOD_MSKRONUS_DVBT         249              //Kronus internal DVBT
-#define DEMOD_MSKRONUS_DVBC         250              //Kronus internal DVBC
+//Kris
+#define DEMOD_MSKRIS_DVBS           250              //Kris internal DVBS
+//Kratos
+#define DEMOD_MSKRATOS_DVBS         251              //Kratos internal DVBS
+
+//For Hummingbird demod compatible
+#define DEMOD_MSDVBT_51             DEMOD_MSKRONUS_DVBT
+#define DEMOD_MSDVBC_51             DEMOD_MSINTERN_DVBC
+#define DEMOD_MSKAISERIN_DVBC       DEMOD_MSINTERN_DVBC
+#define DEMOD_MSKELTIC_DVBC         DEMOD_MSINTERN_DVBC
+#define DEMOD_MSKAPPA_DVBC          DEMOD_MSINTERN_DVBC
+#define DEMOD_MSKERES_DVBC          DEMOD_MSINTERN_DVBC
+#define DEMOD_MSKRATOS_DVBC         DEMOD_MSINTERN_DVBC
 //--------------- end internal demods ---------------
 
 //not exist
@@ -192,21 +192,31 @@
 //------------------------------------------------------------------------------------
 //FRONTEND_TUNER_TYPE
 //------------------------------------------------------------------------------------
-#define TUNER_MXL603	                      0
+#define TUNER_MXL603                        0
 #define TUNER_TDA18250A                     1
 #define TUNER_TDA18260                      2
-#define TUNER_PHILIPS_TDA18250HN           3
+#define TUNER_PHILIPS_TDA18250HN            3
 #define TUNER_AV2011                        4
 #define TUNER_AV2012                        5
 #define TUNER_AV2028                        6
 #define TUNER_AV2018                        7
 #define TUNER_TDA18250B                     8
 #define TUNER_R836                          9
-#define TUNER_R820C                        10
-#define TUNER_MXL203                       11
+#define TUNER_R820C                         10
+#define TUNER_MXL203                        11
 #define TUNER_MXL254                        12
 #define TUNER_TDA18225                      13
 #define TUNER_R848                          14
+#define TUNER_RT710                         15
+#define TUNER_AV2017                        16
+#define TUNER_R858                          17
+#define TUNER_R850                          18
+#define TUNER_SI2141                        19
+#define TUNER_RT828                         23
+#define TUNER_R820T                         25
+#define TUNER_MXL542                        26
+#define TUNER_MSR1742                       27
+
 
 
 
@@ -241,12 +251,16 @@
 #define TUNER_SHARP_BS2S7VZ7801             150
 #define TUNER_TDA20152                      151
 #define TUNER_RDA5815M                      153
+#define TUNER_AV2035                        154
 
 //ISDBT
 #define TUNER_DIBCOM_DIB8096                152
 
 //NULL Tuner
 #define TUNER_NULL                          255
+
+//For Hummingbird demod compatible
+#define TUNER_TDA18250AB                    TUNER_TDA18250A
 
 //---------------------------  DISH_TYPE-------------------
 #define DISH_NONE                            0
@@ -255,9 +269,11 @@
 #define DISH_A8296                           3
 #define DISH_TPS65233                        4
 #define DISH_A8304                           5
+#define DISH_A8297                           6
 
 
-
+//For Hummingbird demod compatible
+#define TUNER_DIBCOM                         TUNER_DIBCOM_DIB8096
 
 #define DISH_NULL                           255
 
@@ -284,6 +300,10 @@
 #define DMX_INPUT_EXT_INPUT1        4              ///< DMX input from external input 1
 #define DMX_INPUT_EXT_INPUT2        5              ///< DMX input from external input 2
 #define DMX_INPUT_EXT_INPUT3        6              ///< DMX input from external input 3
+#define DMX_INPUT_EXT_INPUT0_3WIRE        7              ///< DMX input from 3wire external input 0
+#define DMX_INPUT_EXT_INPUT1_3WIRE        8              ///< DMX input from 3wire external input 1
+#define DMX_INPUT_EXT_INPUT2_3WIRE        9              ///< DMX input from 3wire external input 2
+#define DMX_INPUT_EXT_INPUT3_3WIRE        10             ///< DMX input from 3wire external input 3
 
 
 

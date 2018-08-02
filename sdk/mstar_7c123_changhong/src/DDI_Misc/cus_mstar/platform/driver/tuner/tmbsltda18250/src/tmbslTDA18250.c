@@ -98,8 +98,6 @@
  * \section info Change Information
  *
 */
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_TDA18250A)
 
 /*============================================================================*/
 /* Standard include files:                                                    */
@@ -118,7 +116,6 @@
 #include <tmbslTDA18250InstanceCustom.h>
 #include "tmbslTDA18250local.h"
 #include "tmbslTDA18250Instance.h"
-
 
 /*============================================================================*/
 /* Types and defines:                                                         */
@@ -4515,4 +4512,3 @@ TDA18250MutexRelease
     
     return err;
 }
-#endif

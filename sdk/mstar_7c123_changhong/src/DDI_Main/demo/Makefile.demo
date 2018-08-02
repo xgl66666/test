@@ -1,0 +1,1195 @@
+
+################################################################################
+#
+# Copyright (c) 2006-2009 MStar Semiconductor, Inc.
+# All rights reserved.
+#
+# Unless otherwise stipulated in writing, any and all information contained
+# herein regardless in any format shall remain the sole proprietary of
+# MStar Semiconductor Inc. and be kept in strict confidence
+# ("MStar Confidential Information") by the recipient.
+# Any unauthorized act including without limitation unauthorized disclosure,
+# copying, use, reproduction, sale, distribution, modification, disassembling,
+# reverse engineering and compiling of the contents of MStar Confidential
+# Information is unlawful and strictly prohibited. MStar hereby reserves the
+# rights to any and all damages, losses, costs and expenses resulting therefrom.
+#
+#
+# Makefile used for include DDI_Main files
+#
+#
+################################################################################
+
+# Source files dir
+DDI_MAIN_DEMO_SRCDIR = $(DDI_MAIN_DEMO_DIR)/source
+
+# include files dir
+DDI_MAIN_DEMO_INCDIR = $(DDI_MAIN_DEMO_DIR)/include
+DDI_MAIN_DEMO_INCDIR += $(DDI_MAIN_DEMO_DIR)/data
+
+# Modules Source and include files
+ifeq ($(DDI_DEMO_7SEGMENTS), enable)
+CFG_CC_OPTS += -D'DEMO_7SEGMENTS_TEST=1'
+else ifeq ($(DDI_DEMO_7SEGMENTS), disable)
+CFG_CC_OPTS += -D'DEMO_7SEGMENTS_TEST=0'
+else
+$(error 'DDI_DEMO_7SEGMENTS not define, please setup this at feature_configuration')
+endif
+
+
+ifeq ($(DDI_DEMO_AESDMA), enable)
+CFG_CC_OPTS += -D'DEMO_AESDMA_TEST=1'
+else ifeq ($(DDI_DEMO_AESDMA), disable)
+CFG_CC_OPTS += -D'DEMO_AESDMA_TEST=0'
+else
+$(error 'DDI_DEMO_AESDMA not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_BDMA), enable)
+CFG_CC_OPTS += -D'DEMO_BDMA_TEST=1'
+else ifeq ($(DDI_DEMO_BDMA), disable)
+CFG_CC_OPTS += -D'DEMO_BDMA_TEST=0'
+else
+$(error 'DDI_DEMO_BDMA not define, please setup this at feature_configuration')
+endif
+
+
+ifeq ($(DDI_DEMO_CH34), enable)
+CFG_CC_OPTS += -D'DEMO_CH34_TEST=1'
+else ifeq ($(DDI_DEMO_CH34), disable)
+CFG_CC_OPTS += -D'DEMO_CH34_TEST=0'
+else
+$(error 'DDI_DEMO_CH34 not define, please setup this at feature_configuration')
+endif
+
+
+ifeq ($(DDI_DEMO_CIPHER), enable)
+CFG_CC_OPTS += -D'DEMO_CIPHER_TEST=1'
+else ifeq ($(DDI_DEMO_CIPHER), disable)
+CFG_CC_OPTS += -D'DEMO_CIPHER_TEST=0'
+else
+$(error 'DDI_DEMO_CIPHER not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DRM), enable)
+CFG_CC_OPTS += -D'DEMO_DRM_TEST=1'
+else ifeq ($(DDI_DEMO_DRM), disable)
+CFG_CC_OPTS += -D'DEMO_DRM_TEST=0'
+else
+$(error 'DDI_DEMO_DRM not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_HBBTV), enable)
+CFG_CC_OPTS += -D'DEMO_HBBTV_TEST=1'
+CFG_CC_OPTS += -D'HBBTV_MWB_ENABLE=1'
+else ifeq ($(DDI_DEMO_HBBTV), disable)
+CFG_CC_OPTS += -D'DEMO_HBBTV_TEST=0'
+CFG_CC_OPTS += -D'HBBTV_MWB_ENABLE=0'
+else
+$(error 'DDI_DEMO_HBBTV not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DSCMB_ADVANCED), enable)
+CFG_CC_OPTS += -D'DEMO_DSCMB_ADVANCED_TEST=1'
+else ifeq ($(DDI_DEMO_DSCMB_ADVANCED), disable)
+CFG_CC_OPTS += -D'DEMO_DSCMB_ADVANCED_TEST=0'
+else
+$(error 'DDI_DEMO_DSCMB_ADVANCED not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DSCMB_BASIC), enable)
+CFG_CC_OPTS += -D'DEMO_DSCMB_BASIC_TEST=1'
+else ifeq ($(DDI_DEMO_DSCMB_BASIC), disable)
+CFG_CC_OPTS += -D'DEMO_DSCMB_BASIC_TEST=0'
+else
+$(error 'DDI_DEMO_DSCMB_BASIC not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DSCMB_UTPA2), enable)
+CFG_CC_OPTS += -D'DEMO_DSCMB_UTPA2_TEST=1'
+else ifeq ($(DDI_DEMO_DSCMB_UTPA2), disable)
+CFG_CC_OPTS += -D'DEMO_DSCMB_UTPA2_TEST=0'
+else
+$(error 'DDI_DEMO_DSCMB_UTPA2 not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DTM), enable)
+CFG_CC_OPTS += -D'DEMO_DTM_TEST=1'
+else ifeq ($(DDI_DEMO_DTM), disable)
+CFG_CC_OPTS += -D'DEMO_DTM_TEST=0'
+else
+$(error 'DDI_DEMO_DTM not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DVFS), enable)
+CFG_CC_OPTS += -D'DEMO_DVFS_TEST=1'
+else ifeq ($(DDI_DEMO_DVFS), disable)
+CFG_CC_OPTS += -D'DEMO_DVFS_TEST=0'
+else
+$(error 'DDI_DEMO_DVFS not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_FRONTPNL), enable)
+CFG_CC_OPTS += -D'DEMO_FRONTPNL_TEST=1'
+else ifeq ($(DDI_DEMO_FRONTPNL), disable)
+CFG_CC_OPTS += -D'DEMO_FRONTPNL_TEST=0'
+else
+$(error 'DDI_DEMO_FRONTPNL not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_GPIO), enable)
+CFG_CC_OPTS += -D'DEMO_GPIO_TEST=1'
+else ifeq ($(DDI_DEMO_GPIO), disable)
+CFG_CC_OPTS += -D'DEMO_GPIO_TEST=0'
+else
+$(error 'DDI_DEMO_GPIO not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_IR_ECOS), enable)
+CFG_CC_OPTS += -D'DEMO_IR_ECOS_TEST=1'
+else ifeq ($(DDI_DEMO_IR_ECOS), disable)
+CFG_CC_OPTS += -D'DEMO_IR_ECOS_TEST=0'
+else
+$(error 'DDI_DEMO_IR_ECOS not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_IR_LINUX), enable)
+CFG_CC_OPTS += -D'DEMO_IR_LINUX_TEST=1'
+else ifeq ($(DDI_DEMO_IR_LINUX), disable)
+CFG_CC_OPTS += -D'DEMO_IR_LINUX_TEST=0'
+else
+$(error 'DDI_DEMO_IR_LINUX not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_KEYPAD), enable)
+CFG_CC_OPTS += -D'DEMO_KEYPAD_TEST=1'
+else ifeq ($(DDI_DEMO_KEYPAD), disable)
+CFG_CC_OPTS += -D'DEMO_KEYPAD_TEST=0'
+else
+$(error 'DDI_DEMO_KEYPAD not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_LINUX_MOUNT_NOTIFIER), enable)
+CFG_CC_OPTS += -D'DEMO_LINUX_MOUNT_NOTIFIER_TEST=1'
+else ifeq ($(DDI_DEMO_LINUX_MOUNT_NOTIFIER), disable)
+CFG_CC_OPTS += -D'DEMO_LINUX_MOUNT_NOTIFIER_TEST=0'
+else
+$(error 'DDI_DEMO_LINUX_MOUNT_NOTIFIER not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_MFE), enable)
+CFG_CC_OPTS += -D'DEMO_MFE_TEST=1'
+else ifeq ($(DDI_DEMO_MFE), disable)
+CFG_CC_OPTS += -D'DEMO_MFE_TEST=0'
+else
+$(error 'DDI_DEMO_MFE not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_NET), enable)
+CFG_CC_OPTS += -D'DEMO_NET_TEST=1'
+else ifeq ($(DDI_DEMO_NET), disable)
+CFG_CC_OPTS += -D'DEMO_NET_TEST=0'
+else
+$(error 'DDI_DEMO_NET not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_NET_ECOS), enable)
+CFG_CC_OPTS += -D'DEMO_NET_ECOS_TEST=1'
+else ifeq ($(DDI_DEMO_NET_ECOS), disable)
+CFG_CC_OPTS += -D'DEMO_NET_ECOS_TEST=0'
+else
+$(error 'DDI_DEMO_NET_ECOS not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_OS), enable)
+CFG_CC_OPTS += -D'DEMO_OS_TEST=1'
+else ifeq ($(DDI_DEMO_OS), disable)
+CFG_CC_OPTS += -D'DEMO_OS_TEST=0'
+else
+$(error 'DDI_DEMO_OS not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PCMCIA), enable)
+CFG_CC_OPTS += -D'DEMO_PCMCIA_TEST=1'
+else ifeq ($(DDI_DEMO_PCMCIA), disable)
+CFG_CC_OPTS += -D'DEMO_PCMCIA_TEST=0'
+else
+$(error 'DDI_DEMO_PCMCIA not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PM), enable)
+CFG_CC_OPTS += -D'DEMO_PM_TEST=1'
+else ifeq ($(DDI_DEMO_PM), disable)
+CFG_CC_OPTS += -D'DEMO_PM_TEST=0'
+else
+$(error 'DDI_DEMO_PM not define, please setup this at feature_configuration')
+endif
+
+
+ifeq ($(DDI_DEMO_PM_HK_eCos), enable)
+CFG_CC_OPTS += -D'DEMO_PM_HK_eCos_TEST=1'
+else ifeq ($(DDI_DEMO_PM_HK_eCos), disable)
+CFG_CC_OPTS += -D'DEMO_PM_HK_eCos_TEST=0'
+else
+$(error 'DDI_DEMO_PM_HK_eCos not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PM_HK_LINUX), enable)
+CFG_CC_OPTS += -D'DEMO_PM_HK_LINUX_TEST=1'
+else ifeq ($(DDI_DEMO_PM_HK_LINUX), disable)
+CFG_CC_OPTS += -D'DEMO_PM_HK_LINUX_TEST=0'
+else
+$(error 'DEMO_PM_HK_LINUX not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PM_USE_PMLOADER), enable)
+CFG_CC_OPTS += -D'DEMO_PM_USE_PMLOADER_TEST=1'
+else ifeq ($(DDI_DEMO_PM_USE_PMLOADER), disable)
+CFG_CC_OPTS += -D'DEMO_PM_USE_PMLOADER_TEST=0'
+else
+$(error 'DDI_DEMO_PM_USE_PMLOADER not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PM_USB_POWER_SWITCH), enable)
+CFG_CC_OPTS += -D'DEMO_PM_USB_POWER_SWITCH_TEST=1'
+else ifeq ($(DDI_DEMO_PM_USB_POWER_SWITCH), disable)
+CFG_CC_OPTS += -D'DEMO_PM_USB_POWER_SWITCH_TEST=0'
+else
+$(error 'DDI_DEMO_PM_USB_POWER_SWITCH not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PM_USE_STR_FLAG_CHECK), enable)
+CFG_CC_OPTS += -D'DEMO_PM_USE_STR_FLAG_CHECK_TEST=1'
+else ifeq ($(DDI_DEMO_PM_USE_STR_FLAG_CHECK), disable)
+CFG_CC_OPTS += -D'DEMO_PM_USE_STR_FLAG_CHECK_TEST=0'
+else
+$(error 'DDI_DEMO_PM_USE_STR_FLAG_CHECK not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PM_STR_LINUX), enable)
+CFG_CC_OPTS += -D'DEMO_PM_STR_LINUX_TEST=1'
+else ifeq ($(DDI_DEMO_PM_STR_LINUX), disable)
+CFG_CC_OPTS += -D'DEMO_PM_STR_LINUX_TEST=0'
+else
+$(error 'DDI_DEMO_PM_STR_LINUX not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_SEGFAULT), enable)
+CFG_CC_OPTS += -D'DEMO_SEGFAULT_TEST=1'
+else ifeq ($(DDI_DEMO_SEGFAULT), disable)
+CFG_CC_OPTS += -D'DEMO_SEGFAULT_TEST=0'
+else
+$(error 'DDI_DEMO_SEGFAULT not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_SMC), enable)
+CFG_CC_OPTS += -D'DEMO_SMC_TEST=1'
+else ifeq ($(DDI_DEMO_SMC), disable)
+CFG_CC_OPTS += -D'DEMO_SMC_TEST=0'
+else
+$(error 'DDI_DEMO_SMC not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_SMC_USE_51), enable)
+CFG_CC_OPTS += -D'DEMO_SMC_USE_51_TEST=1'
+else ifeq ($(DDI_DEMO_SMC_USE_51), disable)
+CFG_CC_OPTS += -D'DEMO_SMC_USE_51_TEST=0'
+else
+$(error 'DDI_DEMO_SMC_USE_51 not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_SMC_ONCHIP_8024), enable)
+CFG_CC_OPTS += -D'DEMO_SMC_ONCHIP_8024_TEST=1'
+else ifeq ($(DDI_DEMO_SMC_ONCHIP_8024), disable)
+CFG_CC_OPTS += -D'DEMO_SMC_ONCHIP_8024_TEST=0'
+else
+$(error 'DDI_DEMO_SMC_ONCHIP_8024 not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_SMC_PWR_CUT_DET), enable)
+CFG_CC_OPTS += -D'DEMO_SMC_PWR_CUT_DET_TEST=1'
+else ifeq ($(DDI_DEMO_SMC_PWR_CUT_DET), disable)
+CFG_CC_OPTS += -D'DEMO_SMC_PWR_CUT_DET_TEST=0'
+else
+$(error 'DDI_DEMO_SMC_PWR_CUT_DET not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_SNMP), enable)
+CFG_CC_OPTS += -D'DEMO_SNMP_TEST=1'
+else ifeq ($(DDI_DEMO_SNMP), disable)
+CFG_CC_OPTS += -D'DEMO_SNMP_TEST=0'
+else
+$(error 'DDI_DEMO_SNMP not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_SPI), enable)
+CFG_CC_OPTS += -D'DEMO_SPI_TEST=1'
+else ifeq ($(DDI_DEMO_SPI), disable)
+CFG_CC_OPTS += -D'DEMO_SPI_TEST=0'
+else
+$(error 'DDI_DEMO_SPI not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_TSENSOR), enable)
+CFG_CC_OPTS += -D'DEMO_TSENSOR_TEST=1'
+else ifeq ($(DDI_DEMO_TSENSOR), disable)
+CFG_CC_OPTS += -D'DEMO_TSENSOR_TEST=0'
+else
+$(error 'DDI_DEMO_TSENSOR not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_UART), enable)
+CFG_CC_OPTS += -D'DEMO_UART_TEST=1'
+else ifeq ($(DDI_DEMO_UART), disable)
+CFG_CC_OPTS += -D'DEMO_UART_TEST=0'
+else
+$(error 'DDI_DEMO_UART not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_UART_TTY), enable)
+CFG_CC_OPTS += -D'DEMO_UART_TTY_TEST=1'
+else ifeq ($(DDI_DEMO_UART_TTY), disable)
+CFG_CC_OPTS += -D'DEMO_UART_TTY_TEST=0'
+else
+$(error 'DDI_DEMO_UART_TTY not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_WDT), enable)
+CFG_CC_OPTS += -D'DEMO_WDT_TEST=1'
+else ifeq ($(DDI_DEMO_WDT), disable)
+CFG_CC_OPTS += -D'DEMO_WDT_TEST=0'
+else
+$(error 'DDI_DEMO_WDT not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_BENCH_DHRYSTON_ECOS), enable)
+CFG_CC_OPTS += -D'DEMO_BENCH_DHRYSTON_ECOS_TEST=1'
+else ifeq ($(DDI_DEMO_BENCH_DHRYSTON_ECOS), disable)
+CFG_CC_OPTS += -D'DEMO_BENCH_DHRYSTON_ECOS_TEST=0'
+else
+$(error 'DDI_DEMO_BENCH_DHRYSTON_ECOS not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_BENCH_MEM), enable)
+CFG_CC_OPTS += -D'DEMO_BENCH_MEM_TEST=1'
+else ifeq ($(DDI_DEMO_BENCH_MEM), disable)
+CFG_CC_OPTS += -D'DEMO_BENCH_MEM_TEST=0'
+else
+$(error 'DDI_DEMO_BENCH_MEM not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_OSD), enable)
+CFG_CC_OPTS += -D'DEMO_OSD_TEST=1'
+else ifeq ($(DDI_DEMO_OSD), disable)
+CFG_CC_OPTS += -D'DEMO_OSD_TEST=0'
+else
+$(error 'DDI_DEMO_OSD not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_GOP_GOPSC), enable)
+CFG_CC_OPTS += -D'DEMO_GOP_GOPSC_TEST=1'
+else ifeq ($(DDI_DEMO_GOP_GOPSC), disable)
+CFG_CC_OPTS += -D'DEMO_GOP_GOPSC_TEST=0'
+else
+$(error 'DDI_DEMO_GOP_GOPSC not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DWIN_PINPON_RINGBUF), enable)
+CFG_CC_OPTS += -D'DEMO_DWIN_PINPON_RINGBUF_TEST=1'
+else ifeq ($(DDI_DEMO_GOP_GOPSC), disable)
+CFG_CC_OPTS += -D'DEMO_DWIN_PINPON_RINGBUF_TEST=0'
+else
+$(error 'DDI_DEMO_DWIN_PINPON_RINGBUF not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_GOP_3DOSD), enable)
+CFG_CC_OPTS += -D'DEMO_GOP_3DOSD_TEST=1'
+else ifeq ($(DDI_DEMO_GOP_3DOSD), disable)
+CFG_CC_OPTS += -D'DEMO_GOP_3DOSD_TEST=0'
+else
+$(error 'DDI_DEMO_GOP_3DOSD not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_GOP_SEAMLESS_ZAPPING), enable)
+CFG_CC_OPTS += -D'DEMO_GOP_SEAMLESS_ZAPPING_TEST=1'
+else ifeq ($(DDI_DEMO_GOP_SEAMLESS_ZAPPING), disable)
+CFG_CC_OPTS += -D'DEMO_GOP_SEAMLESS_ZAPPING_TEST=0'
+else
+$(error 'DDI_DEMO_GOP_SEAMLESS_ZAPPING not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PVR_UTOPIA2L_64BIT), enable)
+CFG_CC_OPTS += -D'DEMO_PVR_UTOPIA2L_64BIT_TEST=1'
+else ifeq ($(DDI_DEMO_PVR_UTOPIA2L_64BIT), disable)
+CFG_CC_OPTS += -D'DEMO_PVR_UTOPIA2L_64BIT_TEST=0'
+else
+$(error 'DDI_DEMO_PVR_UTOPIA2L_64BIT not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DIP_CAPTURE), enable)
+CFG_CC_OPTS += -D'DDI_DEMO_DIP_CAPTURE_TEST=1'
+else ifeq ($(DDI_DEMO_DIP_CAPTURE), disable)
+CFG_CC_OPTS += -D'DDI_DEMO_DIP_CAPTURE_TEST=0'
+else
+$(error 'DDI_DEMO_DIP_CAPTURE not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_GOP0_GOP1), enable)
+CFG_CC_OPTS += -D'DEMO_GOP0_GOP1_TEST=1'
+else ifeq ($(DDI_DEMO_GOP0_GOP1), disable)
+CFG_CC_OPTS += -D'DEMO_GOP0_GOP1_TEST=0'
+else
+$(error 'DDI_DEMO_GOP0_GOP1 not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_GOP2_GOP3), enable)
+CFG_CC_OPTS += -D'DEMO_GOP2_GOP3_TEST=1'
+else ifeq ($(DDI_DEMO_GOP2_GOP3), disable)
+CFG_CC_OPTS += -D'DEMO_GOP2_GOP3_TEST=0'
+else
+$(error 'DDI_DEMO_GOP2_GOP3 not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_GOP4_GOP5), enable)
+CFG_CC_OPTS += -D'DEMO_GOP4_GOP5_TEST=1'
+else ifeq ($(DDI_DEMO_GOP4_GOP5), disable)
+CFG_CC_OPTS += -D'DEMO_GOP4_GOP5_TEST=0'
+else
+$(error 'DDI_DEMO_GOP4_GOP5 not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_GE_TWOSOURCEBITBLT), enable)
+CFG_CC_OPTS += -D'DEMO_GE_TWOSOURCEBITBLT_TEST=1'
+else ifeq ($(DDI_DEMO_GE_TWOSOURCEBITBLT), disable)
+CFG_CC_OPTS += -D'DEMO_GE_TWOSOURCEBITBLT_TEST=0'
+else
+$(error 'DDI_DEMO_GE_TWOSOURCEBITBLT not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_XC), enable)
+CFG_CC_OPTS += -D'DEMO_XC_TEST=1'
+else ifeq ($(DDI_DEMO_XC), disable)
+CFG_CC_OPTS += -D'DEMO_XC_TEST=0'
+else
+$(error 'DDI_DEMO_XC not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_XC_3DVIDEO), enable)
+CFG_CC_OPTS += -D'DEMO_XC_3DVIDEO_TEST=1'
+else ifeq ($(DDI_DEMO_XC_3DVIDEO), disable)
+CFG_CC_OPTS += -D'DEMO_XC_3DVIDEO_TEST=0'
+else
+$(error 'DDI_DEMO_XC_3DVIDEO not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_XC_DUALXC), enable)
+CFG_CC_OPTS += -D'DEMO_XC_DUALXC_TEST=1'
+else ifeq ($(DDI_DEMO_XC_DUALXC), disable)
+CFG_CC_OPTS += -D'DEMO_XC_DUALXC_TEST=0'
+else
+$(error 'DDI_DEMO_XC_DUALXC not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_XC_HDMIRX), enable)
+CFG_CC_OPTS += -D'DEMO_XC_HDMIRX_TEST=1'
+else ifeq ($(DDI_DEMO_XC_HDMIRX), disable)
+CFG_CC_OPTS += -D'DEMO_XC_HDMIRX_TEST=0'
+else
+$(error 'DDI_DEMO_XC_HDMIRX not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_XC_SEAMLESS_ZAPPING), enable)
+CFG_CC_OPTS += -D'DEMO_XC_SEAMLESS_ZAPPING_TEST=1'
+else ifeq ($(DDI_DEMO_XC_SEAMLESS_ZAPPING), disable)
+CFG_CC_OPTS += -D'DEMO_XC_SEAMLESS_ZAPPING_TEST=0'
+else
+$(error 'DDI_DEMO_XC_SEAMLESS_ZAPPING not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_4K2K), enable)
+CFG_CC_OPTS += -D'DEMO_4K2K_TEST=1'
+else ifeq ($(DDI_DEMO_4K2K), disable)
+CFG_CC_OPTS += -D'DEMO_4K2K_TEST=0'
+else
+$(error 'DDI_DEMO_4K2K not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_VE_FRAME_BUF_SUP), enable)
+CFG_CC_OPTS += -D'DEMO_VE_FRAME_BUF_SUP_TEST=1'
+else ifeq ($(DDI_DEMO_VE_FRAME_BUF_SUP), disable)
+CFG_CC_OPTS += -D'DEMO_VE_FRAME_BUF_SUP_TEST=0'
+else
+$(error 'DDI_DEMO_VE_FRAME_BUF_SUP not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DIP), enable)
+CFG_CC_OPTS += -D'DEMO_DIP_TEST=1'
+else ifeq ($(DDI_DEMO_DIP), disable)
+CFG_CC_OPTS += -D'DEMO_DIP_TEST=0'
+else
+$(error 'DDI_DEMO_DIP not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_AV), enable)
+CFG_CC_OPTS += -D'DEMO_AV_TEST=1'
+else ifeq ($(DDI_DEMO_AV), disable)
+CFG_CC_OPTS += -D'DEMO_AV_TEST=0'
+else
+$(error 'DDI_DEMO_AV not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_VDEC), enable)
+CFG_CC_OPTS += -D'DEMO_VDEC_TEST=1'
+else ifeq ($(DDI_DEMO_VDEC), disable)
+CFG_CC_OPTS += -D'DEMO_VDEC_TEST=0'
+else
+$(error 'DDI_DEMO_VDEC not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_VDEC_MULTI), enable)
+CFG_CC_OPTS += -D'DEMO_VDEC_MULTI_TEST=1'
+else ifeq ($(DDI_DEMO_VDEC_MULTI), disable)
+CFG_CC_OPTS += -D'DEMO_VDEC_MULTI_TEST=0'
+else
+$(error 'DDI_DEMO_VDEC_MULTI not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_VDEC_ONE_PENDING_BUFFER_MODE), enable)
+CFG_CC_OPTS += -D'DEMO_VDEC_ONE_PENDING_BUFFER_MODE_TEST=1'
+else ifeq ($(DDI_DEMO_VDEC_ONE_PENDING_BUFFER_MODE), disable)
+CFG_CC_OPTS += -D'DEMO_VDEC_ONE_PENDING_BUFFER_MODE_TEST=0'
+else
+$(error 'DDI_DEMO_VDEC_ONE_PENDING_BUFFER_MODE not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_JPEG), enable)
+CFG_CC_OPTS += -D'DEMO_JPEG_TEST=1'
+else ifeq ($(DDI_DEMO_JPEG), disable)
+CFG_CC_OPTS += -D'DEMO_JPEG_TEST=0'
+else
+$(error 'DDI_DEMO_JPEG not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_GPD), enable)
+CFG_CC_OPTS += -D'DEMO_GPD_TEST=1'
+else ifeq ($(DDI_DEMO_GPD), disable)
+CFG_CC_OPTS += -D'DEMO_GPD_TEST=0'
+else
+$(error 'DDI_DEMO_GPD not define, please setup this at feature_configuration')
+endif
+
+
+ifeq ($(DDI_DEMO_MVC), enable)
+CFG_CC_OPTS += -D'DEMO_MVC_TEST=1'
+else ifeq ($(DDI_DEMO_MVC), disable)
+CFG_CC_OPTS += -D'DEMO_MVC_TEST=0'
+else
+$(error 'DDI_DEMO_MVC not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_HD), enable)
+CFG_CC_OPTS += -D'DEMO_HD_TEST=1'
+else ifeq ($(DDI_DEMO_HD), disable)
+CFG_CC_OPTS += -D'DEMO_HD_TEST=0'
+else
+$(error 'DDI_DEMO_HD not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_VDEC_HEVC), enable)
+CFG_CC_OPTS += -D'DEMO_VDEC_HEVC_TEST=1'
+else ifeq ($(DDI_DEMO_VDEC_HEVC), disable)
+CFG_CC_OPTS += -D'DEMO_VDEC_HEVC_TEST=0'
+else
+$(error 'DDI_DEMO_VDEC_HEVC not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_ZAPPING), enable)
+CFG_CC_OPTS += -D'DEMO_ZAPPING_TEST=1'
+else ifeq ($(DDI_DEMO_ZAPPING), disable)
+CFG_CC_OPTS += -D'DEMO_ZAPPING_TEST=0'
+else
+$(error 'DDI_DEMO_ZAPPING not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_ZAPPING_FQ), enable)
+CFG_CC_OPTS += -D'DEMO_ZAPPING_FQ_TEST=1'
+else ifeq ($(DDI_DEMO_ZAPPING_FQ), disable)
+CFG_CC_OPTS += -D'DEMO_ZAPPING_FQ_TEST=0'
+else
+$(error 'DDI_DEMO_ZAPPING_FQ not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_MM), enable)
+CFG_CC_OPTS += -D'DEMO_MM_TEST=1'
+else ifeq ($(DDI_DEMO_MM), disable)
+CFG_CC_OPTS += -D'DEMO_MM_TEST=0'
+else
+$(error 'DDI_DEMO_MM not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_MM_DUAL), enable)
+CFG_CC_OPTS += -D'DEMO_MM_DUAL_TEST=1'
+else ifeq ($(DDI_DEMO_MM_DUAL), disable)
+CFG_CC_OPTS += -D'DEMO_MM_DUAL_TEST=0'
+else
+$(error 'DDI_DEMO_MM_DUAL not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_MM_MVC), enable)
+CFG_CC_OPTS += -D'DEMO_MM_MVC_TEST=1'
+else ifeq ($(DDI_DEMO_MM_MVC), disable)
+CFG_CC_OPTS += -D'DEMO_MM_MVC_TEST=0'
+else
+$(error 'DDI_DEMO_MM_MVC not define, please setup this at feature_configuration')
+endif
+
+
+ifeq ($(DDI_DEMO_AUDIO), enable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_TEST=1'
+else ifeq ($(DDI_DEMO_AUDIO), disable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_TEST=0'
+else
+$(error 'DDI_DEMO_AUDIO not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_AUDIO_AD), enable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_AD_TEST=1'
+else ifeq ($(DDI_DEMO_AUDIO_AD), disable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_AD_TEST=0'
+else
+$(error 'DDI_DEMO_AUDIO_AD not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_AUDIO_BTSC), enable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_BTSC_TEST=1'
+else ifeq ($(DDI_DEMO_AUDIO_BTSC), disable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_BTSC_TEST=0'
+else
+$(error 'DDI_DEMO_AUDIO_BTSC not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_AUDIO_FMTX), enable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_FMTX_TEST=1'
+else ifeq ($(DDI_DEMO_AUDIO_FMTX), disable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_FMTX_TEST=0'
+else
+$(error 'DDI_DEMO_AUDIO_FMTX not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_AUDIO_HDMI), enable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_HDMI_TEST=1'
+else ifeq ($(DDI_DEMO_AUDIO_HDMI), disable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_HDMI_TEST=0'
+else
+$(error 'DDI_DEMO_AUDIO_HDMI not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_AUDIO_KTV), enable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_KTV_TEST=1'
+else ifeq ($(DDI_DEMO_AUDIO_KTV), disable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_KTV_TEST=0'
+else
+$(error 'DDI_DEMO_AUDIO_KTV not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_AUDIO_MULTI), enable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_MULTI_TEST=1'
+else ifeq ($(DDI_DEMO_AUDIO_MULTI), disable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_MULTI_TEST=0'
+else
+$(error 'DDI_DEMO_AUDIO_MULTI not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_AUDIO_SOUND_EFFECT), enable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_SOUND_EFFECT_TEST=1'
+else ifeq ($(DDI_DEMO_AUDIO_SOUND_EFFECT), disable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_SOUND_EFFECT_TEST=0'
+else
+$(error 'DDI_DEMO_AUDIO_SOUND_EFFECT not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_AUDIO_SOUND_EFFECT_ADV), enable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_SOUND_EFFECT_ADV_TEST=1'
+else ifeq ($(DDI_DEMO_AUDIO_SOUND_EFFECT_ADV), disable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_SOUND_EFFECT_ADV_TEST=0'
+else
+$(error 'DDI_DEMO_AUDIO_SOUND_EFFECT_ADV not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_AUDIO_SPDIF), enable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_SPDIF_TEST=1'
+else ifeq ($(DDI_DEMO_AUDIO_SPDIF), disable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_SPDIF_TEST=0'
+else
+$(error 'DDI_DEMO_AUDIO_SPDIF not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_AUDIO_R2_MEM_ARCHI), enable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_R2_MEM_ARCHI_TEST=1'
+else ifeq ($(DDI_DEMO_AUDIO_R2_MEM_ARCHI), disable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_R2_MEM_ARCHI_TEST=0'
+else
+$(error 'DDI_DEMO_AUDIO_R2_MEM_ARCHI not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_AUDIO_DMA_READER), enable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_DMA_READER_TEST=1'
+else ifeq ($(DDI_DEMO_AUDIO_DMA_READER), disable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_DMA_READER_TEST=0'
+else
+$(error 'DDI_DEMO_AUDIO_DMA_READER not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_AUDIO_SE_DV258), enable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_SE_DV258_TEST=1'
+else ifeq ($(DDI_DEMO_AUDIO_SE_DV258), disable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_SE_DV258_TEST=0'
+else
+$(error 'DDI_DEMO_AUDIO_SE_DV258 not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_AUDIO_DDP_BYPASS_V1), enable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_DDP_BYPASS_V1=1'
+else ifeq ($(DDI_DEMO_AUDIO_DDP_BYPASS_V1), disable)
+CFG_CC_OPTS += -D'DEMO_AUDIO_DDP_BYPASS_V1=0'
+else
+$(error 'DDI_DEMO_AUDIO_DDP_BYPASS_V1 not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DMX), enable)
+CFG_CC_OPTS += -D'DEMO_DMX_TEST=1'
+else ifeq ($(DDI_DEMO_DMX), disable)
+CFG_CC_OPTS += -D'DEMO_DMX_TEST=0'
+else
+$(error 'DDI_DEMO_DMX not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DMX_NEW_ARCHI), enable)
+CFG_CC_OPTS += -D'DEMO_DMX_NEW_ARCHI_TEST=1'
+else ifeq ($(DDI_DEMO_DMX_NEW_ARCHI), disable)
+CFG_CC_OPTS += -D'DEMO_DMX_NEW_ARCHI_TEST=0'
+else
+$(error 'DDI_DEMO_DMX_NEW_ARCHI not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DMX_PATH_SET), enable)
+CFG_CC_OPTS += -D'DEMO_DMX_PATH_SET_TEST=1'
+else ifeq ($(DDI_DEMO_DMX_PATH_SET), disable)
+CFG_CC_OPTS += -D'DEMO_DMX_PATH_SET_TEST=0'
+else
+$(error 'DDI_DEMO_DMX_PATH_SET not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DMX_TSO_10), enable)
+CFG_CC_OPTS += -D'DEMO_DMX_TSO_10_TEST=1'
+else ifeq ($(DDI_DEMO_DMX_TSO_10), disable)
+CFG_CC_OPTS += -D'DEMO_DMX_TSO_10_TEST=0'
+else
+$(error 'DDI_DEMO_DMX_TSO_10 not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DMX_TSO_20), enable)
+CFG_CC_OPTS += -D'DEMO_DMX_TSO_20_TEST=1'
+else ifeq ($(DDI_DEMO_DMX_TSO_20), disable)
+CFG_CC_OPTS += -D'DEMO_DMX_TSO_20_TEST=0'
+else
+$(error 'DDI_DEMO_DMX_TSO_20 not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DMX_TV_SERIES), enable)
+CFG_CC_OPTS += -D'DEMO_DMX_TV_SERIES_TEST=1'
+else ifeq ($(DDI_DEMO_DMX_TV_SERIES), disable)
+CFG_CC_OPTS += -D'DEMO_DMX_TV_SERIES_TEST=0'
+else
+$(error 'DDI_DEMO_DMX_TV_SERIES not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DMX_3WIRE), enable)
+CFG_CC_OPTS += -D'DEMO_DMX_3WIRE_TEST=1'
+else ifeq ($(DDI_DEMO_DMX_3WIRE), disable)
+CFG_CC_OPTS += -D'DEMO_DMX_3WIRE_TEST=0'
+else
+$(error 'DDI_DEMO_DMX_3WIRE not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PVR), enable)
+CFG_CC_OPTS += -D'DEMO_PVR_TEST=1'
+
+ifeq ($(DDI_DEMO_PVR_V4), enable)
+CFG_CC_OPTS += -D'DEMO_PVR_V4_TEST=1'
+else ifeq ($(DDI_DEMO_PVR_V4), disable)
+CFG_CC_OPTS += -D'DEMO_PVR_V4_TEST=0'
+else
+$(error 'DDI_DEMO_PVR_V4 not define, please setup this at feature_configuration')
+endif
+
+else ifeq ($(DDI_DEMO_PVR), disable)
+CFG_CC_OPTS += -D'DEMO_PVR_TEST=0'
+else
+$(error 'DDI_DEMO_PVR not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS), enable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST=1'
+else ifeq ($(DDI_DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS), disable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST=0'
+else
+$(error 'DDI_DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PVR_SUPPORT_CAPVR), enable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_CAPVR_TEST=1'
+else ifeq ($(DDI_DEMO_PVR_SUPPORT_CAPVR), disable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_CAPVR_TEST=0'
+else
+$(error 'DDI_DEMO_PVR_SUPPORT_CAPVR not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PVR_SUPPORT_DYNAMICKEY), enable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_DYNAMICKEY_TEST=1'
+else ifeq ($(DDI_DEMO_PVR_SUPPORT_DYNAMICKEY), disable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_DYNAMICKEY_TEST=0'
+else
+$(error 'DDI_DEMO_PVR_SUPPORT_DYNAMICKEY not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PVR_SUPPORT_CHANGE_DISPLAYWIN), enable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_CHANGE_DISPLAYWIN_TEST=1'
+else ifeq ($(DDI_DEMO_PVR_SUPPORT_CHANGE_DISPLAYWIN), disable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_CHANGE_DISPLAYWIN_TEST=0'
+else
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_CHANGE_DISPLAYWIN_TEST=0'
+endif
+
+ifeq ($(DDI_DEMO_PVR_SUPPORT_DUALPLAYBACK), enable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_DUALPLAYBACK_TEST=1'
+else ifeq ($(DDI_DEMO_PVR_SUPPORT_DUALPLAYBACK), disable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_DUALPLAYBACK_TEST=0'
+else
+$(error 'DDI_DEMO_PVR_SUPPORT_DUALPLAYBACK not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PVR_SUPPORT_PLAYBACK_AUTORESUME), enable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_PLAYBACK_AUTORESUME_TEST=1'
+else ifeq ($(DDI_DEMO_PVR_SUPPORT_PLAYBACK_AUTORESUME), disable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_PLAYBACK_AUTORESUME_TEST=0'
+else
+$(error 'DDI_DEMO_PVR_SUPPORT_PLAYBACK_AUTORESUME not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PVR_SUPPORT_RECORD_DUALTYPE), enable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_RECORD_DUALTYPE_TEST=1'
+else ifeq ($(DDI_DEMO_PVR_SUPPORT_RECORD_DUALTYPE), disable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_RECORD_DUALTYPE_TEST=0'
+else
+$(error 'DDI_DEMO_PVR_SUPPORT_RECORD_DUALTYPE not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PVR_SUPPORT_SWPVR), enable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_SWPVR_TEST=1'
+else ifeq ($(DDI_DEMO_PVR_SUPPORT_SWPVR), disable)
+CFG_CC_OPTS += -D'DEMO_PVR_SUPPORT_SWPVR_TEST=0'
+else
+$(error 'DDI_DEMO_PVR_SUPPORT_SWPVR not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PVR_LINUX_MOUNT_NOTIFIER), enable)
+CFG_CC_OPTS += -D'DEMO_PVR_LINUX_MOUNT_NOTIFIER_TEST=1'
+else ifeq ($(DDI_DEMO_PVR_LINUX_MOUNT_NOTIFIER), disable)
+CFG_CC_OPTS += -D'DEMO_PVR_LINUX_MOUNT_NOTIFIER_TEST=0'
+else
+$(error 'DDI_DEMO_PVR_LINUX_MOUNT_NOTIFIER not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_AUTO_GEN), enable)
+CFG_CC_OPTS += -D'DEMO_AUTO_GEN_TEST=1'
+else ifeq ($(DDI_DEMO_AUTO_GEN), disable)
+CFG_CC_OPTS += -D'DEMO_AUTO_GEN_TEST=0'
+else
+$(error 'DDI_DEMO_AUTO_GEN not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_CI), enable)
+CFG_CC_OPTS += -D'DEMO_CI_TEST=1'
+else ifeq ($(DDI_DEMO_CI), disable)
+CFG_CC_OPTS += -D'DEMO_CI_TEST=0'
+else
+$(error 'DDI_DEMO_CI not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_CI_PLUS), enable)
+CFG_CC_OPTS += -D'DEMO_CI_PLUS_TEST=1'
+else ifeq ($(DDI_DEMO_CI_PLUS), disable)
+CFG_CC_OPTS += -D'DEMO_CI_PLUS_TEST=0'
+else
+$(error 'DDI_DEMO_CI_PLUS not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_OPENGLES2), enable)
+CFG_CC_OPTS += -D'DEMO_OPENGLES2_TEST=1'
+else ifeq ($(DDI_DEMO_OPENGLES2), disable)
+CFG_CC_OPTS += -D'DEMO_OPENGLES2_TEST=0'
+else
+$(error 'DDI_DEMO_OPENGLES2 not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_RSA), enable)
+CFG_CC_OPTS += -D'DEMO_RSA_TEST=1'
+else ifeq ($(DDI_DEMO_RSA), disable)
+CFG_CC_OPTS += -D'DEMO_RSA_TEST=0'
+else
+$(error 'DDI_DEMO_RSA not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_APM), enable)
+CFG_CC_OPTS += -D'DEMO_APM_TEST=1'
+else ifeq ($(DDI_DEMO_APM), disable)
+CFG_CC_OPTS += -D'DEMO_APM_TEST=0'
+else
+$(error 'DDI_DEMO_APM not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_QT), enable)
+CFG_CC_OPTS += -D'DEMO_QT_TEST=1'
+else ifeq ($(DDI_DEMO_QT), disable)
+CFG_CC_OPTS += -D'DEMO_QT_TEST=0'
+else
+$(error 'DDI_DEMO_QT not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DFB), enable)
+CFG_CC_OPTS += -D'DEMO_DFB_TEST=1'
+else ifeq ($(DDI_DEMO_DFB), disable)
+CFG_CC_OPTS += -D'DEMO_DFB_TEST=0'
+else
+$(error 'DDI_DEMO_DFB not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_SERAPHIC), enable)
+CFG_CC_OPTS += -D'DEMO_SERAPHIC_TEST=1'
+else ifeq ($(DDI_DEMO_SERAPHIC), disable)
+CFG_CC_OPTS += -D'DEMO_SERAPHIC_TEST=0'
+else
+CFG_CC_OPTS += -D'DEMO_SERAPHIC_TEST=0'
+endif
+
+ifeq ($(DDI_DEMO_TSPLAYER), enable)
+CFG_CC_OPTS += -D'DEMO_TSPLAYER_TEST=1'
+else ifeq ($(DDI_DEMO_TSPLAYER), disable)
+CFG_CC_OPTS += -D'DEMO_TSPLAYER_TEST=0'
+else
+$(error 'DDI_DEMO_TSPLAYER not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_WIDI), enable)
+CFG_CC_OPTS += -D'DEMO_WIDI_TEST=1'
+else ifeq ($(DDI_DEMO_WIDI), disable)
+CFG_CC_OPTS += -D'DEMO_WIDI_TEST=0'
+else
+$(error 'DDI_DEMO_WIDI not define, please setup this at feature_configuration')
+endif
+
+
+ifeq ($(DDI_DEMO_BOOST), enable)
+CFG_CC_OPTS += -D'DEMO_BOOST_TEST=1'
+else ifeq ($(DDI_DEMO_BOOST), disable)
+CFG_CC_OPTS += -D'DEMO_BOOST_TEST=0'
+else
+$(error 'DDI_DEMO_BOOST not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_eCos_API), enable)
+CFG_CC_OPTS += -D'DEMO_eCos_API_TEST=1'
+else ifeq ($(DDI_DEMO_eCos_API), disable)
+CFG_CC_OPTS += -D'DEMO_eCos_API_TEST=0'
+else
+$(error 'DDI_DEMO_eCos_API not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_BOOTLOGO), enable)
+CFG_CC_OPTS += -D'DEMO_BOOTLOGO_TEST=1'
+else ifeq ($(DDI_DEMO_BOOTLOGO), disable)
+CFG_CC_OPTS += -D'DEMO_BOOTLOGO_TEST=0'
+else
+$(error 'DDI_DEMO_BOOTLOGO not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_ENV), enable)
+CFG_CC_OPTS += -D'DEMO_ENV_TEST=1'
+else ifeq ($(DDI_DEMO_ENV), disable)
+CFG_CC_OPTS += -D'DEMO_ENV_TEST=0'
+else
+$(error 'DDI_DEMO_ENV not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_WIDEVINE), enable)
+CFG_CC_OPTS += -D'DEMO_WIDEVINE_TEST=1'
+else ifeq ($(DDI_DEMO_WIDEVINE), disable)
+CFG_CC_OPTS += -D'DEMO_WIDEVINE_TEST=0'
+else
+$(error 'DDI_DEMO_WIDEVINE not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PM_STR_eCos), enable)
+CFG_CC_OPTS += -D'DEMO_PM_STR_eCos_TEST=1'
+else ifeq ($(DDI_DEMO_PM_STR_eCos), disable)
+CFG_CC_OPTS += -D'DEMO_PM_STR_eCos_TEST=0'
+else
+$(error 'DDI_DEMO_PM_STR_eCos not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_ACP_DCS), enable)
+CFG_CC_OPTS += -D'DEMO_ACP_DCS_TEST=1'
+else ifeq ($(DDI_DEMO_ACP_DCS), disable)
+CFG_CC_OPTS += -D'DEMO_ACP_DCS_TEST=0'
+else
+$(error 'DDI_DEMO_ACP_DCS not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_EMMC_ECOS), enable)
+CFG_CC_OPTS += -D'DEMO_EMMC_ECOS_TEST=1'
+else ifeq ($(DDI_DEMO_EMMC_ECOS), disable)
+CFG_CC_OPTS += -D'DEMO_EMMC_ECOS_TEST=0'
+else
+$(error 'DDI_DEMO_EMMC_ECOS not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_NAND_ECOS), enable)
+CFG_CC_OPTS += -D'DEMO_NAND_ECOS_TEST=1'
+else ifeq ($(DDI_DEMO_NAND_ECOS), disable)
+CFG_CC_OPTS += -D'DEMO_NAND_ECOS_TEST=0'
+else
+$(error 'DDI_DEMO_NAND_ECOS not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DTE), enable)
+CFG_CC_OPTS += -D'DEMO_DTE_TEST=1'
+else ifeq ($(DDI_DEMO_DTE), disable)
+CFG_CC_OPTS += -D'DEMO_DTE_TEST=0'
+else
+$(error 'DDI_DEMO_DTE not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_ALSA), enable)
+CFG_CC_OPTS += -D'DEMO_ALSA_TEST=1'
+else ifeq ($(DDI_DEMO_ALSA), disable)
+CFG_CC_OPTS += -D'DEMO_ALSA_TEST=0'
+else
+$(error 'DDI_DEMO_ALSA not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_GST), enable)
+CFG_CC_OPTS += -D'DEMO_GST_TEST=1'
+else ifeq ($(DDI_DEMO_GST), disable)
+CFG_CC_OPTS += -D'DEMO_GST_TEST=0'
+else
+$(error 'DDI_DEMO_GST not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DLNA), enable)
+CFG_CC_OPTS += -D'DEMO_DLNA_TEST=1'
+else ifeq ($(DDI_DEMO_DLNA), disable)
+CFG_CC_OPTS += -D'DEMO_DLNA_TEST=0'
+else
+$(error 'DDI_DEMO_DLNA not define, please setup this at feature_configuration')
+endif
+
+ifdef DDI_DEMO_PALETTE_GOP
+# Currently for all chips, max GOP number is 6
+DDI_MMSDK_GOP_INDEX := 0 1 2 3 4 5
+ifeq ($(DDI_DEMO_PALETTE_GOP), $(filter $(DDI_DEMO_PALETTE_GOP),$(DDI_MMSDK_GOP_INDEX)))
+CFG_CC_OPTS += -D'DEMO_PALETTE_GOP=$(DDI_DEMO_PALETTE_GOP)'
+else
+$(error 'DDI_DEMO_PALETTE_GOP exceeded max GOP index')
+endif
+else
+$(error 'DDI_DEMO_PALETTE_GOP not defined, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_HDMI_CTS_CERTIFICATION), enable)
+CFG_CC_OPTS += -D'DEMO_HDMI_CTS_CERTIFICATION_TEST=1'
+else ifeq ($(DDI_DEMO_HDMI_CTS_CERTIFICATION), disable)
+CFG_CC_OPTS += -D'DEMO_HDMI_CTS_CERTIFICATION_TEST=0'
+else
+$(error 'DDI_DEMO_HDMI_CTS_CERTIFICATION not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_CMA), enable)
+CFG_CC_OPTS += -D'DEMO_CMA_TEST=1'
+else ifeq ($(DDI_DEMO_CMA), disable)
+CFG_CC_OPTS += -D'DEMO_CMA_TEST=0'
+else
+$(error 'DDI_DEMO_CMA not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_XC_DSSWDB), enable)
+CFG_CC_OPTS += -D'DEMO_XC_DSSWDB_TEST=1'
+else ifeq ($(DDI_DEMO_XC_DSSWDB), disable)
+CFG_CC_OPTS += -D'DEMO_XC_DSSWDB_TEST=0'
+else
+$(error 'DDI_DEMO_XC_DSSWDB not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_PM_WOL), enable)
+CFG_CC_OPTS += -D'DEMO_PM_WOL_TEST=1'
+else ifeq ($(DDI_DEMO_PM_WOL), disable)
+CFG_CC_OPTS += -D'DEMO_PM_WOL_TEST=0'
+else
+$(error 'DDI_DEMO_PM_WOL not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_XC_3DVIDEO2DOUT), enable)
+CFG_CC_OPTS += -D'DEMO_XC_3DVIDEO2DOUT_TEST=1'
+else ifeq ($(DDI_DEMO_XC_3DVIDEO2DOUT), disable)
+CFG_CC_OPTS += -D'DEMO_XC_3DVIDEO2DOUT_TEST=0'
+else
+$(error 'DDI_DEMO_XC_3DVIDEO2DOUT not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_CH_SCAN), enable)
+CFG_CC_OPTS += -D'DEMO_CH_SCAN_TEST=1'
+else ifeq ($(DDI_DEMO_CH_SCAN), disable)
+CFG_CC_OPTS += -D'DEMO_CH_SCAN_TEST=0'
+else
+$(error 'DDI_DEMO_CH_SCAN not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_DAC_SD_ONLY), enable)
+CFG_CC_OPTS += -D'DEMO_DAC_SD_ONLY_TEST=1'
+else ifeq ($(DDI_DEMO_DAC_SD_ONLY), disable)
+CFG_CC_OPTS += -D'DEMO_DAC_SD_ONLY_TEST=0'
+else
+$(error 'DDI_DEMO_DAC_SD_ONLY not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_XC_3D), enable)
+CFG_CC_OPTS += -D'DEMO_XC_3D_TEST=1'
+else ifeq ($(DDI_DEMO_XC_3D), disable)
+CFG_CC_OPTS += -D'DEMO_XC_3D_TEST=0'
+else
+$(error 'DDI_DEMO_XC_3D not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_CEC), enable)
+CFG_CC_OPTS += -D'DEMO_CEC_TEST=1'
+else ifeq ($(DDI_DEMO_CEC), disable)
+CFG_CC_OPTS += -D'DEMO_CEC_TEST=0'
+else
+$(error 'DDI_DEMO_CEC not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_XC_DUALXC_IDENTICAL_DISPLAY), enable)
+CFG_CC_OPTS += -D'DEMO_XC_DUALXC_IDENTICAL_DISPLAY_TEST=1'
+else ifeq ($(DDI_DEMO_XC_DUALXC_IDENTICAL_DISPLAY), disable)
+CFG_CC_OPTS += -D'DEMO_XC_DUALXC_IDENTICAL_DISPLAY_TEST=0'
+else
+$(error 'DDI_DEMO_XC_DUALXC_IDENTICAL_DISPLAY not define, please setup this at feature_configuration')
+endif
+
+ifeq ($(DDI_DEMO_XC_DIPMultiWin), enable)
+CFG_CC_OPTS += -D'DEMO_XC_DIPMultiWin=1'
+else ifeq ($(DDI_DEMO_XC_DIPMultiWin), disable)
+CFG_CC_OPTS += -D'DEMO_XC_DIPMultiWin=0'
+else
+$(error 'DDI_DEMO_XC_DIPMultiWin not define, please setup this at feature_configuration')
+endif

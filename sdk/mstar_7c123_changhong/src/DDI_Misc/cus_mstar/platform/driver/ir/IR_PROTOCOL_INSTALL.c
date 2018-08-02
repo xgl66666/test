@@ -6,7 +6,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (¡§MStar Confidential Information¡¨) by the recipient.
+// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -28,6 +28,8 @@
 #include "multiProtocol/IR_PROTOCOL_NEC.c"
 #include "multiProtocol/IR_PROTOCOL_RC5.c"
 #include "multiProtocol/IR_PROTOCOL_OCN.c"
+#include "multiProtocol/IR_PROTOCOL_PANASONIC7051.c"
+
 
 //-------------------------------------------------------------------------------------------------
 //  Global Variables
@@ -42,6 +44,7 @@ DRV_IR_PROTOCOL_TYPE* _GetProtocolEntry(IR_PROCOCOL_TYPE eProtocol)
     extern DRV_IR_PROTOCOL_TYPE GET_IR_PROTOCOL_ENTRY(E_IR_PROTOCOL_RC5);
     extern DRV_IR_PROTOCOL_TYPE GET_IR_PROTOCOL_ENTRY(E_IR_PROTOCOL_NEC);
     extern DRV_IR_PROTOCOL_TYPE GET_IR_PROTOCOL_ENTRY(E_IR_PROTOCOL_PZ_OCN);
+    extern DRV_IR_PROTOCOL_TYPE GET_IR_PROTOCOL_ENTRY(E_IR_PROTOCOL_PANASONIC7051);
 
     switch(eProtocol)
     {
@@ -56,6 +59,9 @@ DRV_IR_PROTOCOL_TYPE* _GetProtocolEntry(IR_PROCOCOL_TYPE eProtocol)
             break;
         case E_IR_PROTOCOL_PZ_OCN:
             return &GET_IR_PROTOCOL_ENTRY(E_IR_PROTOCOL_PZ_OCN);
+            break;
+        case E_IR_PROTOCOL_PANASONIC7051:
+            return &GET_IR_PROTOCOL_ENTRY(E_IR_PROTOCOL_PANASONIC7051);
             break;
         default:
             IR_MULTI_PROTOCOL_PRINT("not support protocol\n");

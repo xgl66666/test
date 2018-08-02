@@ -84,7 +84,11 @@
 #include "drvDemod.h"
 #include "drvIIC.h"
 
-#if(DISH_TYPE == DISH_A8293)
+#if(DISH_TYPE == DISH_A8293) ||\
+   (defined(DISH_TYPE1) && (DISH_TYPE1 == DISH_A8293)) || \
+   (defined(DISH_TYPE2) && (DISH_TYPE2 == DISH_A8293)) || \
+   (defined(DISH_TYPE3) && (DISH_TYPE3 == DISH_A8293))
+
 
 #define A8293_SLAVE_ADDR  0x10
 
@@ -147,6 +151,53 @@
 #define DATA_22K_ON       (TONE_PREFIX | TGATE_ON   | TMODE_EXTERNAL)
 
 static DISH_MS_INIT_PARAM DishInitParam[MAX_FRONTEND_NUM];
+#ifdef DISH_IIC_PORT
+#define A8293_IIC_PORT DISH_IIC_PORT
+#else
+#define A8293_IIC_PORT FRONTEND_TUNER_PORT
+#endif
+
+#ifdef DISH_IIC_PORT1
+#define A8293_IIC_PORT1 DISH_IIC_PORT1
+#else
+#define A8293_IIC_PORT1 FRONTEND_TUNER_PORT1
+#endif
+
+#ifdef DISH_IIC_PORT2
+#define A8293_IIC_PORT2 DISH_IIC_PORT2
+#else
+#define A8293_IIC_PORT2 FRONTEND_TUNER_PORT2
+#endif
+
+#ifdef DISH_IIC_PORT3
+#define A8293_IIC_PORT3 DISH_IIC_PORT3
+#else
+#define A8293_IIC_PORT3 FRONTEND_TUNER_PORT3
+#endif
+
+static HWI2C_PORT _get_I2C_port(MS_U8 u8DishIndex)
+{
+    HWI2C_PORT ehwI2c_port;
+    switch(u8DishIndex)
+    {
+        case 1:
+            ehwI2c_port = A8293_IIC_PORT1;
+            break;
+        case 2:
+            ehwI2c_port = A8293_IIC_PORT2;
+            break;
+        case 3:
+            ehwI2c_port = A8293_IIC_PORT3;
+            break;
+        case 0:
+        default:    
+            ehwI2c_port = A8293_IIC_PORT;
+            break;
+    }
+    return ehwI2c_port;
+}
+
+
 MS_BOOL MDrv_Dish_Init(MS_U8 u8DishIndex, DISH_MS_INIT_PARAM* pParam)
 {
     MS_U8 u8Data ;
@@ -159,7 +210,7 @@ MS_BOOL MDrv_Dish_Init(MS_U8 u8DishIndex, DISH_MS_INIT_PARAM* pParam)
         
     u8Data = DATA_22K_OFF;
 
-    ePort = getI2CPort(u8DishIndex);
+    ePort = _get_I2C_port(u8DishIndex);
 
     if(!MDrv_IIC_WriteBytes(ePort, A8293_SLAVE_ADDR, 0, NULL, 1, &u8Data))
     {
@@ -205,7 +256,7 @@ MS_BOOL MDrv_Dish_SetLNBPower(MS_U8 u8DishIndex, DISH_LNBPWR_TYPE enLNBPwr)
     MS_U8 u8Data = DATA_13V_OUT;
     HWI2C_PORT ePort;
 
-    ePort = getI2CPort(u8DishIndex);
+    ePort = _get_I2C_port(u8DishIndex);
 
 
     switch(enLNBPwr)
@@ -237,7 +288,7 @@ MS_BOOL MDrv_Dish_Set22k(MS_U8 u8DishIndex, DISH_LNB22K_TYPE enLNB22k)
     MS_U8 u8Data = DATA_22K_OFF ;
     HWI2C_PORT ePort;
 
-    ePort = getI2CPort(u8DishIndex);
+    ePort = _get_I2C_port(u8DishIndex);
 
 
     switch(enLNB22k)
@@ -264,7 +315,7 @@ MS_BOOL MDrv_Dish_SendCmd(MS_U8 u8DishIndex, MS_U8* pCmd,MS_U8 u8CmdSize)
     MS_U8 u8Data = DATA_22K_ON;
     HWI2C_PORT ePort;
 
-    ePort = getI2CPort(u8DishIndex);
+    ePort = _get_I2C_port(u8DishIndex);
 
     MDrv_IIC_WriteBytes(ePort, A8293_SLAVE_ADDR, 0, NULL, 1, &u8Data);
     //return MDrv_DiSEqC_SendCmd(pCmd,u8CmdSize);
@@ -273,10 +324,10 @@ MS_BOOL MDrv_Dish_SendCmd(MS_U8 u8DishIndex, MS_U8* pCmd,MS_U8 u8CmdSize)
 
 MS_BOOL MDrv_Dish_IsOverCurrent(MS_U8 u8DishIndex)
 {
-    MS_U8 u8Status;
+    MS_U8 u8Status=0;
     HWI2C_PORT ePort;
 
-    ePort = getI2CPort(u8DishIndex);
+    ePort = _get_I2C_port(u8DishIndex);
 
     if(MDrv_IIC_WriteBytes(ePort, A8293_SLAVE_ADDR, 0, NULL, 1, &u8Status))
     {
@@ -288,6 +339,12 @@ MS_BOOL MDrv_Dish_IsOverCurrent(MS_U8 u8DishIndex)
     return FALSE;
 }
 
+MS_BOOL MDrv_Dish_SetCable(MS_U8 u8DishIndex, EN_CABLE_SELECT eCableIndex)
+{       
+   return FALSE;
+}
+
+
 
 DISHTAB_ENTRY(dish_entry_DISH_A8293,"DISH_A8293", DISH_A8293,
             MDrv_Dish_Init,
@@ -295,7 +352,8 @@ DISHTAB_ENTRY(dish_entry_DISH_A8293,"DISH_A8293", DISH_A8293,
             MDrv_Dish_SetLNBPower,
             MDrv_Dish_Set22k,
             MDrv_Dish_SendCmd,
-            MDrv_Dish_IsOverCurrent
+            MDrv_Dish_IsOverCurrent,
+            MDrv_Dish_SetCable
 );
 
 

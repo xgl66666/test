@@ -3,8 +3,10 @@
  * FILE NAME          : MxL608_TunerCfg.h
  * 
  * AUTHOR             : Dong Liu
+ *                    : Jay Hung
  *  
  * DATE CREATED       : 11/16/2011
+ *                    : 1/5/2015
  *
  * DESCRIPTION        : This file contains MxL608 common control register 
  *                      definitions
@@ -73,6 +75,8 @@
 #define DFE_CTRL_TRIG_REG              0xA0 // Bit<3>
 #define DFE_CTRL_RB_HI_REG             0x7B // Bit<7:0>
 #define DFE_CTRL_RB_LOW_REG            0x7A // Bit<1:0>
+
+#define DFE_CSF_IDX_BYP_REG            0x8A // Bit<5:0>
 
 #define RF_REF_STATUS_REG              0x2B // RF/REF lock status register 
 
@@ -158,7 +162,7 @@ extern MXL608_REG_CTRL_INFO_T MxL608_DigitalDvbt[];
 MXL_STATUS MxL608_Ctrl_ProgramRegisters(UINT8 u8TunerIndex,UINT8 devId, PMXL608_REG_CTRL_INFO_T ctrlRegInfoPtr);
 MXL_STATUS MxL608_Ctrl_WriteRegField(UINT8 u8TunerIndex,UINT8 devId, PMXL608_REG_CTRL_INFO_T ctrlRegInfoPtr); 
 
-MXL_STATUS Ctrl_SetRfFreqLutTblReg(UINT8 u8TunerIndex,UINT8 devId, UINT32 FreqInHz, PMXL608_CHAN_DEPENDENT_FREQ_TABLE_T freqLutPtr);
+MXL_STATUS MxL608_Ctrl_SetRfFreqLutTblReg(UINT8 u8TunerIndex,UINT8 devId, UINT32 FreqInHz, PMXL608_CHAN_DEPENDENT_FREQ_TABLE_T freqLutPtr);
 
 #endif /* __MXL608_TUNER_CFG_H__*/
 

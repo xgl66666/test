@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (¡§MStar Confidential Information¡¨) by the recipient.
+// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -364,7 +364,7 @@ void Cus_UART_Scan(void)
 
             MS_U32 u32Data;
             MS_FE_CARRIER_PARAM    FeParam;
-
+            AppCommand appCmd;
 #ifndef DDI_MISC_INUSE
             if (appDemo_DigiTuner_InitTuner())
             {
@@ -390,9 +390,6 @@ void Cus_UART_Scan(void)
           //  printf("RRR-2: stTpSettingPC.u32Frequency = %lu \n",u32Data);
           switch (UART_EXT_CMD_MS_DAT6)
           {
-
-#if MS_DVBS_INUSE
-
             DEMOD_MS_FE_CARRIER_PARAM dmdParam;
 
             case E_STANDARD_DVBS:
@@ -405,16 +402,8 @@ void Cus_UART_Scan(void)
                 u32Data = g_UartCommand.Buffer[_UART_CMD_INDEX13_]| (u32Data<<8);
                 dmdParam.SatParam.u32SymbolRate = u32Data;
                 dmdParam.SatParam.u32SymbolRate *= 1000;
-                //MDrv_Demod_Restart(&dmdParam);
-
-                //====> need to more think
-                MApi_DigiTuner_ForceRetune(0);
-
-
-                   // FeParam.SatParam.u16SymbolRate = UART_SCAN_DATA5;
-
-
-                AppCommand appCmd;
+                MApi_DigiTuner_Reset(0, &dmdParam);
+                // FeParam.SatParam.u16SymbolRate = UART_SCAN_DATA5;
 
                 appCmd.eCmd = E_APP_CMD_MONITOR_SIGNAL_STOP;
                 appCmd.eFlg = E_APP_CMDFLG_NONE;
@@ -424,12 +413,13 @@ void Cus_UART_Scan(void)
                 appMain_RecvNotify(&appCmd);
 
                  //   MApi_DigiTuner_Tune2RfCh(_stSATParam,&tuneParam,  FE_TUNE_MANUAL);
+                putcharb( 0xF3 );
                 printf("OK\n");
 
                 U32 u32Timeout = 50;
 
-                EN_LOCK_STATUS bLocked=E_DEMOD_NULL;
-                 while(u32Timeout-- > 0 && bLocked == FALSE)
+                EN_LOCK_STATUS bLocked=E_DEMOD_CHECKING;
+                 while(u32Timeout-- > 0 && bLocked != E_DEMOD_LOCK)
                 {
 
                     MsOS_DelayTask(100);//mick
@@ -445,9 +435,7 @@ void Cus_UART_Scan(void)
                     printf("unLock\n");
                 }
               break;
-#elif(MS_DVB_TYPE_SEL == DVBC)
             case E_STANDARD_DVBC:
-
                 u32Data = (g_UartCommand.Buffer[_UART_CMD_INDEX10_]);
                 u32Data = g_UartCommand.Buffer[_UART_CMD_INDEX11_]| (u32Data<<8);
                 u32Data = g_UartCommand.Buffer[_UART_CMD_INDEX12_]| (u32Data<<8);
@@ -462,16 +450,20 @@ void Cus_UART_Scan(void)
                 FeParam.CabParam.u8TapAssign     = 1;
                 FeParam.CabParam.u32FreqOffset   = 0;
 
+#ifdef SUPPORT_DVBC_DMD_BW_CHANGE
+#if SUPPORT_DVBC_DMD_BW_CHANGE
+                FeParam.CabParam.eBandWidth  = DEMOD_CAB_BW_8M;
+#endif
+#endif
                 MApi_DigiTuner_Tune2RfCh(0,&FeParam, FE_TUNE_MANUAL);
+                putcharb( 0xF3 );
                 printf("OK\n");
                 break;
-#else
             case E_STANDARD_DVBT2:
                 FeParam.TerParam.u8ScanType = E_DEMOD_TYPE_T2;
             case E_STANDARD_DVBT:
                 FeParam.TerParam.eBandWidth = (EN_TER_BW_MODE)(g_UartCommand.Buffer[_UART_CMD_INDEX8_]-1);;
 #ifdef DDI_MISC_INUSE
-                AppCommand appCmd;
 
                 appCmd.eCmd = E_APP_CMD_MONITOR_SIGNAL_STOP;
                 appCmd.eFlg = E_APP_CMDFLG_NONE;
@@ -481,10 +473,11 @@ void Cus_UART_Scan(void)
                 appMain_RecvNotify(&appCmd);
 #endif
                 MApi_DigiTuner_Tune2RfCh(0,&FeParam, FE_TUNE_MANUAL);
+                putcharb( 0xF3 );
                 printf("OK\n");
             break;
-#endif
             default:
+                printf("Unknown dvb type\n");
             break;
             }
         }
@@ -494,7 +487,7 @@ void Cus_UART_Scan(void)
             {
 #if PHOENIX_DEBUG
 
-                EN_LOCK_STATUS lockState = E_DEMOD_NULL;
+                EN_LOCK_STATUS lockState = E_DEMOD_CHECKING;
                 switch(UART_EXT_CMD_MS_DAT1)
                 {
                     case E_STANDARD_DVBS:
@@ -512,10 +505,12 @@ void Cus_UART_Scan(void)
                 }
                 if (lockState == E_DEMOD_LOCK)
                 {
+                        putcharb( 0xF3 );
                         printf("OK\n");
                 }
                 else
                 {
+                        putcharb( 0xF3 );
                         printf("err\n");
                 }
 
@@ -531,10 +526,12 @@ void Cus_UART_Scan(void)
                 {
                     if (u16PktErr > 0)
                     {
+                        putcharb( 0xF3 );
                         printf("err\n");
                     }
                     else
                     {
+                        putcharb( 0xF3 );
                         printf("OK\n");
                     }
                 }

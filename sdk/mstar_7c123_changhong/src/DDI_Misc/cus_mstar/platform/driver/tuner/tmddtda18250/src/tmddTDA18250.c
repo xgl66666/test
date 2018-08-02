@@ -98,9 +98,6 @@
  * \section info Change Information
  *
 */
-#include "Board.h"
-#if(FRONTEND_TUNER_TYPE == TUNER_TDA18250A) 
-    
 
 /*============================================================================*/
 /* Standard include files:                                                    */
@@ -118,11 +115,9 @@
 #include "tmddTDA18250local.h"
 #include "tmddTDA18250Instance.h"
 
-
 /*============================================================================*/
 /* Types and defines:                                                         */
 /*============================================================================*/
-
 
 /*============================================================================*/
 /* Global data:                                                               */
@@ -3770,8 +3765,8 @@ tmddTDA18250SetAGC2_Gud
 /*============================================================================*/
 /* FUNCTION:    tmddTDA18250SetAGC1_aud_valid                                 */
 /*                                                                            */
-/* DESCRIPTION: Set the AGC1 top Au0 or Au3 or Au4,5 or … or Au13,5 or Ad3    */
-/*              or … Ad15 is store in RAM.                                    */
+/* DESCRIPTION: Set the AGC1 top Au0 or Au3 or Au4,5 or Â… or Au13,5 or Ad3    */
+/*              or Â… Ad15 is store in RAM.                                    */
 /*                                                                            */
 /* RETURN:      TM_OK if no error                                             */
 /*                                                                            */
@@ -3965,7 +3960,7 @@ tmddTDA18250SetAGC2_gain_Force
 /*                                                                            */
 /* RETURN:      TM_OK if no error                                             */
 /*                                                                            */
-/* NOTES:       000: 92dBmÒ111: 102dBm (step2dBm)                             */
+/* NOTES:       000: 92dBmÃ’111: 102dBm (step2dBm)                             */
 /*============================================================================*/
 tmErrorCode_t
 tmddTDA18250SetRFAGC_Top
@@ -4559,9 +4554,9 @@ tmddTDA18250GetFilterIndex
 /*                                                                            */
 /* RETURN:      TM_OK if no error                                             */
 /*                                                                            */
-/* NOTES:       If capw_filter_sel=0 Ò reading LF_nHF tells wich filter is    */
+/* NOTES:       If capw_filter_sel=0 Ã’ reading LF_nHF tells wich filter is    */
 /*              used (LF or HF band)                                          */
-/*              If capw_filter_sel=1 Ò writing LF_nHF allow to choose the     */
+/*              If capw_filter_sel=1 Ã’ writing LF_nHF allow to choose the     */
 /*              wanted filter band                                            */
 /*============================================================================*/
 tmErrorCode_t
@@ -4654,7 +4649,7 @@ tmddTDA18250SetFreqCut
 /*                                                                            */
 /* RETURN:      TM_OK if no error                                             */
 /*                                                                            */
-/* NOTES:       FreCut_sel=1 => FreqCut[6:0]=FreCut_réel - 128                */
+/* NOTES:       FreCut_sel=1 => FreqCut[6:0]=FreCut_rÃ©el - 128                */
 /*              FreCut_sel=0 => FreqCut[6:0]=FreCut_cal/2                     */
 /*              (Default value in mode manuel: 182MHz)                        */
 /*============================================================================*/
@@ -6374,8 +6369,8 @@ tmddTDA18250SetLF_freq
 /*                                                                            */
 /* RETURN:      TM_OK if no error                                             */
 /*                                                                            */
-/* NOTES:       0 : LF_freq[3:0] from I²C is not shifted by RC cal results    */
-/*              1 : LF_freq[3:0] from I²C is shifted by RC cal results        */
+/* NOTES:       0 : LF_freq[3:0] from IÂ²C is not shifted by RC cal results    */
+/*              1 : LF_freq[3:0] from IÂ²C is shifted by RC cal results        */
 /*============================================================================*/
 tmErrorCode_t
 tmddTDA18250SetShift_LF_rccal
@@ -8163,7 +8158,7 @@ tmddTDA18250GetAGC2_loop_off
 /*============================================================================*/
 /* FUNCTION:    tmddTDA18250SetAGC2_Speed                                     */
 /*                                                                            */
-/* DESCRIPTION: Set the clock of the agc2 digital control (62.5k Ò 250k).     */
+/* DESCRIPTION: Set the clock of the agc2 digital control (62.5k Ã’ 250k).     */
 /*                                                                            */
 /* RETURN:      TM_OK if no error                                             */
 /*                                                                            */
@@ -8209,7 +8204,7 @@ tmddTDA18250SetAGC2_Speed
 /*============================================================================*/
 /* FUNCTION:    tmddTDA18250GetAGC2_Speed                                     */
 /*                                                                            */
-/* DESCRIPTION: Get the clock of the agc2 digital control (62.5k Ò 250k).     */
+/* DESCRIPTION: Get the clock of the agc2 digital control (62.5k Ã’ 250k).     */
 /*                                                                            */
 /* RETURN:      TM_OK if no error                                             */
 /*                                                                            */
@@ -10150,5 +10145,4 @@ ddTDA18250MutexRelease
 
     return err;
 }
-#endif
 

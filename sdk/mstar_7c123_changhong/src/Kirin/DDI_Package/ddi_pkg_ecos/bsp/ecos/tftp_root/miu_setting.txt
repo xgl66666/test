@@ -1,0 +1,4 @@
+setenv MIU0_GROUP_PRIORITY 0:1:2:3
+saveenv
+
+% <- this is end of file symbol

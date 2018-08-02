@@ -120,7 +120,7 @@ static MS_BOOL MDrv_Demod_MSATSC_Public_Init(void )
 
         if (_s32MutexId < 0)
         {
-            GEN_EXCEP;
+            DMD_ERR(("%s: _s32MutexId < 0!!!\n", __FUNCTION__));
             return FALSE;
         }
 
@@ -130,27 +130,26 @@ static MS_BOOL MDrv_Demod_MSATSC_Public_Init(void )
 
     MDrv_SYS_DMD_VD_MBX_Init();
     MDrv_SYS_DMD_VD_MBX_SetType(E_DMD_VD_MBX_TYPE_ATSC);
-    
-    MDrv_SAR_Kpd_Init();
+
 
     sDMD_ATSC_InitData.u8DMD_ATSC_DSPRegInitExt=NULL; // TODO use system variable type
     sDMD_ATSC_InitData.u8DMD_ATSC_DSPRegInitSize=0;
     sDMD_ATSC_InitData.u8DMD_ATSC_InitExt=NULL; // TODO use system variable type
-    
+
     sDMD_ATSC_InitData.u16IF_KHZ = _u32IFrequency;
     sDMD_ATSC_InitData.bIQSwap = NULL;
     sDMD_ATSC_InitData.bIsExtDemod = NULL;
     //sDMD_ATSC_InitData.u16AGC_REFERENCE = _u32AGCReference;  //mark provisionally
 
     sDMD_ATSC_InitData.u8IS_DUAL = TRUE;  //default use DUAL config always
-    
+
     MDrv_DMD_ATSC_Initial_Hal_Interface();
-    
-    // init DEMOD0 
+
+    // init DEMOD0
     ret = MDrv_DMD_ATSC_MD_Init(0, &sDMD_ATSC_InitData, sizeof(sDMD_ATSC_InitData));
-    // init DEMOD1 
+    // init DEMOD1
     ret &= MDrv_DMD_ATSC_MD_Init(1, &sDMD_ATSC_InitData, sizeof(sDMD_ATSC_InitData));
-    
+
     return ret ;
 }
 
@@ -164,7 +163,7 @@ static MS_BOOL MDrv_Demod_MSATSC_Individual_Init(MS_U8 u8DemodIndex)
         bInited[u8DemodIndex] = TRUE;
 
     return ret;
-    
+
 }
 
 MS_BOOL MDrv_Demod_MSATSC_51_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
@@ -177,11 +176,11 @@ MS_BOOL MDrv_Demod_MSATSC_51_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam
     }
     else
     {
-        ret = MDrv_Demod_MSATSC_Public_Init();        
+        ret = MDrv_Demod_MSATSC_Public_Init();
     }
 
-    ret &= MDrv_Demod_MSATSC_Individual_Init(u8DemodIndex); 
-    
+    ret &= MDrv_Demod_MSATSC_Individual_Init(u8DemodIndex);
+
     return ret;
 }
 
@@ -274,7 +273,7 @@ MS_BOOL MDrv_Demod_MSATSC_51_GetLock(MS_U8 u8DemodIndex, EN_LOCK_STATUS *peLockS
         HB_ReleaseMutex(_s32MutexId);
         return FALSE;
     }
-    
+
     LockStatus = MDrv_DMD_ATSC_MD_GetLock(u8DemodIndex, DMD_ATSC_GETLOCK);
     printf("[%s][%d] LockStatus %d \n",__FUNCTION__,__LINE__,LockStatus);
     switch (LockStatus)
@@ -285,7 +284,7 @@ MS_BOOL MDrv_Demod_MSATSC_51_GetLock(MS_U8 u8DemodIndex, EN_LOCK_STATUS *peLockS
         case DMD_ATSC_CHECKEND:
             *peLockStatus = E_DEMOD_CHECKEND;
             break;
-        case DMD_ATSC_UNLOCK:       
+        case DMD_ATSC_UNLOCK:
             *peLockStatus = E_DEMOD_UNLOCK;
             break;
         case DMD_ATSC_CHECKING:
@@ -319,7 +318,7 @@ MS_BOOL MDrv_Demod_MSATSC_51_GetSNR(MS_U8 u8DemodIndex, float *pfSNR)
 
     //return ret;
     return TRUE;
-    
+
 }
 
 MS_BOOL MDrv_Demod_MSATSC_51_GetBER(MS_U8 u8DemodIndex, float *pfBER)
@@ -363,7 +362,7 @@ MS_BOOL MDrv_Demod_MSATSC_51_GetPWR(MS_U8 u8DemodIndex, MS_S32 *ps32Signal)
     }
 
     ret = MDrv_DMD_ATSC_MD_GetSignalStrength(u8DemodIndex, (MS_U16*)ps32Signal);
-    
+
     HB_ReleaseMutex(_s32MutexId);
     return ret;
 }
@@ -375,15 +374,15 @@ MS_BOOL MDrv_Demod_MSATSC_51_GetSignalQuality(MS_U8 u8DemodIndex, MS_U16 *pu16qu
         DBG_MSB(HB_printf("%s: Obtain mutex failed.\n", __FUNCTION__));
         return FALSE;
     }
-    
+
     if(bInited[u8DemodIndex] == FALSE)
     {
         *pu16quality = 0;
         HB_ReleaseMutex(_s32MutexId);
         return FALSE;
     }
-    
-    
+
+
     if( MDrv_DMD_ATSC_MD_GetLock(u8DemodIndex, DMD_ATSC_GETLOCK)== DMD_ATSC_LOCK)
     {
         *pu16quality = (MS_U16)MDrv_DMD_ATSC_MD_GetSNRPercentage(u8DemodIndex);
@@ -533,11 +532,11 @@ MS_BOOL DEMOD_MSATSC_C_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION
     {
         case DEMOD_EXT_FUNC_OPEN:
             return MDrv_Demod_MSATSC_51_Open(u8DemodIndex);
-            break;    
+            break;
         default:
             printf("Request extension function (%x) does not exist\n",fuction_type);
             return TRUE;
-    } 
+    }
 }
 
 MS_BOOL MDrv_Demod_MSATSC_51_I2C_ByPass(MS_U8 u8DemodIndex,MS_BOOL bOn)
@@ -550,10 +549,10 @@ MS_BOOL MDrv_Demod_MSATSC_51_I2C_ByPass(MS_U8 u8DemodIndex,MS_BOOL bOn)
       return MDrv_Demod_null_I2C_ByPass(u8DemodIndex,bOn);
 }
 
-DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSATSC_C) DDI_DRV_TABLE_ENTRY(demodtab) = 
-{  
+DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSATSC_C) DDI_DRV_TABLE_ENTRY(demodtab) =
+{
      .name                         = "DEMOD_MSATSC_C",
-     .data                         = DEMOD_MSATSC_C,        
+     .data                         = DEMOD_MSATSC_C,
      .init                         = MDrv_Demod_MSATSC_51_Init,
      .GetLock                      = MDrv_Demod_MSATSC_51_GetLock,
      .GetSNR                       = MDrv_Demod_MSATSC_51_GetSNR,
@@ -566,12 +565,15 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSATSC_C) DDI_DRV_TABLE_ENTRY(de
      .I2CByPassPreSetting          = NULL,
      .Extension_Function           = DEMOD_MSATSC_C_Extension_Function,
      .Extension_FunctionPreSetting = NULL,
+     .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error,
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
      .GetPlpBitMap                 = MDrv_Demod_null_GetPlpBitMap,
      .GetPlpGroupID                = MDrv_Demod_null_GetPlpGroupID,
      .SetPlpGroupID                = MDrv_Demod_null_SetPlpGroupID,
+     .GetNextPLPID                 = MDrv_Demod_null_GetNextPLPID,
+     .GetPLPType                   = MDrv_Demod_null_GetPLPType,
 #endif
 #if MS_DVBS_INUSE
      .BlindScanStart               = MDrv_Demod_null_BlindScan_Start,

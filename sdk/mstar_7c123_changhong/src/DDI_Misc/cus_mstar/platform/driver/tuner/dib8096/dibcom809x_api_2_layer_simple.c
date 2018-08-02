@@ -75,8 +75,6 @@
 //
 //******************************************************************************
 //<MStar Software>
-#include "Board.h"
-#if(FRONTEND_DEMOD_TYPE == DIBCOM_DIB8096_DEMOD)
 #include "platform_dibcom.h"
 #include "dibcom8090.h"
 #include "dibcom809x_api_2_layer_simple.h"
@@ -167,5 +165,4 @@ unsigned char dib_signal_quality(void)
     return mon.CoN;
 
 }
-#endif
 
