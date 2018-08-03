@@ -131,27 +131,11 @@ eTDAL_PERSO_ErrorCode   TDAL_PERSO_GetTagLength(   tTDAL_PERSO_Tag   const   tag
 return (   eTDAL_PERSO_NO_ERROR   );
 }
 
+#define PK_DEBUG_MODE 	(0)
 
-/** Searching for the tag_length of the data associated to a tag.
- *
- * @param[in] tag is the identifier of the tag.
- *
- * @param[in] tag_length as input is a pointer to the length of the buffer provided to store the data associated
- * with the tag. If that length is smaller than the tag content length, the returned content will be
- * truncated. If that length is larger, only the tag content will be stored. If that length is zero, no content
- * will be copied and only the length read from the personalization area will be returned. The pointer itself
- * can be null, but no length will be returned in that case, only the return code will be valid.
- *
- * @param[out] tag_length as output is a pointer to the length the data associated with the tag as read from the
- * personalization area, if not provided null.
- *
- *
- * @return eTDAL_PERSO_NO_ERROR if tag identifies a readable header tag in the personalization area.
- * @return eTDAL_PERSO_BAD_PARAMETER if tag does not identify a tag in the personalization area.
- * @return eTDAL_PERSO_NOT_INITIALIZED if the module was not initialized beforehand.
- *
- */
-uint8_t g_pkData[494]=
+#define CHMID_NVCA_PKDATA_MAX_LEN 0x300
+#if PK_DEBUG_MODE
+uint8_t gp_Pkbuffer[CHMID_NVCA_PKDATA_MAX_LEN]=
 {
 0x00, 0x00, 0x01, 0x6C, 0x00, 0x01, 0x00, 0x00, 0x03, 0x03, 0xFA, 0x13, 0x35, 0xE8, 0x17, 0xFE, 
 0xE0, 0xCE, 0x47, 0x61, 0x0B, 0xDA, 0x6C, 0xC7, 0xF0, 0xFB, 0xDD, 0x07, 0x77, 0x95, 0x91, 0xA8, 
@@ -184,7 +168,152 @@ uint8_t g_pkData[494]=
 0x2F, 0x78, 0x6E, 0xED, 0xBB, 0x72, 0xAB, 0xF5, 0x5D, 0x8E, 0x3E, 0xA1, 0x61, 0xD1, 0x07, 0x13, 
 0x92, 0xFE, 0x74, 0xB4, 0xF5, 0xED, 0x6E, 0xD5, 0x20, 0xE9, 0x1A, 0xF7, 0x3E, 0x68, 0x6F, 0x26, 
 0xDC, 0xC2, 0xEB, 0xD6, 0x7F, 0xEB, 0xD0, 0xC3, 0x60, 0x81, 0x2E, 0x63, 0x38, 0xEB
-};;
+};
+#else
+uint8_t gp_Pkbuffer[CHMID_NVCA_PKDATA_MAX_LEN] = {0};
+#endif
+
+
+uint16_t g_pk_len = 0;
+uint16_t g_pk_handle = 0;
+
+#define PK_ADDRESS  (0x200)
+
+
+
+uint16_t Xor [16] = {0x0000, 0x1021, 0x2042, 0x3063,
+				0x4084, 0x50A5, 0x60C6, 0x70E7,
+				0x8108, 0x9129, 0xA14A, 0xB16B,
+				0xC18C, 0xD1AD, 0xE1CE, 0xF1EF};
+
+	
+uint16_t CHMID_NVCA_CRC16 (uint8_t* Msg,uint16_t MsgLen)
+{
+	uint16_t CRC;
+	CRC = 0x0000;
+	
+	for (; MsgLen; MsgLen--)
+	{
+		CRC = (CRC<<4) ^ Xor [((*(((uint8_t*)&CRC) + 1) ^ *Msg)>>4)];
+		CRC = (CRC<<4) ^ Xor [(*(((uint8_t*)&CRC) + 1)>>4) ^ (*Msg++ & 0x0F)];
+	}
+	return CRC;
+}
+
+bool TDAL_PERSO_PK_Handle(void )
+{
+	int ui_PkDatalen = 0 ;
+	int us_crc16value =0;
+	int i_Result = 0;
+	int i_ReadLen = CHMID_NVCA_PKDATA_MAX_LEN;
+	uint8_t * puc_tempBUF = NULL;
+#if PK_DEBUG_MODE
+	return false;
+#endif	
+	if(g_pk_handle != 0)
+	{
+		return false;
+	}
+	g_pk_handle = 1;
+	i_ReadLen = CHMID_NVCA_PKDATA_MAX_LEN;
+
+
+	puc_tempBUF = TDAL_Malloc(CHMID_NVCA_PKDATA_MAX_LEN);
+	if(puc_tempBUF!= NULL)
+	{
+		
+		printf("ERR:[nagra-cak] TDAL_PERSO_PK_Handle puc_tempBUF is null \r\n");
+		i_Result = TDAL_FLA_Read_OTA( PK_ADDRESS, puc_tempBUF,i_ReadLen);
+
+	}
+	else
+	{
+		return (bool)true;
+	}
+	if(i_Result == 0)
+	{
+		printf("CHMID_NVCA_ReadPairKey error");
+		return (bool)true;
+	}
+#if 1
+	if( (puc_tempBUF[0] == 'p') && (puc_tempBUF[1] == 'k') && (puc_tempBUF[2] == 'f') 
+		&& (puc_tempBUF[3] == 'a')  && (puc_tempBUF[4] == 'c')  && (puc_tempBUF[5] == 't') )
+	{
+		/* 明文PK */
+		memcpy(gp_Pkbuffer,(puc_tempBUF+6),CHMID_NVCA_PKDATA_MAX_LEN);
+	}
+	else
+	{
+		printf("111111111 [%d][%d][%d][%d][%d][%d]============== OK",
+		puc_tempBUF[0],puc_tempBUF[1],puc_tempBUF[2],puc_tempBUF[3],puc_tempBUF[4],puc_tempBUF[5]
+		);
+	
+		/* 密文PK */
+		secDecryptData(gp_Pkbuffer, puc_tempBUF, CHMID_NVCA_PKDATA_MAX_LEN);
+		
+		printf("CHMID_NVCA_FactWritePairKey [%d][%d][%d][%d][%d][%d]============== OK",
+		gp_Pkbuffer[0],gp_Pkbuffer[1],gp_Pkbuffer[2],gp_Pkbuffer[3],gp_Pkbuffer[4],gp_Pkbuffer[5]
+		);
+	}
+#else
+	if( (puc_tempBUF[0] == 0) && (puc_tempBUF[1] == 0) && (puc_tempBUF[2] == 1) && (puc_tempBUF[3] == 0x6c) )
+	{
+		/* 明文PK */
+		memcpy(gp_Pkbuffer,puc_tempBUF,CHMID_NVCA_PKDATA_MAX_LEN);
+	}
+	else
+	{
+		/* 密文PK */
+		secDecryptData(gp_Pkbuffer, puc_tempBUF, CHMID_NVCA_PKDATA_MAX_LEN);
+	}
+#endif
+	if(puc_tempBUF != NULL)
+	{
+		TDAL_Free(puc_tempBUF);
+	}
+	
+	g_pk_len = ui_PkDatalen = (gp_Pkbuffer[0] << 24 & 0xFF000000)|(gp_Pkbuffer[1] <<16 & 0xFF0000)| (gp_Pkbuffer[2] << 8 & 0xFF00)|(gp_Pkbuffer[3] & 0xFF);
+
+	if(ui_PkDatalen <= 0 || ui_PkDatalen > (CHMID_NVCA_PKDATA_MAX_LEN-130))
+	{
+		printf("ERR:[nagra-cak] CHMID_NVCA_ReadPairKey pkdata len 0 \r\n");
+		/*TDAL_Free(gp_Pkbuffer);*/
+		//gp_Pkbuffer = NULL;
+		return (bool)true;
+	}
+	/*校验完整性*/
+	/*按照PK的规范加上签名数据长度*/
+	us_crc16value = (gp_Pkbuffer[ui_PkDatalen+130- 2] << 8 & 0xFF00)|(gp_Pkbuffer[ui_PkDatalen+130- 1] & 0xFF);	
+
+	if(CHMID_NVCA_CRC16(gp_Pkbuffer, ui_PkDatalen+128) != us_crc16value)
+	{
+		printf("ERR:[nagra-cak] CHMID_NVCA_ReadPairKey Load PK from FLASH crc error \r\n");
+		return (bool)true;
+	}
+	return (bool)false;
+}
+
+
+/** Searching for the tag_length of the data associated to a tag.
+ *
+ * @param[in] tag is the identifier of the tag.
+ *
+ * @param[in] tag_length as input is a pointer to the length of the buffer provided to store the data associated
+ * with the tag. If that length is smaller than the tag content length, the returned content will be
+ * truncated. If that length is larger, only the tag content will be stored. If that length is zero, no content
+ * will be copied and only the length read from the personalization area will be returned. The pointer itself
+ * can be null, but no length will be returned in that case, only the return code will be valid.
+ *
+ * @param[out] tag_length as output is a pointer to the length the data associated with the tag as read from the
+ * personalization area, if not provided null.
+ *
+ *
+ * @return eTDAL_PERSO_NO_ERROR if tag identifies a readable header tag in the personalization area.
+ * @return eTDAL_PERSO_BAD_PARAMETER if tag does not identify a tag in the personalization area.
+ * @return eTDAL_PERSO_NOT_INITIALIZED if the module was not initialized beforehand.
+ *
+ */
+
 uint8_t g_cscData[256] = {0};
 eTDAL_PERSO_ErrorCode   TDAL_PERSO_ReadTag(   tTDAL_PERSO_Tag   const   tag, uint16_t*   tag_length,  uint8_t* const tag_content)
 {
@@ -206,7 +335,6 @@ eTDAL_PERSO_ErrorCode   TDAL_PERSO_ReadTag(   tTDAL_PERSO_Tag   const   tag, uin
 #if 0 /**for 0904 Version*/
 	PairingDataAddress = g_pkData;
 #endif
-	TDAL_FLA_Read(CSCDataAddress,g_cscData,CSCDataSize);
 
 	uint32_t PairingDataLocation = PERSO_LOCATION_MEMORY;
 
@@ -227,15 +355,20 @@ eTDAL_PERSO_ErrorCode   TDAL_PERSO_ReadTag(   tTDAL_PERSO_Tag   const   tag, uin
     uint8_t * TmpData_PK_Test = (uint8_t * )0x83FFF000 ;
 
     mTBOX_FCT_ENTER(TDAL_PERSO_ReadTag);
+	TDAL_PERSO_PK_Handle();
+
     switch(tag)
     {
     case PERSO_TAG_PK_ADDRESS:
 #if 1
 		//TmpData = g_pkData;
-		memcpy(TmpData_PK_Test,g_pkData,494);
+		memcpy(TmpData_PK_Test,gp_Pkbuffer,494);
 		TmpData = TmpData_PK_Test;
 
-printf("@@@@@@@@@@@@ TmpData_PK_Test: [%x][%x][%x][%x]\n\n",TmpData_PK_Test[0],TmpData_PK_Test[1],TmpData_PK_Test[2],TmpData_PK_Test[3]);
+printf("@@@@@@@@@@@@ TmpData_PK_Test: [%x][%x][%x][%x]\n\n",TmpData_PK_Test[0],TmpData_PK_Test[1],TmpData_PK_Test[2],TmpData_PK_Test[3]
+,TmpData_PK_Test[4],TmpData_PK_Test[5],TmpData_PK_Test[6],TmpData_PK_Test[7]
+
+);
 
 #else
         TmpData = PairingDataAddress;
