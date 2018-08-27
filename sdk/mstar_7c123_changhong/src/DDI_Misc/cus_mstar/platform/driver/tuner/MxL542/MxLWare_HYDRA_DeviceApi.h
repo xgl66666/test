@@ -102,6 +102,7 @@ typedef enum
   MXL_HYDRA_DEVICE_542C,
   MXL_HYDRA_DEVICE_581C,
   MXL_HYDRA_DEVICE_582C,
+  MXL_HYDRA_DEVICE_532C,
   MXL_HYDRA_DEVICE_MAX
 } MXL_HYDRA_DEVICE_E;
 
@@ -162,12 +163,6 @@ typedef enum
   MXL_HYDRA_PWR_WAKE_ON_BROADCAST
 } MXL_HYDRA_PWR_MODE_E;
 
-typedef struct
-{
-  UINT16 wakeUpPid[16];      // Wakeup PIDs table Max 16 entries
-  UINT32  numPids;            // Number of PIDs available in the above table
-} MXL_HYDRA_WAKE_ON_PID_T;
-
 typedef enum
 {
   MXL_HYDRA_GPIO_DIR_INPUT = 0,   // GPIO pin as INPUT
@@ -219,9 +214,11 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDevPowerMode(UINT8 devId, MXL_HYDRA_PWR_MODE_E
 
 MXL_STATUS_E MxLWare_HYDRA_API_CfgDevWakeOnRF(UINT8 devId, MXL_HYDRA_TUNER_ID_E tunerId, UINT32 wakeTimeInSeconds, SINT32 rssiThreshold);
 
-MXL_STATUS_E MxLWare_HYDRA_API_CfgDevWakeOnPidParams(UINT8 devId, MXL_BOOL_E enable,
-                               MXL_HYDRA_WAKE_ON_PID_T *wakeOnPidPtr,
-                               UINT32 pidSearchTimeInMsecs, UINT32 demodSleepTimeInMsecs);
+MXL_STATUS_E MxLWare_HYDRA_API_CfgDevWakeOnPidParams(UINT8 devId,
+                              MXL_HYDRA_TUNE_PARAMS_T * chanTuneParamsPtr,
+                              MXL_BOOL_E interruptLockFail, UINT16 awakeTimeInSeconds, 
+                              UINT16 sleepTimeInSeconds, UINT16 magicPid,
+                              UINT8 * matchBufferPtr, UINT8 * maskBufferPtr);
 
 MXL_STATUS_E MxLWare_HYDRA_API_CfgDevStartBroadcastWakeUp(UINT8 devId);
 

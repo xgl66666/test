@@ -147,6 +147,7 @@
 //-------------------------------------------------------------------------------------------------
 #define DIP_CONTI_BUFF_CNT 4 //frame count >=3 when continually capture. Max value is 8.
 #define DIP_CONTI_DEMO_FRAME_COUNT 500
+#define CEILING_ALIGN(value, align)       ((((value)+(align)-1)/(align))*(align))
 
 //-------------------------------------------------------------------------------------------------
 // Debug Macros
@@ -202,6 +203,24 @@ static MS_U16 _CalcPitch(XC_DIP_EX_DATA_FMT eFmt, MS_U16 u16Width)
     return u16Pitch;
 }
 
+static MS_U16 _Demo_DIPWHeightAlign(XC_DIP_EX_DATA_FMT eFmt,MS_U16 u16Height)
+{
+    MS_U32 u32Align_Height = u16Height;
+
+    switch(eFmt)
+    {
+        case E_XC_DIP_EX_DATA_FMT_YUV420:
+            u32Align_Height = CEILING_ALIGN(u16Height,64);
+            break;
+        case E_XC_DIP_EX_DATA_FMT_RGB565:
+        case E_XC_DIP_EX_DATA_FMT_YUV422:
+        case E_XC_DIP_EX_DATA_FMT_ARGB8888:
+        default:
+            break;
+    }
+    db_print("\033[35m u32Align_Height [%"DTC_MS_U32_d"]\033[0m\n",u32Align_Height);
+    return u32Align_Height;
+}
 static MS_ColorFormat _GFX_Format_Mapping(XC_DIP_EX_DATA_FMT eDipFormat)
 {
     MS_ColorFormat eGFXFormat = E_MS_FMT_YUV422;
@@ -247,7 +266,27 @@ static MS_BOOL _DeleteMemoryPool(void)
     return TRUE;
 }
 
-static MS_BOOL _CreateMemoryforMFE(MS_U32 u32Size, MS_U32 *u32addr, MS_U32 *u32addr_pa)
+static MS_BOOL _DeleteMFEMemoryPool(void)
+{
+    MS_BOOL ret;
+    MS_S32 s32MstarNonCachedPoolID = INVALID_POOL_ID;
+
+    Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&s32MstarNonCachedPoolID);
+    if (u32DIPAddressMFE)
+    {
+        db_print("Free memory pool for DIP\n");
+        ret = MsOS_FreeMemory((void *)u32DIPAddressMFE, s32MstarNonCachedPoolID);
+        if(FALSE == ret)
+        {
+            db_print("Allocate memory pool for DIP failed\n");
+            return FALSE;
+        }
+        u32DIPAddressMFE = 0;
+    }
+    return TRUE;
+}
+
+static MS_BOOL _CreateMFEMemoryPool(MS_U32 u32Size, MS_U32 *u32addr, MS_U32 *u32addr_pa)
 {
     MS_S32 s32MstarNonCachedPoolID = INVALID_POOL_ID;
 
@@ -255,17 +294,19 @@ static MS_BOOL _CreateMemoryforMFE(MS_U32 u32Size, MS_U32 *u32addr, MS_U32 *u32a
 
     if(*u32addr != 0x0)
     {
-        _DeleteMemoryPool();
+        _DeleteMFEMemoryPool();
     }
     //DIP must align 128 bit. But for GOP show the result, GOP must align 256 bit.
-    *u32addr = (MS_U32)MsOS_AllocateMemory(u32Size + 0x100,  s32MstarNonCachedPoolID);
+    //MFE align 1024 bit
+
+    *u32addr = (MS_U32)MsOS_AllocateMemory(u32Size + 0x400,  s32MstarNonCachedPoolID);
     if(*u32addr == 0x0)
     {
         printf("[%s]-Error : MsOS_AllocateMemory fail\n", __func__);
         return FALSE;
     }
     printf("*u32addr %"DTC_MS_U32_x"\n", *u32addr);
-    MS_U32 AddrAlign = ((*u32addr + 0x100) & ~(0x100-1));
+    MS_U32 AddrAlign = ((*u32addr + 0x400) & ~(0x400-1));
     printf("AddrAlign %"DTC_MS_U32_x"\n", AddrAlign);
 
     *u32addr_pa = MsOS_VA2PA((MS_U32)AddrAlign);
@@ -310,9 +351,9 @@ static MS_BOOL _CreateMemoryPool(XC_DIP_EX_DATA_FMT fmt, MS_U32 u32Size)
 
 static void _DIP_InterruptCb(void)
 {
-	MS_U16 IntStatus = MApi_XC_DIP_EX_GetIntStatus(E_XC_DIP_EX_DIP_WINDOW);
-	MsOS_SetEvent (DIP_Event_id, IntStatus);
+    MS_U16 IntStatus = MApi_XC_DIP_EX_GetIntStatus(E_XC_DIP_EX_DIP_WINDOW);
     MApi_XC_DIP_EX_ClearInt(IntStatus, E_XC_DIP_EX_DIP_WINDOW);
+    MsOS_SetEvent (DIP_Event_id, IntStatus);
 }
 
 static void _Blt_DIPBuffer_To_GWINBuffer(MS_U16 width, MS_U16 height, MS_U32 u32DIPAddr)
@@ -365,89 +406,27 @@ static XC_DIP_EX_SOURCE_TYPE _DIPSource_Mapping(EN_DDI_DIP_SOURCE_TYPE eDDISourc
 
     switch(eDDISource)
     {
-		case E_DDI_DIP_SOURCE_SC0_IP_MAIN:
-			eXCDIPSource = E_XC_DIP_EX_SOURCE_TYPE_MAIN;
-			break;
-		case E_DDI_DIP_SOURCE_SC0_IP_SUB:
-			eXCDIPSource = E_XC_DIP_EX_SOURCE_TYPE_SUB;
-			break;
-		case E_DDI_DIP_SOURCE_SC0_OP_CAPTURE:
-			eXCDIPSource = E_XC_DIP_EX_SOURCE_TYPE_OP_CAPTURE;
-			break;
-		case E_DDI_DIP_SOURCE_DRAM:
-			eXCDIPSource = E_XC_DIP_EX_SOURCE_TYPE_DRAM;
-			break;
-                case E_DDI_DIP_SOURCE_SC1_OP_CAPTURE:
-			eXCDIPSource = E_XC_DIP_EX_SOURCE_TYPE_OP_SC1_CAPTURE;
-			break;
-		default:
-			eXCDIPSource = E_XC_DIP_EX_SOURCE_TYPE_OP_CAPTURE;
-			break;
+        case E_DDI_DIP_SOURCE_SC0_IP_MAIN:
+            eXCDIPSource = E_XC_DIP_EX_SOURCE_TYPE_MAIN;
+            break;
+        case E_DDI_DIP_SOURCE_SC0_IP_SUB:
+            eXCDIPSource = E_XC_DIP_EX_SOURCE_TYPE_SUB;
+            break;
+        case E_DDI_DIP_SOURCE_SC0_OP_CAPTURE:
+            eXCDIPSource = E_XC_DIP_EX_SOURCE_TYPE_OP_CAPTURE;
+            break;
+        case E_DDI_DIP_SOURCE_DRAM:
+            eXCDIPSource = E_XC_DIP_EX_SOURCE_TYPE_DRAM;
+            break;
+        case E_DDI_DIP_SOURCE_SC1_OP_CAPTURE:
+            eXCDIPSource = E_XC_DIP_EX_SOURCE_TYPE_OP_SC1_CAPTURE;
+            break;
+        default:
+            eXCDIPSource = E_XC_DIP_EX_SOURCE_TYPE_OP_CAPTURE;
+            break;
     }
 
     return eXCDIPSource;
-}
-
-static EN_AV_Device _Get_SCInputSource(E_DEST_TYPE dest)
-{
-    XC_MUX_PATH_INFO Paths[MAX_SYNC_DATA_PATH_SUPPORTED];
-    MS_U8 i;
-
-    memset(Paths, 0, sizeof(XC_MUX_PATH_INFO)*MAX_SYNC_DATA_PATH_SUPPORTED);
-
-    MApi_XC_Mux_GetPathInfo(Paths);
-
-    for(i=0; i<MAX_SYNC_DATA_PATH_SUPPORTED;i++)
-    {
-        if(Paths[i].dest == dest)
-        {
-            if(Paths[i].src == INPUT_SOURCE_DTV2)
-            {
-                return E_AV_DEVICE_SUB;
-            }
-            else
-            {
-                return E_AV_DEVICE_MAIN;
-            }
-        }
-    }
-
-    return E_AV_DEVICE_MAX;
-}
-
-static MS_BOOL _get_video_info(MS_U8 *bInterlace, MS_U16 *HSize, MS_U16 *VSize, MS_U16 *CropBottom, E_DEST_TYPE dest)
-{
-    VDEC_EX_DispInfo   info;
-    VDEC_EX_Result     ret;
-    VDEC_StreamId *stVDECSteamID;
-    EN_AV_Device SC_Source;
-
-    SC_Source = _Get_SCInputSource(dest);
-
-    if(SC_Source == E_AV_DEVICE_MAX)
-    {
-        printf(" Video Get Input source fail!! \n");
-        return FALSE;
-    }
-
-    stVDECSteamID = Demo_VDEC_GetStreamID(SC_Source);
-
-    memset(&info, 0, sizeof(VDEC_EX_DispInfo));
-    ret = MApi_VDEC_EX_GetDispInfo(stVDECSteamID,&info);
-
-    if (E_VDEC_EX_OK != ret)
-    {
-        return FALSE;
-    }
-    else
-    {
-        *bInterlace = info.u8Interlace;
-        *HSize = info.u16HorSize;
-        *VSize = info.u16VerSize;
-        *CropBottom = info.u16CropBottom;
-        //printf("[%s][%d]Interlace = %u , H = %d, V = %d\n", __FUNCTION__, __LINE__, *bInterlace, *HSize, *VSize);
-        return TRUE;
-    }
 }
 
 static MS_U32 _GOP_Create_FB(MS_U8 *u8FB, MS_U16 u16FBWidth, MS_U16 u16FBHeight, MS_U16 u16FBFmt, MS_U32 u32addr)
@@ -582,6 +561,9 @@ MS_BOOL Demo_DIP_Exit(void)
 {
     db_print("Demo for DIP_Exit \n");
 
+    if(FALSE == _DeleteMFEMemoryPool())
+        return FALSE;
+
     if(FALSE == _DeleteMemoryPool())
         return FALSE;
 
@@ -626,7 +608,7 @@ MS_BOOL Demo_DIP_OutputFormatSelect(MS_U32 *pu32Format)
         case 0:
             _DIPOutputFormat = E_XC_DIP_EX_DATA_FMT_YUV422;
             _eGOPOutputFormat = E_GOP_COLOR_YUV422;
-	        break;
+            break;
         case 1:
             _DIPOutputFormat = E_XC_DIP_EX_DATA_FMT_RGB565;
             MApi_XC_DIP_EX_EnableY2R(TRUE,E_XC_DIP_EX_DIP_WINDOW);
@@ -637,7 +619,7 @@ MS_BOOL Demo_DIP_OutputFormatSelect(MS_U32 *pu32Format)
             _DIPOutputFormat = E_XC_DIP_EX_DATA_FMT_ARGB8888;
             MApi_XC_DIP_EX_EnableY2R(TRUE,E_XC_DIP_EX_DIP_WINDOW);
             MApi_XC_DIP_EX_SetAlpha(u8ARGBAlpha,E_XC_DIP_EX_DIP_WINDOW);
-            _eGOPOutputFormat = E_GOP_COLOR_ABGR8888;
+            _eGOPOutputFormat = E_GOP_COLOR_ARGB8888;
             break;
         case 3:
             _DIPOutputFormat = E_XC_DIP_EX_DATA_FMT_YUV420;
@@ -678,6 +660,7 @@ MS_BOOL Demo_DIP_ARGBAlphaSet(MS_U32 *pu32Alpha)
 MS_BOOL Demo_DIP_ShowResultType(MS_U32 *pu32DIPDispType, MS_U32 *pu32GOP)
 {
     eDDIDIPDispType = (EN_DDI_DIP_DISPLAY_TYPE)(*pu32DIPDispType);
+    displayGOPNum = *pu32GOP;
 
     if((E_XC_DIP_EX_DATA_FMT_YUV420 == _DIPOutputFormat) && (E_DDI_DIP_DISPLAY_NONE != eDDIDIPDispType))
     {
@@ -689,7 +672,7 @@ MS_BOOL Demo_DIP_ShowResultType(MS_U32 *pu32DIPDispType, MS_U32 *pu32GOP)
     if(E_DDI_DIP_DISPLAY_NONE != eDDIDIPDispType)
     {
         switch(*pu32GOP)
-	{
+        {
             // Always use GOP first GWIN to show
             case 0:
                 displayGWINNum = GOP0_GWIN_START;
@@ -730,9 +713,6 @@ MS_BOOL Demo_DIP_CaptureOneFrame(MS_U32 *pu32Width, MS_U32 *pu32Height)
     MS_U8 u8BufCnt = 1;
     MS_U32 u32Size = 0;
     MS_U8 u8Interlace = 0;
-    MS_U16 u16WinWidth = 0;
-    MS_U16 u16WinHeight = 0;
-    MS_U16 u16CropBtm = 0;
     XC_DIP_EX_WINPROPERTY DIPWinProperty;
     XC_EX_SETWIN_INFO xc_dip_wininfo;
     // Set GWIN Address
@@ -742,12 +722,6 @@ MS_BOOL Demo_DIP_CaptureOneFrame(MS_U32 *pu32Width, MS_U32 *pu32Height)
     memset(&xc_dip_wininfo,0,sizeof(XC_EX_SETWIN_INFO));
     memset(&stGWin,0,sizeof(GOP_GwinInfo));
 
-    //Get input source info
-    if(!(_get_video_info(&u8Interlace, &u16WinWidth, &u16WinHeight, &u16CropBtm, OUTPUT_SCALER_MAIN_WINDOW)))
-    {
-        printf("Get input source info fail !! \n");
-        return FALSE;
-    }
 
     // Create memory
     u32Size = ((*pu32Height) * _CalcPitch(_DIPOutputFormat, *pu32Width)) * u8BufCnt;
@@ -772,33 +746,38 @@ MS_BOOL Demo_DIP_CaptureOneFrame(MS_U32 *pu32Width, MS_U32 *pu32Height)
         }
     }
 
-    // Set DIPW window Property
-    DIPWinProperty.enSource = _DIPSource_Mapping(eDDIDIPSrc);
-    DIPWinProperty.u16Width = (*pu32Width);
-    DIPWinProperty.u16Height = (*pu32Height);
-    DIPWinProperty.u16Pitch = _CalcPitch(_DIPOutputFormat,*pu32Width);
-    DIPWinProperty.u32BufStart = u32DIPAddress_pa;
-    DIPWinProperty.u32BufEnd = u32DIPAddress_pa + u32Size;
-    DIPWinProperty.u8BufCnt = u8BufCnt;
-    MApi_XC_DIP_EX_SetDIPWinProperty(&DIPWinProperty, E_XC_DIP_EX_DIP_WINDOW);
-
     //capture window
     xc_dip_wininfo.stCapWin.x = 0;
     xc_dip_wininfo.stCapWin.y = 0;
 
-    if(eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_MAIN || eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_SUB)
+    if(eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_MAIN)
     {
-        xc_dip_wininfo.stCapWin.width = u16WinWidth;
-        xc_dip_wininfo.stCapWin.height = u16WinHeight;
+        XC_ApiStatusEx sXC_StatusEx;
+
+        memset(&sXC_StatusEx, 0, sizeof(XC_ApiStatusEx));
+        sXC_StatusEx.u16ApiStatusEX_Length = sizeof(XC_ApiStatusEx);
+        sXC_StatusEx.u32ApiStatusEx_Version = API_STATUS_EX_VERSION;
+        MApi_XC_GetStatusEx(&sXC_StatusEx, MAIN_WINDOW);
+        xc_dip_wininfo.stCapWin.width = sXC_StatusEx.stCapWin.width;
+        xc_dip_wininfo.stCapWin.height = sXC_StatusEx.stCapWin.height;
     }
-    else if(eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_OP_CAPTURE)
+    else if(eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_SUB)
     {
-        xc_dip_wininfo.stCapWin.width = g_IPanelEx.Width(&_stPNL_DeviceId);
-        xc_dip_wininfo.stCapWin.height = g_IPanelEx.Height(&_stPNL_DeviceId);
+        XC_ApiStatusEx sXC_StatusEx;
+
+        memset(&sXC_StatusEx, 0, sizeof(XC_ApiStatusEx));
+        sXC_StatusEx.u16ApiStatusEX_Length = sizeof(XC_ApiStatusEx);
+        sXC_StatusEx.u32ApiStatusEx_Version = API_STATUS_EX_VERSION;
+        MApi_XC_GetStatusEx(&sXC_StatusEx, SUB_WINDOW);
+        xc_dip_wininfo.stCapWin.width = sXC_StatusEx.stCapWin.width;
+        xc_dip_wininfo.stCapWin.height = sXC_StatusEx.stCapWin.height;
+        xc_dip_wininfo.bInterlace = sXC_StatusEx.bInterlace;
     }
     else
     {
-        printf("DIP input source wrong , not ready \n");
+        xc_dip_wininfo.stCapWin.width = g_IPanelEx.Width(&_stPNL_DeviceId);
+        xc_dip_wininfo.stCapWin.height = g_IPanelEx.Height(&_stPNL_DeviceId);
+        xc_dip_wininfo.bInterlace = FALSE;
     }
 
     //pre-scaling down
@@ -810,9 +789,35 @@ MS_BOOL Demo_DIP_CaptureOneFrame(MS_U32 *pu32Width, MS_U32 *pu32Height)
     xc_dip_wininfo.u16PreVCusScalingDst = (*pu32Height);
     MApi_XC_DIP_EX_SetWindow(&xc_dip_wininfo,sizeof(XC_EX_SETWIN_INFO),E_XC_DIP_EX_DIP_WINDOW);
 
+    // Set DIPW window Property
+    DIPWinProperty.enSource = _DIPSource_Mapping(eDDIDIPSrc);
+    DIPWinProperty.u16Width = (*pu32Width);
+    DIPWinProperty.u16Height = (*pu32Height);
+    DIPWinProperty.u16Pitch = _CalcPitch(_DIPOutputFormat,*pu32Width);
+    DIPWinProperty.u32BufStart = u32DIPAddress_pa;
+    DIPWinProperty.u32BufEnd = u32DIPAddress_pa + u32Size;
+    DIPWinProperty.u8BufCnt = u8BufCnt;
+    MApi_XC_DIP_EX_SetDIPWinProperty(&DIPWinProperty, E_XC_DIP_EX_DIP_WINDOW);
+
     // need to clear and enable interrupt for capture once
     MApi_XC_DIP_EX_ClearInt(BIT(0), E_XC_DIP_EX_DIP_WINDOW);
     MApi_XC_DIP_EX_EnaInt(BIT(0), TRUE, E_XC_DIP_EX_DIP_WINDOW);
+
+    MApi_XC_DIP_EX_InterruptAttach((InterruptCb)_DIP_InterruptCb, E_XC_DIP_EX_DIP_WINDOW);
+
+    // GOP MIU select
+    if(u32DIPAddress_pa > MIU_INTERVAL)
+    {
+        MApi_GOP_MIUSel(displayGOPNum,E_GOP_SEL_MIU1);
+    }
+    else
+    {
+        MApi_GOP_MIUSel(displayGOPNum,E_GOP_SEL_MIU0);
+    }
+
+    //CbCr swap
+    if(_DIPOutputFormat == E_XC_DIP_EX_DATA_FMT_YUV422)
+        MApi_XC_DIP_EX_SwapUV(TRUE,E_XC_DIP_EX_DIP_WINDOW);
 
     MApi_XC_DIP_EX_CapOneFrame(E_XC_DIP_EX_DIP_WINDOW);//enable capture once
 
@@ -835,6 +840,7 @@ MS_BOOL Demo_DIP_CaptureOneFrame(MS_U32 *pu32Width, MS_U32 *pu32Height)
 
     MApi_GOP_GWIN_Enable(displayGWINNum, TRUE);//enable GWin
 
+    MApi_XC_DIP_EX_InterruptDetach(E_XC_DIP_EX_DIP_WINDOW);
     MApi_XC_DIP_EX_EnaInt(BIT(0), FALSE, E_XC_DIP_EX_DIP_WINDOW);
     MApi_XC_DIP_EX_ClearInt(BIT(0), E_XC_DIP_EX_DIP_WINDOW);
 
@@ -858,10 +864,6 @@ MS_BOOL Demo_DIP_CaptureContinually(MS_U32 *pu32Width, MS_U32 *pu32Height)
     MS_U32 u32WaitEventFlag = 0;
     MS_U8 u8FrameIdx = 0;
     MS_U8 u8Interlace = 0;
-    MS_U16 u16WinWidth = 0;
-    MS_U16 u16WinHeight = 0;
-    MS_U16 u16CropBtm = 0;
-    MS_U32 u32DemoFrameCount = 0;
     XC_DIP_EX_WINPROPERTY DIPWinProperty;
     XC_EX_SETWIN_INFO xc_dip_wininfo;
     XC_DIP_EX_BUFFER_INFO DIPBufferInfo;
@@ -872,13 +874,6 @@ MS_BOOL Demo_DIP_CaptureContinually(MS_U32 *pu32Width, MS_U32 *pu32Height)
     memset(&xc_dip_wininfo,0,sizeof(XC_EX_SETWIN_INFO));
     memset(&DIPBufferInfo,0,sizeof(XC_DIP_EX_BUFFER_INFO));
     memset(&stGWin,0,sizeof(GOP_GwinInfo));
-
-    //Get input source info
-    if(!(_get_video_info(&u8Interlace, &u16WinWidth, &u16WinHeight, &u16CropBtm, OUTPUT_SCALER_MAIN_WINDOW)))
-    {
-        printf("Get input source info fail !! \n");
-        return FALSE;
-    }
 
     u32Size = ((*pu32Height) * _CalcPitch(_DIPOutputFormat, *pu32Width)) * u8BufCnt;
     if(FALSE == _CreateMemoryPool(_DIPOutputFormat, u32Size))
@@ -903,34 +898,40 @@ MS_BOOL Demo_DIP_CaptureContinually(MS_U32 *pu32Width, MS_U32 *pu32Height)
         }
     }
 
-    // Set DIPW window Property
-    DIPWinProperty.enSource = _DIPSource_Mapping(eDDIDIPSrc);
-    DIPWinProperty.u16Width = (*pu32Width);
-    DIPWinProperty.u16Height = (*pu32Height);
-    DIPWinProperty.u16Pitch = _CalcPitch(_DIPOutputFormat, *pu32Width);
-    DIPWinProperty.u32BufStart = u32DIPAddress_pa;
-    DIPWinProperty.u32BufEnd = u32DIPAddress_pa + u32Size;
-    DIPWinProperty.u8BufCnt = u8BufCnt;
-    MApi_XC_DIP_EX_SetDIPWinProperty(&DIPWinProperty, E_XC_DIP_EX_DIP_WINDOW);
-
     //capture window
     xc_dip_wininfo.stCapWin.x = 0;
     xc_dip_wininfo.stCapWin.y = 0;
 
-    if(eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_MAIN || eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_SUB)
+    if(eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_MAIN)
     {
-        xc_dip_wininfo.stCapWin.width = u16WinWidth;
-        xc_dip_wininfo.stCapWin.height = u16WinHeight;
+        XC_ApiStatusEx sXC_StatusEx;
+
+        memset(&sXC_StatusEx, 0, sizeof(XC_ApiStatusEx));
+        sXC_StatusEx.u16ApiStatusEX_Length = sizeof(XC_ApiStatusEx);
+        sXC_StatusEx.u32ApiStatusEx_Version = API_STATUS_EX_VERSION;
+        MApi_XC_GetStatusEx(&sXC_StatusEx, MAIN_WINDOW);
+        xc_dip_wininfo.stCapWin.width = sXC_StatusEx.stCapWin.width;
+        xc_dip_wininfo.stCapWin.height = sXC_StatusEx.stCapWin.height;
     }
-    else if(eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_OP_CAPTURE)
+    else if(eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_SUB)
     {
-        xc_dip_wininfo.stCapWin.width = g_IPanelEx.Width(&_stPNL_DeviceId);
-        xc_dip_wininfo.stCapWin.height = g_IPanelEx.Height(&_stPNL_DeviceId);
+        XC_ApiStatusEx sXC_StatusEx;
+
+        memset(&sXC_StatusEx, 0, sizeof(XC_ApiStatusEx));
+        sXC_StatusEx.u16ApiStatusEX_Length = sizeof(XC_ApiStatusEx);
+        sXC_StatusEx.u32ApiStatusEx_Version = API_STATUS_EX_VERSION;
+        MApi_XC_GetStatusEx(&sXC_StatusEx, SUB_WINDOW);
+        xc_dip_wininfo.stCapWin.width = sXC_StatusEx.stCapWin.width;
+        xc_dip_wininfo.stCapWin.height = sXC_StatusEx.stCapWin.height;
+        xc_dip_wininfo.bInterlace = sXC_StatusEx.bInterlace;
     }
     else
     {
-        printf("DIP input source wrong , not ready \n");
+        xc_dip_wininfo.stCapWin.width = g_IPanelEx.Width(&_stPNL_DeviceId);
+        xc_dip_wininfo.stCapWin.height = g_IPanelEx.Height(&_stPNL_DeviceId);
+        xc_dip_wininfo.bInterlace = FALSE;
     }
+
 
     //pre-scaling down
     xc_dip_wininfo.bPreHCusScaling = TRUE;
@@ -941,6 +942,16 @@ MS_BOOL Demo_DIP_CaptureContinually(MS_U32 *pu32Width, MS_U32 *pu32Height)
     xc_dip_wininfo.u16PreVCusScalingDst = (*pu32Height);
     MApi_XC_DIP_EX_SetWindow(&xc_dip_wininfo,sizeof(XC_EX_SETWIN_INFO),E_XC_DIP_EX_DIP_WINDOW);
 
+    // Set DIPW window Property
+    DIPWinProperty.enSource = _DIPSource_Mapping(eDDIDIPSrc);
+    DIPWinProperty.u16Width = (*pu32Width);
+    DIPWinProperty.u16Height = (*pu32Height);
+    DIPWinProperty.u16Pitch = _CalcPitch(_DIPOutputFormat, *pu32Width);
+    DIPWinProperty.u32BufStart = u32DIPAddress_pa;
+    DIPWinProperty.u32BufEnd = u32DIPAddress_pa + u32Size;
+    DIPWinProperty.u8BufCnt = u8BufCnt;
+    MApi_XC_DIP_EX_SetDIPWinProperty(&DIPWinProperty, E_XC_DIP_EX_DIP_WINDOW);
+
     DIPBufferInfo = MApi_XC_DIP_EX_GetBufInfo(E_XC_DIP_EX_DIP_WINDOW);// Get DIP frame buffer info
 
     //clear and enable DIP interrupt
@@ -948,9 +959,23 @@ MS_BOOL Demo_DIP_CaptureContinually(MS_U32 *pu32Width, MS_U32 *pu32Height)
     MApi_XC_DIP_EX_EnaInt(BMASK((u8BufCnt-1):0)&0xFF, TRUE, E_XC_DIP_EX_DIP_WINDOW);
     MApi_XC_DIP_EX_InterruptAttach((InterruptCb)_DIP_InterruptCb, E_XC_DIP_EX_DIP_WINDOW);
 
+    // GOP MIU select
+    if(u32DIPAddress_pa > MIU_INTERVAL)
+    {
+        MApi_GOP_MIUSel(displayGOPNum,E_GOP_SEL_MIU1);
+    }
+    else
+    {
+        MApi_GOP_MIUSel(displayGOPNum,E_GOP_SEL_MIU0);
+    }
+
+    //CbCr swap
+    if(_DIPOutputFormat == E_XC_DIP_EX_DATA_FMT_YUV422)
+        MApi_XC_DIP_EX_SwapUV(TRUE,E_XC_DIP_EX_DIP_WINDOW);
+
     MApi_XC_DIP_EX_Ena(TRUE,E_XC_DIP_EX_DIP_WINDOW);//enable DIPW
 
-    while(u32DemoFrameCount < DIP_CONTI_DEMO_FRAME_COUNT)
+    while(u8FrameIdx < DIP_CONTI_DEMO_FRAME_COUNT)
     {
         u8FrameIdx %= DIP_CONTI_BUFF_CNT;
         u32WaitEventFlag = BIT(u8FrameIdx);
@@ -975,7 +1000,6 @@ MS_BOOL Demo_DIP_CaptureContinually(MS_U32 *pu32Width, MS_U32 *pu32Height)
 
         MApi_GOP_GWIN_Enable(displayGWINNum, TRUE);//enable GWIN
         u8FrameIdx++;
-        u32DemoFrameCount++;
     }
 
     //clear and disable DIP interrupt
@@ -1006,21 +1030,12 @@ MS_BOOL Demo_DIP_GOPPingpong(MS_U32 *u32Width, MS_U32 *u32Height)
     MS_U32 u32Size = 0;
     //MS_U32 pinpon_addr = 0;//for utopia2.0 pinpon interface format
     MS_U8 u8Interlace = 0;
-    MS_U16 u16WinWidth = 0;
-    MS_U16 u16WinHeight = 0;
-    MS_U16 u16CropBtm = 0;
     MS_U32 u32DemoFrameCount = 0;
     XC_DIP_EX_WINPROPERTY DIPWinProperty;
     XC_EX_SETWIN_INFO xc_dip_wininfo;
 
     memset(&DIPWinProperty,0,sizeof(XC_DIP_EX_WINPROPERTY));
     memset(&xc_dip_wininfo,0,sizeof(XC_EX_SETWIN_INFO));
-
-    if(!(_get_video_info(&u8Interlace, &u16WinWidth, &u16WinHeight, &u16CropBtm, OUTPUT_SCALER_MAIN_WINDOW)))
-    {
-        printf("Get input source info fail !! \n");
-        return FALSE;
-    }
 
     u32Size = ((*u32Height) * _CalcPitch(_DIPOutputFormat, *u32Width)) * u8BufCnt;
     if(FALSE == _CreateMemoryPool(_DIPOutputFormat, u32Size))
@@ -1037,6 +1052,36 @@ MS_BOOL Demo_DIP_GOPPingpong(MS_U32 *u32Width, MS_U32 *u32Height)
             printf("DIP pingpong with GOP not support interlace source !! \n");
             return TRUE;
         }
+    }
+
+    if(eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_MAIN)
+    {
+        XC_ApiStatusEx sXC_StatusEx;
+
+        memset(&sXC_StatusEx, 0, sizeof(XC_ApiStatusEx));
+        sXC_StatusEx.u16ApiStatusEX_Length = sizeof(XC_ApiStatusEx);
+        sXC_StatusEx.u32ApiStatusEx_Version = API_STATUS_EX_VERSION;
+        MApi_XC_GetStatusEx(&sXC_StatusEx, MAIN_WINDOW);
+        xc_dip_wininfo.stCapWin.width = sXC_StatusEx.stCapWin.width;
+        xc_dip_wininfo.stCapWin.height = sXC_StatusEx.stCapWin.height;
+    }
+    else if(eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_SUB)
+    {
+        XC_ApiStatusEx sXC_StatusEx;
+
+        memset(&sXC_StatusEx, 0, sizeof(XC_ApiStatusEx));
+        sXC_StatusEx.u16ApiStatusEX_Length = sizeof(XC_ApiStatusEx);
+        sXC_StatusEx.u32ApiStatusEx_Version = API_STATUS_EX_VERSION;
+        MApi_XC_GetStatusEx(&sXC_StatusEx, SUB_WINDOW);
+        xc_dip_wininfo.stCapWin.width = sXC_StatusEx.stCapWin.width;
+        xc_dip_wininfo.stCapWin.height = sXC_StatusEx.stCapWin.height;
+        xc_dip_wininfo.bInterlace = sXC_StatusEx.bInterlace;
+    }
+    else
+    {
+        xc_dip_wininfo.stCapWin.width = g_IPanelEx.Width(&_stPNL_DeviceId);
+        xc_dip_wininfo.stCapWin.height = g_IPanelEx.Height(&_stPNL_DeviceId);
+        xc_dip_wininfo.bInterlace = FALSE;
     }
 
     if(MApi_GOP_GWIN_IsGWINEnabled(displayGWINNum))
@@ -1100,48 +1145,62 @@ MS_BOOL Demo_DIP_GOPPingpong(MS_U32 *u32Width, MS_U32 *u32Height)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_DIP_MFE(MS_U32 *u32Width, MS_U32 *u32Height)
 {
-    MS_U8 u8BufCnt = 2;
+    MS_U8 u8BufCnt = 1;
     MS_U32 u32Size = 0;
-    MS_U8 u8Interlace = 0;
-    MS_U16 u16CropBtm = 0;
-    MS_U16 u16WinWidth = 0;
-    MS_U16 u16WinHeight = 0;
     XC_DIP_EX_WINPROPERTY DIPWinProperty;
     XC_EX_SETWIN_INFO xc_dip_wininfo;
+
+    MS_U16 u16RealWidth = *u32Width;
+    MS_U16 u16RealHeight = *u32Height;
 
     memset(&DIPWinProperty,0,sizeof(DIPWinProperty));
     memset(&xc_dip_wininfo,0,sizeof(xc_dip_wininfo));
 
-    if(!(_get_video_info(&u8Interlace, &u16WinWidth, &u16WinHeight, &u16CropBtm, OUTPUT_SCALER_MAIN_WINDOW)))
-    {
-        printf("Get input source info fail !! \n");
-        return FALSE;
-    }
-
-    u32Size = ((*u32Height) * _CalcPitch(_DIPOutputFormat, *u32Width)) * u8BufCnt;
-    if(FALSE == _CreateMemoryforMFE(u32Size,&u32DIPAddressMFE,&u32DIPAddressMFE_pa))
+    u16RealHeight = _Demo_DIPWHeightAlign(_DIPOutputFormat,u16RealHeight);
+    u32Size = (u16RealHeight * _CalcPitch(_DIPOutputFormat, u16RealWidth)) * 1;
+    if(FALSE == _CreateMFEMemoryPool(u32Size,&u32DIPAddressMFE,&u32DIPAddressMFE_pa))
     {
         return FALSE;
     }
-
 
     //Set interlace DIPW
-    if(eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_MAIN || eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_SUB )
+    if(eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_MAIN)
     {
-        if(u8Interlace)
-        {
-            printf("DIP not support interlace source !! \n");
-            return TRUE;
-        }
+        XC_ApiStatusEx sXC_StatusEx;
+
+        memset(&sXC_StatusEx, 0, sizeof(XC_ApiStatusEx));
+        sXC_StatusEx.u16ApiStatusEX_Length  = sizeof(XC_ApiStatusEx);
+        sXC_StatusEx.u32ApiStatusEx_Version = API_STATUS_EX_VERSION;
+        MApi_XC_GetStatusEx(&sXC_StatusEx, MAIN_WINDOW);
+        xc_dip_wininfo.stCapWin.width  = sXC_StatusEx.stCapWin.width;
+        xc_dip_wininfo.stCapWin.height = sXC_StatusEx.stCapWin.height;
+    }
+    else if(eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_SUB)
+    {
+        XC_ApiStatusEx sXC_StatusEx;
+
+        memset(&sXC_StatusEx, 0, sizeof(XC_ApiStatusEx));
+        sXC_StatusEx.u16ApiStatusEX_Length  = sizeof(XC_ApiStatusEx);
+        sXC_StatusEx.u32ApiStatusEx_Version = API_STATUS_EX_VERSION;
+        MApi_XC_GetStatusEx(&sXC_StatusEx, SUB_WINDOW);
+        xc_dip_wininfo.stCapWin.width  = sXC_StatusEx.stCapWin.width;
+        xc_dip_wininfo.stCapWin.height = sXC_StatusEx.stCapWin.height;
+        xc_dip_wininfo.bInterlace      = sXC_StatusEx.bInterlace;
+    }
+    else
+    {
+        xc_dip_wininfo.stCapWin.width  = g_IPanelEx.Width(&_stPNL_DeviceId);
+        xc_dip_wininfo.stCapWin.height = g_IPanelEx.Height(&_stPNL_DeviceId);
+        xc_dip_wininfo.bInterlace      = FALSE;
     }
 
-    DIPWinProperty.enSource = _DIPSource_Mapping(eDDIDIPSrc);
-    DIPWinProperty.u16Width = (*u32Width);
-    DIPWinProperty.u16Height = (*u32Height);
-    DIPWinProperty.u16Pitch = _CalcPitch(_DIPOutputFormat,*u32Width);
+    DIPWinProperty.enSource    = _DIPSource_Mapping(eDDIDIPSrc);
+    DIPWinProperty.u16Width    = u16RealWidth;
+    DIPWinProperty.u16Height   = u16RealHeight;
+    DIPWinProperty.u16Pitch    = _CalcPitch(_DIPOutputFormat,u16RealWidth);
     DIPWinProperty.u32BufStart = u32DIPAddressMFE_pa;
-    DIPWinProperty.u32BufEnd = u32DIPAddressMFE_pa + u32Size;
-    DIPWinProperty.u8BufCnt = u8BufCnt;
+    DIPWinProperty.u32BufEnd   = u32DIPAddressMFE_pa + u32Size;
+    DIPWinProperty.u8BufCnt    = u8BufCnt;
     MApi_XC_DIP_EX_SetDIPWinProperty(&DIPWinProperty, E_XC_DIP_EX_DIP_WINDOW);
 
     //capture window
@@ -1150,28 +1209,41 @@ MS_BOOL Demo_DIP_MFE(MS_U32 *u32Width, MS_U32 *u32Height)
 
     if(eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_MAIN || eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_IP_SUB)
     {
+        XC_ApiStatusEx sXC_StatusEx;
+        MS_U16 u16WinWidth = 0x0;
+        MS_U16 u16WinHeight = 0x0;
+
+        memset(&sXC_StatusEx, 0, sizeof(XC_ApiStatusEx));
+        sXC_StatusEx.u16ApiStatusEX_Length  = sizeof(XC_ApiStatusEx);
+        sXC_StatusEx.u32ApiStatusEx_Version = API_STATUS_EX_VERSION;
+        MApi_XC_GetStatusEx(&sXC_StatusEx, SUB_WINDOW);
+
+        u16WinWidth  = sXC_StatusEx.stCapWin.width;
+        u16WinHeight = sXC_StatusEx.stCapWin.height;
+
         if(u16WinWidth > g_IPanelEx.Width(&_stPNL_DeviceId))
             xc_dip_wininfo.stCapWin.width = g_IPanelEx.Width(&_stPNL_DeviceId);
         else
             xc_dip_wininfo.stCapWin.width = u16WinWidth;
-	if(u16WinHeight > g_IPanelEx.Height(&_stPNL_DeviceId))
+
+        if(u16WinHeight > g_IPanelEx.Height(&_stPNL_DeviceId))
             xc_dip_wininfo.stCapWin.height = g_IPanelEx.Height(&_stPNL_DeviceId);
         else
             xc_dip_wininfo.stCapWin.height = u16WinHeight;
     }
     else if(eDDIDIPSrc == E_DDI_DIP_SOURCE_SC0_OP_CAPTURE)
     {
-        xc_dip_wininfo.stCapWin.width = g_IPanelEx.Width(&_stPNL_DeviceId);
+        xc_dip_wininfo.stCapWin.width  = g_IPanelEx.Width(&_stPNL_DeviceId);
         xc_dip_wininfo.stCapWin.height = g_IPanelEx.Height(&_stPNL_DeviceId);
     }
 
     //pre-scaling down
-    xc_dip_wininfo.bPreHCusScaling = TRUE;
+    xc_dip_wininfo.bPreHCusScaling      = TRUE;
     xc_dip_wininfo.u16PreHCusScalingSrc = xc_dip_wininfo.stCapWin.width;
-    xc_dip_wininfo.u16PreHCusScalingDst = (*u32Width);
-    xc_dip_wininfo.bPreVCusScaling = TRUE;
+    xc_dip_wininfo.u16PreHCusScalingDst = u16RealWidth;
+    xc_dip_wininfo.bPreVCusScaling      = TRUE;
     xc_dip_wininfo.u16PreVCusScalingSrc = xc_dip_wininfo.stCapWin.height;
-    xc_dip_wininfo.u16PreVCusScalingDst = (*u32Height);
+    xc_dip_wininfo.u16PreVCusScalingDst = u16RealHeight;
     MApi_XC_DIP_EX_SetWindow(&xc_dip_wininfo,sizeof(XC_EX_SETWIN_INFO),E_XC_DIP_EX_DIP_WINDOW);
 
     //clear and enable DIP interrupt
@@ -1197,7 +1269,7 @@ MS_BOOL Demo_DIP_MFE(MS_U32 *u32Width, MS_U32 *u32Height)
 MS_BOOL Demo_DIP_DIPRFromVDEC(MS_U32 *pu32Device,MS_U32 *u32Width, MS_U32 *u32Height)
 {
     XC_DEVICE_ID stXC_DeviceId = {0, E_MSAPI_XC_DEVICE0};
-    MS_U8 u8BufCnt = 2;
+    MS_U8 u8BufCnt = 1;
     MS_BOOL bDIPHSD = FALSE;      // DIP HSD enable
     MS_BOOL bDIPVSD = FALSE;      // DIP VSD enable
     MS_U16 u16GWINWidth = 0;
@@ -1206,7 +1278,6 @@ MS_BOOL Demo_DIP_DIPRFromVDEC(MS_U32 *pu32Device,MS_U32 *u32Width, MS_U32 *u32He
     MS_U32 u32WaitEventFlag = 0;
     MS_U32 u32Events = 0;
     MS_U8 u8FrameIdx = 0;
-    MS_U32 u32DemoFrameCount = 0;
 
     XC_DIP_EX_DIPR_PROPERTY DIPRWinPropertytoShow;//DIPR
     XC_DIP_EX_WINPROPERTY DIPWinPropertytoShow;//DIPW
@@ -1231,7 +1302,7 @@ MS_BOOL Demo_DIP_DIPRFromVDEC(MS_U32 *pu32Device,MS_U32 *u32Width, MS_U32 *u32He
     memset(&stGWin,0,sizeof(stGWin));
 
     //Get VDEC data
-    streamID = Demo_VDEC_GetStreamID(*pu32Device);
+    streamID = Demo_VDEC_GetStreamID((EN_VDEC_Device*)pu32Device);
     MApi_VDEC_EX_GetDecFrameInfo(streamID,&stFrameInfo);
     VDECFrameHSize = stFrameInfo.u16Width;
     VDECFrameVSize = stFrameInfo.u16Height;
@@ -1277,16 +1348,6 @@ MS_BOOL Demo_DIP_DIPRFromVDEC(MS_U32 *pu32Device,MS_U32 *u32Width, MS_U32 *u32He
     DIPRWinPropertytoShow.u32CBufAddr = VDECFrameCaddress;
     MApi_XC_DIP_EX_SetDIPRProperty(&DIPRWinPropertytoShow,E_XC_DIP_EX_DIP_WINDOW);
 
-    //DIPW win setting
-    DIPWinPropertytoShow.enSource = _DIPSource_Mapping(eDDIDIPSrc);
-    DIPWinPropertytoShow.u16Width = VDECFrameHSize;    // Because DIPR and DIPW is share line offset,so set the Maximum value between DIPR and DIPW
-    DIPWinPropertytoShow.u16Height = u16GWINHeight;
-    DIPWinPropertytoShow.u16Pitch = _CalcPitch(_DIPOutputFormat,VDECFrameHSize);
-    DIPWinPropertytoShow.u8BufCnt = u8BufCnt;
-    DIPWinPropertytoShow.u32BufStart = u32DIPAddress_pa;
-    DIPWinPropertytoShow.u32BufEnd = u32DIPAddress_pa + u32SizeToShow;
-    MApi_XC_DIP_EX_SetDIPWinProperty(&DIPWinPropertytoShow, E_XC_DIP_EX_DIP_WINDOW);
-
     //Capture window
     xc_dip_wininfotoShow.stCapWin.x = 0;
     xc_dip_wininfotoShow.stCapWin.y = 0;
@@ -1302,6 +1363,16 @@ MS_BOOL Demo_DIP_DIPRFromVDEC(MS_U32 *pu32Device,MS_U32 *u32Width, MS_U32 *u32He
     MApi_XC_DIP_EX_SetWindow(&xc_dip_wininfotoShow,sizeof(XC_EX_SETWIN_INFO),E_XC_DIP_EX_DIP_WINDOW);
     MApi_XC_EX_SkipWaitVsync(&stXC_DeviceId,E_XC_EX_MAIN_WINDOW,FALSE);
 
+    //DIPW win setting
+    DIPWinPropertytoShow.enSource = _DIPSource_Mapping(eDDIDIPSrc);
+    DIPWinPropertytoShow.u16Width = *u32Width;    // Because DIPR and DIPW is share line offset,so set the Maximum value between DIPR and DIPW
+    DIPWinPropertytoShow.u16Height = u16GWINHeight;
+    DIPWinPropertytoShow.u16Pitch = _CalcPitch(_DIPOutputFormat,*u32Width);
+    DIPWinPropertytoShow.u8BufCnt = u8BufCnt;
+    DIPWinPropertytoShow.u32BufStart = u32DIPAddress_pa;
+    DIPWinPropertytoShow.u32BufEnd = u32DIPAddress_pa + u32SizeToShow;
+    MApi_XC_DIP_EX_SetDIPWinProperty(&DIPWinPropertytoShow, E_XC_DIP_EX_DIP_WINDOW);
+
     //DIPW buffer info
     DIPBufferInfo = MApi_XC_DIP_EX_GetBufInfo(E_XC_DIP_EX_DIP_WINDOW);
 
@@ -1314,6 +1385,16 @@ MS_BOOL Demo_DIP_DIPRFromVDEC(MS_U32 *pu32Device,MS_U32 *u32Width, MS_U32 *u32He
     MApi_XC_DIP_EX_EnaInt(BMASK((u8BufCnt-1):0)&0xFF, TRUE, E_XC_DIP_EX_DIP_WINDOW);
     MApi_XC_DIP_EX_InterruptAttach((InterruptCb)_DIP_InterruptCb, E_XC_DIP_EX_DIP_WINDOW);
 
+    // GOP MIU select
+    if(u32DIPAddress_pa > MIU_INTERVAL)
+    {
+        MApi_GOP_MIUSel(displayGOPNum,E_GOP_SEL_MIU1);
+    }
+    else
+    {
+        MApi_GOP_MIUSel(displayGOPNum,E_GOP_SEL_MIU0);
+    }
+
     //enable DIPW
     MApi_XC_DIP_EX_Ena(TRUE,E_XC_DIP_EX_DIP_WINDOW);
 
@@ -1321,12 +1402,12 @@ MS_BOOL Demo_DIP_DIPRFromVDEC(MS_U32 *pu32Device,MS_U32 *u32Width, MS_U32 *u32He
     _CreateGWINandGOPStretch(u16GWINWidth,u16GWINHeight,*u32Width,*u32Height,u32DIPAddress_pa);
 
     MApi_GOP_GWIN_GetWinInfo(displayGWINNum,&stGWin);
-    stGWin.u16RBlkHRblkSize = _CalcPitch(_DIPOutputFormat,VDECFrameHSize);
+    stGWin.u16RBlkHRblkSize = _CalcPitch(_DIPOutputFormat,*u32Width);
     stGWin.clrType = _eGOPOutputFormat;
     stGWin.u32DRAMRBlkStart = DIPBufferInfo.u32YBuf[u8FrameIdx];
     MApi_GOP_GWIN_SetWinInfo(displayGWINNum,&stGWin);
 
-    while(u32DemoFrameCount < DIP_CONTI_DEMO_FRAME_COUNT)
+    while(u8FrameIdx < DIP_CONTI_DEMO_FRAME_COUNT)
     {
         //Set DIPR read buffer address
         DIPRWinPropertytoShow.u32YBufAddr = VDECFrameYaddress;
@@ -1336,6 +1417,7 @@ MS_BOOL Demo_DIP_DIPRFromVDEC(MS_U32 *pu32Device,MS_U32 *u32Width, MS_U32 *u32He
         u8FrameIdx %= u8BufCnt;
         u32WaitEventFlag = BIT(u8FrameIdx);
         MApi_XC_DIP_EX_CapOneFrameFast(E_XC_DIP_EX_DIP_WINDOW);// dipr softwave trigger
+
         MsOS_WaitEvent(DIP_Event_id, u32WaitEventFlag, &u32Events, E_OR_CLEAR, MSOS_WAIT_FOREVER);
 
         //Change GWIN address
@@ -1347,7 +1429,6 @@ MS_BOOL Demo_DIP_DIPRFromVDEC(MS_U32 *pu32Device,MS_U32 *u32Width, MS_U32 *u32He
             MApi_GOP_GWIN_Enable(displayGWINNum, TRUE);//enable GWIN
 
         u8FrameIdx++;
-        u32DemoFrameCount++;
     }
     //clear and disable DIP interrupt
     MApi_XC_DIP_EX_InterruptDetach(E_XC_DIP_EX_DIP_WINDOW);
@@ -1550,7 +1631,7 @@ MS_BOOL Demo_DIP_DIPRTest(MS_U32 *pu32Device,MS_U32 *u32Width, MS_U32 *u32Height
     MS_U32 VDECFrameCaddress = 0;
 
     //Get VDEC data
-    streamID = Demo_VDEC_GetStreamID(*pu32Device);
+    streamID = Demo_VDEC_GetStreamID((EN_VDEC_Device*)pu32Device);
     MApi_VDEC_EX_GetDecFrameInfo(streamID,&stFrameInfo);
     VDECFrameHSize = stFrameInfo.u16Width;
     VDECFrameVSize = stFrameInfo.u16Height;

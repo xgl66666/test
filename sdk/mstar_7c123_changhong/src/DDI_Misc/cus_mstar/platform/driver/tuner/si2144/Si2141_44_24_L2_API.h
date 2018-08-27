@@ -10,10 +10,10 @@
    L2 API header for commands and properties
    FILE: Si2141_44_24_L2_API.h
    Supported IC : Si2141-A10, Si2141-B10, Si2144-A20, Si2124-A20
-   Compiled for ROM 61 firmware 1_1_build_10
-   Revision: 0.1
-   Date: July 24 2015
-  (C) Copyright 2015, Silicon Laboratories, Inc. All rights reserved.
+   Compiled for ROM 61 firmware 1_1_build_12
+   Revision: 0.0
+   Date: March 04 2016
+  (C) Copyright 2016, Silicon Laboratories, Inc. All rights reserved.
 ****************************************************************************************/
 
 #ifndef   Si2141_44_24_L2_API_H
@@ -33,6 +33,7 @@ int  Si2141_44_24_Init                      (L1_Si2141_44_24_Context *api);
 int  Si2141_44_24_Configure                 (L1_Si2141_44_24_Context *api);
 int  Si2141_44_24_PowerUpWithPatch          (L1_Si2141_44_24_Context *api);
 int Si2141_44_24_PowerUpUsingBroadcastI2C    (L1_Si2141_44_24_Context *tuners[], int tuner_count );
+int Si2141_44_24_PowerUpOnly                (L1_Si2141_44_24_Context *api);
 int  Si2141_44_24_LoadFirmware              (L1_Si2141_44_24_Context *api, unsigned char *fw_table, int lines);
 int  Si2141_44_24_StartFirmware             (L1_Si2141_44_24_Context *api);
 

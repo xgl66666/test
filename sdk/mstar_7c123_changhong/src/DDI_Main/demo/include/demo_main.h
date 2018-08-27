@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -102,8 +102,7 @@ MS_BOOL HelpFun(void);
 
 MS_BOOL Demo_Main_Release_Check(void);
 MS_BOOL Demo_Main(void);
-
-
+void Demo_Main_Exit(MS_U32 argc, VOID *argv);
 MS_BOOL run_Cmd (const char *cmd);
 
 #endif

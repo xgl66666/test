@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -186,6 +186,71 @@ MS_BOOL Demo_EMMC_ReadData(MS_U32 *u32_SrcPhyAddr, MS_U32 *u32_DataByteCnt, MS_U
 MS_BOOL Demo_EMMC_DumpData(MS_U32 *u32_SrcPhyAddr)
 {
     dump_mem((unsigned char *)*u32_SrcPhyAddr, 512);
+    return TRUE;
+}
+
+MS_BOOL Demo_EMMC_Compare(MS_U32 *pu32_buf0, MS_U32 *pu32_buf1, MS_U32 *u32_byteCnt)
+{
+    MS_U32 u32_i;
+    MS_U32 *W_PHY = (MS_U32*)*pu32_buf0;
+    MS_U32 *R_PHY = (MS_U32*)*pu32_buf1;
+
+    for (u32_i = 0; u32_i < (*u32_byteCnt)/4; u32_i++)
+    {
+        if (W_PHY[u32_i] != R_PHY[u32_i])
+        {
+            printf("error  : i:%08X  buf0:%02X  buf1:%02X \n", u32_i, W_PHY[u32_i], R_PHY[u32_i]);
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+MS_BOOL Demo_EMMC_Verify(MS_U32 *pu32_buf0, MS_U32 *pu32_buf1)
+{
+    MS_U32 *u32_SrcPhyAddr0 = (MS_U32*)*pu32_buf0;
+    MS_U32 *u32_SrcPhyAddr1 = (MS_U32*)*pu32_buf1;
+    MS_U32 *u32_DataByteCnt = 0x200;
+    MS_U32 *u32_BlkAddr     = 0xE8000;
+    MS_U32 u32_Ret;
+
+    u32_Ret = Demo_EMMC_Init();
+    if (TRUE != u32_Ret)
+    {
+        printf("Demo_EMMC_Init: %X \n", u32_Ret);
+        return FALSE;
+    }
+
+    u32_Ret = Demo_EMMC_WriteData(&u32_SrcPhyAddr0, &u32_DataByteCnt, &u32_BlkAddr);
+    if (TRUE != u32_Ret)
+    {
+        printf("Demo_EMMC_WriteData: %X \n", u32_Ret);
+        return FALSE;
+    }
+
+    //printf(" =============================== 0x%08x ====================================\n",u32_SrcPhyAddr0);
+    //Demo_EMMC_DumpData(&u32_SrcPhyAddr0);
+
+    u32_Ret = Demo_EMMC_ReadData(&u32_SrcPhyAddr1, &u32_DataByteCnt, &u32_BlkAddr);
+    if (TRUE != u32_Ret)
+    {
+        printf("Demo_EMMC_ReadData: %X \n", u32_Ret);
+        return FALSE;
+    }
+
+    //printf("\n =============================== 0x%08x ====================================\n",u32_SrcPhyAddr2);
+    //Demo_EMMC_DumpData(&u32_SrcPhyAddr2);
+
+    u32_Ret = Demo_EMMC_Compare(&u32_SrcPhyAddr0, &u32_SrcPhyAddr1, &u32_DataByteCnt);
+    if (TRUE != u32_Ret)
+    {
+        printf("Demo_EMMC_Compare: %X \n", u32_Ret);
+        return FALSE;
+    }
+
+    printf("\n Verify UNFD_EMMC Compare: ok\n");
+
     return TRUE;
 }
 

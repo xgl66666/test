@@ -133,30 +133,15 @@ MXL_STATUS_E MxLWare_HYDRA_OEM_I2cWrite(UINT8 devId, UINT16 dataLen, UINT8 *buff
 {
   MXL_STATUS_E mxlStatus = MXL_SUCCESS;
   oem_data_t *oemDataPtr = (oem_data_t *)0;
-  HWI2C_PORT hwi2c_port;
+  MS_IIC_PORT ePort;
   UINT8 bret = 1;
 
   oemDataPtr = (oem_data_t *)MxL_HYDRA_OEM_DataPtr[devId];
-  hwi2c_port = getI2CPort(devId)/8;
+  ePort = getI2CPort(devId);
 
   if (oemDataPtr)
   {
-      switch(hwi2c_port)
-      {
-         case 0: 
-            bret &= MDrv_IIC_Write((oemDataPtr->i2cAddress)<<1, NULL, 0, buffPtr, dataLen);
-            if(!bret)
-               mxlStatus = MXL_FAILURE;
-            break;
-         case 1:  
-             bret &= MDrv_IIC1_Write((oemDataPtr->i2cAddress)<<1, NULL, 0, buffPtr, dataLen);
-            if(!bret)
-               mxlStatus = MXL_FAILURE; 
-            break;
-         default:
-            mxlStatus = MXL_FAILURE;
-            break;
-      }
+      bret &= MDrv_IIC_WriteBytes(ePort, (oemDataPtr->i2cAddress)<<1, 0, NULL, dataLen, buffPtr);
   }
   else
   {
@@ -190,36 +175,15 @@ MXL_STATUS_E MxLWare_HYDRA_OEM_I2cRead(UINT8 devId, UINT16 dataLen, UINT8 *buffP
 {
   MXL_STATUS_E mxlStatus = MXL_SUCCESS;
   oem_data_t *oemDataPtr = (oem_data_t *)0;
-  HWI2C_PORT hwi2c_port;
+  MS_IIC_PORT ePort;
   UINT8 bret = 1;
 
   oemDataPtr = (oem_data_t *)MxL_HYDRA_OEM_DataPtr[devId];
-  hwi2c_port = getI2CPort(devId)/8;
+  ePort = getI2CPort(devId);
 
   if (oemDataPtr)
   {
-      switch(hwi2c_port)
-      {
-         case 0:   
-            bret &= MDrv_IIC_Read((oemDataPtr->i2cAddress)<<1, NULL, 0, buffPtr, dataLen);
-            if(!bret)
-            {
-               printf("MXL542 IIC read error, slave OD = 0x%x\n", (oemDataPtr->i2cAddress));
-               mxlStatus = MXL_FAILURE;
-            }
-            break;
-         case 1:  
-            bret &= MDrv_IIC1_Read((oemDataPtr->i2cAddress)<<1, NULL, 0, buffPtr, dataLen);
-            if(!bret)
-            {
-               mxlStatus = MXL_FAILURE;
-            }
-            break;
-         default:
-            mxlStatus = MXL_FAILURE;
-            break;
-      }
-
+      bret &= MDrv_IIC_ReadBytes(ePort, (oemDataPtr->i2cAddress)<<1, 0, NULL, dataLen, buffPtr);
   }
   else
   {
@@ -336,7 +300,7 @@ MXL_STATUS_E MxLWare_HYDRA_OEM_Lock(UINT8 devId)
           printf("[MxL542]Warning: Mutex None\n");
           mxlStatus = MXL_SUCCESS;
       }
-      else if(MsOS_ObtainMutex(oemDataPtr->Mutex, MxL524_MUTEX_TIMEOUT) == FALSE)
+      else if(MsOS_ObtainMutex(oemDataPtr->Mutex, MxL542_MUTEX_TIMEOUT) == FALSE)
            mxlStatus = MXL_FAILURE;
   }  
   else

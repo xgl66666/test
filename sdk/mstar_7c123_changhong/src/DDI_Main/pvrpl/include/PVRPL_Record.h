@@ -116,6 +116,7 @@ extern "C"
 typedef enum
 {
     E_PVRPL_RECORD_DBG_NONE,
+    E_PVRPL_RECORD_DBG_MUST,
     E_PVRPL_RECORD_DBG_ERR,
     E_PVRPL_RECORD_DBG_WARN,
     E_PVRPL_RECORD_DBG_INFO,
@@ -189,13 +190,16 @@ typedef struct
     MS_U32                  u32RecordTime;
     PVR_PATH                u8PathIdx;
     MS_BOOL                 bInit;
+    MS_U8                   u8SourceID;
 }RecordResource;
 
 typedef struct PVRPL_Rec_Filters_t
 {
     MS_U8 u8FilterID;
-    MS_U32 u32PID;
+    //MS_U32 u32PID;
+    MS_U16 u16PID;
 } PVRPL_Rec_Filters;
+
 #define INVALID_PID 0x1FFF
 #define INVALID_FILTER_ID                       0xFF
 #define PVRPL_SWPVR_INDICATOR_MASK  0x80
@@ -210,7 +214,8 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_EnableRecordResume(RecordResource *stResourc
 EN_PVRPL_RECORD_STATUS PVRPL_Record_EnableRecordEng(RecordResource *stResource,MS_BOOL bEnable);
 EN_PVRPL_RECORD_STATUS PVRPL_Record_ResetRecordEng(RecordResource *stResource);
 EN_PVRPL_RECORD_STATUS PVRPL_Record_Exit(RecordResource *stResource);
-MS_BOOL PVRPL_Record_SetFilters(MS_U8 FilterID, MS_U32 PID);
+
+MS_BOOL PVRPL_Record_SetFilters(MS_U8 FilterID, MS_U16 PID);
 PVRPL_Rec_Filters *PVRPL_Record_GetFilters(void);
 
 

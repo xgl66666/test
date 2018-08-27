@@ -10,11 +10,11 @@
    API commands definitions
    FILE: Si2141_44_24_L1_Commands.c
    Supported IC : Si2141-A10, Si2141-B10, Si2144-A20, Si2124-A20
-   Compiled for ROM 61 firmware 1_1_build_10
-   Revision: 0.1
-   Tag:  ROM61_1_1_build_10_V0.1
-   Date: July 24 2015
-  (C) Copyright 2015, Silicon Laboratories, Inc. All rights reserved.
+   Compiled for ROM 61 firmware 1_1_build_12
+   Revision: 0.0
+   Tag:  ROM61_1_1_build_12_V0.0
+   Date: March 04 2016
+  (C) Copyright 2016, Silicon Laboratories, Inc. All rights reserved.
 **************************************************************************************/
 #define   Si2141_44_24_COMMAND_PROTOTYPES
 
@@ -1162,7 +1162,6 @@ unsigned char Si2141_44_24_L1_WAKE_UP         (L1_Si2141_44_24_Context *api,
 {
     unsigned char error_code = 0;
     unsigned char cmdByteBuffer[7];
-    unsigned char rspByteBuffer[1];
     api->rsp->wake_up.STATUS = api->status;
 
     SiTRACE("Si2141_44_24 WAKE_UP ");
@@ -1193,13 +1192,15 @@ unsigned char Si2141_44_24_L1_WAKE_UP         (L1_Si2141_44_24_Context *api,
       return ERROR_Si2141_44_24_SENDING_COMMAND;
     }
 
-    error_code = Si2141_44_24_pollForResponse(api, 1, rspByteBuffer);
+    /* wait 5 ms to allow the firmware to start up */
+    system_wait(5);
+
+    /* check for CTS only */
+    error_code = Si2141_44_24_pollForCTS(api);
     if (error_code) {
-      SiTRACE("Error polling AGC_OVERRIDE response\n");
+      SiTRACE("Error polling WAKE_UP response\n");
       return error_code;
     }
-
-
     return NO_Si2141_44_24_ERROR;
 }
 #endif /* Si2141_44_24_WAKE_UP_CMD */
@@ -1329,7 +1330,7 @@ unsigned char   Si2141_44_24_L1_GetCommandResponseString(L1_Si2141_44_24_Context
     switch (cmd_code) {
     #ifdef        Si2141_44_24_AGC_OVERRIDE_CMD
      case         Si2141_44_24_AGC_OVERRIDE_CMD_CODE:
-       sprintf(msg,"AGC_OVERRIDE ");
+      sprintf(msg,"AGC_OVERRIDE ");
        sprintf(msg,"%s%s",msg,separator); strcat(msg,"-TUNINT ");
            if  (api->rsp->agc_override.STATUS->tunint ==     0) strcat(msg,"NOT_TRIGGERED");
       else if  (api->rsp->agc_override.STATUS->tunint ==     1) strcat(msg,"TRIGGERED    ");

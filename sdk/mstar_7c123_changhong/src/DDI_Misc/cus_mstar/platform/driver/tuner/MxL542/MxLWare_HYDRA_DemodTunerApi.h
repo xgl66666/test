@@ -25,6 +25,7 @@
 #ifndef __MXL_HDR_TUNER_DEMOD_API__
 #define __MXL_HDR_TUNER_DEMOD_API__
 
+//#include "MxLWare_HYDRA_Commands.h"
 #include "MaxLinearDataTypes.h"
 #include "MxLWare_HYDRA_SkuFeatures.h"
 
@@ -55,6 +56,8 @@ extern "C" {
 
 #define MXL_HYDRA_RSSI_MONITOR_MIN_THRESHOLD (-60)
 #define MXL_HYDRA_RSSI_MONITOR_MAX_THRESHOLD (0)
+
+#define MXL_HYDRA_SYMBOLRATE_KSPS_MIN 1000
 
 typedef struct
 {
@@ -116,6 +119,19 @@ typedef  enum
 
 typedef enum
 {
+  MXL_HYDRA_TS_ID_0 = 0,
+  MXL_HYDRA_TS_ID_1,
+  MXL_HYDRA_TS_ID_2,
+  MXL_HYDRA_TS_ID_3,
+  MXL_HYDRA_TS_ID_4,
+  MXL_HYDRA_TS_ID_5,
+  MXL_HYDRA_TS_ID_6,
+  MXL_HYDRA_TS_ID_7,
+  MXL_HYDRA_TS_MAX
+} MXL_HYDRA_TS_ID_E;
+
+typedef enum
+{
   MXL_HYDRA_DSS = 0,
   MXL_HYDRA_DVBS,
   MXL_HYDRA_DVBS2,
@@ -153,9 +169,9 @@ typedef enum
 typedef enum
 {
   MXL_HYDRA_ROLLOFF_AUTO = 0,
-  MXL_HYDRA_ROLLOFF_0_20,
+  MXL_HYDRA_ROLLOFF_0_35,
   MXL_HYDRA_ROLLOFF_0_25,
-  MXL_HYDRA_ROLLOFF_0_35
+  MXL_HYDRA_ROLLOFF_0_20
 } MXL_HYDRA_ROLLOFF_E;
 
 typedef enum
@@ -318,7 +334,7 @@ typedef struct
 {
   UINT32 tunerIndex;        // TUNER Ctrl: one of MXL58x_TUNER_ID_E
   UINT32 demodIndex;        // DEMOD Ctrl: one of MXL58x_DEMOD_ID_E
-  MXL_HYDRA_SPECTRUM_STEP_SIZE_E stepSizeInKHz;
+  UINT32 stepSizeInKHz;     // MXL_HYDRA_SPECTRUM_STEP_SIZE_E
   UINT32 startingFreqInkHz;
   UINT32 totalSteps;
 } MXL_HYDRA_SPECTRUM_REQ_T;
@@ -332,14 +348,38 @@ typedef enum
 typedef struct
 {
   UINT32 demodIndex;
-  MXL_HYDRA_SEARCH_FREQ_OFFSET_TYPE_E searchType;
+  UINT32 searchType;       // MXL_HYDRA_SEARCH_FREQ_OFFSET_TYPE_E
 } MXL58x_CFG_FREQ_OFF_SEARCH_RANGE_T;
+
+// Demod Para for Channel Tune
+typedef struct
+{
+  UINT32 tunerIndex;
+
+  UINT32 demodIndex;
+
+  UINT32 frequencyInHz;     // Frequency
+
+  UINT32 standard;          // one of MXL_HYDRA_BCAST_STD_E
+  UINT32 spectrumInversion; // Input : Spectrum inversion.
+  UINT32 rollOff;           /* rollOff (alpha) factor */
+  UINT32 symbolRateInHz;    /* Symbol rate */
+  UINT32 pilots;            /* TRUE = pilots enabled */
+  UINT32 modulationScheme;  // Input : Modulation Scheme is one of MXL_HYDRA_MODULATION_E
+  UINT32 fecCodeRate;       // Input : Forward error correction rate. Is one of MXL_HYDRA_FEC_E
+
+  UINT32 maxCarrierOffsetInMHz; // Maximum carrier freq offset in MHz. Same as freqSearchRangeKHz, but in unit of MHz.
+
+} MXL_HYDRA_DEMOD_PARAM_T;
+
 
 MXL_STATUS_E MxLWare_HYDRA_API_CfgTunerEnable(UINT8 devId, MXL_HYDRA_TUNER_ID_E tunerId, MXL_BOOL_E enable);
 
 MXL_STATUS_E MxLWare_HYDRA_API_ReqTunerEnableStatus(UINT8 devId, MXL_HYDRA_TUNER_ID_E tunerId, MXL_BOOL_E *tunerEnablePtr);
 
 MXL_STATUS_E MxLWare_HYDRA_API_CfgDemodDisable(UINT8 devId, MXL_HYDRA_DEMOD_ID_E demodId);
+
+MXL_STATUS_E MxLWare_HYDRA_HelperFn_CfgDemodChanTuneParamSetUp(UINT8 devId, MXL_HYDRA_TUNER_ID_E tunerId, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_DEMOD_PARAM_T * demodChanCfgPtr, MXL_HYDRA_TUNE_PARAMS_T * chanTuneParamsPtr);
 
 MXL_STATUS_E MxLWare_HYDRA_API_CfgDemodChanTune(UINT8 devId, MXL_HYDRA_TUNER_ID_E tunerId, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_TUNE_PARAMS_T * chanTuneParamsPtr);
 
@@ -393,6 +433,8 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDemodSearchFreqOffset(UINT8 devId, MXL_HYDRA_D
 MXL_STATUS_E MxLWare_HYDRA_API_GainStepControl(UINT8 devId, MXL_HYDRA_TUNER_ID_E tunerId, UINT8 gainState);
 
 MXL_STATUS_E MxLWare_HYDRA_API_ReqAdcRssiPower(UINT8 devId, MXL_HYDRA_TUNER_ID_E tunerId, SINT32 *adcRssiPwr);
+
+MXL_STATUS_E MxLWare_HYDRA_API_ReqTunerSplitterAttenuation(UINT8 devId, UINT32 * splitterAttnPtr);
 
 MXL_BOOL_E MxLWare_HYDRA_API_IsFscTunerDone(UINT8 devId, MXL_HYDRA_TUNER_ID_E tunerId);
 

@@ -157,7 +157,7 @@
 #define I2C_BUFFER_SIZE (500)
 #define PRINT_BUFFER_SIZE (1040)
 
-/* Link your IÂ²C Read function to this function */
+/* Link your I²C Read function to this function */
 /*============================================================================*/
 /* tmdlI2CRead                                                                */
 /*============================================================================*/
@@ -170,7 +170,7 @@ tmErrorCode_t tmdlI2CRead(tmUnitSelect_t tUnit, UInt32 uHwAddress, UInt32 AddrSi
     return err;
 }
 
-/* Link your IÂ²C Write function to this function */
+/* Link your I²C Write function to this function */
 /*============================================================================*/
 /* tmdlI2CWrite                                                               */
 /*============================================================================*/

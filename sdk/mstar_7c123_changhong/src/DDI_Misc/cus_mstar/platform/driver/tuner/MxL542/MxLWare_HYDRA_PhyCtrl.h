@@ -57,6 +57,10 @@ extern "C" {
 #define MXL_HYDRA_SKU_ID_582 5
 #define MXL_HYDRA_SKU_ID_568 6
 
+#define MXL_HYDRA_SKU_ID_532C 0x01
+#define MXL_HYDRA_SKU_ID_542C 0x09
+#define MXL_HYDRA_SKU_ID_582C 0x0d
+
 // macro for register write data buffer size (PLID + LEN (0xFF) + RegAddr + RegData)
 #define MXL_HYDRA_REG_WRITE_LEN       (MXL_HYDRA_I2C_HDR_SIZE + (2 * MXL_HYDRA_REG_SIZE_IN_BYTES))
 
@@ -111,6 +115,14 @@ typedef struct
   UINT32 dataSize;
   UINT8 data[DMA_I2C_READ_LEN_MAX];
 } MXL_DEV_CMD_DATA_T;
+
+typedef enum
+{
+  MXL_HYDRA_SKU_54X = 0,
+  MXL_HYDRA_SKU_56X,
+  MXL_HYDRA_SKU_58X,
+  MXL_HYDRA_SKU_MAX
+} MXL_HYDRA_SKU_FAMILY_E;
 
 typedef struct
 {
@@ -177,6 +189,8 @@ typedef struct
 
   MXL_REG_FIELD_T *gpioInfoPtr;
 
+  MXL_HYDRA_SKU_FAMILY_E skuFamily;
+
 } MXL_HYDRA_CONTEXT_T;
 
 MXL_STATUS_E MxLWare_HYDRA_Ctrl_GetDeviceContext(UINT8 devId, /*@out@*/ MXL_HYDRA_CONTEXT_T ** deviceContextPtr);
@@ -200,6 +214,7 @@ char * MxLWare_HYDRA_DBG_GetDeviceName(MXL_HYDRA_DEVICE_E deviceType);
 
 MXL_HYDRA_DEMOD_ID_E MxL_Ctrl_GetDemodID(MXL_HYDRA_CONTEXT_T *devHandlePtr, MXL_HYDRA_DEMOD_ID_E logicalDemodId);
 MXL_STATUS_E MxL_Ctrl_GetTsID(MXL_HYDRA_CONTEXT_T *devHandlePtr, MXL_HYDRA_DEMOD_ID_E logicalDemodId, MXL_HYDRA_DEMOD_ID_E *physicalDemodId);
+MXL_STATUS_E MxL_Ctrl_GetPhyTsID(UINT8 devId, MXL_HYDRA_DEMOD_ID_E physicalDemodId, MXL_HYDRA_TS_ID_E *physicalTsId);
 
 MXL_STATUS_E MxLWare_Hydra_ReadByMnemonic(UINT8 devId, UINT32 regAddr, UINT8 lsbLoc, UINT8 numOfBits, /*@out@*/ UINT32 *dataPtr);
 MXL_STATUS_E MxLWare_Hydra_UpdateByMnemonic(UINT8 devId, UINT32 regAddr, UINT8 lsbLoc, UINT8 numOfBits, UINT32 data);
@@ -210,6 +225,8 @@ void MxLWare_HYDRA_ExtractFromMnemonic(UINT32 regAddr, UINT8 lsbPos, UINT8 width
 void MxL_CovertDataForEndianness(UINT8 convertDataFlag, UINT32 size, /*@in@*/ /*@out@*/ UINT8* dataPtr);
 
 SINT32 MxL_Ctrl_SignExt(UINT32 data, UINT32 n);
+
+UINT32 MxL_Get_DiseqcMappingBitMapReverse(MXL_HYDRA_CONTEXT_T * devHandlePtr, UINT32 bitMap);
 
 #ifdef __cplusplus
 }

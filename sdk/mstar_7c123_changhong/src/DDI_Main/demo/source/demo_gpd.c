@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (!Â¡Â±MStar Confidential Information!Â¡L) by the recipient.
+// (!¡±MStar Confidential Information!¡L) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -208,7 +208,7 @@ static MS_BOOL _Demo_GPD_SetDefaultBuffer(void)
     else
     {
         _gu32DecodeBufferAlign = ALIGNMENT(_gu32DecodeBuffer, 32);
-        memset((char *)_gu32DecodeBuffer, 0, u32DecodeBufferSize);
+        memset((char *)_gu32DecodeBufferAlign, 0, u32DecodeBufferSize);
         return TRUE;
     }
 }
@@ -222,7 +222,7 @@ static MS_BOOL _Demo_GPD_LoadPattern(MS_BOOL bGif)
     if(bGif)
     {
         _gu32InputDataLength = sizeof(_gu8BaseLineGIF);
-        _gpu8InputDataAddr = (MS_U8*)MsOS_AllocateMemory(_gu32InputDataLength+ RESERVE_SPACE, s32MstarNonCachedPoolID);
+        _gpu8InputDataAddr = (MS_U8*)MsOS_AllocateMemory(_gu32InputDataLength + RESERVE_SPACE, s32MstarNonCachedPoolID);
         if(_gpu8InputDataAddr == 0)
         {
             db_print("MsOS_AllocateMemory FAILED !!\n");
@@ -244,7 +244,7 @@ static MS_BOOL _Demo_GPD_LoadPattern(MS_BOOL bGif)
     else
     {
         _gu32InputDataLength = sizeof(_gu8BaseLinePNG);
-        _gpu8InputDataAddr = (MS_U8*)MsOS_AllocateMemory(_gu32InputDataLength, s32MstarNonCachedPoolID);
+        _gpu8InputDataAddr = (MS_U8*)MsOS_AllocateMemory(_gu32InputDataLength + RESERVE_SPACE, s32MstarNonCachedPoolID);
         if(_gpu8InputDataAddr == 0)
         {
             db_print("MsOS_AllocateMemory FAILED !!\n");
@@ -477,8 +477,9 @@ static MS_BOOL _Demo_batch_verification(MS_BOOL bEnableGif)
 	memset(&stPicInfo, 0, sizeof(stPicInfo));
 	memset(&stRoiInfo, 0, sizeof(stRoiInfo));
     _Demo_GPD_SetDefaultBuffer();
-    db_print("_gu32DecodeBuffer = %"DTC_MS_U32_x" and MSOS_VA2PA(_gu32DecodeBuffer)= %"DTC_MS_U32_x"\n",_gu32DecodeBuffer,MS_VA2PA(_gu32DecodeBuffer));
-    MApi_GPD_Init(MS_VA2PA(_gu32DecodeBuffer));
+    db_print("_gu32DecodeBufferAlign = %"DTC_MS_U32_x" and MSOS_VA2PA(_gu32DecodeBufferAlign)= %"DTC_MS_U32_x"\n",_gu32DecodeBufferAlign,MS_VA2PA(_gu32DecodeBufferAlign));
+    MApi_GPD_SetControl(E_GPD_USER_CMD_SET_CACHEABLE, 0);
+    MApi_GPD_Init(MS_VA2PA(_gu32DecodeBufferAlign));
     if (!_Demo_GPD_LoadPattern(bGif))
     {
         printf("Load pattern error\n");

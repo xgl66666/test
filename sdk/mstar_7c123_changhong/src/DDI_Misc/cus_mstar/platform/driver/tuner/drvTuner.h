@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -102,8 +102,10 @@
 #ifndef _DRV_TUNER_H_
 #define _DRV_TUNER_H_
 
-#include "Board.h"
 #include "MsCommon.h"
+#include "drvDemod.h"
+#include "drvIIC.h"
+#include "drvDish.h"
 //-------------------------------------------------------------------------------------------------
 //  Driver Capability
 //-------------------------------------------------------------------------------------------------
@@ -176,7 +178,19 @@ typedef enum
     TUNER_EXT_FUNC_FINALIZE,
     TUNER_EXT_FUNC_BLIND_SCAN_MODE,
     TUNER_EXT_FUNC_GET_RFAGC_STATUS,
-    TUNER_EXT_FUNC_SET_CABLE_INDEX
+    TUNER_EXT_FUNC_SET_CABLE_INDEX,
+    TUNER_EXT_FUNC_GET_SLAVE_ID,
+    TUNER_EXT_FUNC_UNDER_EXT_DMD_TEST,
+    //for ATV VIF
+    TUNER_EXT_FUNC_GET_FREQ_STEP,
+    TUNER_EXT_FUNC_GET_TUNER_TYPE,
+    TUNER_EXT_FUNC_GET_VIF_NOTCH_SOSFILTER,
+    TUNER_EXT_FUNC_GET_PEAKING_PARAMETER,
+    TUNER_EXT_RUNC_SET_TUNER_IN_SCAN_MODE,
+    TUNER_EXT_FUNC_GET_VIF_CR,
+    TUNER_EXT_FUNC_GET_ATV_RF_BOUNDARY,
+    TUNER_EXT_FUNC_RESET_RFAGC,
+    TUNER_EXT_FUNC_SET_CON_INFO
 } TUNER_EXT_FUNCTION_TYPE;
 
 typedef enum
@@ -187,28 +201,99 @@ typedef enum
     TUNER_BW_MODE_1_7MHZ
 } TUNER_EN_TER_BW_MODE;
 
+/// the RF band
+typedef enum
+{
+    /// VHF low
+    E_RFBAND_VHF_LOW,
+    /// VHF high
+    E_RFBAND_VHF_HIGH,
+    /// UHF
+    E_RFBAND_UHF,
+    /// invalid
+    E_RFBAND_INVALID,
+} TUNER_EN_RFBAND;
+
+/// the scan frequency step
+typedef enum
+{
+    /// 31.25 KHz
+    E_FREQ_STEP_31_25KHz = 0x00,
+    /// 50 KHz
+    E_FREQ_STEP_50KHz    = 0x01,
+    /// 62.5 KHz
+    E_FREQ_STEP_62_5KHz  = 0x02,
+    /// invalid
+    E_FREQ_STEP_INVALD
+} TUNER_EN_FREQ_STEP;
+
+typedef enum
+{
+    E_TUNER_SIF_STANDARD_TYPE_BG                    = 0x00,
+    E_TUNER_SIF_STANDARD_TYPE_BG_A2                 = 0x01,
+    E_TUNER_SIF_STANDARD_TYPE_BG_NICAM              = 0x02,
+    E_TUNER_SIF_STANDARD_TYPE_I                     = 0x03,
+    E_TUNER_SIF_STANDARD_TYPE_DK                    = 0x04,
+    E_TUNER_SIF_STANDARD_TYPE_DK1_A2                = 0x05,
+    E_TUNER_SIF_STANDARD_TYPE_DK2_A2                = 0x06,
+    E_TUNER_SIF_STANDARD_TYPE_DK3_A2                = 0x07,
+    E_TUNER_SIF_STANDARD_TYPE_DK_NICAM              = 0x08,
+    E_TUNER_SIF_STANDARD_TYPE_L                     = 0x09,
+    E_TUNER_SIF_STANDARD_TYPE_M                     = 0x0A,
+    E_TUNER_SIF_STANDARD_TYPE_M_BTSC                = 0x0B,
+    E_TUNER_SIF_STANDARD_TYPE_M_A2                  = 0x0C,
+    E_TUNER_SIF_STANDARD_TYPE_M_EIA_J               = 0x0D,
+    E_TUNER_SIF_STANDARD_TYPE_NOTSTANDARD           = 0x0F
+}TUNER_SIF_StandardType;
+
+typedef enum
+{
+    E_TUNER_ATV_TUNE_DEFAULT_MODE = 0,
+    E_TUNER_ATV_TUNE_SCAN_MODE,
+}TUNER_ATV_Tune_Mode;
+
+typedef struct
+{
+  MS_IIC_PORT eI2C_PORT;     ///<I2C port
+  MS_U32 u32HW_ResetPin;    ///<HW reset pin
+} TUNER_CON_CONFIG;
+
 typedef struct
 {
     MS_U32* pCur_Broadcast_type;
     MS_U8 u8SlaveID;
     MS_U8 u8SlaveID_EXT;
     MS_U8 u8Cable_Index;  //for tuner that is with more than one connectors
+    struct drv_demodtab_entry*  pstDemodtab;
+    struct drv_dishtab_entry*   pstDishtab;
+    TUNER_CON_CONFIG stTUNCon;
 } TUNER_MS_INIT_PARAM;
+
+
 
 typedef struct
 {
     MS_U32 u32RF_FREQ;
     MS_U16 u16LoLOF; // low LOF value,unit MHz
     MS_U16 u16HiLOF; // high LOF value,unit MHz
+    MS_U8  u8_Polarity;
+    MS_U8 u8bPorInvert;
     MS_BOOL* pbIsHiLOF;
 } TUNER_MS_SAT_PARAM;
 
+typedef struct
+{
+    MS_U32 u32Param1;
+    MS_U32 u32Param2;
+    void *pParam;
+} TUNER_EXT_FUNCTION_PARAM;
 
 typedef MS_BOOL     drv_tunerop_Init(MS_U8 u8TunerIndex, TUNER_MS_INIT_PARAM* pParam);
 typedef MS_BOOL     drv_tunerop_SetFreq(MS_U8 u8TunerIndex, MS_U32 u32Freq);
 typedef MS_BOOL     drv_tunerop_SetFreq_S2(MS_U8 u8TunerIndex, MS_U32 u32Freq, MS_U32 u32SymbolRate);
 typedef MS_BOOL     drv_tunerop_GetLock(MS_U8 u8TunerIndex);
 typedef MS_BOOL     drv_tunerop_SetTuner(MS_U8 u8TunerIndex, MS_U32 dwFreq /*Khz*/, MS_U8 ucBw /*MHz*/);
+typedef MS_BOOL     drv_tunerop_SetATVTuner(MS_U8 u8TunerIndex, MS_U32 u32FreqKHz,TUNER_EN_RFBAND eBand, MS_U8 u8OtherMode );
 typedef MS_BOOL     drv_tunerop_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt);
 typedef MS_BOOL     drv_tunerop_GetTunerIF(MS_U8 u8TunerIndex, MS_U32* pu32IF_Freq);
 typedef MS_BOOL     drv_tunerop_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE fuction_type, void *data);
@@ -227,6 +312,8 @@ drv_tunertab_entry
     drv_tunerop_CheckExist         *CheckExist;
     drv_tunerop_GetTunerIF            *GetTunerIF;
     drv_tunerop_Extension_Function *Extension_Function;
+    //ATV
+    drv_tunerop_SetATVTuner        *SetATVTuner;
 } DRV_TUNER_TABLE_TYPE;
 
 //-------------------------------------------------------------------------------------------------

@@ -51,6 +51,9 @@ extern "C" {
 #define MXL_HYDRA_SHARED_PID_FILT_SIZE_2_TO_1            66   // Shared PID filter size in 2-1 mux mode
 #define MXL_HYDRA_SHARED_PID_FILT_SIZE_4_TO_1           132  // Shared PID filter size in 4-1 mux mode
 
+#define MXL_LOGICAL_TO_PHYSICAL_BYPASS(x) ((x)|(1<<15))         //adds bypass bit
+#define MXL_LOGICAL_TO_PHYSICAL_BYPASS_NOT(x) ((x)&(~(1<<15)))  //remove bypass bit
+
 typedef enum
 {
   MXL_HYDRA_SOFTWARE_PID_BANK = 0,
@@ -178,7 +181,7 @@ typedef struct
   MXL_BOOL_E                        enable;               // Enable or Disable MPEG OUT
   MXL_HYDRA_MPEG_CLK_TYPE_E         mpegClkType;          // Continuous or gapped
   MXL_HYDRA_MPEG_CLK_FMT_E          mpegClkPol;           // MPEG Clk polarity
-  UINT8                             maxMpegClkRate;       // Max MPEG Clk rate (0 Â– 104 MHz, 139 MHz)
+  UINT8                             maxMpegClkRate;       // Max MPEG Clk rate (0 – 104 MHz, 139 MHz)
   MXL_HYDRA_MPEG_CLK_PHASE_E        mpegClkPhase;         // MPEG Clk phase
   MXL_HYDRA_MPEG_DATA_FMT_E         lsbOrMsbFirst;        // LSB first or MSB first in TS transmission
   MXL_HYDRA_MPEG_DATA_FMT_E         mpegSyncPulseWidth;   // MPEG SYNC pulse width (1-bit or 1-byte)
@@ -304,7 +307,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgMapExtTSInputToTSOutput(UINT8 devId,
 
 MXL_STATUS_E MxLWare_HYDRA_API_CfgTSOutDriveStrength(UINT8 devId, MXL_HYDRA_TS_DRIVE_STRENGTH_E tsDriveStrength);
 
-MXL_STATUS_E MxLWare_HYDRA_API_CfgXPTXBar(UINT8 devId, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_DEMOD_ID_E tsOutId);
+MXL_STATUS_E MxLWare_HYDRA_API_CfgXPTXBar(UINT8 devId, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_TS_ID_E tsOutId);
 
 #ifdef __cplusplus
 }

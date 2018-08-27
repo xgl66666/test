@@ -11,7 +11,7 @@ export PRODUCT_APPLICATION_PLAN = plan_resources_maestro_gtpl_nx2_cab_sd.xml
 export PLATFORM_CHIP_VENDOR=mstar
 export PLATFORM_CHIP_MODEL=7c123
 export PLATFORM_BOARD_VENDOR=changhong
-export PLATFORM_BOARD_MODEL=BD_MST221D_D01A
+export PLATFORM_BOARD_MODEL=BD_MST290B_D01A
 
 # ------ HAL settings -----------
 export PRODUCT_PREBUILT_SDK=NO
@@ -24,7 +24,7 @@ export PRODUCT_USE_TDAL_FS=YES
 
 # ------- Product settings ------------
 export PRODUCT_MEDIUM=MEDIUM_CAB
-export PRODUCT_ECOS_BUILD=ecos_keltic_34kf_fileio_posix_fat_c++_mipsisa32
+export PRODUCT_ECOS_BUILD=ecos_k1c_74kf_net_fileio_posix_jffs2_fat_ntfs_v3_net_cpuload_c++
 export PRODUCT_NAME_DELIVERY=OpentTVOne
 export PRODUCT_APP=MAESTRO
 export PRODUCT_PROPRIETARY_BOOTLOADER=CHANGHONG

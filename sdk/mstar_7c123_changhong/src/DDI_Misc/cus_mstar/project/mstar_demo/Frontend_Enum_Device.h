@@ -92,6 +92,10 @@
 #define INTERNAL_DVBS               12
 #define DVBS2                       11
 #define INTERNAL_DVBT2              13
+#define DSS                         15
+#define ATV_PAL                     16
+#define ATV_SECAM_L_PRIME           17
+#define ATV_NTSC                    18
 
 //For Hummingbird demod compatible
 #define INTERNAL_DVBC               14
@@ -113,6 +117,14 @@
 #define DEMOD_MSB1245               7
 #define DEMOD_MXL542                8
 #define DEMOD_MSR1742               9
+#define DEMOD_MSB201X               10
+#define DEMOD_MXL683                11
+#define DEMOD_MSB3046               12
+#define DEMOD_MSB3400               13
+#define DEMOD_MXL214                DEMOD_MXL254
+#define DEMOD_MSB101X               DEMOD_MSB201X
+#define DEMOD_MXL582                DEMOD_MXL542
+
 
 
 #define DEMOD_MSB1237               126             //Kappa external ATSC
@@ -149,7 +161,7 @@
 //--------------- internal demods start---------------
 #define DEMOD_MSINTERN_DVBT         232
 #define DEMOD_MSINTERN_DVBC         233             // Mstar internal DVBC
-#define DEMOD_MSKRITI_DVBT2         234
+#define DEMOD_MSINTERN_DVBT2        234
 #define DEMOD_MSINTERN_ISDBT        235
 //keres
 #define DEMOD_MSKERES_ATSC          236
@@ -157,7 +169,6 @@
 #define DEMOD_MSKENYA_DVBC          237              //Kenya internal DVBC
 //keltic
 #define DEMOD_MSKELTIC_ATSC         238              //Keltic internal ATSC
-#define DEMOD_MSKELTIC_DVBS         239              //Keltic internal DVBS
 //kappa
 #define DEMOD_MSKAPPA_ISDBT         241              //Kappa internal ISDBT
 #define DEMOD_MSATSC_C              242              //internal ATSC-Cable demod              // Kapa internal demod
@@ -169,19 +180,21 @@
 #define DEMOD_MSKAISERIN_DVBT       247              //Kaiserin internal DVBT
 //krnous
 #define DEMOD_MSKRONUS_DVBT         249              //Kronus internal DVBT
-//Kris
-#define DEMOD_MSKRIS_DVBS           250              //Kris internal DVBS
-//Kratos
-#define DEMOD_MSKRATOS_DVBS         251              //Kratos internal DVBS
+//Kratos, Kayla, Kris, Keltic
+#define DEMOD_MSINTERN_DVBS         251              //Mstar internal DVBS
+//Kaiser, K6Lite
+#define DEMOD_MSINTERN_DVBC_DUAL    252            // Mstar dual internal DVBC
+
 
 //For Hummingbird demod compatible
-#define DEMOD_MSDVBT_51             DEMOD_MSKRONUS_DVBT
+#define DEMOD_MSDVBT_51             DEMOD_MSINTERN_DVBT
 #define DEMOD_MSDVBC_51             DEMOD_MSINTERN_DVBC
 #define DEMOD_MSKAISERIN_DVBC       DEMOD_MSINTERN_DVBC
 #define DEMOD_MSKELTIC_DVBC         DEMOD_MSINTERN_DVBC
 #define DEMOD_MSKAPPA_DVBC          DEMOD_MSINTERN_DVBC
 #define DEMOD_MSKERES_DVBC          DEMOD_MSINTERN_DVBC
 #define DEMOD_MSKRATOS_DVBC         DEMOD_MSINTERN_DVBC
+#define DEMOD_MSKRIS_DVBS           DEMOD_MSINTERN_DVBS
 //--------------- end internal demods ---------------
 
 //not exist
@@ -192,6 +205,7 @@
 //------------------------------------------------------------------------------------
 //FRONTEND_TUNER_TYPE
 //------------------------------------------------------------------------------------
+#define TUNER_TYPE                        0x100
 #define TUNER_MXL603                        0
 #define TUNER_TDA18250A                     1
 #define TUNER_TDA18260                      2
@@ -216,9 +230,10 @@
 #define TUNER_R820T                         25
 #define TUNER_MXL542                        26
 #define TUNER_MSR1742                       27
-
-
-
+#define TUNER_STV6111                       28
+#define TUNER_MXL214                        TUNER_MXL254
+#define TUNER_RT720                         TUNER_RT710
+#define TUNER_MXL582                        TUNER_MXL542
 
 #define TUNER_PHILIPS_TDA1316               128           // DVB, PAL RF Tuner
 #define TUNER_THOMSON_FE6640                129           // DVB, PAL RF Tuner
@@ -256,6 +271,13 @@
 //ISDBT
 #define TUNER_DIBCOM_DIB8096                152
 
+//Bifrsot TV Tuner
+#define TUNER_MXL661                        155
+
+#define TUNER_MXL683                        156
+#define TUNER_RDA5817                       157
+#define TUNER_RDA5880U                      158
+#define TUNER_ATBM2040                      159
 //NULL Tuner
 #define TUNER_NULL                          255
 
@@ -270,6 +292,7 @@
 #define DISH_TPS65233                        4
 #define DISH_A8304                           5
 #define DISH_A8297                           6
+#define DISH_A8302                           7
 
 
 //For Hummingbird demod compatible
@@ -322,7 +345,11 @@
 //#if((MS_DVB_TYPE_SEL == DVBS) || (MS_DVB_TYPE_SEL1 == DVBS) || (MS_DVB_TYPE_SEL2 == DVBS) || (MS_DVB_TYPE_SEL3 == DVBS))
 
 #ifndef MS_DVBS_INUSE
+#ifdef __KERNEL__
+#define MS_DVBS_INUSE 0
+#else
 #define MS_DVBS_INUSE 1
+#endif
 #endif
 
 #ifndef MS_DVBC_INUSE
@@ -341,6 +368,11 @@
 #ifndef MS_DTMB_INUSE
 #define MS_DTMB_INUSE 1
 #endif
+
+#ifndef MS_ATV_INUSE
+#define MS_ATV_INUSE 1
+#endif
+
 
 #ifndef FRONEND_LOCAL_DETECT_LIST
 #include "Frontend_Detect_List.h"
@@ -472,3 +504,21 @@
                                 ((TUNER_13TH_SCAN_DEVICE == x) && (TUNER_SCAN_NUMBER > 13)) ||\
                                 ((TUNER_14TH_SCAN_DEVICE == x) && (TUNER_SCAN_NUMBER > 14)) )
 
+#define IS_INTERN_DEMOD_PICKED IF_THIS_DEMOD_INUSE(DEMOD_MSINTERN_DVBS)||\
+                               IF_THIS_DEMOD_INUSE(DEMOD_MSINTERN_DVBC)||\
+                               IF_THIS_DEMOD_INUSE(DEMOD_MSINTERN_DVBT)||\
+                               IF_THIS_DEMOD_INUSE(DEMOD_MSINTERN_DVBT2)||\
+                               IF_THIS_DEMOD_INUSE(DEMOD_MSINTERN_ISDBT)||\
+                               IF_THIS_DEMOD_INUSE(DEMOD_MSKERES_ATSC)||\
+                               IF_THIS_DEMOD_INUSE(DEMOD_MSINTERN_DVBC_DUAL)||\
+                               IF_THIS_DEMOD_INUSE(DEMOD_MSKELTIC_ATSC)||\
+                               IF_THIS_DEMOD_INUSE(DEMOD_MSKENYA_DVBC)||\
+                               IF_THIS_DEMOD_INUSE(DEMOD_MSATSC_C)
+                               
+#if IS_INTERN_DEMOD_PICKED
+#define IS_THIS_DEMOD_PICKED(x) IF_THIS_DEMOD_INUSE(x)
+#else
+#define IS_THIS_DEMOD_PICKED(x) 1
+#endif
+
+                      

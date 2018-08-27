@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -108,13 +108,25 @@
 
 typedef enum
 {
-    /// Main
-    E_AV_DEVICE_MAIN = 0,
-    /// Sub
-    E_AV_DEVICE_SUB,
-    /// Max Device
-    E_AV_DEVICE_MAX,
+    E_AV_DEVICE_INVALID = -1,
+    E_AV_DEVICE_MAIN = 0,   /// Main
+    E_AV_DEVICE_SUB,        /// Sub
+#if (DEMO_VDEC_NDECODE_TEST == 1)
+    E_AV_DEVICE_FIRST = E_AV_DEVICE_MAIN,
+    E_AV_DEVICE_SECOND,
+    E_AV_DEVICE_THIRD,
+    E_AV_DEVICE_FOURTH,
+#endif
+    E_AV_DEVICE_MAX,        /// Max Device
 } EN_AV_Device;
+
+typedef enum
+{
+    E_AV_AUDIO_SWITCH_NULL = -1,
+    E_AV_AUDIO_SWITCH_TO_DTV = 0,
+    E_AV_AUDIO_SWITCH_TO_MM,
+    E_AV_AUDIO_SWITCH_MAX,
+} EN_AV_AUDIO_SWITCH_TYPE;
 
 typedef enum
 {
@@ -127,10 +139,11 @@ typedef enum
 typedef enum
 {
     E_AV_MVOP_MODE = 0,
+    E_AV_DIP_MODE = 2,
     E_AV_SWDetile_MODE,
-    E_AV_DIP_MODE,
+    E_AV_PureMCU_MODE,
     E_AV_ShowFrame_MODE_MAX,
-}EN_AV_ShowFrame_Type;
+}EN_AV_ShowFrame_Mode;
 
 typedef enum
 {
@@ -140,10 +153,10 @@ typedef enum
 
 typedef enum
 {
-    E_AV_INFO_DMX_FLOW,
-    E_AV_INFO_INPUT,
-    E_AV_INFO_INVALID,
-}EN_AV_INFO;
+    E_AV_FileIn_Eng_TS = 0,
+    E_AV_FileIn_Eng_PES,
+    E_AV_FileIn_Eng_MAX
+}EN_AV_FileIn_Eng_Format;
 
 typedef enum
 {
@@ -152,23 +165,52 @@ typedef enum
     E_AV_AVSYNC_STATE_WAIT,
     E_AV_AVSYNC_STATE_MONITOR,
     E_AV_AVSYNC_STATE_IDLE,
-
     E_AV_AVSYNC_STATE_MAX,
-    
 }EN_AV_AVSYNC_TASk_STATE;
+
+typedef enum
+{
+    E_AV_AVINIT_STATE_RESET = 0,
+    E_AV_AVINIT_STATE_TUNER,
+    E_AV_AVINIT_STATE_DMX,
+    E_AV_AVINIT_STATE_AUDIO,
+    E_AV_AVINIT_STATE_VIDEO,
+    E_AV_AVINIT_STATE_MAX,
+}EN_AV_AVINIT_STATE;
+
+typedef enum
+{
+    //Get demo_AV Info
+    E_AV_GetCmd_LiveInfo = 0x0,
+    E_AV_GetCmd_VideoInfo,
+    E_AV_GetCmd_AudioInfo,
+    E_AV_GetCmd_AudioADInfo,
+    E_AV_GetCmd_PCRInfo,
+    E_AV_GetCmd_DMXFlowInfo,
+    E_AV_GetCmd_WindowInfo,
+    E_AV_GetCmd_WindowShowFrameMode,
+    E_AV_GetCmd_MAX,
+
+    //Set demo_AV Info
+    E_AV_SetCmd_DMXFlow = 0x100,
+    E_AV_SetCmd_DMXInput,
+    E_AV_SetCmd_NotInitialize,
+    E_AV_SetCmd_MAX,
+} EN_AV_Cmd;
 
 typedef struct
 {
     EN_AV_FileIn_Eng_Type eEngType;
     MS_U8 u8EngID;
+    EN_AV_FileIn_Eng_Format eEngFormat;
 }ST_AV_FileIn_Eng_Info;
 
 typedef struct
 {
-    MS_U8   u8Filter;  
-    MS_U8   u8PCREngID;
-    MS_U16  u16PID;
-    
+    MS_U8       u8Filter;
+    EN_PCR_ENG  ePCREngID;
+    MS_U16      u16PID;
+
     EN_DEMO_DMX_FLT_TYPE eFIFO_ID;
     ST_AV_FileIn_Eng_Info stFilterType;
 
@@ -185,11 +227,30 @@ typedef struct
 {
     EN_DEMO_DMX_FLOW eFlow;
     EN_DEMO_DMX_FLOW_INPUT eDmxInput;
-    int   DmxClkInv; 
-    int   DmxExtSync; 
+    int   DmxClkInv;
+    int   DmxExtSync;
     int   DmxParallal;
-
+    // For merge stream. Store current source id for main/sub after Demo_AV_TSP_SetPid being called
+    EN_DEMO_DMX_FLT_SOURCEID eDmxFltSourceID;
 }ST_AV_DMX_INFO;
+
+typedef struct
+{
+    MS_BOOL bValid;
+    EN_AV_Device eDevice;
+    EN_AV_ShowFrame_Mode eShowFrameMode;
+
+    MS_U32 u32Window;
+    MS_U16 u16X;
+    MS_U16 u16Y;
+    MS_U16 u16Width;
+    MS_U16 u16Height;
+    MS_U16 u16Layer;
+
+    EN_VDEC_DDI_DISPLAY_PATH eShowFrame_MvopPath;
+    ST_VDEC_WIN_INFO stVDECWinControl;
+
+}ST_AV_ShowFrameInfo;
 
 typedef struct
 {
@@ -202,24 +263,30 @@ typedef struct
     ST_AV_DMX_INFO stDMXflowParams;
 
     EN_AV_AVSYNC_Type eAVSYNC_Mode;
-    EN_AV_ShowFrame_Type eShowFrame_Mode;
+    ST_AV_ShowFrameInfo stShowFrameInfo;
 
     MS_BOOL bEnableAVSYNC_Task;
     EN_AV_AVSYNC_TASk_STATE eAVSYNC_Task_State;
-    
+
+    MS_BOOL bInitializeOrNot; //if need not to do initialize, set the variable to TRUE;
+    EN_AV_AVINIT_STATE eAVInitState;
+
 }ST_AV_INFO;
 
-MS_U64 Demo_AV_InitSTC(EN_AV_Device eDevice);
-MS_U64 Demo_AV_GetSTC(EN_AV_Device eDevice);
-MS_BOOL Demo_AV_SetSTC(EN_AV_Device eDevice,MS_U64 u64Stc);
-MS_BOOL Demo_AV_SetSYNC(EN_AV_Device eDevice);
-MS_BOOL Demo_AV_GetAVInfo(EN_AV_Device eDevice,ST_AV_INFO* pstAVInfo);
-MS_BOOL Demo_AV_SetAVInfo(EN_AV_Device eDevice,EN_AV_INFO eAVInfo,void* pAVInfo);
+MS_U64 Demo_AV_InitSTC(EN_AV_Device* peDevice);
+MS_U64 Demo_AV_GetSTC(EN_AV_Device* peDevice);
+MS_BOOL Demo_AV_Initialize(EN_AV_Device* peDevice);
+MS_BOOL Demo_AV_SetSTC(EN_AV_Device* peDevice,MS_U64 u64Stc);
+MS_BOOL Demo_AV_SetSYNC(EN_AV_Device* peDevice);
+MS_BOOL Demo_AV_GetAVInfo(EN_AV_Device* peDevice,EN_AV_Cmd eAVCmd,void* pAVInfo);
+MS_BOOL Demo_AV_SetAVInfo(EN_AV_Device* peDevice,EN_AV_Cmd eAVCmd,void* pAVInfo);
+MS_BOOL Demo_AV_MuteVideo(EN_AV_Device *peDevice,MS_BOOL *pbDisplayMute);
 MS_BOOL Demo_AV_Tuner_Config(EN_AV_Device* peDevice,EN_DEMO_DMX_FLOW* pePlayback,EN_DEMO_DMX_FLOW_INPUT* peDmxInput,int* pClkInv,int* pExtSync,int* pParal);
 MS_BOOL Demo_AV_SetAVSYNCMode(EN_AV_Device* peDevice, EN_AV_AVSYNC_Type* peMode);
-MS_BOOL Demo_AV_SetShowFrameMode(EN_AV_Device* peDevice, EN_AV_ShowFrame_Type* peMode);
+MS_BOOL Demo_AV_SetShowFrameMode(EN_AV_Device* peDevice, MS_U32* pu32Mode, MS_U32* pu32Window, MS_U16* pu16X, MS_U16* pu16Y, MS_U16* pu16Width, MS_U16* pu16Height, MS_U16* pu16Layer);
+MS_BOOL Demo_AV_ChangeDispWindow(MS_U32* pu32Window, MS_U16* pu16X, MS_U16* pu16Y, MS_U16* pu16Width, MS_U16* pu16Height, MS_U16* pu16Layer);
 MS_BOOL Demo_AV_TSP_SetPid(EN_AV_Device* peDevice,MS_U32* pu32VideoPid, MS_U32* pu32AudioPid, MS_U32* pu32PCRPid, MS_U32* pu32VCodec, MS_U32* pu32ACodec);
-MS_BOOL Demo_AV_TSP_FileIn_SetPid(EN_AV_Device *peDevice,char *pFileInEngType,MS_U8 *pu8EngID,char *pVideoPid,char *pAudioPid,MS_U32 *pu32VCodec,MS_U32 *pu32ACodec);
+MS_BOOL Demo_AV_TSP_FileIn_SetPid(EN_AV_Device *peDevice,char *pFileInEngType,MS_U8 *pu8EngID,char *pVideoPid,char *pAudioPid,char *pVCodec,char *pACodec);
 MS_BOOL Demo_AV_PlayAV(EN_AV_Device* peDevice);
 MS_BOOL Demo_AV_PauseAV(EN_AV_Device *peDevice);
 MS_BOOL Demo_AV_StopAV(EN_AV_Device* peDevice);
@@ -227,21 +294,31 @@ MS_BOOL Demo_AV_FileIn_StopAV(EN_AV_Device *peDevice,char *pFileInEngType,MS_U8 
 MS_BOOL Demo_AV_StopAVFIFO(EN_AV_Device *peDevice);
 MS_BOOL Demo_AV_PlayRadio(EN_AV_Device* peDevice);
 MS_BOOL Demo_AV_StopRadio(EN_AV_Device* peDevice);
-MS_BOOL Demo_AV_MuteVideo(EN_AV_Device *peDevice);
 MS_BOOL Demo_AV_PlayFromMemory(EN_AV_Device* peDevice,int* pVCodec, int* pPlayLoop, char* pPath );
 MS_BOOL Demo_AV_StopFromMemory(EN_AV_Device* peDevice);
 MS_BOOL Demo_AV_ChangeAudioTrack(const EN_AV_Device* peDevice, const MS_U32* pu32AudioPid, const EN_AUDIO_CODEC_TYPE* peAudioCodecType);
 MS_BOOL Demo_AV_DecodeIFrame(EN_AV_Device* peDevice,int* pCodec,char* pLogopath);
 MS_BOOL Demo_AV_SetLanguage(EN_AV_Device* peDevice, MS_U32 *u32LangIndex);
 MS_BOOL Demo_AV_LanguageList(EN_AV_Device* peDevice);
+EN_DEMO_DMX_FLT_TYPE Demo_AV_GetAudioFIFO(EN_AV_Device* peDevice);
+EN_DEMO_DMX_FLT_TYPE Demo_AV_GetAudioADFIFO(EN_AV_Device* peDevice);
+MS_BOOL Demo_AV_Audio_Switch(EN_AV_Device* peDevice, EN_AV_AUDIO_SWITCH_TYPE* peSwitchType);
+MS_BOOL Demo_AV_CheckAudioResource(EN_AV_Device* peDevice);
+MS_BOOL Demo_AV_CheckMainAudioResource(EN_AV_Device* peDevice);
+MS_BOOL Demo_AV_ExChangeWindow(MS_U32* pu32WindowA, MS_U32* pu32WindowB);
 
-#if(DEMO_AUDIO_MULTI_TEST == 1)
-MS_BOOL Demo_AV_SetAudioInfo(EN_AV_Device eDevice);
+#if(DEMO_VDEC_NDECODE_TEST == 1)
+EN_AV_Device Demo_AV_VDEC_Device_Mapping(EN_AV_Device eDevice);
 #endif
 
 #if(DEMO_AUDIO_AD_TEST == 1)
 MS_BOOL Demo_AV_PlayAD(EN_AV_Device* peDevice, MS_U16* u16AudioADPID);
 MS_BOOL Demo_AV_StopAD(EN_AV_Device* peDevice);
+#endif
+
+#if(DEMO_AUDIO_AD_1PID_TEST == 1)
+MS_BOOL Demo_AV_PlayAD_1PID(EN_AV_Device* peDevice);
+MS_BOOL Demo_AV_StopAD_1PID(EN_AV_Device* peDevice);
 #endif
 
 #if(DEMO_MVC_TEST == 1)

@@ -2,9 +2,9 @@
 #ifndef  _R858_H_ 
 #define _R858_H_
 
-#define VERSION   "R858_v0.5_multituner"
+#define VERSION   "R858_GUI_v4_1.2"
 #define VER_NUM   0
-#define CHIP_ID       0x96
+#define CHIP_ID       0x41
 
 //----------------------------------------------------------//
 //                   Type Define                                    //
@@ -12,7 +12,7 @@
 #define UINT8  unsigned char	//0 ~ 255
 #define UINT16 unsigned short	//0 ~ 65535
 #define UINT32 unsigned long	//0 ~ 4,294,967,295
-#define INT32 signed int		//Â¡V2147483648 ~ 2147483647
+#define INT32 signed int		//¡V2147483648 ~ 2147483647
 #define INT16 signed short
 #define INT8  signed char
 
@@ -21,7 +21,7 @@
 //----------------------------------------------------------//
 //                   Define                                            //
 //----------------------------------------------------------//
-#define R858_REG_NUM         48
+#define R858_REG_NUM         56
 #define R858_IMR_IF              5300
 #define R858_IMR_TRIAL       9
 #define R858_RING_POWER_FREQ_LOW   115000
@@ -106,7 +106,6 @@ typedef struct _R858_SysFreq_Info_Type
 	UINT8	   NA_PWR_DET;		//no use
 	UINT8	   FILT_3TH_LPF_GAIN;
 	UINT8	   RF_LTE_PSG;
-	UINT8      TEMP;
 }R858_SysFreq_Info_Type;
 
 typedef struct _R858_Cal_Info_Type
@@ -129,6 +128,11 @@ typedef struct _R858_SectType
 	UINT8   Value;
 }R858_SectType;
 
+typedef enum _R858_IMR_Type  
+{
+	R858_IMR_NOR=0,
+	R858_IMR_REV,
+}R858_IMR_Type;
 
 typedef enum _R858_Cal_Type
 {
@@ -167,6 +171,14 @@ enum USER_MODE
     R858_DUAL,          //dual R858
 };
 
+typedef enum _R858_Share_Xtal_Type
+{
+	R858_NO_SHARE_XTAL = 0,           //single R858
+	R858_MASTER_TO_SLAVE_XTAL,        //Dual   R858 
+    R858_SLAVE_XTAL_IN,               //Only R858_1 is slave
+	R858_SLAVE_XTAL_OFF,			  //Both R858_1 and R8s8_2 are slave
+
+}R858_Share_Xtal_Type;
 //----------------------------------------------------------//
 //                   R858 Public Parameter                     //
 //----------------------------------------------------------//
@@ -205,7 +217,9 @@ typedef enum _R858_Standard_Type  //Don't remove standand list!!
 	R858_DVB_T2_7M_IF_5M,
 	R858_DVB_T2_8M_IF_5M,
 	R858_DVB_T2_1_7M_IF_5M,
+	R858_DVB_C_8M_IF_5500,
 	R858_DVB_C_8M_IF_5M,
+	R858_DVB_C_6M_IF_5500,
 	R858_DVB_C_6M_IF_5M, 
 	R858_J83B_IF_5M,
 	R858_ISDB_T_IF_5M,            
@@ -251,6 +265,7 @@ typedef struct _R858_Set_Info
 {
 	UINT32								RF_KHz;
 	R858_Standard_Type				R858_Standard;
+	R858_Standard_Type				R858_Standard_2;
 	R858_ClkOutMode_Type		R858_ClkOutMode;
 	R858_LT_Type						R858_LT;
 	UINT8                                  R858_User_Mode;
@@ -270,7 +285,7 @@ typedef enum _R858_IntTunerNum_Type  //R858 Internal tuner num
 {
 	R858_TUNER1 = 0,
 	R858_TUNER2,
-	R858_TUNER_MAX_NUM,
+    R858_TUNER_MAX_NUM
 }R858_IntTunerNum_Type;
 
 typedef enum _R858_ExtTunerNum_Type   //R858 External tuner num
@@ -279,12 +294,23 @@ typedef enum _R858_ExtTunerNum_Type   //R858 External tuner num
     R858_NUM2,
     R858_MAX_NUM
 }R858_ExtTunerNum_Type;
+typedef enum _R858_IMR_CAL_TYPE
+{
+	IMR_AUTO = 0,
+	IMR_MANUAL
+}R858_IMR_CAL_TYPE;
+
+
 //----------------------------------------------------------//
 //                   R858 Public Function                       //
 //----------------------------------------------------------//
 #define R858_Delay_MS(R858_ExtTunerNum_Type, x_ms) MsOS_DelayTask(x_ms) 
 
+R858_ErrCode R858_Init_ALL(R858_ExtTunerNum_Type R858_Num,R858_Set_Info R858_INFO);
 R858_ErrCode R858_Init(R858_ExtTunerNum_Type R858_Num, R858_IntTunerNum_Type IntTunerNum);
+R858_ErrCode R858_Cal_Prepare(R858_ExtTunerNum_Type R858_Num, R858_IntTunerNum_Type IntTunerNum, UINT8 u1CalFlag);
+R858_ErrCode R858_IMR_Process(R858_ExtTunerNum_Type R858_Num, R858_IntTunerNum_Type IntTunerNum);
+R858_ErrCode R858_IMR(R858_ExtTunerNum_Type R858_Num, R858_IntTunerNum_Type IntTunerNum, UINT8 IMR_MEM, UINT8 IM_Flag,UINT8 Rev_Mode);
 R858_ErrCode R858_InitUserMode(R858_Set_Info R858_INFO);
 R858_ErrCode R858_SetPllData(R858_ExtTunerNum_Type R858_Num, R858_IntTunerNum_Type IntTunerNum, R858_Set_Info R858_INFO);
 R858_ErrCode R858_Standby(R858_ExtTunerNum_Type R858_Num, R858_IntTunerNum_Type IntTunerNum, R858_LT_Type R858_LT);
@@ -292,12 +318,12 @@ R858_ErrCode R858_Wakeup(R858_ExtTunerNum_Type R858_Num, R858_IntTunerNum_Type I
 R858_ErrCode R858_GetRfGain(R858_ExtTunerNum_Type R858_Num, R858_IntTunerNum_Type IntTunerNum, R858_RF_Gain_Info *pR858_rf_gain);
 R858_ErrCode R858_RfGainMode(R858_ExtTunerNum_Type R858_Num, R858_IntTunerNum_Type IntTunerNum, R858_RF_Gain_TYPE R858_RfGainType);
 R858_ErrCode R858_SetXtalCap(R858_ExtTunerNum_Type R858_Num, R858_IntTunerNum_Type IntTunerNum, UINT8 u8XtalCap); 
-R858_ErrCode R858_GetRfRssi(R858_ExtTunerNum_Type R858_Num, R858_IntTunerNum_Type IntTunerNum, UINT32 RF_Freq_Khz, R858_Standard_Type RT_Standard, INT32 *RfLevelDbm, UINT8 *fgRfMaxGain);
+R858_ErrCode R858_GetRfRssi(R858_ExtTunerNum_Type R858_Num, R858_IntTunerNum_Type IntTunerNum, UINT32 RF_Freq_Khz, INT32 *RfLevelDbm, UINT8 *fgRfMaxGain);
 R858_ErrCode R858_GetIfRssi(R858_ExtTunerNum_Type R858_Num, R858_IntTunerNum_Type IntTunerNum, INT32 *VgaGain);
-R858_ErrCode R858_GetTotalRssi(R858_ExtTunerNum_Type R858_Num, R858_IntTunerNum_Type IntTunerNum, UINT32 RF_Freq_Khz, R858_Standard_Type RT_Standard, INT32 *RssiDbm);
+R858_ErrCode R858_GetTotalRssi(R858_ExtTunerNum_Type R858_Num, R858_IntTunerNum_Type IntTunerNum, UINT32 RF_Freq_Khz, INT32 *RssiDbm);
 
-extern UINT8   R858_Initial_done_flag[R858_MAX_NUM][2];
-extern UINT8   R858_IMR_done_flag[R858_MAX_NUM][2];
+//extern UINT8   R858_Initial_done_flag[R858_MAX_NUM][2];
+//extern UINT8   R858_IMR_done_flag[R858_MAX_NUM][2];
 //================
 typedef struct _I2C_LEN_TYPE
 {

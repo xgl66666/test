@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -1039,11 +1039,11 @@ MS_BOOL Demo_DSCMB_ConnectPID(MS_U32 *u32DeviceId)
         return FALSE;
     }
 
-    if(Demo_AV_GetAVInfo(*u32DeviceId, &pstAVInfo))
+    if(Demo_AV_GetAVInfo((EN_AV_Device*)u32DeviceId,E_AV_GetCmd_LiveInfo,&pstAVInfo))
     {
         u32PidFlt[0] = (MS_U32)pstAVInfo.stVideoParams.u8Filter;
         u32PidFlt[1] = (MS_U32)pstAVInfo.stAudioParams.u8Filter;
-        u32PidFlt[2] = (MS_U32)pstAVInfo.stPCRParams.u8PCREngID;
+        u32PidFlt[2] = (MS_U32)pstAVInfo.stPCRParams.ePCREngID;
         printf("VideoPidFlt=%lu AudioFlt=%lu\n", (long unsigned int)u32PidFlt[0], (long unsigned int)u32PidFlt[1]);
     }
     else
@@ -1108,11 +1108,11 @@ MS_BOOL Demo_DSCMB_DisconnectPID(MS_U32 *u32DeviceId)
         return FALSE;
     }
 
-    if(Demo_AV_GetAVInfo(*u32DeviceId, &pstAVInfo))
+    if(Demo_AV_GetAVInfo((EN_AV_Device*)u32DeviceId,E_AV_GetCmd_LiveInfo,&pstAVInfo))
     {
         u32PidFlt[0] = (MS_U32)pstAVInfo.stVideoParams.u8Filter;
         u32PidFlt[1] = (MS_U32)pstAVInfo.stAudioParams.u8Filter;
-        u32PidFlt[2] = (MS_U32)pstAVInfo.stPCRParams.u8PCREngID;
+        u32PidFlt[2] = (MS_U32)pstAVInfo.stPCRParams.ePCREngID;
         printf("VideoPidFlt=%lu AudioFlt=%lu\n", (long unsigned int)u32PidFlt[0], (long unsigned int)u32PidFlt[1]);
     }
     else

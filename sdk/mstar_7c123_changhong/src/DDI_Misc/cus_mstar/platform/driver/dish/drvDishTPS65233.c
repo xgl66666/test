@@ -71,11 +71,11 @@ static BOOL TPS65233_iCurrentLimit(CSHDITunerIndex eTunerIndex, TPS65233_Current
 static BOOL TPS65233_iSetCurrentControlMode(CSHDITunerIndex eTunerIndex, TPS65233_CLController_E eCLController);
 
 /*************************************************
-  Function:         Tps65233 I2C 录脛麓忙脝梅露脕潞炉脢媒
-  Description:      Tps65233 I2C 录脛麓忙脝梅露脕潞炉脢媒
-  Input:                eTunerIndex, pRegAddress(录脛麓忙脝梅碌脴脰路脰赂脮毛), pDatabuf(露脕脠隆脢媒戮脻脰赂脮毛)
+  Function:         Tps65233 I2C 寄存器读函数
+  Description:      Tps65233 I2C 寄存器读函数
+  Input:                eTunerIndex, pRegAddress(寄存器地址指针), pDatabuf(读取数据指针)
   Output:           NULL
-  Return:           鲁脡鹿娄路碌禄脴TRUE,路帽脭貌路碌禄脴FALSE
+  Return:           成功返回TRUE,否则返回FALSE
 *************************************************/
 static HWI2C_PORT _get_I2C_port(MS_U8 u8DishIndex)
 {
@@ -116,7 +116,7 @@ static BOOL TPS65233_iReadReg(CSHDITunerIndex eTunerIndex, BYTE *pucRegAddress, 
             break;
         }
 
-        //脡猫脰脙Tps65233露脕录脛麓忙脝梅脛拢脢陆
+        //设置Tps65233读寄存器模式
 
         if(ehwI2c_port > E_HWI2C_PORT_1)
             bRet = MDrv_HWI2C_SetReadModeP1(E_HWI2C_READ_MODE_DIRECTION_CHANGE);
@@ -137,7 +137,7 @@ static BOOL TPS65233_iReadReg(CSHDITunerIndex eTunerIndex, BYTE *pucRegAddress, 
             break;
         }
 
-        //脡猫脰脙Tps65233露脕录脛麓忙脝梅脛拢脢陆
+        //设置Tps65233读寄存器模式
         if(ehwI2c_port > E_HWI2C_PORT_1)
             bRet = MDrv_HWI2C_SetReadModeP1(E_HWI2C_READ_MODE_DIRECT);
         else
@@ -156,11 +156,11 @@ static BOOL TPS65233_iReadReg(CSHDITunerIndex eTunerIndex, BYTE *pucRegAddress, 
 }
 
 /*************************************************
-  Function:         Tps65233 I2C 录脛麓忙脝梅脨麓潞炉脢媒
-  Description:      Tps65233 I2C 录脛麓忙脝梅脨麓潞炉脢媒
-  Input:                eTunerIndex,  pRegAddress(录脛麓忙脝梅碌脴脰路脰赂脮毛), pDatabuf(脨麓脠毛脢媒戮脻脰赂脮毛)
+  Function:         Tps65233 I2C 寄存器写函数
+  Description:      Tps65233 I2C 寄存器写函数
+  Input:                eTunerIndex,  pRegAddress(寄存器地址指针), pDatabuf(写入数据指针)
   Output:           NULL
-  Return:           鲁脡鹿娄路碌禄脴TRUE,路帽脭貌路碌禄脴FALSE
+  Return:           成功返回TRUE,否则返回FALSE
 *************************************************/
 static BOOL TPS65233_iWriteReg(CSHDITunerIndex eTunerIndex, BYTE *pucRegAddress, BYTE *pucDatabuf)
 {
@@ -191,11 +191,11 @@ static BOOL TPS65233_iWriteReg(CSHDITunerIndex eTunerIndex, BYTE *pucRegAddress,
 }
 
 /*************************************************
-  Function:         Tps65233 I2C 脦禄脨麓脠毛
-  Description:      Tps65233 I2C 脦禄脨麓脠毛
-  Input:                eTunerIndex,  ucRegAddress(录脛麓忙脝梅碌脴脰路), ucData(脨麓脠毛脢媒戮脻), ucMask(脨麓脠毛脦禄脩脷脗毛)
+  Function:         Tps65233 I2C 位写入
+  Description:      Tps65233 I2C 位写入
+  Input:                eTunerIndex,  ucRegAddress(寄存器地址), ucData(写入数据), ucMask(写入位掩码)
   Output:           NULL
-  Return:           鲁脡鹿娄路碌禄脴TRUE,路帽脭貌路碌禄脴FALSE
+  Return:           成功返回TRUE,否则返回FALSE
 *************************************************/
 static BOOL TPS65233_iWriteRegBits(CSHDITunerIndex eTunerIndex, BYTE ucRegAddress, BYTE ucData, BYTE ucMask)
 {
@@ -230,11 +230,11 @@ static BOOL TPS65233_iWriteRegBits(CSHDITunerIndex eTunerIndex, BYTE ucRegAddres
 }
 
 /*************************************************
-  Function:         脡猫脰脙Tps65233 I2C驴脴脰脝脢鹿脛脺潞炉脢媒
-  Description:      脡猫脰脙Tps65233 I2C 驴脴脰脝脢脟路帽脢鹿脛脺
-  Input:            eTunerIndex,  eI2CContrlMode(I2C脢鹿脛脺脙露戮脵卤盲脕驴)
+  Function:         设置Tps65233 I2C控制使能函数
+  Description:      设置Tps65233 I2C 控制是否使能
+  Input:            eTunerIndex,  eI2CContrlMode(I2C使能枚举变量)
   Output:           NULL
-  Return:           鲁脡鹿娄路碌禄脴TRUE,路帽脭貌路碌禄脴FALSE
+  Return:           成功返回TRUE,否则返回FALSE
 *************************************************/
 static BOOL TPS65233_iSetI2CControlMode(CSHDITunerIndex eTunerIndex, TPS65233_I2CContrlMode_E eI2CContrlMode)
 {
@@ -265,11 +265,11 @@ static BOOL TPS65233_iSetI2CControlMode(CSHDITunerIndex eTunerIndex, TPS65233_I2
 }
 
 /*************************************************
-  Function:         脡猫脰脙 current limit(碌莽脕梅脧脼脰脝)
-  Description:      脡猫脰脙 current limit(碌莽脕梅脧脼脰脝)
-  Input:                eTunerIndex, eCurrentLimit(碌莽脕梅脧脼脰脝脡猫脰脙脰碌)
+  Function:         设置 current limit(电流限制)
+  Description:      设置 current limit(电流限制)
+  Input:                eTunerIndex, eCurrentLimit(电流限制设置值)
   Output:           NULL
-  Return:           鲁脡鹿娄路碌禄脴TRUE,路帽脭貌路碌禄脴FALSE
+  Return:           成功返回TRUE,否则返回FALSE
 *************************************************/
 static BOOL TPS65233_iCurrentLimit(CSHDITunerIndex eTunerIndex, TPS65233_CurrentLimit_E eCurrentLimit)
 {
@@ -299,11 +299,11 @@ static BOOL TPS65233_iCurrentLimit(CSHDITunerIndex eTunerIndex, TPS65233_Current
 }
 
 /*************************************************
-  Function:         脡猫脰脙 current limit 碌脛驴脴脰脝脮脽
+  Function:         设置 current limit 的控制者
   Description:      deside what is the controller of current limit
-  Input:                eTunerIndex, eCLController(碌莽脕梅脧脼脰脝驴脴脰脝脮脽戮枚露篓卤盲脕驴)
+  Input:                eTunerIndex, eCLController(电流限制控制者决定变量)
   Output:           NULL
-  Return:           鲁脡鹿娄路碌禄脴TRUE,路帽脭貌路碌禄脴FALSE
+  Return:           成功返回TRUE,否则返回FALSE
 *************************************************/
 static BOOL TPS65233_iSetCurrentControlMode(CSHDITunerIndex eTunerIndex, TPS65233_CLController_E eCLController)
 {
@@ -333,11 +333,11 @@ static BOOL TPS65233_iSetCurrentControlMode(CSHDITunerIndex eTunerIndex, TPS6523
 }
 
 /*************************************************
-  Function:         脡猫脰脙 TPS65233 脢盲鲁枚碌莽脩鹿
-  Description:      脡猫脰脙 TPS65233 脢盲鲁枚碌莽脩鹿
-  Input:                eTunerIndex, eLNBPower(LNB脨戮脝卢脢盲鲁枚碌莽脩鹿脡猫脰脙)
+  Function:         设置 TPS65233 输出电压
+  Description:      设置 TPS65233 输出电压
+  Input:                eTunerIndex, eLNBPower(LNB芯片输出电压设置)
   Output:           NULL
-  Return:           鲁脡鹿娄路碌禄脴TRUE,路帽脭貌路碌禄脴FALSE
+  Return:           成功返回TRUE,否则返回FALSE
 *************************************************/
 BOOL TPS65233_SetLNBPower(CSHDITunerIndex eTunerIndex, TPS65233_LNBPower_E eLNBPower)
 {
@@ -374,11 +374,11 @@ BOOL TPS65233_SetLNBPower(CSHDITunerIndex eTunerIndex, TPS65233_LNBPower_E eLNBP
 }
 
 /*************************************************
-  Function:         Tps652333 Tone Gate 脛拢脢陆脡猫脰脙
-  Description:      Tps652333 Tone Gate 脛拢脢陆脡猫脰脙
-  Input:                eTunerIndex,eToneGateMode(TONE GATE 驴陋鹿脴潞脥TONE MODE 脡猫脰脙)
+  Function:         Tps652333 Tone Gate 模式设置
+  Description:      Tps652333 Tone Gate 模式设置
+  Input:                eTunerIndex,eToneGateMode(TONE GATE 开关和TONE MODE 设置)
   Output:           NULL
-  Return:           鲁脡鹿娄路碌禄脴TRUE,路帽脭貌路碌禄脴FALSE
+  Return:           成功返回TRUE,否则返回FALSE
 *************************************************/
 BOOL TPS65233_SetToneGateMode(CSHDITunerIndex eTunerIndex, TPS65233_ToneGateMode_E eToneGateMode)
 {
@@ -415,11 +415,11 @@ BOOL TPS65233_SetToneGateMode(CSHDITunerIndex eTunerIndex, TPS65233_ToneGateMode
 }
 
 /*************************************************
-  Function:         Tps652333 TONE Position脡猫脰脙
-  Description:      Tps652333Tone Gate 脛拢脢陆脡猫脰脙
+  Function:         Tps652333 TONE Position设置
+  Description:      Tps652333Tone Gate 模式设置
   Input:            eTunerIndex,eTonePosition
   Output:           NULL
-  Return:           鲁脡鹿娄路碌禄脴TRUE,路帽脭貌路碌禄脴FALSE
+  Return:           成功返回TRUE,否则返回FALSE
 *************************************************/
 BOOL TPS65233_SetTonePosition(CSHDITunerIndex eTunerIndex, TPS65233_TonePosition_E eTonePosition)
 {
@@ -456,11 +456,11 @@ BOOL TPS65233_SetTonePosition(CSHDITunerIndex eTunerIndex, TPS65233_TonePosition
 }
 
 /*************************************************
-  Function:         露脕脠隆 TPS65233 脭脣脨脨脳麓脤卢脰碌
-  Description:      露脕脠隆 TPS65233 脭脣脨脨脳麓脤卢脰碌
-  Input:            eTunerIndex,psStatus(脳麓脤卢麓忙麓垄脰赂脮毛)
+  Function:         读取 TPS65233 运行状态值
+  Description:      读取 TPS65233 运行状态值
+  Input:            eTunerIndex,psStatus(状态存储指针)
   Output:           NULL
-  Return:           鲁脡鹿娄路碌禄脴TRUE,路帽脭貌路碌禄脴FALSE
+  Return:           成功返回TRUE,否则返回FALSE
 *************************************************/
 BOOL TPS65233_ReadStatus(CSHDITunerIndex eTunerIndex, TPS65233_Status_E *psStatus)
 {
@@ -498,11 +498,11 @@ BOOL TPS65233_ReadStatus(CSHDITunerIndex eTunerIndex, TPS65233_Status_E *psStatu
 
 
 /*************************************************
-  Function:         Tps652333鲁玫脢录禄炉
-  Description:      鲁玫脢录禄炉脢卤脡猫脰脙Tps652333脦陋脢鹿脛脺I2C 驴脴脰脝
+  Function:         Tps652333初始化
+  Description:      初始化时设置Tps652333为使能I2C 控制
   Input:            eTunerIndex
   Output:           NULL
-  Return:           鲁玫脢录禄炉鲁脡鹿娄路碌禄脴TRUE,路帽脭貌路碌禄脴FALSE
+  Return:           初始化成功返回TRUE,否则返回FALSE
 *************************************************/
 BOOL TPS65233_Init(CSHDITunerIndex eTunerIndex)
 {

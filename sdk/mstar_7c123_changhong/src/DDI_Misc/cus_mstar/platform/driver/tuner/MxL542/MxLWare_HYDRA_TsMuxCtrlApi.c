@@ -29,6 +29,54 @@
 #include "MxLWare_HYDRA_Registers.h"
 #include "MxLWare_HYDRA_TsMuxCtrlApi.h"
 
+static MXL_STATUS_E MxLWare_HYDRA_CfgXPTXBar(UINT8 devId, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_TS_ID_E tsOutId);
+
+void MxL_Ctrl_Set_MuxMode_54x(UINT8 devId, MXL_HYDRA_TS_MUX_TYPE_E tsMuxType)
+{
+  MXL_STATUS_E mxlStatus = MXL_SUCCESS;
+
+  if(MXL_HYDRA_TS_MUX_4_TO_1 == tsMuxType)
+  {
+    /* setting up Mux mode for both slice 0 & 1
+        For 54x devices in 4:1 mux mode, move physical demods 4 & 5 from slice 1 to slice 0 becasue mux-ing across 
+        slices is not possible. So we need to write xbar register with 0x77775432. Function MxLWare_HYDRA_CfgXPTXBar() 
+        has the second argument demod ID (logical) and TS ID (logical) and these logical IDs will be mapped to 
+        physical IDs in firmware. If user doesn't want to get either demod ID/TS ID to be mapped in firmware, 
+        MXL_LOGICAL_TO_PHYSICAL_BYPASS() has to be used instead sothat firmware skips the mapping.
+    */
+
+    mxlStatus = MxLWare_HYDRA_CfgXPTXBar(devId, MXL_HYDRA_DEMOD_ID_0, MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_TS_ID_0));
+    mxlStatus |= MxLWare_HYDRA_CfgXPTXBar(devId, MXL_HYDRA_DEMOD_ID_1, MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_TS_ID_1));
+    mxlStatus |= MxLWare_HYDRA_CfgXPTXBar(devId, MXL_HYDRA_DEMOD_ID_2, MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_TS_ID_2));
+    mxlStatus |= MxLWare_HYDRA_CfgXPTXBar(devId, MXL_HYDRA_DEMOD_ID_3, MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_TS_ID_3));
+    mxlStatus |= MxLWare_HYDRA_CfgXPTXBar(devId, MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_DEMOD_ID_7), MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_TS_ID_4));
+    mxlStatus |= MxLWare_HYDRA_CfgXPTXBar(devId, MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_DEMOD_ID_7), MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_TS_ID_5));
+    mxlStatus |= MxLWare_HYDRA_CfgXPTXBar(devId, MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_DEMOD_ID_7), MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_TS_ID_6));
+    mxlStatus |= MxLWare_HYDRA_CfgXPTXBar(devId, MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_DEMOD_ID_7), MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_TS_ID_7));
+
+    // Enable all outputs
+    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT0, 1);
+    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT1, 1);
+    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT2, 1);
+    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT3, 1);
+    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT4, 1);
+    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT5, 1);
+    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT6, 1);
+    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT7, 1);
+  }
+  else
+  {
+    // Resetting the xbar with default settings, i.e., 0x76543210 for non-mux case
+    mxlStatus = MxLWare_HYDRA_CfgXPTXBar(devId, MXL_HYDRA_DEMOD_ID_0, MXL_HYDRA_TS_ID_0);
+    mxlStatus |= MxLWare_HYDRA_CfgXPTXBar(devId, MXL_HYDRA_DEMOD_ID_1, MXL_HYDRA_TS_ID_1);
+    mxlStatus |= MxLWare_HYDRA_CfgXPTXBar(devId, MXL_HYDRA_DEMOD_ID_2, MXL_HYDRA_TS_ID_2);
+    mxlStatus |= MxLWare_HYDRA_CfgXPTXBar(devId, MXL_HYDRA_DEMOD_ID_3, MXL_HYDRA_TS_ID_3);
+    mxlStatus |= MxLWare_HYDRA_CfgXPTXBar(devId, MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_DEMOD_ID_0), MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_TS_ID_0));
+    mxlStatus |= MxLWare_HYDRA_CfgXPTXBar(devId, MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_DEMOD_ID_1), MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_TS_ID_1));
+    mxlStatus |= MxLWare_HYDRA_CfgXPTXBar(devId, MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_DEMOD_ID_6), MXL_LOGICAL_TO_PHYSICAL_BYPASS(MXL_HYDRA_TS_ID_6));
+  }
+}
+
 /**
  ************************************************************************
  *
@@ -82,16 +130,10 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgTSMuxMode(UINT8 devId, MXL_HYDRA_TS_MUX_TYPE_E
         streamMuxType = 3;
         break;
     }
-
-    // Disable TS out
-    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT0, 0);
-    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT1, 0);
-    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT2, 0);
-    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT3, 0);
-    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT4, 0);
-    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT5, 0);
-    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT6, 0);
-    mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT7, 0);
+    if (MXL_HYDRA_SKU_54X == devHandlePtr->skuFamily)
+    {
+      MxL_Ctrl_Set_MuxMode_54x(devId, tsMuxType);
+    }
 
     // No MUX for regular pids - slice 0 & 1
     mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_STREAM_MUXMODE0, streamMuxType);
@@ -153,17 +195,15 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgTSMixMuxMode(UINT8 devId, MXL_HYDRA_TS_GROUP_E
         streamMuxType = 3;
         break;
     }
+    if (MXL_HYDRA_SKU_54X == devHandlePtr->skuFamily)
+    {
+      MxL_Ctrl_Set_MuxMode_54x(devId, tsMuxType);
+    }
 
     if (tsGroupType == MXL_HYDRA_TS_GROUP_0_3)
     {
       // update device extention for mux mode group 0
       devHandlePtr->tsMuxModeSlice0 = tsMuxType;
-
-      // Disable TS out
-      mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT0, 0);
-      mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT1, 0);
-      mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT2, 0);
-      mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT3, 0);
 
       // Configure MUX mode for slice 0 (TS0, TS1, TS2 & TS3)
       MXL_HYDRA_PRINT("TS0 - TS3 : %d\n", streamMuxType);
@@ -173,12 +213,6 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgTSMixMuxMode(UINT8 devId, MXL_HYDRA_TS_GROUP_E
     {
       // update device extention for mux mode group 1
       devHandlePtr->tsMuxModeSlice1 = tsMuxType;
-
-      // Disable TS out
-      mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT4, 0);
-      mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT5, 0);
-      mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT6, 0);
-      mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_OUTPUT7, 0);
 
       // Configure MUX mode for slice 1 (TS4, TS5, TS6 & TS7)
       MXL_HYDRA_PRINT("TS4 - TS7 : %d \n", streamMuxType);
@@ -300,14 +334,14 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgTSTimeMuxOutput(UINT8 devId, MXL_BOOL_E tsTime
 }
 
 // function to update software pid filter bank context in the device
-static MXL_STATUS_E MxL_HYDRA_CfgChangePidFilterBankContext(UINT8 devId, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_TS_MUX_TYPE_E muxType)
+static MXL_STATUS_E MxL_HYDRA_CfgChangePidFilterBankContext(UINT8 devId, MXL_HYDRA_TS_ID_E tsId, MXL_HYDRA_TS_MUX_TYPE_E muxType)
 {
   MXL_STATUS_E mxlStatus = MXL_SUCCESS;
   UINT32 regData = 0;
   UINT32 mask = 0;
 
   // determine which slice to update
-  if (demodId < MXL_HYDRA_DEMOD_ID_4)
+  if (tsId < MXL_HYDRA_TS_ID_4)
   {
     // get current bank context
     mxlStatus |= MxLWare_HYDRA_ReadRegister(devId, 0x90700190, &regData);
@@ -396,10 +430,12 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgTSPidFilterCtrl(UINT8 devId, MXL_HYDRA_DEMOD_I
 
   // zero array - array big to accomodate 2 32-bit registers used for shared pid table
   //UINT8 data[(MXL_HYDRA_SHARED_PID_FILT_SIZE_SCORPIUS_DEFAULT * (2 * sizeof(UINT32)))];
-  UINT8 data[250];
+  const UINT8 data[250] = {0,};  // initialize the constant data array here to make sure it is always set to all zeros
 
   UINT16 bytesLeft = 0, bytesToSend = 0, offset = 0;
-  UINT8 j = 0;
+  UINT8 j = 0, iter = 0;
+  MXL_HYDRA_TS_ID_E tsId = MXL_HYDRA_TS_MAX;
+  MXL_HYDRA_TS_ID_E listTsId[MXL_HYDRA_TS_MAX] = {0, };
 
   // Array to get register address of known PID filter
   UINT32 knownPidregAddr[MXL_HYDRA_DEMOD_MAX] = {(XPT_KNOWN_PID_BASEADDR), (XPT_KNOWN_PID_BASEADDR + (1 * 0x80)),
@@ -430,141 +466,142 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgTSPidFilterCtrl(UINT8 devId, MXL_HYDRA_DEMOD_I
   if (mxlStatus == MXL_SUCCESS)
   {
     mxlStatus = MxL_Ctrl_GetTsID(devHandlePtr, demodId, &demodId);
+    mxlStatus = MxL_Ctrl_GetPhyTsID(devId, demodId, listTsId);
     if (mxlStatus == MXL_SUCCESS)
     {
-      MXL_HYDRA_PRINT("after map demodID = %d PID filter type = %d\n", demodId, tsFiltCtrl);
-      MXL_HYDRA_PRINT("fix pids: %d reg pids: %d\n", devHandlePtr->maxFixPidEntries, devHandlePtr->maxRegPidEntries);
-
-      if (tsFiltCtrl < MXL_HYDRA_TS_INVALIDATE_PID_FILTER)
+      for (iter = 0; iter < listTsId[0]; iter++)
       {
-        // configure PID control - drop or allow all
-        mxlStatus |= MxLWare_Hydra_UpdateByMnemonic(devId,
-                                                xpt_pid_filt_ctrl[demodId].regAddr,    // Reg Addr
-                                                xpt_pid_filt_ctrl[demodId].lsbPos,     // LSB pos
-                                                xpt_pid_filt_ctrl[demodId].numOfBits,  // Num of bits
+        tsId = listTsId[iter+1];
+        MXL_HYDRA_PRINT("after map demodID = %d PID filter type = %d\n", demodId, tsFiltCtrl);
+        MXL_HYDRA_PRINT("fix pids: %d reg pids: %d\n", devHandlePtr->maxFixPidEntries, devHandlePtr->maxRegPidEntries);
+
+        if (tsFiltCtrl < MXL_HYDRA_TS_INVALIDATE_PID_FILTER)
+        {
+          // configure PID control - drop or allow all
+          mxlStatus |= MxLWare_Hydra_UpdateByMnemonic(devId,
+                                                xpt_pid_filt_ctrl[tsId].regAddr,    // Reg Addr
+                                                xpt_pid_filt_ctrl[tsId].lsbPos,     // LSB pos
+                                                xpt_pid_filt_ctrl[tsId].numOfBits,  // Num of bits
                                                 tsFiltCtrl);                           // Allow or Drop all PIDS
-      }
-      else
-      {
-        // Invalidate PID filter table in the MxLWare and in device
-        // Invalidate fixed PID table
-        // Initilize zero array
-        //MXLWARE_OSAL_MEMSET(&data[0], 0, (devHandlePtr->maxRegPidEntries * (2 * sizeof(UINT32))));
-        MXLWARE_OSAL_MEMSET(&data[0], 0, 250);
-
-        if (demodId <= MXL_HYDRA_DEMOD_ID_3) muxType = devHandlePtr->tsMuxModeSlice0;
-        else muxType = devHandlePtr->tsMuxModeSlice1;
-
-        // Update pid filter bank context
-        mxlStatus |= MxL_HYDRA_CfgChangePidFilterBankContext(devId, demodId, muxType);
-
-        if (devHandlePtr->maxFixPidEntries > 0)
-        {
-          // Invalidate FIXED PID table
-          mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
-                                                     knownPidregAddr[demodId],
-                                                     ((devHandlePtr->maxFixPidEntries) * sizeof(UINT32)),
-                                                     &data[0]);
-        }
-
-#if 0
-        // Invalidate Shared PID Table - has to use 2 block writes as size of
-        // block write is limited to 250 bytes
-        mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
-                                                   sharedPidregAddr[demodId],
-                                                   (MXL_HYDRA_SHARED_PID_FILT_SIZE_DEFAULT * (sizeof(UINT32))),
-                                                   &data[0]);
-
-        mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
-                                                   sharedPidregAddr[demodId] + (MXL_HYDRA_SHARED_PID_FILT_SIZE_DEFAULT * (sizeof(UINT32))),
-                                                   (MXL_HYDRA_SHARED_PID_FILT_SIZE_DEFAULT * (sizeof(UINT32))),
-                                                   &data[0]);
-#else
-        // Invalidate Shared PID Table - has to use 2 block writes as size of
-        // block write is limited to 250 bytes
-        bytesLeft = devHandlePtr->maxRegPidEntries * (2 * sizeof(UINT32));
-        offset = 0;
-        while (bytesLeft != 0)
-        {
-          bytesToSend = (bytesLeft > 250) ? 250: bytesLeft;
-          mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
-                                                     sharedPidregAddr[demodId] + offset,
-                                                     bytesToSend,
-                                                     &data[0]);
-          bytesLeft -= bytesToSend;
-          offset += bytesToSend;
-        }
-#endif
-
-        // Update pid filter bank context
-        mxlStatus |= MxL_HYDRA_CfgChangePidFilterBankContext(devId, demodId, muxType);
-
-        if (devHandlePtr->maxFixPidEntries > 0)
-        {
-          // Invalidate FIXED PID table
-          mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
-                                                     knownPidregAddr[demodId],
-                                                     ((devHandlePtr->maxFixPidEntries) * sizeof(UINT32)),
-                                                     &data[0]);
-        }
-
-#if 0
-        // Invalidate Shared PID Table - has to use 2 block writes as size of
-        // block write is limited to 250 bytes
-        mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
-                                                   sharedPidregAddr[demodId],
-                                                   (MXL_HYDRA_SHARED_PID_FILT_SIZE_DEFAULT * (sizeof(UINT32))),
-                                                   &data[0]);
-
-        mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
-                                                   sharedPidregAddr[demodId] + (MXL_HYDRA_SHARED_PID_FILT_SIZE_DEFAULT * (sizeof(UINT32))),
-                                                   (MXL_HYDRA_SHARED_PID_FILT_SIZE_DEFAULT * (sizeof(UINT32))),
-                                                   &data[0]);
-#else
-        // Invalidate Shared PID Table - has to use 2 block writes as size of
-        // block write is limited to 250 bytes
-        bytesLeft = devHandlePtr->maxRegPidEntries * (2 * sizeof(UINT32));
-        offset = 0;
-        while (bytesLeft != 0)
-        {
-          bytesToSend = (bytesLeft > 250) ? 250: bytesLeft;
-          mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
-                                                     sharedPidregAddr[demodId] + offset,
-                                                     bytesToSend,
-                                                     &data[0]);
-          bytesLeft -= bytesToSend;
-          offset += bytesToSend;
-        }
-#endif
-
-
-        // clear MxLWare PID filter table
-        // Init pid filters
-        MXLWARE_OSAL_MEMSET(devHandlePtr->fixedPidFilt[demodId], 0, (devHandlePtr->maxFixPidEntries * sizeof(MXL_HYDRA_PID_T)));
-        MXLWARE_OSAL_MEMSET(devHandlePtr->regPidFilt[demodId], 0, (devHandlePtr->maxRegPidEntries * sizeof(MXL_HYDRA_PID_T)));
-
-        if (demodId < MXL_HYDRA_DEMOD_ID_4)
-        {
-          // update register address for slice 0
-          for (j = 0; j < devHandlePtr->maxRegPidEntries; j++)
-          {
-            // register address - (based Addr) + (demodID offset) + (pid filter item's offset)
-            if (j < devHandlePtr->maxFixPidEntries)
-              devHandlePtr->fixedPidFilt[demodId][j].regAddr = XPT_KNOWN_PID_BASEADDR + ((demodId % MXL_HYDRA_DEMOD_ID_4) * 0x80) + (j * 4);
-
-            devHandlePtr->regPidFilt[demodId][j].regAddr = XPT_PID_BASEADDR + ((demodId % MXL_HYDRA_DEMOD_ID_4) * 0x200) + (j * 8);
-          }
         }
         else
         {
-          // update register address for slice 1
-          for (j = 0; j < devHandlePtr->maxRegPidEntries; j++)
-          {
-            // register address - (based Addr) + (demodID offset) + (pid filter item's offset)
-            if (j < devHandlePtr->maxFixPidEntries)
-              devHandlePtr->fixedPidFilt[demodId][j].regAddr = XPT_KNOWN_PID_BASEADDR1 + ((demodId % MXL_HYDRA_DEMOD_ID_4) * 0x80) + (j * 4);
+          // Invalidate PID filter table in the MxLWare and in device
+          if (tsId <= MXL_HYDRA_TS_ID_3) muxType = devHandlePtr->tsMuxModeSlice0;
+          else muxType = devHandlePtr->tsMuxModeSlice1;
 
-            devHandlePtr->regPidFilt[demodId][j].regAddr = XPT_PID_BASEADDR1 + ((demodId % MXL_HYDRA_DEMOD_ID_4) * 0x200) + (j * 8);
+          // Update pid filter bank context
+          mxlStatus |= MxL_HYDRA_CfgChangePidFilterBankContext(devId, tsId, muxType);
+
+          if (devHandlePtr->maxFixPidEntries > 0)
+          {
+            // Invalidate FIXED PID table
+            mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
+                                                     knownPidregAddr[tsId],
+                                                     ((devHandlePtr->maxFixPidEntries) * sizeof(UINT32)),
+                                                     (UINT8*)&data[0]);
+          }
+
+#if 0
+        // Invalidate Shared PID Table - has to use 2 block writes as size of
+        // block write is limited to 250 bytes
+        mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
+                                                   sharedPidregAddr[demodId],
+                                                   (MXL_HYDRA_SHARED_PID_FILT_SIZE_DEFAULT * (sizeof(UINT32))),
+                                                   &data[0]);
+
+        mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
+                                                   sharedPidregAddr[demodId] + (MXL_HYDRA_SHARED_PID_FILT_SIZE_DEFAULT * (sizeof(UINT32))),
+                                                   (MXL_HYDRA_SHARED_PID_FILT_SIZE_DEFAULT * (sizeof(UINT32))),
+                                                   &data[0]);
+#else
+          // Invalidate Shared PID Table - has to use 2 block writes as size of
+          // block write is limited to 250 bytes
+
+          bytesLeft = devHandlePtr->maxRegPidEntries * (2 * sizeof(UINT32));
+          offset = 0;
+          while (bytesLeft != 0)
+          {
+            bytesToSend = (bytesLeft > 250) ? 250: bytesLeft;
+            mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
+                                                     sharedPidregAddr[tsId] + offset,
+                                                     bytesToSend,
+                                                     (UINT8*)&data[0]);
+            bytesLeft -= bytesToSend;
+            offset += bytesToSend;
+          }
+#endif
+
+          // Update pid filter bank context
+          mxlStatus |= MxL_HYDRA_CfgChangePidFilterBankContext(devId, tsId, muxType);
+
+          if (devHandlePtr->maxFixPidEntries > 0)
+          {
+            // Invalidate FIXED PID table
+            mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
+                                                     knownPidregAddr[tsId],
+                                                     ((devHandlePtr->maxFixPidEntries) * sizeof(UINT32)),
+                                                     (UINT8*)&data[0]);
+          }
+
+#if 0
+          // Invalidate Shared PID Table - has to use 2 block writes as size of
+          // block write is limited to 250 bytes
+        mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
+                                                   sharedPidregAddr[demodId],
+                                                   (MXL_HYDRA_SHARED_PID_FILT_SIZE_DEFAULT * (sizeof(UINT32))),
+                                                   &data[0]);
+
+        mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
+                                                   sharedPidregAddr[demodId] + (MXL_HYDRA_SHARED_PID_FILT_SIZE_DEFAULT * (sizeof(UINT32))),
+                                                   (MXL_HYDRA_SHARED_PID_FILT_SIZE_DEFAULT * (sizeof(UINT32))),
+                                                   &data[0]);
+#else
+          // Invalidate Shared PID Table - has to use 2 block writes as size of
+          // block write is limited to 250 bytes
+          bytesLeft = devHandlePtr->maxRegPidEntries * (2 * sizeof(UINT32));
+          offset = 0;
+          while (bytesLeft != 0)
+          {
+            bytesToSend = (bytesLeft > 250) ? 250: bytesLeft;
+            mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
+                                                     sharedPidregAddr[tsId] + offset,
+                                                     bytesToSend,
+                                                     (UINT8*)&data[0]);
+            bytesLeft -= bytesToSend;
+            offset += bytesToSend;
+          }
+#endif
+
+
+          // clear MxLWare PID filter table
+          // Init pid filters
+          MXLWARE_OSAL_MEMSET(devHandlePtr->fixedPidFilt[tsId], 0, (devHandlePtr->maxFixPidEntries * sizeof(MXL_HYDRA_PID_T)));
+          MXLWARE_OSAL_MEMSET(devHandlePtr->regPidFilt[tsId], 0, (devHandlePtr->maxRegPidEntries * sizeof(MXL_HYDRA_PID_T)));
+
+          if (tsId < MXL_HYDRA_TS_ID_4)
+          {
+            // update register address for slice 0
+            for (j = 0; j < devHandlePtr->maxRegPidEntries; j++)
+            {
+              // register address - (based Addr) + (demodID offset) + (pid filter item's offset)
+              if (j < devHandlePtr->maxFixPidEntries)
+                devHandlePtr->fixedPidFilt[tsId][j].regAddr = XPT_KNOWN_PID_BASEADDR + ((tsId % MXL_HYDRA_TS_ID_4) * 0x80) + (j * 4);
+
+              devHandlePtr->regPidFilt[tsId][j].regAddr = XPT_PID_BASEADDR + ((tsId % MXL_HYDRA_TS_ID_4) * 0x200) + (j * 8);
+            }
+          }
+          else
+          {
+            // update register address for slice 1
+            for (j = 0; j < devHandlePtr->maxRegPidEntries; j++)
+            {
+              // register address - (based Addr) + (demodID offset) + (pid filter item's offset)
+              if (j < devHandlePtr->maxFixPidEntries)
+                devHandlePtr->fixedPidFilt[tsId][j].regAddr = XPT_KNOWN_PID_BASEADDR1 + ((tsId % MXL_HYDRA_TS_ID_4) * 0x80) + (j * 4);
+
+              devHandlePtr->regPidFilt[tsId][j].regAddr = XPT_PID_BASEADDR1 + ((tsId % MXL_HYDRA_TS_ID_4) * 0x200) + (j * 8);
+            }
           }
         }
 
@@ -710,6 +747,7 @@ static MXL_STATUS_E MxL_HYDRA_CfgTSPadMux(UINT8 devId, MXL_HYDRA_DEMOD_ID_E demo
 
         case MXL_HYDRA_DEVICE_542:
         case MXL_HYDRA_DEVICE_542C:
+        case MXL_HYDRA_DEVICE_532C:
         case MXL_HYDRA_DEVICE_544:
         case MXL_HYDRA_DEVICE_584:
         case MXL_HYDRA_DEVICE_582:
@@ -747,6 +785,7 @@ static MXL_STATUS_E MxL_HYDRA_CfgTSPadMux(UINT8 devId, MXL_HYDRA_DEMOD_ID_E demo
         case MXL_HYDRA_DEVICE_582:
         case MXL_HYDRA_DEVICE_584:
         case MXL_HYDRA_DEVICE_542C:
+        case MXL_HYDRA_DEVICE_532C:
         case MXL_HYDRA_DEVICE_582C:
           if ((devHandlePtr->deviceType == MXL_HYDRA_DEVICE_544) && (mpegMode == MXL_HYDRA_MPEG_MODE_SERIAL_4_WIRE))
           {
@@ -763,7 +802,8 @@ static MXL_STATUS_E MxL_HYDRA_CfgTSPadMux(UINT8 devId, MXL_HYDRA_DEMOD_ID_E demo
               mxlStatus |= SET_REG_FIELD_DATA(devId, PAD_MUX_DIGIO_27_PINMUX_SEL, tsDisable);
               mxlStatus |= SET_REG_FIELD_DATA(devId, PAD_MUX_DIGIO_28_PINMUX_SEL, tsDisable);
             }
-            else if (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_542C)
+            else if ((devHandlePtr->deviceType == MXL_HYDRA_DEVICE_542C) ||
+                     (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_532C))
             {
               tsEnable = 0x0;
               mxlStatus |= SET_REG_FIELD_DATA(devId, PAD_MUX_DIGIO_09_PINMUX_SEL, tsDisable);
@@ -883,7 +923,9 @@ static MXL_STATUS_E MxL_HYDRA_CfgTSPadMux(UINT8 devId, MXL_HYDRA_DEMOD_ID_E demo
 
         if ((devHandlePtr->deviceType != MXL_HYDRA_DEVICE_582) && (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_584) && \
             (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_544) && (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_542) && \
-            (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_542C) && (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_582C))
+            (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_542C) && (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_582C) &&
+            (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_532C)
+            )
         {
           mxlStatus |= MxLWare_Hydra_UpdateByMnemonic(devId,
                                       mxl5xx_xpt_ts[MXL_HYDRA_XPT_TS_VALID].regAddr,         // Reg Addr
@@ -902,7 +944,9 @@ static MXL_STATUS_E MxL_HYDRA_CfgTSPadMux(UINT8 devId, MXL_HYDRA_DEMOD_ID_E demo
                       
         if ((devHandlePtr->deviceType != MXL_HYDRA_DEVICE_582) && (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_584) && \
             (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_544) && (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_542) && \
-            (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_542C) && (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_582C))
+            (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_542C) && (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_582C) &&
+            (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_532C)
+            )
         {
           mxlStatus |= MxLWare_Hydra_UpdateByMnemonic(devId,
                                       mxl5xx_xpt_ts[MXL_HYDRA_XPT_TS_VALID].regAddr,         // Reg Addr
@@ -921,7 +965,7 @@ static MXL_STATUS_E MxL_HYDRA_CfgTSPadMux(UINT8 devId, MXL_HYDRA_DEMOD_ID_E demo
 
         if ((devHandlePtr->deviceType != MXL_HYDRA_DEVICE_582) && (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_584) && \
             (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_542) && (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_542C) && \
-            (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_582C))
+            (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_582C) && (devHandlePtr->deviceType != MXL_HYDRA_DEVICE_532C))
         {
           mxlStatus |= MxLWare_Hydra_UpdateByMnemonic(devId,
                                       mxl5xx_xpt_ts[MXL_HYDRA_XPT_TS_VALID].regAddr,         // Reg Addr
@@ -1310,6 +1354,13 @@ MXL_REG_FIELD_T xpt_nco_clock_rate[MXL_HYDRA_DEMOD_MAX] = {
                                                 mpegOutParamPtr->enable);
         }
       }
+      if ((MXL_HYDRA_MPEG_MODE_PARALLEL == mpegOutParamPtr->mpegMode) && (MXL_DISABLE == mpegOutParamPtr->enable))
+      {
+         //Disable Parallel TS output case
+         MXLDBG1(MXL_HYDRA_PRINT ("Parallel mode Disable TS out = %d\n", mpegOutParamPtr->enable));
+         //Disable parallel interface
+         mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_PARALLEL_OUTPUT, 0);
+      }
     }
     else
       mxlStatus = MXL_INVALID_PARAMETER;
@@ -1319,7 +1370,7 @@ MXL_REG_FIELD_T xpt_nco_clock_rate[MXL_HYDRA_DEMOD_MAX] = {
 }
 
 // function to search if pid is already part PID filter
-static SINT16 MxL_HYDRA_SearchPidFilter(MXL_HYDRA_CONTEXT_T * devHandlePtr, MXL_HYDRA_DEMOD_ID_E sharedDemodId, MXL_HYDRA_DEMOD_ID_E orgDemoId, UINT16 pid)
+static SINT16 MxL_HYDRA_SearchPidFilter(MXL_HYDRA_CONTEXT_T * devHandlePtr, MXL_HYDRA_TS_ID_E sharedDemodId, MXL_HYDRA_DEMOD_ID_E orgDemoId, UINT16 pid)
 {
   SINT16 pidFilterIndex = -1;
   UINT16 i = 0;
@@ -1377,6 +1428,7 @@ static SINT16 MxL_HYDRA_GetUnusedLocationIndex(MXL_HYDRA_CONTEXT_T * devHandlePt
 // function to update internal pid filter table
 static MXL_STATUS_E MxL_HYDRA_UpdateInternalPidFilter(MXL_HYDRA_CONTEXT_T * devHandlePtr,
                                                       MXL_HYDRA_DEMOD_ID_E demodId,
+                                                      MXL_HYDRA_TS_ID_E tsId,
                                                       MXL_HYDRA_TS_PID_T *pidsPtr, UINT8 numPids)
 {
   MXL_STATUS_E mxlStatus = MXL_SUCCESS;
@@ -1434,7 +1486,7 @@ static MXL_STATUS_E MxL_HYDRA_UpdateInternalPidFilter(MXL_HYDRA_CONTEXT_T * devH
       else
       {
         // get the TS mux mode for each demod
-        if (demodId <= MXL_HYDRA_DEMOD_ID_3) muxType = devHandlePtr->tsMuxModeSlice0;
+        if (tsId <= MXL_HYDRA_TS_ID_3) muxType = devHandlePtr->tsMuxModeSlice0;
         else muxType = devHandlePtr->tsMuxModeSlice1;
 
         // based on mux mode update start and end id's of pid fileters to search for given pid
@@ -1443,8 +1495,8 @@ static MXL_STATUS_E MxL_HYDRA_UpdateInternalPidFilter(MXL_HYDRA_CONTEXT_T * devH
           // no mux - start & end will be same
           default:
           case MXL_HYDRA_TS_MUX_DISABLE:
-            startId = demodId;
-            endId = demodId;
+            startId = tsId;
+            endId = tsId;
 
             MXL_HYDRA_PRINT("\n%s: startId = %d. endId = %d\n", __FUNCTION__, startId, endId);
 
@@ -1452,39 +1504,39 @@ static MXL_STATUS_E MxL_HYDRA_UpdateInternalPidFilter(MXL_HYDRA_CONTEXT_T * devH
 
           // for 2 to 1 Mux
           case MXL_HYDRA_TS_MUX_2_TO_1:
-            if ((demodId == MXL_HYDRA_DEMOD_ID_0) || (demodId == MXL_HYDRA_DEMOD_ID_1))
+            if ((tsId == MXL_HYDRA_TS_ID_0) || (tsId == MXL_HYDRA_TS_ID_1))
             {
-              startId = MXL_HYDRA_DEMOD_ID_0;
-              endId = MXL_HYDRA_DEMOD_ID_1;
+              startId = MXL_HYDRA_TS_ID_0;
+              endId = MXL_HYDRA_TS_ID_1;
             }
-            else if ((demodId == MXL_HYDRA_DEMOD_ID_2) || (demodId == MXL_HYDRA_DEMOD_ID_3))
+            else if ((tsId == MXL_HYDRA_TS_ID_2) || (tsId == MXL_HYDRA_TS_ID_3))
             {
-              startId = MXL_HYDRA_DEMOD_ID_2;
-              endId = MXL_HYDRA_DEMOD_ID_3;
+              startId = MXL_HYDRA_TS_ID_2;
+              endId = MXL_HYDRA_TS_ID_3;
             }
-            else if ((demodId == MXL_HYDRA_DEMOD_ID_4) || (demodId == MXL_HYDRA_DEMOD_ID_5))
+            else if ((tsId == MXL_HYDRA_TS_ID_4) || (tsId == MXL_HYDRA_TS_ID_5))
             {
-              startId = MXL_HYDRA_DEMOD_ID_4;
-              endId = MXL_HYDRA_DEMOD_ID_5;
+              startId = MXL_HYDRA_TS_ID_4;
+              endId = MXL_HYDRA_TS_ID_5;
             }
             else
             {
-              startId = MXL_HYDRA_DEMOD_ID_6;
-              endId = MXL_HYDRA_DEMOD_ID_7;
+              startId = MXL_HYDRA_TS_ID_6;
+              endId = MXL_HYDRA_TS_ID_7;
             }
             break;
 
           // for 4 to 1 Mux
           case MXL_HYDRA_TS_MUX_4_TO_1:
-            if (demodId < MXL_HYDRA_DEMOD_ID_4)
+            if (tsId < MXL_HYDRA_TS_ID_4)
             {
-              startId = MXL_HYDRA_DEMOD_ID_0;
-              endId = MXL_HYDRA_DEMOD_ID_3;
+              startId = MXL_HYDRA_TS_ID_0;
+              endId = MXL_HYDRA_TS_ID_3;
             }
             else
             {
-              startId = MXL_HYDRA_DEMOD_ID_4;
-              endId = MXL_HYDRA_DEMOD_ID_7;
+              startId = MXL_HYDRA_TS_ID_4;
+              endId = MXL_HYDRA_TS_ID_7;
             }
             break;
         }
@@ -1498,7 +1550,7 @@ static MXL_STATUS_E MxL_HYDRA_UpdateInternalPidFilter(MXL_HYDRA_CONTEXT_T * devH
 
         while((tmpId <= (UINT32)endId) && (regTableIndex == -1))
         {
-          regTableIndex = MxL_HYDRA_SearchPidFilter(devHandlePtr, (MXL_HYDRA_DEMOD_ID_E)tmpId, demodId, tmpPidPtr->originalPid);
+          regTableIndex = MxL_HYDRA_SearchPidFilter(devHandlePtr, (MXL_HYDRA_TS_ID_E)tmpId, demodId, tmpPidPtr->originalPid);
           if (regTableIndex < 0)
           {
             sharedDemodId = tmpId;
@@ -1549,11 +1601,11 @@ static MXL_STATUS_E MxL_HYDRA_UpdateInternalPidFilter(MXL_HYDRA_CONTEXT_T * devH
           MXL_HYDRA_PRINT("enablePidRemap = %d",tmpPidPtr->enablePidRemap);
           MXL_HYDRA_PRINT("originalPid = %d",tmpPidPtr->originalPid);
           MXL_HYDRA_PRINT("remappedPid = %d",tmpPidPtr->remappedPid);
-          MXL_HYDRA_PRINT("demodId = %d",demodId);
+          MXL_HYDRA_PRINT("tsId = %d",tsId);
 
           devHandlePtr->regPidFilt[sharedDemodId][regTableIndex].data[0] = REGULAR_PID_DATA_0(tmpPidPtr->enable, ((tmpPidPtr->allowOrDrop == MXL_TRUE) ? 0 : 1), tmpPidPtr->enablePidRemap, tmpPidPtr->originalPid, pidMask);
 
-          devHandlePtr->regPidFilt[sharedDemodId][regTableIndex].data[1] = REGULAR_PID_DATA_1(tmpPidPtr->remappedPid, demodId);
+          devHandlePtr->regPidFilt[sharedDemodId][regTableIndex].data[1] = REGULAR_PID_DATA_1(tmpPidPtr->remappedPid, tsId);
 
           MXL_HYDRA_PRINT("sharedDemodId = %d, regTableIndex = %d dirtyFlag = %d inUse = %d\n", sharedDemodId, regTableIndex, devHandlePtr->regPidFilt[sharedDemodId][regTableIndex].dirtyFlag, devHandlePtr->regPidFilt[sharedDemodId][regTableIndex].inUse);
         }
@@ -1575,58 +1627,60 @@ static MXL_STATUS_E MxL_HYDRA_UpdateInternalPidFilter(MXL_HYDRA_CONTEXT_T * devH
 }
 
 // function to update pid filter table in the device
-static MXL_STATUS_E MxL_HYDRA_CfgUpdatePidFilterTable(UINT8 devId, MXL_HYDRA_CONTEXT_T *devHandlePtr, MXL_HYDRA_DEMOD_ID_E demodId, MXL_BOOL_E updateDirtyFlag)
+static MXL_STATUS_E MxL_HYDRA_CfgUpdatePidFilterTable(UINT8 devId, MXL_HYDRA_CONTEXT_T *devHandlePtr, MXL_HYDRA_TS_ID_E tsId, MXL_BOOL_E updateDirtyFlag)
 {
   MXL_STATUS_E mxlStatus = MXL_SUCCESS;
   UINT8 i = 0;
   UINT8 sharedFiltId = 0;
   MXL_HYDRA_DEMOD_ID_E mappedSharedFiltId;
+  MXL_HYDRA_TS_ID_E listTsId[MXL_HYDRA_TS_MAX] = {0, };
 
-  MXLENTERAPI(MXL_HYDRA_PRINT("demodId = %d\n", demodId););
+  MXLENTERAPI(MXL_HYDRA_PRINT("tsId = %d\n", tsId););
 
   // update fixed pid filter table
   for (i = 0; i < devHandlePtr->maxFixPidEntries; i++)
   {
-    if (devHandlePtr->fixedPidFilt[demodId][i].dirtyFlag == MXL_TRUE)
+    if (devHandlePtr->fixedPidFilt[tsId][i].dirtyFlag == MXL_TRUE)
     {
-      MXL_HYDRA_PRINT("demodId = %d, i = %d\n", demodId, i);
+      MXL_HYDRA_PRINT("tsId = %d, i = %d\n", tsId, i);
 
       mxlStatus |= MxLWare_HYDRA_WriteRegister(devId,
-                                               devHandlePtr->fixedPidFilt[demodId][i].regAddr,
-                                               devHandlePtr->fixedPidFilt[demodId][i].data[0]);
+                                               devHandlePtr->fixedPidFilt[tsId][i].regAddr,
+                                               devHandlePtr->fixedPidFilt[tsId][i].data[0]);
 
       // update dirty flag
       if (updateDirtyFlag == MXL_TRUE)
-        devHandlePtr->fixedPidFilt[demodId][i].dirtyFlag = MXL_FALSE;
+        devHandlePtr->fixedPidFilt[tsId][i].dirtyFlag = MXL_FALSE;
     }
 
   }
   for (sharedFiltId = 0; ((sharedFiltId < devHandlePtr->features.demodsCnt) && (mxlStatus == MXL_SUCCESS)); sharedFiltId++)
   {
     mxlStatus = MxL_Ctrl_GetTsID(devHandlePtr, (MXL_HYDRA_DEMOD_ID_E)sharedFiltId, &mappedSharedFiltId);
+	mxlStatus |= MxL_Ctrl_GetPhyTsID(devId, mappedSharedFiltId, listTsId);
     if(mxlStatus == MXL_SUCCESS)
     {
       // update regular pid filter table
       for (i = 0; i < devHandlePtr->maxRegPidEntries; i++)
       {
-        if (devHandlePtr->regPidFilt[mappedSharedFiltId][i].dirtyFlag == MXL_TRUE)
+        if (devHandlePtr->regPidFilt[listTsId[1]][i].dirtyFlag == MXL_TRUE)
         {
-          MXL_HYDRA_PRINT("demodId = %d, sharedFiltId  = %d, i = %d\n", demodId, sharedFiltId, i);
+          MXL_HYDRA_PRINT("tsId = %d, sharedFiltId  = %d, TS ID = %d, i = %d\n", tsId, sharedFiltId, listTsId[1], i);
 
           MXL_HYDRA_PRINT("regAddr = 0x%X, Size  = %d Data 0 = 0x%08X, Data 1 = 0x%08X\n",
-                    devHandlePtr->regPidFilt[mappedSharedFiltId][i].regAddr,
-                    devHandlePtr->regPidFilt[mappedSharedFiltId][i].numOfBytes,
-                    devHandlePtr->regPidFilt[mappedSharedFiltId][i].data[0],
-                    devHandlePtr->regPidFilt[mappedSharedFiltId][i].data[1]);
+                    devHandlePtr->regPidFilt[listTsId[1]][i].regAddr,
+                    devHandlePtr->regPidFilt[listTsId[1]][i].numOfBytes,
+                    devHandlePtr->regPidFilt[listTsId[1]][i].data[0],
+                    devHandlePtr->regPidFilt[listTsId[1]][i].data[1]);
 
           mxlStatus |= MxLWare_HYDRA_WriteRegisterBlock(devId,
-                                                      devHandlePtr->regPidFilt[mappedSharedFiltId][i].regAddr,
-                                                      devHandlePtr->regPidFilt[mappedSharedFiltId][i].numOfBytes,
-                                                      (UINT8 *)&devHandlePtr->regPidFilt[mappedSharedFiltId][i].data[0]);
+                                                      devHandlePtr->regPidFilt[listTsId[1]][i].regAddr,
+                                                      devHandlePtr->regPidFilt[listTsId[1]][i].numOfBytes,
+                                                      (UINT8 *)&devHandlePtr->regPidFilt[listTsId[1]][i].data[0]);
 
           // update dirty flag
           if (updateDirtyFlag == MXL_TRUE)
-            devHandlePtr->regPidFilt[mappedSharedFiltId][i].dirtyFlag = MXL_FALSE;
+            devHandlePtr->regPidFilt[listTsId[1]][i].dirtyFlag = MXL_FALSE;
         }
       }
     }
@@ -1672,11 +1726,13 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgPidFilterTbl(UINT8 devId, MXL_HYDRA_DEMOD_ID_E
   MXL_HYDRA_PID_FILTER_TBL_T pidFilterTblCmd;
   UINT16 cmdSize = sizeof(MXL_HYDRA_PID_FILTER_TBL_T);
   UINT8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
-  UINT8 i = 0, j = 0;
+  UINT8 i = 0, j = 0, iter = 0;
   UINT32 dbgPidSliceMap0 = 0;
   UINT32 dbgPidSliceMap1 = 0;
   UINT32 pidCount = 0;
   MXL_BOOL_E cbMode = MXL_FALSE;
+  MXL_HYDRA_TS_ID_E tsId = 0;
+  MXL_HYDRA_TS_ID_E listTsId[MXL_HYDRA_TS_MAX] = {0, };
 
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MXL_HYDRA_PRINT("demodId = %d, numPids = %d \n", demodId, numPids););
@@ -1688,41 +1744,41 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgPidFilterTbl(UINT8 devId, MXL_HYDRA_DEMOD_ID_E
     {
       if(MXL_TRUE == devHandlePtr->features.chanBond)
       {
-      /* if chan bond is not active then normal pid filter table should be configured */
-      if (devHandlePtr->cbBondedGroup[pidsPtr[0].bondId].cbGroupInUse == MXL_FALSE)
-        cbMode = MXL_FALSE;
-      else
-      {
-        /* if chan bond is active and pid filter then program chan bond pid filter only if
-           demod id belogs to chan bond group */
-        for (i = 0; i < devHandlePtr->cbBondedGroup[pidsPtr[0].bondId].numOfDemodsInCB; i++)
+        /* if chan bond is not active then normal pid filter table should be configured */
+        if (devHandlePtr->cbBondedGroup[pidsPtr[0].bondId].cbGroupInUse == MXL_FALSE)
+          cbMode = MXL_FALSE;
+        else
         {
-          if (devHandlePtr->cbBondedGroup[pidsPtr[0].bondId].cbDemodId[i] == demodId)
+          /* if chan bond is active and pid filter then program chan bond pid filter only if
+             demod id belogs to chan bond group */
+          for (i = 0; i < devHandlePtr->cbBondedGroup[pidsPtr[0].bondId].numOfDemodsInCB; i++)
           {
-            cbMode = MXL_TRUE;
-            break;
+            if (devHandlePtr->cbBondedGroup[pidsPtr[0].bondId].cbDemodId[i] == demodId)
+            {
+              cbMode = MXL_TRUE;
+              break;
+            }
           }
         }
-        }
-      }
-      else
-      {
-        // cbMode is MXL_FALSE by default
       }
 
       if (cbMode == MXL_FALSE)
       {
         mxlStatus = MxL_Ctrl_GetTsID(devHandlePtr, demodId, &demodId);
+        mxlStatus = MxL_Ctrl_GetPhyTsID(devId, demodId, listTsId);
         if (mxlStatus == MXL_SUCCESS)
         {
-          MXL_HYDRA_PRINT("after map demodId = %d, numPids = %d \n", demodId, numPids);
+          for (iter = 0; iter < listTsId[0]; iter++)
+          {
+            tsId = listTsId[iter+1];
+            MXL_HYDRA_PRINT("after map demodId = %d, numPids = %d TS ID: %d \n", demodId, numPids, tsId);
 
           // Update internal pid filter
-          mxlStatus |= MxL_HYDRA_UpdateInternalPidFilter(devHandlePtr, demodId, pidsPtr, numPids);
+          mxlStatus |= MxL_HYDRA_UpdateInternalPidFilter(devHandlePtr, demodId, tsId, pidsPtr, numPids);
 
           if (mxlStatus == MXL_SUCCESS)
           {
-            if (demodId <= MXL_HYDRA_DEMOD_ID_3) 
+            if (tsId <= MXL_HYDRA_TS_ID_3) 
             {
               muxType = devHandlePtr->tsMuxModeSlice0;
               if (devHandlePtr->maxRegPidEntries == MXL_HYDRA_SHARED_PID_FILT_SIZE_SCORPIUS_DEFAULT)
@@ -1736,17 +1792,18 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgPidFilterTbl(UINT8 devId, MXL_HYDRA_DEMOD_ID_E
             }
 
             // Update pid filter bank context
-            mxlStatus |= MxL_HYDRA_CfgChangePidFilterBankContext(devId, demodId, muxType);
+            mxlStatus |= MxL_HYDRA_CfgChangePidFilterBankContext(devId, tsId, muxType);
 
             // update pid filter table onto device without updating dirty flag
-            mxlStatus |= MxL_HYDRA_CfgUpdatePidFilterTable(devId, devHandlePtr, demodId, MXL_FALSE);
+            mxlStatus |= MxL_HYDRA_CfgUpdatePidFilterTable(devId, devHandlePtr, tsId, MXL_FALSE);
 
             // flip active bank (inactive to active)
-            mxlStatus |= MxL_HYDRA_CfgChangePidFilterBankContext(devId, demodId, muxType);
+            mxlStatus |= MxL_HYDRA_CfgChangePidFilterBankContext(devId, tsId, muxType);
 
             // update pid filter table onto device - inactive bank context and update dirty flag
-            mxlStatus |= MxL_HYDRA_CfgUpdatePidFilterTable(devId, devHandlePtr, demodId, MXL_TRUE);
+            mxlStatus |= MxL_HYDRA_CfgUpdatePidFilterTable(devId, devHandlePtr, tsId, MXL_TRUE);
           }
+        } // for (iter = 0;
         }
       }
       
@@ -1839,7 +1896,6 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgPidFilterTbl(UINT8 devId, MXL_HYDRA_DEMOD_ID_E
  * @retval MXL_INVALID_PARAMETER  - Invalid parameter is passed
  *
  ************************************************************************/
-
 MXL_STATUS_E MxLWare_HYDRA_API_ReqPidFilterTbl(UINT8 devId,
                                                MXL_HYDRA_DEMOD_ID_E demodId,
                                                MXL_HYDRA_TS_PID_T *pidsInfoPtr,
@@ -1848,50 +1904,63 @@ MXL_STATUS_E MxLWare_HYDRA_API_ReqPidFilterTbl(UINT8 devId,
   MXL_HYDRA_CONTEXT_T *devHandlePtr;
   MXL_STATUS_E mxlStatus = MXL_SUCCESS;
   UINT8 loopCount = 0, pidCount = 0;
+  UINT8 tsIndex, tsCount;
   UINT32 regReadData[2*MXL_HYDRA_SHARED_PID_FILT_SIZE_SCORPIUS_DEFAULT];
+  MXL_HYDRA_DEMOD_ID_E physicalDemodId;
+  MXL_HYDRA_TS_ID_E tsId = MXL_HYDRA_TS_MAX;
+  MXL_HYDRA_TS_ID_E listTsId[MXL_HYDRA_TS_MAX] = {0, };
+
+  UINT8 maxNumPids = 4 * MXL_HYDRA_SHARED_PID_FILT_SIZE_SCORPIUS_DEFAULT;  // 160 maximum
 
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MXL_HYDRA_PRINT("demodId = %d\n", demodId););
 
   mxlStatus = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
-  if (mxlStatus == MXL_SUCCESS)
+
+  if((MXL_SUCCESS == mxlStatus) && (pidsInfoPtr) && (numPidsPtr))
   {
-    mxlStatus = MxL_Ctrl_GetTsID(devHandlePtr, demodId, &demodId);
-
-    if ((mxlStatus == MXL_SUCCESS)  && (pidsInfoPtr) && (numPidsPtr))
+    if((*numPidsPtr <= maxNumPids) && (*numPidsPtr > 0))
     {
-      // Fixed PID Retrieval
-      mxlStatus = MxLWare_HYDRA_ReadRegisterBlock(devId, devHandlePtr->fixedPidFilt[demodId][0].regAddr, 
-                           (sizeof(UINT32)*(devHandlePtr->maxFixPidEntries)), (UINT8 *)regReadData);
+      maxNumPids = *numPidsPtr;  // set maxNumPids according to passed-in value if reasonable
+    }
+    else
+    {
+      mxlStatus = MXL_INVALID_PARAMETER;
+    }
+  }
 
-      for ( loopCount = 0, pidCount=0; loopCount < devHandlePtr->maxFixPidEntries; loopCount++)
+  if(MXL_SUCCESS == mxlStatus)
+  {
+    mxlStatus = MxL_Ctrl_GetTsID(devHandlePtr, demodId, &physicalDemodId);
+
+    mxlStatus |= MxL_Ctrl_GetPhyTsID(devId, physicalDemodId, listTsId);
+
+    if(MXL_SUCCESS == mxlStatus)
+    {
+      tsId = listTsId[1];
+      tsCount = MXL_HYDRA_TS_OUT_MAX;  // go through all eight TS regardless of SKU
+
+      for(tsIndex = 0; (tsIndex < tsCount) && (pidCount < maxNumPids); tsIndex++)
       {
-        if ((mxlStatus == MXL_SUCCESS) && ((regReadData[loopCount] & 0x1) == 0x1))
-        {
-          pidsInfoPtr[pidCount].originalPid = loopCount;
-          pidsInfoPtr[pidCount].remappedPid = ((regReadData[loopCount] >> 16) & 0x1FFF);
-          pidsInfoPtr[pidCount].enable = MXL_TRUE;
-          pidsInfoPtr[pidCount].allowOrDrop = (MXL_BOOL_E)((regReadData[loopCount] >> 1) & 0x1);
-          pidsInfoPtr[pidCount++].enablePidRemap = (MXL_BOOL_E)((regReadData[loopCount] >> 2) & 0x1);
-        }
-      }
-      MXL_HYDRA_DEBUG("Fixed PID count: %d\n", pidCount);
+        // Clear regReadData before filling it
+        MXLWARE_OSAL_MEMSET(regReadData, 0, sizeof(regReadData));
 
-      // Shared/Regular PID Retrieval
-      MXLWARE_OSAL_MEMSET(regReadData, 0, (2*sizeof(UINT32)*(devHandlePtr->maxRegPidEntries)));
-      mxlStatus = MxLWare_HYDRA_ReadRegisterBlock(devId, devHandlePtr->regPidFilt[demodId][0].regAddr, 
-                            (2*sizeof(UINT32)*devHandlePtr->maxRegPidEntries), (UINT8 *)regReadData);
+        // Shared/Regular PID Retrieval
+        mxlStatus = MxLWare_HYDRA_ReadRegisterBlock(devId, devHandlePtr->regPidFilt[tsIndex][0].regAddr, 
+                              (2*sizeof(UINT32)*devHandlePtr->maxRegPidEntries), (UINT8 *)regReadData);
 
-      for ( loopCount = 0; loopCount < devHandlePtr->maxRegPidEntries; loopCount++)
-      {
-        if ((mxlStatus == MXL_SUCCESS) && ((regReadData[loopCount<<1] & 0x1) == 0x1))
+        for (loopCount = 0; (loopCount < devHandlePtr->maxRegPidEntries*2) && (pidCount < maxNumPids); loopCount+=2)
         {
-          pidsInfoPtr[pidCount].originalPid = (regReadData[loopCount << 1] >> 4) & 0x1FFF;
-          pidsInfoPtr[pidCount].remappedPid = (regReadData[(loopCount << 1)+1]) & 0x1FFF;
-          pidsInfoPtr[pidCount].destId = ((regReadData[(loopCount << 1) + 1]) >> 16) & 0x7;
-          pidsInfoPtr[pidCount].enable = MXL_TRUE;
-          pidsInfoPtr[pidCount].allowOrDrop = (MXL_BOOL_E)((regReadData[loopCount << 1] >> 1) & 0x1);
-          pidsInfoPtr[pidCount++].enablePidRemap = (MXL_BOOL_E)((regReadData[loopCount << 1] >> 2) & 0x1);
+          if ((mxlStatus == MXL_SUCCESS) && ((regReadData[loopCount] & 0x1) == 0x1) && (tsId == ((regReadData[loopCount+1]>>16)&0x07)))
+          {
+            pidsInfoPtr[pidCount].originalPid = (regReadData[loopCount] >> 4) & 0x1FFF;
+            pidsInfoPtr[pidCount].remappedPid = (regReadData[loopCount+1]) & 0x1FFF;
+            pidsInfoPtr[pidCount].destId = ((regReadData[loopCount+1]) >> 16) & 0x7;
+            pidsInfoPtr[pidCount].enable = MXL_TRUE;
+            pidsInfoPtr[pidCount].allowOrDrop = (MXL_BOOL_E)((regReadData[loopCount] >> 1) & 0x1);
+            pidsInfoPtr[pidCount].enablePidRemap = (MXL_BOOL_E)((regReadData[loopCount] >> 2) & 0x1);
+            pidCount++;
+          }
         }
       }
 
@@ -1931,10 +2000,12 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgTsMuxPrefixExtraTsHeader(UINT8 devId, MXL_HYDR
 {
   MXL_HYDRA_CONTEXT_T * devHandlePtr;
   MXL_STATUS_E mxlStatus = MXL_SUCCESS;
-  UINT8 data = 0; // default will be disable TS header
+  UINT8 data = 0, i = 0; // default will be disable TS header
   UINT32 tsHeader0 = 0;
   UINT32 tsHeader1 = 0;
   UINT32 tsHeader2 = 0;
+  MXL_HYDRA_TS_ID_E tsId = MXL_HYDRA_TS_MAX;
+  MXL_HYDRA_TS_ID_E listTsId[MXL_HYDRA_TS_MAX] = {0, };
 
   MXL_REG_FIELD_T xpt_ts_header_0[MXL_HYDRA_DEMOD_MAX] = {
                                                             {XPT_INP0_MERGE_HDR0},
@@ -1973,15 +2044,22 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgTsMuxPrefixExtraTsHeader(UINT8 devId, MXL_HYDR
   if (mxlStatus == MXL_SUCCESS)
   {
     mxlStatus = MxL_Ctrl_GetTsID(devHandlePtr, demodId, &demodId);
+    mxlStatus |= MxL_Ctrl_GetPhyTsID(devId, demodId, listTsId);
+
     if ((mxlStatus == MXL_SUCCESS) && (prefixHeaderPtr))
     {
-      // enable TS header
-      if (prefixHeaderPtr->enable == MXL_TRUE)
+      for (i = 0; i < listTsId[0] && i < MXL_HYDRA_TS_MAX; i++)
       {
-        switch(prefixHeaderPtr->numByte)
+        tsId = listTsId[i+1];
+        MXLDBG1(MXL_HYDRA_PRINT("Remapped TS ID from MxL_Ctrl_GetPhyTsID is = %d\n", tsId));
+
+        // enable TS header
+        if (prefixHeaderPtr->enable == MXL_TRUE)
         {
-          case 4:
-            data = 1;
+          switch(prefixHeaderPtr->numByte)
+          {
+            case 4:
+              data = 1;
 
             tsHeader0 = prefixHeaderPtr->header[0];
             tsHeader0 |= (prefixHeaderPtr->header[1] << 8);
@@ -2032,39 +2110,40 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgTsMuxPrefixExtraTsHeader(UINT8 devId, MXL_HYDR
         }
       }
 
-      if (mxlStatus == MXL_SUCCESS)
-      {
-        if (prefixHeaderPtr->enable == MXL_TRUE)
+        if (mxlStatus == MXL_SUCCESS)
         {
-          // program TS header
-          // First 4 Bytes
-          mxlStatus = MxLWare_Hydra_UpdateByMnemonic(devId,
-                                              xpt_ts_header_0[demodId].regAddr,         // Reg Addr
-                                              xpt_ts_header_0[demodId].lsbPos,          // LSB pos
-                                              xpt_ts_header_0[demodId].numOfBits,       // Num of bits
+          if (prefixHeaderPtr->enable == MXL_TRUE)
+          {
+            // program TS header
+            // First 4 Bytes
+            mxlStatus = MxLWare_Hydra_UpdateByMnemonic(devId,
+                                              xpt_ts_header_0[tsId].regAddr,         // Reg Addr
+                                              xpt_ts_header_0[tsId].lsbPos,          // LSB pos
+                                              xpt_ts_header_0[tsId].numOfBits,       // Num of bits
                                               tsHeader0);                               // Data
-          // Second 4 Bytes
-          mxlStatus |= MxLWare_Hydra_UpdateByMnemonic(devId,
-                                              xpt_ts_header_1[demodId].regAddr,         // Reg Addr
-                                              xpt_ts_header_1[demodId].lsbPos,          // LSB pos
-                                              xpt_ts_header_1[demodId].numOfBits,       // Num of bits
+            // Second 4 Bytes
+            mxlStatus |= MxLWare_Hydra_UpdateByMnemonic(devId,
+                                              xpt_ts_header_1[tsId].regAddr,         // Reg Addr
+                                              xpt_ts_header_1[tsId].lsbPos,          // LSB pos
+                                              xpt_ts_header_1[tsId].numOfBits,       // Num of bits
                                               tsHeader1);                               // Data
-          // Third 4 Bytes
-          mxlStatus |= MxLWare_Hydra_UpdateByMnemonic(devId,
-                                              xpt_ts_header_2[demodId].regAddr,         // Reg Addr
-                                              xpt_ts_header_2[demodId].lsbPos,          // LSB pos
-                                              xpt_ts_header_2[demodId].numOfBits,       // Num of bits
+            // Third 4 Bytes
+            mxlStatus |= MxLWare_Hydra_UpdateByMnemonic(devId,
+                                              xpt_ts_header_2[tsId].regAddr,         // Reg Addr
+                                              xpt_ts_header_2[tsId].lsbPos,          // LSB pos
+                                              xpt_ts_header_2[tsId].numOfBits,       // Num of bits
                                               tsHeader2);                               // Data
         }
 
-        // enable of disable header insertion
-        if (demodId <= MXL_HYDRA_DEMOD_ID_3)
-        {
-          mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_APPEND_BYTES0, data);
-        }
-        else
-        {
-          mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_APPEND_BYTES1, data);
+          // enable or disable header insertion
+          if (tsId <= MXL_HYDRA_TS_ID_3)
+          {
+            mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_APPEND_BYTES0, data);
+          }
+          else
+          {
+            mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_APPEND_BYTES1, data);
+          }
         }
       }
     }
@@ -2494,41 +2573,44 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgTSOutDriveStrength(UINT8 devId, MXL_HYDRA_TS_D
  * @retval MXL_INVALID_PARAMETER  - Invalid parameter is passed
  *
  ************************************************************************/
-MXL_STATUS_E MxLWare_HYDRA_API_CfgXPTXBar(UINT8 devId, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_DEMOD_ID_E tsOutId)
+MXL_STATUS_E MxLWare_HYDRA_API_CfgXPTXBar(UINT8 devId, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_TS_ID_E tsOutId)
 {
   MXL_HYDRA_CONTEXT_T * devHandlePtr;
   MXL_STATUS_E mxlStatus = MXL_SUCCESS;
-  UINT32 xbarCfg;
-  UINT8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
-  UINT8 cmdSize = sizeof(xbarCfg);
  
   MXLENTERAPISTR(devId);
-
   MXLENTERAPI(MXL_HYDRA_PRINT("demodId = %d tsOutId = %d\n", demodId, tsOutId););
 
   mxlStatus = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
   if (mxlStatus == MXL_SUCCESS)
   {
-	  if(devHandlePtr->deviceType == MXL_HYDRA_DEVICE_568)
-	  {
-		  if ((demodId < devHandlePtr->features.demodsCnt) &&  \
-			  (tsOutId < devHandlePtr->features.demodsCnt))
-		  {		
-			  xbarCfg = (demodId << 16 | (tsOutId & 0xFFFF));
-			  BUILD_HYDRA_CMD(MXL_HYDRA_XPT_CHANNEL_UPDATE_CMD, MXL_CMD_WRITE, cmdSize, &xbarCfg, cmdBuff);
-			  mxlStatus |= MxLWare_HYDRA_SendCommand(devId, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
-		  }
-	  }
-	  else
-	  {
-		  mxlStatus = MXL_NOT_SUPPORTED;
-	  }
-  }
-  else
-  {
-	  mxlStatus = MXL_INVALID_PARAMETER;
+    mxlStatus = MxLWare_HYDRA_CfgXPTXBar(devId, demodId, tsOutId); 
   }
 
   MXLEXITAPISTR(devId, mxlStatus);
+  return mxlStatus;
+}
+
+MXL_STATUS_E MxLWare_HYDRA_CfgXPTXBar(UINT8 devId, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_TS_ID_E tsOutId)
+{
+  MXL_STATUS_E mxlStatus = MXL_SUCCESS;
+
+  MXLENTERSTR;
+  MXLENTER(MXL_HYDRA_PRINT("demodId = %d, tsOutId = %d\n", demodId, tsOutId););
+
+  if ((MXL_LOGICAL_TO_PHYSICAL_BYPASS_NOT(demodId) < MXL_HYDRA_DEMOD_MAX) && (MXL_LOGICAL_TO_PHYSICAL_BYPASS_NOT(tsOutId) < MXL_HYDRA_TS_MAX))
+  {
+    UINT32 xbarCfg;
+    UINT8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
+    UINT8 cmdSize = sizeof(xbarCfg);
+    xbarCfg = (demodId << 16 | (tsOutId & 0xFFFF));
+    BUILD_HYDRA_CMD(MXL_HYDRA_XPT_CHANNEL_UPDATE_CMD, MXL_CMD_WRITE, cmdSize, &xbarCfg, cmdBuff);
+    mxlStatus |= MxLWare_HYDRA_SendCommand(devId, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
+  }
+  else
+  {
+    mxlStatus = MXL_INVALID_PARAMETER;
+  }
+  MXLEXITSTR(mxlStatus);
   return mxlStatus;
 }

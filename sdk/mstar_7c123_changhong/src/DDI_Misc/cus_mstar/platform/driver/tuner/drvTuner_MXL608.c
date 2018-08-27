@@ -1,5 +1,15 @@
 
+#ifdef MSOS_TYPE_LINUX_KERNEL
+#include <linux/string.h>
+#include <linux/fs.h>
+#include <linux/vmalloc.h>
+#include <linux/err.h>
+#include <asm/uaccess.h>
+#include <linux/slab.h>
+#else
 #include <stdio.h>
+#include <string.h>
+#endif
 #include "error.h"
 #include "MsCommon.h"
 #include "Board.h"
@@ -22,7 +32,29 @@ MS_BOOL MXL608_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt);
 //  Global Variables
 //-------------------------------------------------------------------------------------------------
 static TUNER_MS_INIT_PARAM InitParam[MAX_FRONTEND_NUM]; //MAX_FRONTEND_NUM
-static MS_U8 u8Possible_SLAVE_IDs[4] = {0xC0, 0xC2, 0xC4, 0xC6};
+static MS_BOOL bUnderExtDMDTest = FALSE;
+SLAVE_ID_USAGE* pstMxL608_slave_ID_TBL = NULL;
+static SLAVE_ID_USAGE MxL608_possible_slave_ID[5] =
+{
+    {0xC0, FALSE},
+    {0xC2, FALSE},
+    {0xC4, FALSE},
+    {0xC6, FALSE},
+    {0xFF, FALSE}
+};
+//-------------------------------------------------------------------------------------------------
+//  Macros
+//-------------------------------------------------------------------------------------------------
+#if defined(MSOS_TYPE_LINUX_KERNEL)
+#define free kfree
+#define malloc(size) kmalloc((size), GFP_KERNEL)
+#define V_FREE(p)                                       if(p){ kfree((void*)p); p = NULL;}
+#define V_MALLOC(size) kmalloc((size), GFP_KERNEL)
+#else
+#define V_MALLOC(z)                                     malloc(z) ///virtual memory allocate
+#define V_FREE(p)                                       if(p){ free((void*)p); p = NULL;} ///virtual memory free
+#endif
+
 
 /*
  * Increase driving current for IFamp
@@ -93,7 +125,7 @@ int MxL608_init_main(MS_U8 u8TunerIndex)
     ifOutCfg.ifOutFreq = MXL608_IF_5MHz;
     ifOutCfg.manualIFOutFreqInKHz = 5000;
     ifOutCfg.ifInversion = MXL_DISABLE;//MXL_ENABLE;
-    ifOutCfg.gainLevel = 8;
+    ifOutCfg.gainLevel = 11;
     ifOutCfg.manualFreqSet = MXL_DISABLE;
     status = MxLWare608_API_CfgTunerIFOutParam(u8TunerIndex,devId, ifOutCfg);
     if (status != MXL_SUCCESS)
@@ -115,14 +147,42 @@ int MxL608_init_main(MS_U8 u8TunerIndex)
 
     //Step 6 : Application Mode setting
     tunerModeCfg.ifOutFreqinKHz = 5000;
-    tunerModeCfg.signalMode = MXL608_DIG_DVB_C;
     tunerModeCfg.xtalFreqSel = MXL608_XTAL_24MHz;
     tunerModeCfg.ifOutGainLevel = 11;
+    if(*InitParam[u8TunerIndex].pCur_Broadcast_type== DVBC)
+        tunerModeCfg.signalMode = MXL608_DIG_DVB_C;
+    else if((*InitParam[u8TunerIndex].pCur_Broadcast_type== DVBT) || (*InitParam[u8TunerIndex].pCur_Broadcast_type== DVBT2))
+        tunerModeCfg.signalMode = MXL608_DIG_DVB_T_DTMB;
+    else if((*InitParam[u8TunerIndex].pCur_Broadcast_type== ISDBT) || (*InitParam[u8TunerIndex].pCur_Broadcast_type== ATSC))
+        tunerModeCfg.signalMode = MXL608_DIG_ISDBT_ATSC;
+    else if((*InitParam[u8TunerIndex].pCur_Broadcast_type== J83B))
+        tunerModeCfg.signalMode = MXL608_DIG_J83B;
+    else
+        return FALSE;
+
     status = MxLWare608_API_CfgTunerMode(u8TunerIndex,devId, tunerModeCfg);
     if (status != MXL_SUCCESS)
     {
         TUNER_ERR(("Error! MxLWare608_API_CfgTunerMode, %d\n", status));
         return status;
+    }
+
+    //Patch for MSB1237 demod
+    if(InitParam[u8TunerIndex].pstDemodtab->data == DEMOD_MSB1237)
+    {
+      status = MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, 0xCD, 0x64);
+      if (status != MXL_SUCCESS)
+      {
+        TUNER_ERR(("Error! MxLWare608_OEM_WriteRegister, %d\n", status));
+        return status;
+      }
+
+      status = MxLWare608_OEM_WriteRegister(u8TunerIndex,devId, 0xCE, 0x7C);
+      if (status != MXL_SUCCESS)
+      {
+        TUNER_ERR(("Error! MxLWare608_OEM_WriteRegister, %d\n", status));
+        return status;
+      }
     }
 
     return status;
@@ -135,11 +195,11 @@ MS_BOOL MDrv_MXL608Tuner_Init(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam)
 
     // Double Confirm Tuner I2C is normal
 
-    if(MXL608_CheckExist(u8TunerIndex, NULL) != TRUE)
-    {
-       TUNER_ERR(("[mxl608] Chip ID is incorrect\n"));
-       return FALSE;
-    }
+    //if(MXL608_CheckExist(u8TunerIndex, NULL) != TRUE)
+    //{
+    //   TUNER_ERR(("[mxl608] Chip ID is incorrect\n"));
+    //   return FALSE;
+    //}
     // Check PLL lock status, if PLL have locked before tuner init, it might be in used
 
     MxLWare608_API_ReqDevPllState(u8TunerIndex,InitParam[u8TunerIndex].u8SlaveID,&pllstatus);
@@ -151,12 +211,15 @@ MS_BOOL MDrv_MXL608Tuner_Init(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam)
         return FALSE;
     }
 
-    
-    if(pParam->pCur_Broadcast_type == NULL)
+
+    if((pParam->pCur_Broadcast_type == NULL) || (pParam->pstDemodtab == NULL))
         return FALSE;
     else
+    {
         InitParam[u8TunerIndex].pCur_Broadcast_type = pParam->pCur_Broadcast_type;
-    
+        InitParam[u8TunerIndex].pstDemodtab = pParam->pstDemodtab;
+    }
+
     if(MxL608_init_main(u8TunerIndex) == MXL_SUCCESS)
     {
         TUNER_DBG((" MXL608 INIT OK\n"));
@@ -205,7 +268,7 @@ MS_BOOL MDrv_MXL608Tuner_SetTuner(MS_U8 u8TunerIndex,MS_U32 dwFreq /*Khz*/, MS_U
         chanTuneCfg.signalMode = MXL608_DIG_J83B;
     else
         return FALSE;
-    
+
     switch(chanTuneCfg.signalMode)
     {
         case MXL608_DIG_DVB_C:
@@ -237,7 +300,7 @@ MS_BOOL MDrv_MXL608Tuner_SetTuner(MS_U8 u8TunerIndex,MS_U32 dwFreq /*Khz*/, MS_U
                  default:
                  chanTuneCfg.bandWidth = MXL608_TERR_BW_8MHz;
                  break;
-             }  
+             }
              break;
          }
          case MXL608_DIG_ISDBT_ATSC:
@@ -321,27 +384,79 @@ MS_BOOL MDrv_MXL608Tuner_SetTuner(MS_U8 u8TunerIndex,MS_U32 dwFreq /*Khz*/, MS_U
 MS_BOOL MXL608_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt)
 {
     MXL608_VER_INFO_T mxlDevVerInfo;
-    MS_U8 i, u8CurID;
+    MS_U8 i,j, u8I2C_Port = 0, u8MaxI2CPort;
+    SLAVE_ID_USAGE* pSlaveIDTBL = NULL;
+    MS_IIC_PORT ePort;
 
-    for(i=0; i< sizeof(u8Possible_SLAVE_IDs); i++)
+    memset(&mxlDevVerInfo, 0x00, sizeof(MXL608_VER_INFO_T));
+    u8MaxI2CPort = (MS_U8)((E_MS_IIC_SW_PORT_0/8) + (E_MS_IIC_PORT_NOSUP - E_MS_IIC_SW_PORT_0));
+
+    ePort = getI2CPort(u8TunerIndex);
+    if((int)ePort < (int)E_MS_IIC_SW_PORT_0)
     {
-        u8CurID = u8Possible_SLAVE_IDs[i];
-        if(MXL_SUCCESS != MxLWare608_API_ReqDevVersionInfo(u8TunerIndex, u8CurID, &mxlDevVerInfo))
+        u8I2C_Port = (MS_U8)ePort/8;
+    }
+    else if((int)ePort < (int)E_MS_IIC_PORT_NOSUP)//sw i2c
+    {
+       u8I2C_Port = E_MS_IIC_SW_PORT_0/8 + (ePort - E_MS_IIC_SW_PORT_0);
+    }
+
+    if(pstMxL608_slave_ID_TBL == NULL)
+    {
+        pstMxL608_slave_ID_TBL = (SLAVE_ID_USAGE *)malloc(sizeof(MxL608_possible_slave_ID) * u8MaxI2CPort);
+        if(NULL == pstMxL608_slave_ID_TBL)
         {
-            TUNER_ERR(("[mxl608] Read chip ID fail with slave ID 0x%x\n", u8CurID));
+            return FALSE;
         }
         else
         {
-            InitParam[u8TunerIndex].u8SlaveID = u8CurID;
-            break;
+            for(i=0; i< u8MaxI2CPort; i++)
+            {
+                for(j=0; j< (sizeof(MxL608_possible_slave_ID)/sizeof(SLAVE_ID_USAGE)); j++)
+                {
+                    pSlaveIDTBL = (pstMxL608_slave_ID_TBL + i*sizeof(MxL608_possible_slave_ID)/sizeof(SLAVE_ID_USAGE) + j);
+                    memcpy(pSlaveIDTBL, &MxL608_possible_slave_ID[j], sizeof(SLAVE_ID_USAGE));
+                 }
+            }
         }
     }
 
+    i = 0;
+    do
+    {
+        pSlaveIDTBL = pstMxL608_slave_ID_TBL + u8I2C_Port*sizeof(MxL608_possible_slave_ID)/sizeof(SLAVE_ID_USAGE) + i;
+        if(pSlaveIDTBL->bInUse)
+        {
+            TUNER_DBG(("[mxl608]I2C Slave ID 0x%x Have Used on the same I2C Port\n", pSlaveIDTBL->u8SlaveID));
+        }
+        else if((pSlaveIDTBL->u8SlaveID) == 0xFF)
+        {
+            break;
+        }
+        else
+        {
+            if(MXL_SUCCESS != MxLWare608_API_ReqDevVersionInfo(u8TunerIndex, pSlaveIDTBL->u8SlaveID, &mxlDevVerInfo))
+            {
+                TUNER_ERR(("[mxl608] Read chip ID fail with slave ID 0x%x\n", pSlaveIDTBL->u8SlaveID));
+            }
+            else
+            {
+                break;
+            }
+        }
+        i++;
+    }while((pSlaveIDTBL->u8SlaveID) != 0xFF);
 
     TUNER_DBG(("[mxl608] read id =0x%x\n",mxlDevVerInfo.chipId));
 
     if(mxlDevVerInfo.chipId == MXL608_CHIP_ID)
     {
+        InitParam[u8TunerIndex].u8SlaveID = pSlaveIDTBL->u8SlaveID;
+        if(!bUnderExtDMDTest)
+        {
+            pSlaveIDTBL->bInUse = TRUE;
+        }
+
         if(NULL != pu32channel_cnt)
             *(pu32channel_cnt) += 1;
         return TRUE;
@@ -353,16 +468,23 @@ MS_BOOL MXL608_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt)
 MS_BOOL TUNER_MXL608_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE fuction_type, void *data)
 {
     MS_S16 sPWRData;
-    
+
     switch(fuction_type)
     {
         case TUNER_EXT_FUNC_GET_POWER_LEVEL:
             if( MXL_SUCCESS != MxLWare608_API_ReqTunerRxPower(u8TunerIndex,InitParam[u8TunerIndex].u8SlaveID, &sPWRData))
                 return FALSE;
-            *(float*)data = (float)(sPWRData)/100;
+            sPWRData/=100;
+            *(int*)data = (int)sPWRData;
             break;
 
         case TUNER_EXT_FUNC_FINALIZE:
+            break;
+        case TUNER_EXT_FUNC_GET_SLAVE_ID:
+             *(MS_U8*)data = InitParam[u8TunerIndex].u8SlaveID;
+            break;
+        case TUNER_EXT_FUNC_UNDER_EXT_DMD_TEST:
+            bUnderExtDMDTest = *(MS_BOOL*)data;
             break;
         default:
             TUNER_DBG(("Request extension function (%x) does not exist\n",fuction_type));
@@ -458,7 +580,7 @@ MS_BOOL MXL608_GetTunerIF(MS_U8 u8TunerIndex, MS_U32* u32IF_Freq)
     return TRUE;
   else
     return FALSE;
-}  
+}
 
 DRV_TUNER_TABLE_TYPE GET_TUNER_ENTRY_NODE(TUNER_MXL608) DDI_DRV_TUNER_TABLE_ENTRY(tunertab) =
 {

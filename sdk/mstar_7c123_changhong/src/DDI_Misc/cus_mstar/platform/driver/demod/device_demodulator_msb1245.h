@@ -107,7 +107,6 @@
 #define TIMING_VERIFICATION              0
 #define MSB1245_SELECT_IF_INPUT     1  // 0:dvbt_I, 1:dvbs_I
 #define MSB1245_SELECT_AGC_PAD_T    0
-#define MSB1245_MAX_IIC_PORT_CNT    4 // I2C0~3
 
 #define DBG_AGC_OUT  0x03
 #define DBG_AGC_ERR  0x05
@@ -124,6 +123,20 @@
 #define REG_MB_ADDR_L           0x098b //DIG_SWUSE0FH
 #define REG_MB_ADDR_H           0x098c //DIG_SWUSE10L
 #define REG_MB_DATA             0x098d //DIG_SWUSE10H
+
+//interrupt usage
+#define MSB1245_EVT_MASK      0x0F
+#define MSB1245_EVT_PORT0INT       (1<<0)
+#define MSB1245_EVT_PORT1INT       (1<<1)
+#define MSB1245_EVT_PORT2INT       (1<<2)
+#define MSB1245_EVT_PORT3INT       (1<<3)
+
+#define MSB1245_EVT_TASK_STACK_SIZE 4096
+
+#define MSB1245_RST_PIN_NOT_SET     9999
+
+#define MSB1245_STATUS_CHK_PERIOD  1000
+#define MSB1245_LOCK_TIMEOUT  6000
 
 typedef enum
 {
@@ -385,6 +398,7 @@ typedef struct
     MS_S32    s32DemodHandle;
     MS_U32    u32DmxInputPath;
     MS_BOOL   bIsMCP_DMD;
+    MS_BOOL   bDiSeqc_Tx22K_Off;
 } MDvr_CofdmDmd_CONFIG;
 
 #if(TIMING_VERIFICATION == 1)
@@ -586,8 +600,8 @@ static const MS_S16 _u16AGCErrorMeanPositive_RT710[AGC_MEAN_ROW_MAX][2]=
 
 MS_U16  _u16SignalLevel_RT710[AGC_OUT_ROW_MAX][2]=
 {
-    {NULL_DATA,NULL_DATA},
-    {NULL_DATA,NULL_DATA},
+    //{NULL_DATA,NULL_DATA},
+    //{NULL_DATA,NULL_DATA},
     {NULL_DATA,NULL_DATA},
     {NULL_DATA,NULL_DATA},
     {NULL_DATA,NULL_DATA},
@@ -625,9 +639,9 @@ MS_U16  _u16SignalLevel_RT710[AGC_OUT_ROW_MAX][2]=
     {36295,    590},
     {36615,    580},
     //{36815,    570}, //In tuner avtive area
-    //{36835,    160},
+    {36835,    160},
     //{37035,    560},
-    //{37165,    150},
+    {37165,    150},
     //{37225,    550},
     {37350,    140},
     {37535,    130},
@@ -641,9 +655,9 @@ MS_U16  _u16SignalLevel_RT710[AGC_OUT_ROW_MAX][2]=
 };
 
 #endif
-
+DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB1245) DDI_DRV_TABLE_ENTRY(demodtab);
 MS_BOOL MSB1245_I2C_CH_Reset(MS_U8 u8DemodIndex, MS_U8 ch_num);
 MS_BOOL MSB1245_WriteReg(MDvr_CofdmDmd_CONFIG *pMSB1245, MS_U16 u16Addr, MS_U8 u8Data);
 MS_BOOL MSB1245_ReadReg(MDvr_CofdmDmd_CONFIG *pMSB1245 ,MS_U16 u16Addr, MS_U8 *pu8Data);
-
+MS_BOOL MSB1245_Demod_GetLock(MS_U8 u8DemodIndex, EN_LOCK_STATUS *peLockStatus);
 #endif

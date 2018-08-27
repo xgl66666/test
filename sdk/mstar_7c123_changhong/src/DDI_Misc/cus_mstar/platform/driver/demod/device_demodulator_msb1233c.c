@@ -89,7 +89,12 @@ Information is unlawful and strictly prohibited. MStar hereby reserves the
 rights to any and all damages, losses, costs and expenses resulting therefrom.
  **********************************************************************/
 
+#ifdef MSOS_TYPE_LINUX_KERNEL
+#include <linux/string.h>
+#else
+#include <string.h>
 #include <math.h>
+#endif
 #include "MsCommon.h"
 #include "drvIIC.h"
 #include "MsOS.h"
@@ -98,7 +103,6 @@ rights to any and all damages, losses, costs and expenses resulting therefrom.
 #include "drvDemod.h"
 #include "drvDemodNull.h"
 #include "apiDigiTuner.h"   //<< not good
-#include <string.h>
 #ifdef USE_SPI_LOAD_TO_SDRAM
 #include "SysInit.h"
 #include "drvMSPI.h"
@@ -479,7 +483,7 @@ static MS_BOOL MSB1233C_Variables_alloc(void)
         if(NULL == ptrMSB1233C)
             return FALSE;
     }
-    
+
     if(NULL == pDemodRest)
     {
         pDemodRest = (MS_BOOL*)malloc(sizeof(MS_BOOL) * MAX_DEMOD_NUMBER);
@@ -492,7 +496,7 @@ static MS_BOOL MSB1233C_Variables_alloc(void)
         }
     }
 
-    
+
     if(NULL == pMSB1233C_InitParam)
     {
         pMSB1233C_InitParam = (DEMOD_MS_INIT_PARAM *)malloc(sizeof(DEMOD_MS_INIT_PARAM) * MAX_DEMOD_NUMBER);
@@ -501,7 +505,7 @@ static MS_BOOL MSB1233C_Variables_alloc(void)
     }
 
     return TRUE;
-    
+
 }
 
 static MS_BOOL MSB1233C_Variables_free(void)
@@ -2888,7 +2892,7 @@ MS_BOOL MSB1233C_DTV_GetSNR(MS_U8 u8DemodIndex)
         f_snr = (float)10.0 * log10((float)snr_out / fSNRDivider[snr_ave_num]);
         g_msb1233c_fSNR = f_snr;
         break;
-        
+
         case E_DEVICE_DEMOD_DVB_T:
         {
             // bank 15 0xfe [0] reg_fdp_freeze
@@ -4300,7 +4304,7 @@ MS_BOOL MSB1233C_DTV_SetFrequency(MS_U8 u8DemodIndex,DEMOD_MS_FE_CARRIER_PARAM *
          printf("MSB1233C Get Tuner IF OK, IF = %d kHz\n", (int)u32TunerIF);
     }
         MSB1233C_IIC_Bypass_Mode(u8DemodIndex, FALSE);
-    
+
     if (pMSB1233C->enDemodType == E_DEVICE_DEMOD_DVB_T2)
     {
         printf("\nsetfreq T2\n");
@@ -5404,7 +5408,7 @@ MS_BOOL MSB1233C_Demod_GetPWR(MS_U8 u8DemodIndex, MS_S32 *ps32Signal)
 {
     MDvr_CofdmDmd_CONFIG *pMSB1233C = (ptrMSB1233C + u8DemodIndex);
     DEMOD_MS_INIT_PARAM* pInitParam = (pMSB1233C_InitParam + u8DemodIndex);
-    
+
     if (!pMSB1233C)
     {
         PRINTE(("pMSB1233C error !\n"));
@@ -5849,7 +5853,7 @@ MS_BOOL MSB1233C_Check_Exist(MS_U8 u8DemodIndex)
     MS_U8 u8_tmp = 0;
     MDvr_CofdmDmd_CONFIG *pMSB1233C;
     HWI2C_PORT hwi2c_port;
-    
+
     if(!MSB1233C_Variables_alloc())
     {
         MSB1233C_Variables_free();
@@ -5873,7 +5877,7 @@ MS_BOOL MSB1233C_Check_Exist(MS_U8 u8DemodIndex)
         return FALSE;
     }
 
-    
+
     if(!MSB1233C_I2C_CH_Reset(u8DemodIndex,3))
     {
         printf("[MSB1233C] I2C_CH_Reset fail \n");
@@ -5884,7 +5888,7 @@ MS_BOOL MSB1233C_Check_Exist(MS_U8 u8DemodIndex)
     {
         printf("[MSB1233C] Read  Chip ID fail \n");
     }
-    
+
     printf("[MSB1233C] read id :%x \n",u8_tmp );
 
     if(u8_tmp == MSB1233C_CHIP_ID)
@@ -5898,14 +5902,14 @@ MS_BOOL MSB1233C_Check_Exist(MS_U8 u8DemodIndex)
             MSB1233C_Variables_free();
         return FALSE;
     }
-    
+
 }
 
 MS_BOOL MSB1233C_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE fuction_type, void *data)
 {
   MS_BOOL bret = TRUE;
   MDvr_CofdmDmd_CONFIG *pMSB1233C = (ptrMSB1233C + u8DemodIndex);
-  
+
     switch(fuction_type)
     {
         case DEMOD_EXT_FUNC_RESET:

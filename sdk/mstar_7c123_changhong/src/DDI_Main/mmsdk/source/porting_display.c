@@ -19,7 +19,7 @@
 #if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
 #include "apiXC_EX.h"
 #endif
-#if (MMSDK_DMS_ENABLE == 1)
+#if defined(MMSDK_DMS_ENABLE) && (MMSDK_DMS_ENABLE == 1)
 #include "apiDMS.h"
 #endif
 #include "apiGOP.h"
@@ -31,14 +31,21 @@
 #include "drvPQ.h"
 #include "drvDTC.h"
 
-#define FLOW(fmt, arg...)         //printf("\033[1;35m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg)
-#define FLOWDISP(fmt, arg...)         //printf("\033[1;34m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg)
-#define FLOWDISPDS(fmt, arg...)         //printf("\033[1;34m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg)
+#define PT_DISP_ERR(fmt, arg...)        PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_ERR,   "\033[1;33m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
+#define PT_DISP_DBG(fmt, arg...)        PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_ERR,   "\033[1;35m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
+#define PT_DISP_TRACE(fmt, arg...)      PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_TRACE, "\033[1;36m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
+#define PT_DISP_DBG_DS(fmt, arg...)     PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_ERR,   "\033[1;34m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
+
+#define CHECK_MAPI_XC_RETURN_VALUE(func)  if(func != TRUE) {PT_DISP_ERR("[%d] FAIL", __LINE__); return FALSE;}
+#define CHECK_MSAPI_XC_RETURN_VALUE(func) if(func != E_MSAPI_XC_OK) {PT_DISP_ERR("[%d] FAIL", __LINE__); return FALSE;}
 
 #if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
 MSAPI_XC_DEVICE_ID g_stXC_PT_DeviceId[2] = {{0, E_MSAPI_XC_DEVICE0}, {0, E_MSAPI_XC_DEVICE1}};
+#define DEVICE_ID_0 g_stXC_PT_DeviceId[0]
+#define DEVICE_ID_1 g_stXC_PT_DeviceId[1]
 #else
 MSAPI_XC_DEVICE_ID g_stXC_PT_DeviceId = {0, E_MSAPI_XC_DEVICE0};
+#define DEVICE_ID_0 g_stXC_PT_DeviceId
 #endif
 extern PT_SYS_CUS_FunPtr gstSysCusFunPtr;
 
@@ -46,6 +53,7 @@ extern PT_SYS_CUS_FunPtr gstSysCusFunPtr;
 MSAPI_XC_DEVICE_ID g_stDIP_PT_DeviceId = {0, E_MSAPI_XC_DEVICE_DIP_0};
 static MS_U8 u8Display_Instance_BitMask = 0;
 static MS_U8 u8DIP_Window_BitMask = 0;
+static MS_U8 u8CountSetSC1Window = 0;
 #define Display_Instance_BitMask_NonUse  0
 #define DIP_Win_NonUse  0xFF
 #define XC_FLOW 0
@@ -58,11 +66,15 @@ typedef struct
     pfnDisplayCallback pfnDisplayCallback;
     void* pDislpayClass;
     MMSDK_BOOL bIsUpDSInfo;
+    MMSDK_BOOL bIsOneField;
+    MMSDK_BOOL bIsFirstTimeSetOneField;
 #ifdef AVP_ENABLE
     MS_U8 u8ID_BitMask;
     MS_U8 u8DIPWin;
     MS_U8 u8Flow;
     MMSDK_BOOL bIsFramePushed;
+    MMSDK_BOOL bSetSC1Window;
+    MMSDK_U32 u32DispCount;
 #endif
     MMSDK_BOOL bFirstTimeSetWindow;
     SCALER_WIN eScalerWin;
@@ -79,7 +91,6 @@ typedef struct
     (((pDisplayInstance == NULL) || (pDisplayInstance->pfnDisplayCallback == NULL)) ?   \
     (FALSE) :   \
     (pDisplayInstance->pfnDisplayCallback(pDisplayInstance->pDislpayClass,arg1, arg2, arg3)))
-
 
 #define DYNAMIC_SCALING_VB_H 1920
 #define DYNAMIC_SCALING_VB_V 1080
@@ -226,16 +237,25 @@ typedef struct
 #if UFO_XC_HDR_VERSION == 2
 #if (MMSDK_HDR_MODE >= 1)
 #if (MI_ENABLE == 0)
+#ifdef MMSDK_DOLBY_HDR_ENABLE
+#define DOVI_HDR_MODE (MMSDK_DOLBY_HDR_ENABLE == 1)
+#endif
+#if (DOVI_HDR_MODE == 0)
 static MS_U8 _gu8HDRCtrl = 0;// 0 is auto, 1 is force HDR to SDR, 2is force bypass
+#endif
 #endif
 MS_U32 _gu32HDRMetadataType = E_MMSDK_HDR_TYPE_CTL_FLAG_NONE;
 #define HDR_MM_DEV
 #define STREAM_IS_HDR (_gu32HDRMetadataType != E_MMSDK_HDR_TYPE_CTL_FLAG_NONE)
 #define STREAM_HDR_TYPE_TCH (_gu32HDRMetadataType & E_MMSDK_HDR_TYPE_CTL_FLAG_TCH)
+#define STREAM_HDR_TYPE_DOVI (_gu32HDRMetadataType & E_MMSDK_HDR_TYPE_CTL_FLAG_DOLBY_HDR)
+#define DISP_HDR_SMPTE2084 0x10
+#define DISP_HDR_HLG 0x12
 #endif
 #endif
 #endif
 #endif
+
 #ifdef HDR_MM_DEV
 #include "apiXC_Dlc.h"
 #if (MI_ENABLE == 0)
@@ -250,23 +270,6 @@ MS_BOOL SendCfd(EN_XC_CFD_CTRL_TYPE eType, void *pParam, MS_U16 u16Length)
     stXCCFDControlInfo.u32ParamLen = u16Length;
     MApi_XC_HDR_Control(E_XC_HDR_CTRL_CFD_CONTROL,&stXCCFDControlInfo);
     return TRUE;
-}
-
-MS_BOOL FireCfd(void)
-{
-    XC_ApiStatus stXcStatus;
-    memset(&stXcStatus, 0, sizeof(XC_ApiStatus));
-    MApi_XC_GetStatus(&stXcStatus, MAIN_WINDOW);
-
-    XC_CFD_FIRE stCfdFire;
-    stCfdFire.u32Version = CFD_FIRE_VERSION;
-    stCfdFire.u16Length = sizeof(XC_CFD_FIRE);
-    stCfdFire.u8Win = 0;
-    stCfdFire.u8InputSource = (MS_U8)PQ_INPUT_SOURCE_STORAGE;
-    stCfdFire.u8UpdateType = E_XC_CFD_UPDATE_TYPE_ALL;
-    stCfdFire.bIsRgbBypass = stXcStatus.bForceRGBin;
-    stCfdFire.bIsHdMode = TRUE;
-    return SendCfd(E_XC_CFD_CTRL_TYPE_FIRE, &stCfdFire, sizeof(XC_CFD_FIRE));
 }
 
 MS_U16 gstHdrLevelAttributes[3][10] =
@@ -287,10 +290,18 @@ MS_BOOL LoadHdrMetadataByHdrIp(void)
     stCfdHdr.u8Win = 0;
     if(STREAM_HDR_TYPE_TCH)
         stCfdHdr.u8HdrType =  E_XC_CFD_HDR_TYPE_OPEN | E_XC_CFD_HDR_TYPE_TCH;
+    else if(STREAM_HDR_TYPE_DOVI)
+        stCfdHdr.u8HdrType = E_XC_CFD_HDR_TYPE_DOLBY;
     else
-        stCfdHdr.u8HdrType =  E_XC_CFD_HDR_TYPE_OPEN;
+        stCfdHdr.u8HdrType = E_XC_CFD_HDR_TYPE_OPEN;
     MApi_XC_DLC_SetDlcHandlerOnOff(TRUE);
-    SendCfd(E_XC_CFD_CTRL_TYPE_HDR, &stCfdHdr, sizeof(XC_CFD_HDR));
+    //SendCfd(E_XC_CFD_CTRL_TYPE_HDR, &stCfdHdr, sizeof(XC_CFD_HDR));
+    MSAPI_XC_CFD_SENDCFD_INFO stCFDSendInfo = {};
+    stCFDSendInfo.etype = E_XC_CFD_CTRL_TYPE_HDR;
+    stCFDSendInfo.pParam = &stCfdHdr;
+    stCFDSendInfo.u16Length = sizeof(XC_CFD_HDR);
+
+    msAPI_XC_CFD_Control(NULL, E_MSAPI_XC_CFD_SEND_CFD, &stCFDSendInfo);
 
     //Open hdr
 
@@ -333,312 +344,21 @@ MS_BOOL LoadHdrMetadataByHdrIp(void)
     return bRet;
 }
 
-/// Following define reference CEA-861-E.pdf & CEA-861.3_V16BallotDraft.pdf.
-/// YCbCr(YUV) 444 mask define in CEA extend header.
-#define EDID_CEA_HEADER_YUV444_MASK 0x20
-/// YCbCr(YUV) 422 mask define in CEA extend header.
-#define EDID_CEA_HEADER_YUV422_MASK 0x10
-/// CEA tag code mask
-#define EDID_CEA_TAG_CODE_MASK 0xE0
-/// CEA length mask
-#define EDID_CEA_TAG_LENGTH_MASK 0x1F
-/// YCC Quantization Range at video capability data block in EDID.
-#define VIDEO_CAPABILITY_DB_QY_MASK 0x80
-/// RGB Quantization Range at video capability data block in EDID.
-#define VIDEO_CAPABILITY_DB_QS_MASK 0x40
-/// EOEF at HDR data block in EDID.
-#define HDR_DB_EOTF_MASK 0x3F
-//EDID Block Size
-#define EDID_BLOCK_SIZE     (128)
-//EDID Extend Block Size
-#define EDID_EXT_BLOCK_SIZE (128)
-/// Get CEA tag code
-#define EDID_CEA_TAG_CODE(x) (((x)&EDID_CEA_TAG_CODE_MASK)>>5)
-/// Get CEA tag length
-#define EDID_CEA_TAG_LENGTH(x) ((x)&EDID_CEA_TAG_LENGTH_MASK)
-/// Get EOTF in HDR data block
-#define HDR_DB_EOTF(x) ((x)&HDR_DB_EOTF_MASK)
-/// Get Rx in EDID
-#define COLOR_CHARACTERISTICS_RX(x, y) (((x)<<2) + (((y)&0xC0)>>6))
-/// Get Ry in EDID
-#define COLOR_CHARACTERISTICS_RY(x, y) (((x)<<2) + (((y)&0x30)>>4))
-/// Get Gx in EDID
-#define COLOR_CHARACTERISTICS_GX(x, y) (((x)<<2) + (((y)&0x0C)>>2))
-/// Get Gy in EDID
-#define COLOR_CHARACTERISTICS_GY(x, y) (((x)<<2) + ((y)&0x03))
-/// Get Bx in EDID
-#define COLOR_CHARACTERISTICS_BX(x, y) (((x)<<2) + (((y)&0xC0)>>6))
-/// Get By in EDID
-#define COLOR_CHARACTERISTICS_BY(x, y) (((x)<<2) + (((y)&0x30)>>4))
-/// Get Wx in EDID
-#define COLOR_CHARACTERISTICS_WX(x, y) (((x)<<2) + (((y)&0x0C)>>2))
-/// Get Wy in EDID
-#define COLOR_CHARACTERISTICS_WY(x, y) (((x)<<2) + ((y)&0x03))
-/// CFD EDID YUV444 support mask. This define is used in ST_MAPI_CFD_EDID -> u8HDMISinkSupportYUVFormat.
-#define EDID_YUV444_SUPPORT_MASK 0x01
-/// CFD EDID YUV422 support mask. This define is used in ST_MAPI_CFD_EDID -> u8HDMISinkSupportYUVFormat.
-#define EDID_YUV422_SUPPORT_MASK 0x02
-/// CFD EDID YUV420 support mask. This define is used in ST_MAPI_CFD_EDID -> u8HDMISinkSupportYUVFormat.
-#define EDID_YUV420_SUPPORT_MASK 0x04
-/// CFD EDID QY support mask. This define is used in ST_MAPI_CFD_EDID -> u8HDMISinkSupportYUVFormat.
-#define EDID_QY_SUPPORT_MASK 0x10
-/// CFD EDID QS support mask. This define is used in ST_MAPI_CFD_EDID -> u8HDMISinkSupportYUVFormat.
-#define EDID_QS_SUPPORT_MASK 0x08
-//STB HDR Bypass
-#define HDMITX_HDMITX_INFOFRAME_DYNAMIC_RANGE (7)
-#define HDMITX_HDMITX_INFOFRAME_DYNAMIC_RANGE_VERSION (1)
-#define HDMITX_HDMITX_INFOFRAME_DYNAMIC_RANGE_PACKET_LENGHT (26)
-#define HDMITX_HDMITX_INFOFRAME_DYNAMIC_RANGE_ARRAY_SIZE (3+HDMITX_HDMITX_INFOFRAME_DYNAMIC_RANGE_PACKET_LENGHT)
-#define LOW_BYTE(x) ((x)&(0xFF))
-#define HIGH_BYTE(x) (((x)&(0xFF00)) >> 8)
-
-MS_BOOL SetSinkEdidCfd(void)
-{
-    /// DEID documents: CEA-861-E.pdf, CEA-861.3_V16BallotDraft.pdf
-    MS_U8 u8EdidRawData[EDID_BLOCK_SIZE+EDID_EXT_BLOCK_SIZE];
-    MS_BOOL bRet = FALSE;
-    memset(u8EdidRawData, 0, sizeof(u8EdidRawData));
-
-    bRet = MApi_HDMITx_GetEDIDData(u8EdidRawData, FALSE);
-    bRet = bRet & MApi_HDMITx_GetEDIDData(&u8EdidRawData[EDID_BLOCK_SIZE], TRUE);
-    if (bRet == TRUE)
-    {
-        XC_CFD_EDID stCfdEdid;
-        memset(&stCfdEdid, 0, sizeof(XC_CFD_EDID));
-
-        stCfdEdid.u32Version = CFD_EDID_VERSION;
-        stCfdEdid.u16Length = sizeof(XC_CFD_EDID);
-
-        MS_U16 u16Offset = 0;
-
-        /// 0x00~0x7F bytes
-        #define EDID_HEADER_VERSION_OFFSET 18
-        #define EDID_HEADER_RED_GREEN_OFFSET 25
-
-        stCfdEdid.u8HDMISinkEDIDBaseBlockVersion = u8EdidRawData[EDID_HEADER_VERSION_OFFSET]; //version
-        stCfdEdid.u8HDMISinkEDIDBaseBlockReversion = u8EdidRawData[EDID_HEADER_VERSION_OFFSET+1]; //Revision;
-        stCfdEdid.u16Display_Primaries_x[0] = COLOR_CHARACTERISTICS_RX(u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET+2], u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET]);
-        stCfdEdid.u16Display_Primaries_x[1] = COLOR_CHARACTERISTICS_GX(u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET+4], u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET]);
-        stCfdEdid.u16Display_Primaries_x[2] = COLOR_CHARACTERISTICS_BX(u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET+6], u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET+1]);
-        stCfdEdid.u16Display_Primaries_y[0] = COLOR_CHARACTERISTICS_RY(u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET+3], u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET]);
-        stCfdEdid.u16Display_Primaries_y[1] = COLOR_CHARACTERISTICS_GY(u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET+5], u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET]);
-        stCfdEdid.u16Display_Primaries_y[2] = COLOR_CHARACTERISTICS_BY(u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET+7], u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET+1]);
-        stCfdEdid.u16White_point_x = COLOR_CHARACTERISTICS_WX(u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET+8], u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET+1]);
-        stCfdEdid.u16White_point_y = COLOR_CHARACTERISTICS_WY(u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET+9], u8EdidRawData[EDID_HEADER_RED_GREEN_OFFSET+1]);
-        stCfdEdid.u8HDMISinkEDIDValid = 1;
-
-        /// 0x80~0x83
-        // Parse extend
-        u16Offset += 128;
-
-        stCfdEdid.u8HDMISinkEDIDCEABlockReversion = u8EdidRawData[u16Offset+1];
-        if (u8EdidRawData[u16Offset+3]&EDID_CEA_HEADER_YUV444_MASK)
-        {
-            /// YUV444
-            stCfdEdid.u8HDMISinkSupportYUVFormat |= EDID_YUV444_SUPPORT_MASK;
-        }
-
-        if (u8EdidRawData[u16Offset+3]&EDID_CEA_HEADER_YUV422_MASK)
-        {
-            /// YUV422
-            stCfdEdid.u8HDMISinkSupportYUVFormat |= EDID_YUV422_SUPPORT_MASK;
-        }
-        MS_U8 u8ByteOffset = u8EdidRawData[u16Offset+2];
-        ////////////m_bSendHDRinfoFrame = MAPI_FALSE;
-        u16Offset += 4;
-
-        while ((u16Offset - 128) < u8ByteOffset)
-        {
-            MS_U8 u8TagCode = EDID_CEA_TAG_CODE((*(u8EdidRawData+u16Offset)));
-            MS_U8 u8Length = EDID_CEA_TAG_LENGTH((*(u8EdidRawData+u16Offset)));
-            u16Offset += 1;
-            if(u8TagCode == 7) //CEA_EXTENDED_TAG_DATA_BLOCK
-            {
-                MS_U16 u16ExtendOffset = 0;
-
-                MS_U8 u8ExtendedTagCode = *(u8EdidRawData+u16Offset+u16ExtendOffset);
-                u16ExtendOffset++;
-
-                if (u8ExtendedTagCode == 0)//CEA_VIDEO_CAPABILITY_DATA_BLOCK
-                {
-                    // Video capability data block
-                    stCfdEdid.u8HDMISinkVCDBValid = 1;
-                    MS_U8 u8VideoCapability = *(u8EdidRawData+u16Offset+u16ExtendOffset);
-                    u16ExtendOffset++;
-
-                    if (u8VideoCapability&VIDEO_CAPABILITY_DB_QY_MASK)
-                    {
-                        // QY
-                        stCfdEdid.u8HDMISinkSupportYUVFormat |= EDID_QY_SUPPORT_MASK;
-                    }
-
-                    if (u8VideoCapability&VIDEO_CAPABILITY_DB_QS_MASK)
-                    {
-                        // QS
-                        stCfdEdid.u8HDMISinkSupportYUVFormat |= EDID_QS_SUPPORT_MASK;
-                    }
-                }
-                else if (u8ExtendedTagCode == 5)//CEA_COLORIMETRY_DATA_BLOCK
-                {
-                    // Colorimetry data block
-                    MS_U8 u8ColorimetryData = *(u8EdidRawData+u16Offset+u16ExtendOffset);
-                    u16ExtendOffset++;
-
-                    stCfdEdid.u8HDMISinkExtendedColorspace = u8ColorimetryData;
-                }
-                else if (u8ExtendedTagCode == 6)//CEA_HDR_STATIC_METADATA_DATA_BLOCK
-                {
-                    //////////m_bSendHDRinfoFrame = MAPI_TRUE;
-                    MS_U8 u8Eotf = *(u8EdidRawData+u16Offset+u16ExtendOffset);
-                    u16ExtendOffset++;
-
-                    MS_U8 u8StaticMetadata = *(u8EdidRawData+u16Offset+u16ExtendOffset);
-                    u16ExtendOffset++;
-
-                    MS_U8 u8ContentMaxLuminance = 0;
-                    MS_U8 u8ContentMaxFrameAvgLuminance = 0;
-                    MS_U8 u8ContentMinLuminance = 0;
-
-
-                    if (u16ExtendOffset < u8Length)
-                    {
-                        u8ContentMaxLuminance = *(u8EdidRawData+u16Offset+u16ExtendOffset);
-                        u16ExtendOffset++;
-                    }
-
-                    if (u16ExtendOffset < u8Length)
-                    {
-                        u8ContentMaxFrameAvgLuminance = *(u8EdidRawData+u16Offset+u16ExtendOffset);
-                        u16ExtendOffset++;
-                    }
-
-                    if (u16ExtendOffset < u8Length)
-                    {
-                        u8ContentMinLuminance = *(u8EdidRawData+u16Offset+u16ExtendOffset);
-                        u16ExtendOffset++;
-                    }
-
-                    stCfdEdid.u8HDMISinkHDRDataBlockValid = 1;
-                    stCfdEdid.u8HDMISinkEOTF = HDR_DB_EOTF(u8Eotf);
-                    stCfdEdid.u8HDMISinkSM = u8StaticMetadata;
-                    stCfdEdid.u8HDMISinkHDRDataBlockLength = u8Length;
-                    stCfdEdid.u8HDMISinkDesiredContentMaxLuminance = u8ContentMaxLuminance;           //need a LUT to transfer
-                    stCfdEdid.u8HDMISinkDesiredContentMaxFrameAvgLuminance = u8ContentMaxFrameAvgLuminance; //need a LUT to transfer
-                    stCfdEdid.u8HDMISinkDesiredContentMinLuminance = u8ContentMinLuminance;           //need a LUT to transfer
-
-                }
-                else if (u8ExtendedTagCode == 14)//CEA_YCBCR420_VIDEO_DATA_BLOCK
-                {
-                    /// YCbCr 4:2:0  Video data block
-                    /// YUV420
-                    stCfdEdid.u8HDMISinkSupportYUVFormat |= EDID_YUV420_SUPPORT_MASK;
-                }
-                else if (u8ExtendedTagCode == 15)//CEA_YCBCR420_CAPABILITY_MAP_DATA_BLOCK)
-                {
-                    /// YCbCr 4:2:0  Capability Map Data Block
-                    /// YUV420
-                    stCfdEdid.u8HDMISinkSupportYUVFormat |= EDID_YUV420_SUPPORT_MASK;
-                }
-            }
-            u16Offset += u8Length;
-
-        }
-
-        XC_CFD_CONTROL_INFO stXCCFDControlInfo;
-        memset(&stXCCFDControlInfo, 0, sizeof(XC_CFD_CONTROL_INFO));
-        stXCCFDControlInfo.enCtrlType = E_XC_CFD_CTRL_TYPE_EDID;
-        stXCCFDControlInfo.pParam = &stCfdEdid;
-        stXCCFDControlInfo.u32ParamLen = sizeof(XC_CFD_EDID);
-        if (E_APIXC_RET_OK != MApi_XC_HDR_Control(E_XC_HDR_CTRL_CFD_CONTROL,&stXCCFDControlInfo))
-        {
-            printf("MApi_XC_HDR_Control failed\n");
-            return FALSE;
-        }
-        return TRUE;
-    }
-    printf("Get TX EDID failed\n");
-    return FALSE;
-}
-
-MS_BOOL SendTxHDRInfo(MS_BOOL bSendHDRInfoFrame)
-{
-    //1. Get CFD Status
-    XC_CFD_HDMI stCfdHdmi;
-    memset(&stCfdHdmi, 0, sizeof(XC_CFD_HDMI));
-    XC_CFD_CONTROL_INFO stXCCFDControlInfo;
-    memset(&stXCCFDControlInfo, 0, sizeof(XC_CFD_CONTROL_INFO));
-    stXCCFDControlInfo.enCtrlType = E_XC_CFD_CTRL_GET_HDMI_STATUS;
-    stXCCFDControlInfo.pParam = &stCfdHdmi;
-    stXCCFDControlInfo.u32ParamLen = sizeof(XC_CFD_HDMI);
-    MApi_XC_HDR_Control(E_XC_HDR_CTRL_CFD_CONTROL,&stXCCFDControlInfo);
-
-    //2. Set HDR InfoFrame
-    MS_U8 u8HDRInfoFrame[HDMITX_HDMITX_INFOFRAME_DYNAMIC_RANGE_ARRAY_SIZE];
-    if(bSendHDRInfoFrame == TRUE)
-    {
-        memset(u8HDRInfoFrame, 0, sizeof(u8HDRInfoFrame));
-
-        u8HDRInfoFrame[0] = HDMITX_HDMITX_INFOFRAME_DYNAMIC_RANGE;                //InfoFrame type
-        u8HDRInfoFrame[1] = HDMITX_HDMITX_INFOFRAME_DYNAMIC_RANGE_VERSION;        //Version
-        u8HDRInfoFrame[2] = HDMITX_HDMITX_INFOFRAME_DYNAMIC_RANGE_PACKET_LENGHT;  //Length of the following HDR InfoFrame
-        u8HDRInfoFrame[3] = stCfdHdmi.u8EOTF;
-        u8HDRInfoFrame[4] = stCfdHdmi.u8SMDID;
-        u8HDRInfoFrame[5] = (MS_U8)LOW_BYTE(stCfdHdmi.u16Display_Primaries_x[0]);
-        u8HDRInfoFrame[6] = (MS_U8)HIGH_BYTE(stCfdHdmi.u16Display_Primaries_x[0]);
-        u8HDRInfoFrame[7] = (MS_U8)LOW_BYTE(stCfdHdmi.u16Display_Primaries_y[0]);
-        u8HDRInfoFrame[8] = (MS_U8)HIGH_BYTE(stCfdHdmi.u16Display_Primaries_y[0]);
-        u8HDRInfoFrame[9] = (MS_U8)LOW_BYTE(stCfdHdmi.u16Display_Primaries_x[1]);
-        u8HDRInfoFrame[10] = (MS_U8)HIGH_BYTE(stCfdHdmi.u16Display_Primaries_x[1]);
-        u8HDRInfoFrame[11] = (MS_U8)LOW_BYTE(stCfdHdmi.u16Display_Primaries_y[1]);
-        u8HDRInfoFrame[12] = (MS_U8)HIGH_BYTE(stCfdHdmi.u16Display_Primaries_y[1]);
-        u8HDRInfoFrame[13] = (MS_U8)LOW_BYTE(stCfdHdmi.u16Display_Primaries_x[2]);
-        u8HDRInfoFrame[14] = (MS_U8)HIGH_BYTE(stCfdHdmi.u16Display_Primaries_x[2]);
-        u8HDRInfoFrame[15] = (MS_U8)LOW_BYTE(stCfdHdmi.u16Display_Primaries_y[2]);
-        u8HDRInfoFrame[16] = (MS_U8)HIGH_BYTE(stCfdHdmi.u16Display_Primaries_y[2]);
-        u8HDRInfoFrame[17] = (MS_U8)LOW_BYTE(stCfdHdmi.u16White_point_x);
-        u8HDRInfoFrame[18] = (MS_U8)HIGH_BYTE(stCfdHdmi.u16White_point_x);
-        u8HDRInfoFrame[19] = (MS_U8)LOW_BYTE(stCfdHdmi.u16White_point_y);
-        u8HDRInfoFrame[20] = (MS_U8)HIGH_BYTE(stCfdHdmi.u16White_point_y);
-        u8HDRInfoFrame[21] = (MS_U8)LOW_BYTE(stCfdHdmi.u16MasterPanelMaxLuminance);
-        u8HDRInfoFrame[22] = (MS_U8)HIGH_BYTE(stCfdHdmi.u16MasterPanelMaxLuminance);
-        u8HDRInfoFrame[23] = (MS_U8)LOW_BYTE(stCfdHdmi.u16MasterPanelMinLuminance);
-        u8HDRInfoFrame[24] = (MS_U8)HIGH_BYTE(stCfdHdmi.u16MasterPanelMinLuminance);
-        u8HDRInfoFrame[25] = (MS_U8)LOW_BYTE(stCfdHdmi.u16MaxContentLightLevel);
-        u8HDRInfoFrame[26] = (MS_U8)HIGH_BYTE(stCfdHdmi.u16MaxContentLightLevel);
-        u8HDRInfoFrame[27] = (MS_U8)LOW_BYTE(stCfdHdmi.u16MaxFrameAvgLightLevel);
-        u8HDRInfoFrame[28] = (MS_U8)HIGH_BYTE(stCfdHdmi.u16MaxFrameAvgLightLevel);
-
-        MApi_HDMITx_PKT_Content_Define(HDMITX_HDR_INFOFRMAE, u8HDRInfoFrame, sizeof(u8HDRInfoFrame));
-        MApi_HDMITx_PKT_User_Define(HDMITX_HDR_INFOFRMAE, TRUE, HDMITX_CYCLIC_PACKET, 1);
-
-        printf("HDMITX_CYCLIC_PACKET:\n");
-        printf("0x%02x 0x%02x 0x%02x 0x%02x 0x%02x\n", u8HDRInfoFrame[0], u8HDRInfoFrame[1], u8HDRInfoFrame[2], u8HDRInfoFrame[3], u8HDRInfoFrame[4]);
-        printf("0x%02x 0x%02x 0x%02x 0x%02x 0x%02x\n", u8HDRInfoFrame[5], u8HDRInfoFrame[6], u8HDRInfoFrame[7], u8HDRInfoFrame[8], u8HDRInfoFrame[9]);
-        printf("0x%02x 0x%02x 0x%02x 0x%02x 0x%02x\n", u8HDRInfoFrame[10], u8HDRInfoFrame[11], u8HDRInfoFrame[12], u8HDRInfoFrame[13], u8HDRInfoFrame[14]);
-        printf("0x%02x 0x%02x 0x%02x 0x%02x 0x%02x\n", u8HDRInfoFrame[15], u8HDRInfoFrame[16], u8HDRInfoFrame[17], u8HDRInfoFrame[18], u8HDRInfoFrame[19]);
-        printf("0x%02x 0x%02x 0x%02x 0x%02x 0x%02x\n", u8HDRInfoFrame[20], u8HDRInfoFrame[21], u8HDRInfoFrame[22], u8HDRInfoFrame[23], u8HDRInfoFrame[24]);
-        printf("0x%02x 0x%02x 0x%02x 0x%02x\n", u8HDRInfoFrame[25], u8HDRInfoFrame[26], u8HDRInfoFrame[27], u8HDRInfoFrame[28]);
-    }
-    else
-    {
-        MApi_HDMITx_PKT_User_Define(HDMITX_HDR_INFOFRMAE, FALSE, HDMITX_STOP_PACKET, 1);
-    }
-
-    //3. Set AVI InfoFrame
-    MApi_HDMITx_SetAVIInfoExtColorimetry((HDMITX_AVI_EXTENDED_COLORIMETRY)stCfdHdmi.u8ExtendedColorimetry, (HDMITX_AVI_YCC_QUANT_RANGE)stCfdHdmi.u8YccQuantizationRange);
-    printf("SetAVIInfoExtColorimetry(%d, %d)\n", stCfdHdmi.u8ExtendedColorimetry, stCfdHdmi.u8YccQuantizationRange);
-    MApi_HDMITx_PKT_User_Define(HDMITX_AVI_INFOFRAME, FALSE, HDMITX_CYCLIC_PACKET, 1);
-    return TRUE;
-}
 #endif
 
 static void _PT_Display_SetHDRInit(void)
 {
 #if (MI_ENABLE == 0)
-    if(STREAM_IS_HDR)
+#if DOVI_HDR_MODE
+    return;
+#else
+    MS_BOOL bSeamlessEnable = FALSE;
+    msAPI_XC_GetHDRSeamlessFlag(&bSeamlessEnable);
+
+    if(STREAM_IS_HDR || bSeamlessEnable)
     {
 #if (MMSDK_HDR_MODE == 1)
-        FLOW("Set HDR Init\n");
+        PT_DISP_DBG("Set HDR Init\n");
         XC_DLC_HDRinit stHDRData = {0};
         stHDRData.bHDREnable = TRUE;
         stHDRData.u16HDRInitLength = sizeof(XC_DLC_HDRinit);
@@ -649,16 +369,48 @@ static void _PT_Display_SetHDRInit(void)
         MApi_XC_WriteByteMask(0x100A4B, 0x0, 0x1);
 #endif
     }
-#endif
+#endif//#if DOVI_HDR_MODE
+#endif//(MI_ENABLE == 0)
 }
 
 static void _PT_Display_CFDInit(void)
 {
 #if (MI_ENABLE == 0)
-    if(STREAM_IS_HDR)
+#if DOVI_HDR_MODE
+        MSAPI_XC_CFD_SENDCFD_INFO stCFDSendInfo = {};
+
+        XC_CFD_HDR stCfdHdr;
+        memset(&stCfdHdr, 0, sizeof(XC_CFD_HDR));
+        stCfdHdr.u32Version = CFD_HDR_VERSION;
+        stCfdHdr.u16Length = sizeof(XC_CFD_HDR);
+        stCfdHdr.u8Win = 0;
+
+        if(STREAM_IS_HDR)
+        {
+            if(STREAM_HDR_TYPE_DOVI)
+                stCfdHdr.u8HdrType = E_XC_CFD_HDR_TYPE_DOLBY;
+            else
+                stCfdHdr.u8HdrType = E_XC_CFD_HDR_TYPE_OPEN;
+        }
+        else
+        {
+            stCfdHdr.u8HdrType = E_XC_CFD_HDR_TYPE_NONE;
+        }
+
+        stCFDSendInfo.etype = E_XC_CFD_CTRL_TYPE_HDR;
+        stCFDSendInfo.pParam = &stCfdHdr;
+        stCFDSendInfo.u16Length = sizeof(XC_CFD_HDR);
+
+        msAPI_XC_CFD_Control(NULL, E_MSAPI_XC_CFD_SEND_CFD, &stCFDSendInfo);
+#else
+    MS_BOOL bSeamlessEnable = FALSE;
+    msAPI_XC_GetHDRSeamlessFlag(&bSeamlessEnable);
+
+    if(STREAM_IS_HDR || bSeamlessEnable)
     {
-        FLOW("Init CFD\n");
-        SetSinkEdidCfd();
+        PT_DISP_DBG("Init CFD\n");
+
+        msAPI_XC_CFD_Control(NULL, E_MSAPI_XC_CFD_SET_SINK_EDID_TO_CFD, NULL);
 
         XC_CFD_INIT stCfdInit;
         stCfdInit.u32Version = CFD_INIT_VERSION;
@@ -667,8 +419,8 @@ static void _PT_Display_CFDInit(void)
         stCfdInit.u8InputSource = (MS_U8)PQ_INPUT_SOURCE_STORAGE;
         SendCfd(E_XC_CFD_CTRL_TYPE_INIT, &stCfdInit, sizeof(XC_CFD_INIT));
         LoadHdrMetadataByHdrIp();
-        // Porting layer does not need set E_VDEC_EX_USER_CMD_SET_DV_XC_SHM_ADDR to VDEC
 
+        // Porting layer does not need set E_VDEC_EX_USER_CMD_SET_DV_XC_SHM_ADDR to VDEC
 #if (MMSDK_HDR_MODE == 1)
         MS_BOOL bHDR = TRUE;
         msAPI_XC_SetCommand(NULL, E_MSAPI_XC_CMD_SET_HDR, &bHDR);
@@ -676,26 +428,37 @@ static void _PT_Display_CFDInit(void)
     }
     else
     {
-        FLOW("Not HDR Stream\n");
+        PT_DISP_DBG("Not HDR Stream\n");
+
+        MSAPI_XC_CFD_SENDCFD_INFO stCFDSendInfo = {};
+
         XC_CFD_HDR stCfdHdr;
         memset(&stCfdHdr, 0, sizeof(XC_CFD_HDR));
         stCfdHdr.u32Version = CFD_HDR_VERSION;
         stCfdHdr.u16Length = sizeof(XC_CFD_HDR);
         stCfdHdr.u8Win = 0;
         stCfdHdr.u8HdrType = E_XC_CFD_HDR_TYPE_NONE;
-        SendCfd(E_XC_CFD_CTRL_TYPE_HDR, &stCfdHdr, sizeof(XC_CFD_HDR));
 
-        SetSinkEdidCfd();
+        stCFDSendInfo.etype = E_XC_CFD_CTRL_TYPE_HDR;
+        stCFDSendInfo.pParam = &stCfdHdr;
+        stCFDSendInfo.u16Length = sizeof(XC_CFD_HDR);
 
-        FireCfd();
+        msAPI_XC_CFD_Control(NULL, E_MSAPI_XC_CFD_SEND_CFD, &stCFDSendInfo);
+        msAPI_XC_CFD_Control(NULL, E_MSAPI_XC_CFD_SET_SINK_EDID_TO_CFD, NULL);
+        msAPI_XC_CFD_Control(NULL, E_MSAPI_XC_CFD_FIRE, NULL);
     }
+#endif//#if DOVI_HDR_MODE
 #endif
+
 }
 
 static void _PT_Display_EnableFrameBufferLess(void)
 {
 #if (MI_ENABLE == 0)
-    if(STREAM_IS_HDR)
+    MS_BOOL bSeamlessEnable = FALSE;
+    msAPI_XC_GetHDRSeamlessFlag(&bSeamlessEnable);
+
+    if(STREAM_IS_HDR || DOVI_HDR_MODE || bSeamlessEnable)
     {
         _gbFireHDR = TRUE;
 #if (MMSDK_HDR_MODE == 1)
@@ -720,12 +483,36 @@ static void _PT_Display_ClearArguments(_ST_MMSDK_DISPLAY_INSTANCE* pDispInstance
     pDispInstance->u8ID_BitMask = Display_Instance_BitMask_NonUse;
     pDispInstance->u8DIPWin = DIP_Win_NonUse;
     pDispInstance->bIsFramePushed = FALSE;
+    pDispInstance->bSetSC1Window = FALSE;
+    pDispInstance->u32DispCount = 0;
 #endif
     pDispInstance->bFirstTimeSetWindow = TRUE;
     pDispInstance->eScalerWin = MAIN_WINDOW;
     pDispInstance->bIsAvpFlow = FALSE;
     pDispInstance->bISSet3D = FALSE;
     pDispInstance->bIsMM3D = FALSE;
+    pDispInstance->bIsOneField = FALSE;
+    pDispInstance->bIsFirstTimeSetOneField = TRUE;
+}
+
+static MMSDK_U16 _PT_Display_GetPanelHStart(void)
+{
+#if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
+    PNL_DeviceId stPNL_DeviceId = {g_stXC_PT_DeviceId[0].u32Version, g_stXC_PT_DeviceId[0].u32Id};
+    return g_IPanelEx.HStart(&stPNL_DeviceId);
+#else
+    return g_IPanel.HStart();
+#endif
+}
+
+static MMSDK_U16 _PT_Display_GetPanelVStart(void)
+{
+#if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
+    PNL_DeviceId stPNL_DeviceId = {g_stXC_PT_DeviceId[0].u32Version, g_stXC_PT_DeviceId[0].u32Id};
+    return g_IPanelEx.VStart(&stPNL_DeviceId);
+#else
+    return g_IPanel.VStart();
+#endif
 }
 
 void _SetFrameBufferSize(MMSDK_U32 u32Address, MMSDK_U32 u32Size)
@@ -784,7 +571,7 @@ static MS_BOOL _HDMITx_3D_Mapping(E_MSAPI_XC_3D_OUTPUT_MODE eXC3DMode, HDMITX_VI
         break;
     default:
         ret = FALSE;
-        FLOW("No HDMITx 3D mode mapping for XC 3D Mode: %d\n", eXC3DMode);
+        PT_DISP_ERR("No HDMITx 3D mode mapping for XC 3D Mode: %d\n", eXC3DMode);
         break;
     }
     return ret;
@@ -793,7 +580,7 @@ static MS_BOOL _HDMITx_3D_Mapping(E_MSAPI_XC_3D_OUTPUT_MODE eXC3DMode, HDMITX_VI
 
 void PT_Display_InitializeDisplayPath(PT_DISPLAYITEM DisplayItem)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     //[River]
     //msAPI_XC_Init and msAPI_XC_SetConnect have be called in sysinit.c initXC
     //So do not init them again?
@@ -805,11 +592,16 @@ void PT_Display_InitializeDisplayPath(PT_DISPLAYITEM DisplayItem)
 
 MMSDK_BOOL PT_Display_CloseWindow(PT_DISPLAYITEM DisplayItem)
 {
-    FLOW("");
+#ifdef HDR_MM_DEV
+#if (MI_ENABLE == 0)
+    MS_BOOL bSeamlessEnable = FALSE;
+#endif
+#endif
+    PT_DISP_DBG("");
 
     if (DisplayItem == NULL)
     {
-        FLOW("DisplayItem is NULL\n");
+        PT_DISP_ERR("DisplayItem is NULL\n");
         return FALSE;
     }
     _ST_MMSDK_DISPLAY_INSTANCE* pDisplayInstance = (_ST_MMSDK_DISPLAY_INSTANCE*)DisplayItem;
@@ -830,7 +622,23 @@ MMSDK_BOOL PT_Display_CloseWindow(PT_DISPLAYITEM DisplayItem)
         PT_Display_BlackScreen(DisplayItem, TRUE);
     }
 
-#if (MMSDK_DMS_ENABLE == 1)
+#ifdef HDR_MM_DEV
+#if (MI_ENABLE == 0)
+    msAPI_XC_GetHDRSeamlessFlag(&bSeamlessEnable);
+
+    if(STREAM_IS_HDR || DOVI_HDR_MODE || bSeamlessEnable)
+    {
+#if DOVI_HDR_MODE
+        msAPI_HDMITx_SetDolbyVisionCtrl(FALSE);
+#else
+        MS_BOOL bSendCFD = FALSE;
+        msAPI_XC_CFD_Control(NULL,E_MSAPI_XC_CFD_SET_INFOFRAME_FROM_CFD,&bSendCFD);
+#endif
+    }
+#endif
+#endif
+
+#if defined(MMSDK_DMS_ENABLE) && (MMSDK_DMS_ENABLE == 1)
     if(pDisplayInstance ->u8DIPWin == E_MSAPI_XC_MAIN_WINDOW)
 #endif
     {
@@ -852,7 +660,7 @@ MMSDK_BOOL PT_Display_CloseWindow(PT_DISPLAYITEM DisplayItem)
 
 void PT_Display_FinalizeDisplayPath(PT_DISPLAYITEM DisplayItem)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     //[River]
     //It seems HB disable video mute by self.
     //msAPI_XC_SetVideoMute(TRUE,MAIN_WINDOW);
@@ -863,13 +671,13 @@ void PT_Display_FinalizeDisplayPath(PT_DISPLAYITEM DisplayItem)
 
 MMSDK_BOOL PT_Display_RegisterCallback(PT_DISPLAYITEM DisplayItem, void * pClass, pfnDisplayCallback pCallback)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     //g_pfnDisplayCallback = pCallback;
     //g_pDislpayClass = pClass;
 
     if (DisplayItem == NULL)
     {
-        FLOW("DisplayItem is NULL\n");
+        PT_DISP_ERR("DisplayItem is NULL\n");
         return FALSE;
     }
     _ST_MMSDK_DISPLAY_INSTANCE* pDisplayInstance = (_ST_MMSDK_DISPLAY_INSTANCE*)DisplayItem;
@@ -880,10 +688,10 @@ MMSDK_BOOL PT_Display_RegisterCallback(PT_DISPLAYITEM DisplayItem, void * pClass
 
 MMSDK_BOOL PT_Display_Initialize(PT_DISPLAYITEM* pDisplayItem)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     if (pDisplayItem == NULL)
     {
-        FLOW("pDisplayItem is NULL\n");
+        PT_DISP_ERR("pDisplayItem is NULL\n");
         return FALSE;
     }
 
@@ -909,10 +717,15 @@ MMSDK_BOOL PT_Display_Initialize(PT_DISPLAYITEM* pDisplayItem)
 
 MMSDK_BOOL PT_Display_Finalize(PT_DISPLAYITEM* pDisplayItem)
 {
-    FLOW("");
+#ifdef HDR_MM_DEV
+#if (MI_ENABLE == 0)
+        MS_BOOL bSeamlessEnable = FALSE;
+#endif
+#endif
+    PT_DISP_DBG("");
     if ((pDisplayItem == NULL) || (*pDisplayItem == NULL))
     {
-        FLOW("pDisplayItem is NULL\n");
+        PT_DISP_ERR("pDisplayItem is NULL\n");
         return FALSE;
     }
 
@@ -923,7 +736,8 @@ MMSDK_BOOL PT_Display_Finalize(PT_DISPLAYITEM* pDisplayItem)
 
 #ifdef HDR_MM_DEV
 #if (MI_ENABLE == 0)
-    if(STREAM_IS_HDR)
+    msAPI_XC_GetHDRSeamlessFlag(&bSeamlessEnable);
+    if(STREAM_IS_HDR || bSeamlessEnable)
     {
         _gu32HDRMetadataType = E_MMSDK_HDR_TYPE_CTL_FLAG_NONE;
 #if (MMSDK_HDR_MODE == 1)
@@ -937,6 +751,8 @@ MMSDK_BOOL PT_Display_Finalize(PT_DISPLAYITEM* pDisplayItem)
 #ifdef AVP_ENABLE
     _ST_MMSDK_DISPLAY_INSTANCE* pDisplayInstance = (_ST_MMSDK_DISPLAY_INSTANCE*)(*pDisplayItem);
 
+    if(u8CountSetSC1Window >0)  u8CountSetSC1Window--;
+
     PT_Display_CloseWindow(*pDisplayItem);
     //Clean ID BitMask
     u8Display_Instance_BitMask &= ~( pDisplayInstance->u8ID_BitMask);
@@ -946,8 +762,6 @@ MMSDK_BOOL PT_Display_Finalize(PT_DISPLAYITEM* pDisplayItem)
     {
 #if defined(MMSDK_MultiWin_MODE) && (MMSDK_MultiWin_MODE == 0)
 #else
-        //Finalize DIP
-        msAPI_XC_DIPMultiView_Finalize(pDisplayInstance->u8DIPWin);
 #if (MMSDK_DMS_ENABLE == 1)
         if(pDisplayInstance->u8DIPWin == E_MSAPI_XC_MAIN_WINDOW)
         {
@@ -958,6 +772,8 @@ MMSDK_BOOL PT_Display_Finalize(PT_DISPLAYITEM* pDisplayItem)
         // Clean DIPWin
         u8DIP_Window_BitMask &= ~( BIT(pDisplayInstance->u8DIPWin));
 #endif
+        //Finalize DIP
+        msAPI_XC_DIPMultiView_Finalize(pDisplayInstance->u8DIPWin);
 #endif
     }
     else
@@ -974,23 +790,35 @@ MMSDK_BOOL PT_Display_Finalize(PT_DISPLAYITEM* pDisplayItem)
 
 #ifdef HDR_MM_DEV
 #if (MI_ENABLE == 0)
-    if(STREAM_IS_HDR)
+#if DOVI_HDR_MODE
+    msAPI_HDMITx_SetDolbyVisionCtrl(FALSE);
+    msAPI_XC_CFD_Control(NULL, E_MSAPI_XC_CFD_DOVI_RESET, NULL);
+#else
+    if(STREAM_IS_HDR || bSeamlessEnable)
     {
-        printf("PT_Display_Finalize End CFD fire!!!!!!\n");
-        FireCfd();
-        SendTxHDRInfo(FALSE);
+        PT_DISP_DBG("PT_Display_Finalize End CFD fire!!!!!!\n");
+        msAPI_XC_CFD_Control(NULL, E_MSAPI_XC_CFD_FIRE, NULL);
     }
-#endif
-#endif
+    MS_BOOL bSendCFD = FALSE;
+    msAPI_XC_CFD_Control(NULL,E_MSAPI_XC_CFD_SET_INFOFRAME_FROM_CFD,&bSendCFD);
+#endif //#if DOVI_HDR_MODE
+#endif //MI_ENABLE
+#endif //HDR_MM_DEV
     return TRUE;
 }
 
 MMSDK_BOOL PT_Display_BlackScreen(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bOnOff)
 {
-    FLOW("Enable:%d", bOnOff);
+#ifdef HDR_MM_DEV
+#if (MI_ENABLE == 0)
+    MS_BOOL bSeamlessEnable = FALSE;
+#endif
+#endif
+    PT_DISP_DBG("Enable:%d", bOnOff);
+
     if (DisplayItem == NULL)
     {
-        FLOW("DisplayItem is NULL\n");
+        PT_DISP_ERR("DisplayItem is NULL\n");
         return FALSE;
     }
 
@@ -1007,32 +835,50 @@ MMSDK_BOOL PT_Display_BlackScreen(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bOnOff)
         return bRet;
     }
 
+#if defined(MMSDK_DMS_ENABLE) && (MMSDK_DMS_ENABLE == 1)
+    if((pDisplayInstance ->u8DIPWin == E_MSAPI_XC_MAIN_WINDOW) && (bOnOff == FALSE) &&
+        (msAPI_XC_IsBlackVideoEnable_EX(&g_stXC_PT_DeviceId[0], E_XC_EX_MAIN_WINDOW) == FALSE)){
+        return TRUE;
+    }
+#endif
+
     if(bOnOff == FALSE && PT_SYS_GetMMPhotoPath() == 0 && enMediaType == E_MMSDK_MEDIA_TYPE_PHOTO)
         return FALSE;
 
 #ifdef HDR_MM_DEV
 #if (MI_ENABLE == 0)
-    if(bOnOff == FALSE && _gbFireHDR == TRUE && STREAM_IS_HDR)
+    msAPI_XC_GetHDRSeamlessFlag(&bSeamlessEnable);
+    if(bOnOff == FALSE && _gbFireHDR == TRUE && (STREAM_IS_HDR || DOVI_HDR_MODE || bSeamlessEnable)
+#ifdef AVP_ENABLE
+        && (pDisplayInstance ->u8DIPWin == E_MSAPI_XC_MAIN_WINDOW)
+#endif
+    )
     {
         MS_U8* aa = (MS_U8*)MsOS_PA2KSEG1((MS_PHY)PT_SYS_GetMmapInfo(NULL, E_MMSDK_BUF_DV_XC, E_MMSDK_BUF_INFO_PHY_ADDR));
-        printf("####### CFD SHM : 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
+        PT_DISP_DBG("####### CFD SHM : 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
             *aa,*(aa+1),*(aa+2),*(aa+3),*(aa+4),*(aa+5),*(aa+6),*(aa+7),*(aa+8),*(aa+9));
+        _gbFireHDR = FALSE;
+#if DOVI_HDR_MODE
+        msAPI_HDMITx_SetDolbyVisionCtrl(TRUE);
+        msAPI_XC_CFD_Control(NULL, E_MSAPI_XC_CFD_FIRE, NULL);
+#else
         MS_U32 value = 0;
         value |= _gu8HDRCtrl;
+        MS_BOOL bSendCFD = TRUE;
         SendCfd(E_XC_CFD_CTRL_SET_HDR_ONOFF_SETTING, &value, sizeof(MS_U32));
-        FireCfd();
-        _gbFireHDR = FALSE;
+        msAPI_XC_CFD_Control(NULL, E_MSAPI_XC_CFD_FIRE, NULL);
         MsOS_DelayTask(100);
-        SendTxHDRInfo(TRUE);
+        msAPI_XC_CFD_Control(NULL,E_MSAPI_XC_CFD_SET_INFOFRAME_FROM_CFD,&bSendCFD);
+#endif
     }
-    else
-    {
-        SendTxHDRInfo(FALSE);
-    }
+#if defined(MMSDK_HDR_TMO_VR_ENABLE) && (MMSDK_HDR_TMO_VR_ENABLE == 1)
+    MDrv_PQ_LoadTMOSettings(PQ_MAIN_WINDOW);
+#endif
+
 #endif
 #endif
 
-#if (MMSDK_DMS_ENABLE == 1)
+#if defined(MMSDK_DMS_ENABLE) && (MMSDK_DMS_ENABLE == 1)
     if(enMediaType == E_MMSDK_MEDIA_TYPE_MOVIE)
     {
         E_MSAPI_DIP_MULTIVIEW_MUTE_ACTION eMultiViewMuteAct = (bOnOff == TRUE) ? E_MSAPI_DIP_MULTIVIEW_MUTE_ON : E_MSAPI_DIP_MULTIVIEW_MUTE_OFF;
@@ -1041,13 +887,10 @@ MMSDK_BOOL PT_Display_BlackScreen(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bOnOff)
     else if (enMediaType == E_MMSDK_MEDIA_TYPE_PHOTO)
 #endif
     {
-#if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
-        msAPI_XC_SetVideoMuteByMode_EX(&g_stXC_PT_DeviceId[0], bOnOff, E_MSAPI_XC_MAIN_WINDOW, E_MSAPI_XC_VIDEO_MUTE_MODE_AUTO_SYNC);
+
+        msAPI_XC_SetVideoMuteByMode_EX(&DEVICE_ID_0, bOnOff, E_MSAPI_XC_MAIN_WINDOW, E_MSAPI_XC_VIDEO_MUTE_MODE_AUTO_SYNC);
         //Don't mute device 1 because of VE OSD can't be muted in OPtoVE mode
-#else
         //For DDI flow, mute does not delay task or wait
-        msAPI_XC_SetVideoMuteByMode_EX(&g_stXC_PT_DeviceId, bOnOff, E_MSAPI_XC_MAIN_WINDOW, E_MSAPI_XC_VIDEO_MUTE_MODE_AUTO_SYNC);
-#endif
     }
     return TRUE;
 }
@@ -1055,7 +898,7 @@ MMSDK_BOOL PT_Display_BlackScreen(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bOnOff)
 
 MMSDK_BOOL PT_Display_FreezeImage(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bOnOff)
 {
-    FLOW("OnOff=%d", bOnOff);
+    PT_DISP_DBG("OnOff=%d", bOnOff);
 
     if (NULL != gstSysCusFunPtr.pFreezeImage)
     {
@@ -1074,10 +917,10 @@ MMSDK_BOOL PT_Display_FreezeImage(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bOnOff)
 
 MMSDK_BOOL PT_Display_SetDSOnOFF(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bEnableDS)
 {
-    FLOW("[ (bEnableDS=%d)]", bEnableDS);
+    PT_DISP_DBG("[ (bEnableDS=%d)]", bEnableDS);
     if (DisplayItem == NULL)
     {
-        FLOW("DisplayItem is NULL\n");
+        PT_DISP_ERR("DisplayItem is NULL\n");
         return FALSE;
     }
      _ST_MMSDK_DISPLAY_INSTANCE* pDisplayInstance = (_ST_MMSDK_DISPLAY_INSTANCE*)DisplayItem;
@@ -1091,7 +934,7 @@ MMSDK_BOOL PT_Display_SetDSOnOFF(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bEnableD
         stCusInitInfo.u32SizeofDispItem = sizeof(_ST_MMSDK_DISPLAY_INSTANCE);
         if(gstSysCusFunPtr.pSetDispParams(&stCusInitInfo) == FALSE)
         {
-            printf("Failed to Set Display Parameters!!\n");
+            PT_DISP_ERR("Failed to Set Display Parameters!!\n");
         }
     }
     if (NULL != gstSysCusFunPtr.pSetDSOnOFF)
@@ -1115,7 +958,7 @@ MMSDK_BOOL PT_Display_SetDSOnOFF(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bEnableD
         stDS_Info.bOP_DS_On = TRUE;
         stDS_Info.bIPS_DS_On = FALSE;
         stDS_Info.bIPM_DS_On = TRUE;
-        printf("\n DS:IP on %d, OP on %d, depth=%d, Addr=0x%"DTC_MS_PHY_x", MIU=%d\n", stDS_Info.bIPM_DS_On, stDS_Info.bOP_DS_On, stDS_Info.u8DS_Index_Depth,
+        PT_DISP_DBG("\n DS:IP on %d, OP on %d, depth=%d, Addr=0x%"DTC_MS_PHY_x", MIU=%d\n", stDS_Info.bIPM_DS_On, stDS_Info.bOP_DS_On, stDS_Info.u8DS_Index_Depth,
             stDS_Info.u32DS_Info_BaseAddr, stDS_Info.u8MIU_Select);
     }
     else
@@ -1169,7 +1012,7 @@ MS_BOOL _DS_SendXCStatus2Firmware(MS_U32 u32FM_Buf_Base, const MSAPI_XC_WINDOW_T
 #endif
     ST_MM_DS_XC_STATUS *pstMMDS_Status;
 
-    FLOWDISPDS("DS_SendXCStatus2Firmware %"DTC_MS_U32_x"\n", u32FM_Buf_Base);
+    PT_DISP_DBG_DS("DS_SendXCStatus2Firmware %"DTC_MS_U32_x"\n", u32FM_Buf_Base);
 
     // direct write to shared memory with firmware
     //pstMMDS_Status = (ST_MM_DS_XC_STATUS *) MsOS_PA2KSEG1(u32FM_Buf_Base);
@@ -1177,9 +1020,9 @@ MS_BOOL _DS_SendXCStatus2Firmware(MS_U32 u32FM_Buf_Base, const MSAPI_XC_WINDOW_T
 
     // get scaler information
 #if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
-    MApi_XC_EX_GetStatus((XC_DEVICE_ID*)&g_stXC_PT_DeviceId[0], &stXCStatus, eWin);
+    CHECK_MAPI_XC_RETURN_VALUE(MApi_XC_EX_GetStatus((XC_DEVICE_ID*)&g_stXC_PT_DeviceId[0], &stXCStatus, eWin));
 #else
-    MApi_XC_GetStatus(&stXCStatus, eWin);
+    CHECK_MAPI_XC_RETURN_VALUE(MApi_XC_GetStatus(&stXCStatus, eWin));
 #endif
     MS_U32 u32Timeout = MsOS_GetSystemTime() + 5000;
     // copy scaler related information
@@ -1188,7 +1031,7 @@ MS_BOOL _DS_SendXCStatus2Firmware(MS_U32 u32FM_Buf_Base, const MSAPI_XC_WINDOW_T
         MsOS_DelayTask(1);
         if(MsOS_GetSystemTime() > u32Timeout)
         {
-            printf("DS Send XC Status to Firmware , bFWIsUpdating time out\n");
+            PT_DISP_ERR("DS Send XC Status to Firmware , bFWIsUpdating time out\n");
             break;
         }
     }
@@ -1203,17 +1046,17 @@ MS_BOOL _DS_SendXCStatus2Firmware(MS_U32 u32FM_Buf_Base, const MSAPI_XC_WINDOW_T
     if (TRUE != _DS_Get_VirtualBox_Info(&pstDSVBox))
     {
         // for backward capability
-        FLOWDISP("Warning!!! _DS_Get_VirtualBox_Info return fail, take FHD as VBox size");
+        PT_DISP_ERR("Warning!!! _DS_Get_VirtualBox_Info return fail, take FHD as VBox size");
     }
 
-    FLOWDISP("vdec_debug VBox Height   %d", pstDSVBox.u16VBox_Vtotal);
-    FLOWDISP("vdec_debug VBox Width    %d", pstDSVBox.u16VBox_Htotal);
+    PT_DISP_DBG("vdec_debug VBox Height   %d", pstDSVBox.u16VBox_Vtotal);
+    PT_DISP_DBG("vdec_debug VBox Width    %d", pstDSVBox.u16VBox_Htotal);
     stXCStatus.stCapWin.height = pstDSVBox.u16VBox_Vtotal;
     stXCStatus.stCapWin.width = pstDSVBox.u16VBox_Htotal;
 
     //stXCStatus.stCropWin.height = 1080;
     //stXCStatus.stCropWin.width = 1920;
-    printf("use video Crop\n");
+    PT_DISP_DBG("use video Crop\n");
     stXCStatus.stCropWin.x = pstCropWin->x;
     stXCStatus.stCropWin.y = pstCropWin->y;
     stXCStatus.stCropWin.width = pstCropWin->width;
@@ -1261,32 +1104,32 @@ MS_BOOL _DS_SendXCStatus2Firmware(MS_U32 u32FM_Buf_Base, const MSAPI_XC_WINDOW_T
     pstMMDS_Status->u16VirtualBoxHeight = stXCStatus.stCapWin.height;
     pstMMDS_Status->bUseVBoxOfHK = 1;
 
-    FLOWDISPDS("### IPMBase0 = 0x%"DTC_MS_PHY_x" ", (MS_PHY)stXCStatus.u32IPMBase0);
-    FLOWDISPDS("### IPMBase1 = 0x%"DTC_MS_PHY_x" ", (MS_PHY)stXCStatus.u32IPMBase1);
-    FLOWDISPDS("### IPMBase2 = 0x%"DTC_MS_PHY_x" ", (MS_PHY)stXCStatus.u32IPMBase2);
-    FLOWDISPDS("### pstMMDS_Status->bLinearMode = %u ", pstMMDS_Status->bLinearMode);
-    FLOWDISPDS("### pstMMDS_Status->u8BitPerPixel = %u ", pstMMDS_Status->u8BitPerPixel);
-    FLOWDISPDS("### pstMMDS_Status->bInterlace = %u ", pstMMDS_Status->bInterlace);
-    FLOWDISPDS("### pstMMDS_Status->bMirrorMode = %u ", pstMMDS_Status->bMirrorMode);
-    FLOWDISPDS("### pstMMDS_Status->u16IPMOffset = %u ", pstMMDS_Status->u16IPMOffset);
-    FLOWDISPDS("### pstMMDS_Status->u8StoreFrameNum = %u ", pstMMDS_Status->u8StoreFrameNum);
-    FLOWDISPDS("### pstMMDS_Status->u16VirtualBoxWidth  = %u ", pstMMDS_Status->u16VirtualBoxWidth );
-    FLOWDISPDS("### pstMMDS_Status->u16VirtualBoxHeight = %u ", pstMMDS_Status->u16VirtualBoxHeight);
+    PT_DISP_DBG_DS("### IPMBase0 = 0x%"DTC_MS_PHY_x" ", (MS_PHY)stXCStatus.u32IPMBase0);
+    PT_DISP_DBG_DS("### IPMBase1 = 0x%"DTC_MS_PHY_x" ", (MS_PHY)stXCStatus.u32IPMBase1);
+    PT_DISP_DBG_DS("### IPMBase2 = 0x%"DTC_MS_PHY_x" ", (MS_PHY)stXCStatus.u32IPMBase2);
+    PT_DISP_DBG_DS("### pstMMDS_Status->bLinearMode = %u ", pstMMDS_Status->bLinearMode);
+    PT_DISP_DBG_DS("### pstMMDS_Status->u8BitPerPixel = %u ", pstMMDS_Status->u8BitPerPixel);
+    PT_DISP_DBG_DS("### pstMMDS_Status->bInterlace = %u ", pstMMDS_Status->bInterlace);
+    PT_DISP_DBG_DS("### pstMMDS_Status->bMirrorMode = %u ", pstMMDS_Status->bMirrorMode);
+    PT_DISP_DBG_DS("### pstMMDS_Status->u16IPMOffset = %u ", pstMMDS_Status->u16IPMOffset);
+    PT_DISP_DBG_DS("### pstMMDS_Status->u8StoreFrameNum = %u ", pstMMDS_Status->u8StoreFrameNum);
+    PT_DISP_DBG_DS("### pstMMDS_Status->u16VirtualBoxWidth  = %u ", pstMMDS_Status->u16VirtualBoxWidth );
+    PT_DISP_DBG_DS("### pstMMDS_Status->u16VirtualBoxHeight = %u ", pstMMDS_Status->u16VirtualBoxHeight);
 
-    FLOWDISPDS("u8DSVersion %d ", pstMMDS_Status->u8DSVersion);
+    PT_DISP_DBG_DS("u8DSVersion %d ", pstMMDS_Status->u8DSVersion);
 
-    FLOWDISPDS("Cap  %d, %d, %d, %d ", pstMMDS_Status->stCapWin.x, pstMMDS_Status->stCapWin.y,
+    PT_DISP_DBG_DS("Cap  %d, %d, %d, %d ", pstMMDS_Status->stCapWin.x, pstMMDS_Status->stCapWin.y,
                pstMMDS_Status->stCapWin.width, pstMMDS_Status->stCapWin.height);
-    FLOWDISPDS("Crop %d, %d, %d, %d ", pstMMDS_Status->stCropWin.x, pstMMDS_Status->stCropWin.y,
+    PT_DISP_DBG_DS("Crop %d, %d, %d, %d ", pstMMDS_Status->stCropWin.x, pstMMDS_Status->stCropWin.y,
                pstMMDS_Status->stCropWin.width, pstMMDS_Status->stCropWin.height);
-    FLOWDISPDS("Disp %d, %d, %d, %d ", pstMMDS_Status->stDispWin.x, pstMMDS_Status->stDispWin.y,
+    PT_DISP_DBG_DS("Disp %d, %d, %d, %d ", pstMMDS_Status->stDispWin.x, pstMMDS_Status->stDispWin.y,
                pstMMDS_Status->stDispWin.width, pstMMDS_Status->stDispWin.height);
 
-    FLOWDISPDS("IPMBase 0/1/2 = %"DTC_MS_U32_x", %"DTC_MS_U32_x", %"DTC_MS_U32_x" ", pstMMDS_Status->u32IPMBase0,
+    PT_DISP_DBG_DS("IPMBase 0/1/2 = %"DTC_MS_U32_x", %"DTC_MS_U32_x", %"DTC_MS_U32_x" ", pstMMDS_Status->u32IPMBase0,
                pstMMDS_Status->u32IPMBase1, pstMMDS_Status->u32IPMBase2);
-    FLOWDISPDS("Linear %d, Bit/Pixel %d, Interlace %d ", pstMMDS_Status->bLinearMode,
+    PT_DISP_DBG_DS("Linear %d, Bit/Pixel %d, Interlace %d ", pstMMDS_Status->bLinearMode,
                pstMMDS_Status->u8BitPerPixel, pstMMDS_Status->bInterlace);
-    FLOWDISPDS("PNL %d, %d, %d, %d ", pstMMDS_Status->u16PNL_HST, pstMMDS_Status->u16PNL_HEND, pstMMDS_Status->u16PNL_VST,
+    PT_DISP_DBG_DS("PNL %d, %d, %d, %d ", pstMMDS_Status->u16PNL_HST, pstMMDS_Status->u16PNL_HEND, pstMMDS_Status->u16PNL_VST,
                pstMMDS_Status->u16PNL_VEND);
 
     pstMMDS_Status->bHKIsUpdating = FALSE;
@@ -1295,7 +1138,7 @@ MS_BOOL _DS_SendXCStatus2Firmware(MS_U32 u32FM_Buf_Base, const MSAPI_XC_WINDOW_T
     return TRUE;
 }
 
-#if (MMSDK_DMS_ENABLE == 1)
+#if defined(MMSDK_DMS_ENABLE) && (MMSDK_DMS_ENABLE == 1)
 static MMSDK_U8 _PT_Display_GetDSIndexDepth(EN_MMSDK_VIDEO_CODEC eVidCodec)
 {
     MMSDK_U8 u8IndexDepth = 0;
@@ -1304,7 +1147,7 @@ static MMSDK_U8 _PT_Display_GetDSIndexDepth(EN_MMSDK_VIDEO_CODEC eVidCodec)
 
     if (eVidCodec == E_MMSDK_VIDEO_CODEC_HEVC_DV
 #ifdef HDR_MM_DEV
-        || _gu32HDRMetadataType == E_MMSDK_HDR_TYPE_CTL_FLAG_TCH
+        || STREAM_HDR_TYPE_TCH
 #endif
     )
     {
@@ -1323,19 +1166,19 @@ static MMSDK_U8 _PT_Display_GetDSIndexDepth(EN_MMSDK_VIDEO_CODEC eVidCodec)
 #endif
 
 #ifdef AVP_ENABLE
-static MS_U8 _PT_Display_GetWindowID(void)
+static MMSDK_BOOL _PT_Display_GetWindowID(MMSDK_U8 *pu8WindowID)
 {
-#if (MMSDK_DMS_ENABLE == 1)
+#if defined(MMSDK_DMS_ENABLE) && (MMSDK_DMS_ENABLE == 1)
     E_MSAPI_XC_WINDOW eWindowID = 0;
     E_MSAPI_XC_RESULT eRet = E_MSAPI_XC_NOT_SUPPORT;
 
     eRet = msAPI_XC_DIPMultiView_CreateWindow(NULL, &eWindowID);
     if (eRet != E_MSAPI_XC_OK)
     {
-        FLOW("Get Window ID fail, eRet = %d", eRet);
-        //return FALSE;
+        PT_DISP_ERR("Get Window ID fail, eRet = %d", eRet);
+        return FALSE;
     }
-    return (MS_U8)eWindowID;
+    *pu8WindowID = (MS_U8)eWindowID;
 #else //(MMSDK_DMS_ENABLE == 1)
     MS_U8 DIPWIN = 0;
 
@@ -1348,20 +1191,22 @@ static MS_U8 _PT_Display_GetWindowID(void)
             break;
         }
     }
-    return DIPWIN;
+    *pu8WindowID = DIPWIN;
 #endif //(MMSDK_DMS_ENABLE == 1)
+
+    return TRUE;
 }
 #endif
 
 MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_RECT *pstCropRect, const ST_MMSDK_XC_RECT *pstDispRect, const MMSDK_U32 u32MuteTimeMS)
 {
-    FLOW("Crop:%d %d (%d,%d), Disp:%d %d (%d,%d)", pstCropRect->u16X, pstCropRect->u16Y,
+    PT_DISP_DBG("Crop:%d %d (%d,%d), Disp:%d %d (%d,%d)", pstCropRect->u16X, pstCropRect->u16Y,
          pstCropRect->u16Width, pstCropRect->u16Height, pstDispRect->u16X, pstDispRect->u16Y,
          pstDispRect->u16Width, pstDispRect->u16Height);
 
     if (DisplayItem == NULL)
     {
-        FLOW("DisplayItem is NULL\n");
+        PT_DISP_ERR("DisplayItem is NULL\n");
         return FALSE;
     }
     _ST_MMSDK_DISPLAY_INSTANCE* pDisplayInstance = (_ST_MMSDK_DISPLAY_INSTANCE*)DisplayItem;
@@ -1374,7 +1219,7 @@ MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_
         MMSDK_BOOL bEnableDS = FALSE;
         MMSDK_BOOL bsetDsOnOff = pDisplayInstance->stDisplayInfo.bEnableDynScaling;
 
-        FLOWDISP("bsetDsOnOff=%d\n",bsetDsOnOff);
+        PT_DISP_DBG("bsetDsOnOff=%d\n",bsetDsOnOff);
         PT_Display_SetDSOnOFF(DisplayItem, bsetDsOnOff);
         bEnableDS = CALLBACK(E_MMSDK_DISPLAY_CALLBACK_IS_ENABLE_DYNAMIC_SCALING, NULL, NULL);
 
@@ -1465,6 +1310,19 @@ MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_
     }
 #endif
 
+#ifdef HDR_MM_DEV
+#if (MI_ENABLE == 0)
+#if DOVI_HDR_MODE
+    if ((cropWin.width % 4) != 0)
+    {
+        MS_U32 u32CropWidth = cropWin.width;
+        cropWin.width = (u32CropWidth / 4) * 4;
+        PT_DISP_DBG("DV HW limition, crop width must be 4-align. %d -> %d\n", u32CropWidth, cropWin.width);
+    }
+#endif
+#endif
+#endif
+
 #ifdef AVP_ENABLE
     if(enMediaType == E_MMSDK_MEDIA_TYPE_MOVIE)
     {
@@ -1474,32 +1332,22 @@ MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_
         // Get Window Zorder
         WINID = log2(pDisplayInstance ->u8ID_BitMask);
         winLayer = PT_SYS_GetAVPZOrder(WINID);
-        printf("[%s][%d]====winLayer=%d===\n",__FUNCTION__,__LINE__, winLayer);
+        PT_DISP_DBG("[%s][%d]====winLayer=%d===\n",__FUNCTION__,__LINE__, winLayer);
 
         if(pDisplayInstance ->u8Flow == DIP_FLOW)
         {
 #if defined(MMSDK_MultiWin_MODE) && (MMSDK_MultiWin_MODE == 0)
 #else //defined(MMSDK_MultiWin_MODE) && (MMSDK_MultiWin_MODE == 0)
-
-            if( pDisplayInstance ->u8DIPWin == DIP_Win_NonUse)
-            {
-                // Get Window ID
-                pDisplayInstance ->u8DIPWin = _PT_Display_GetWindowID();
-            }
-
-#if (MMSDK_DMS_ENABLE == 1)
+#if defined(MMSDK_DMS_ENABLE) && (MMSDK_DMS_ENABLE == 1)
             // Set DS on/off  (patch)
             if(pDisplayInstance ->u8DIPWin == E_MSAPI_XC_MAIN_WINDOW)
             {
-#if (MMSDK_CTRL_DYNAMIC_SCALING_PORTING == 1)
-                MMSDK_BOOL bDynScaling = TRUE;
-#else
-                MMSDK_BOOL bDynScaling = FALSE;
-#endif
+                MMSDK_BOOL bDynScaling = TRUE;  // DMS on, DS always open
+
                 ST_MMSDK_BUF_INFO stBuffInfo = {};
                 EN_MMSDK_VIDEO_CODEC eVideoCodec = pDisplayInstance->stDisplayInfo.eVideoType;
 
-                if((bDynScaling == TRUE) && (PT_SYS_GetMmapInfo(&stBuffInfo, E_MMSDK_BUF_XC_DS, 0) != 0))
+                if(PT_SYS_GetMmapInfo(&stBuffInfo, E_MMSDK_BUF_XC_DS, 0) != 0)
                 {
                     bDynScaling = TRUE;
                     pDisplayInstance->stDisplayInfo.u32DSInfoBaseAddr = stBuffInfo.u32Addr;
@@ -1509,7 +1357,7 @@ MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_
                 }
                 else
                 {
-                    FLOW("Get E_MMSDK_BUF_XC_DS FAIL, Disable DS\n");
+                    PT_DISP_DBG("Get E_MMSDK_BUF_XC_DS FAIL, Disable DS\n");
                     bDynScaling = FALSE;
                 }
                 PT_Display_SetDSOnOFF(DisplayItem, bDynScaling);
@@ -1519,14 +1367,22 @@ MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_
 #endif
             }
 #endif
-            printf("[%s][%d]====pDisplayInstance ->u8ID_BitMask=%d===\n",__FUNCTION__,__LINE__,pDisplayInstance ->u8ID_BitMask);
-            printf("[%s][%d]====pDisplayInstance ->u8Flow=%d===\n",__FUNCTION__,__LINE__,pDisplayInstance ->u8Flow);
-            printf("[%s][%d]====pDisplayInstance->u8DIPWin=%d===\n",__FUNCTION__,__LINE__,pDisplayInstance->u8DIPWin);
+            PT_DISP_DBG("[%s][%d]====pDisplayInstance ->u8ID_BitMask=%d===\n",__FUNCTION__,__LINE__,pDisplayInstance ->u8ID_BitMask);
+            PT_DISP_DBG("[%s][%d]====pDisplayInstance ->u8Flow=%d===\n",__FUNCTION__,__LINE__,pDisplayInstance ->u8Flow);
+            PT_DISP_DBG("[%s][%d]====pDisplayInstance->u8DIPWin=%d===\n",__FUNCTION__,__LINE__,pDisplayInstance->u8DIPWin);
 
             msAPI_XC_DIPMultiView_SetZOrder(&g_stDIP_PT_DeviceId, (E_MSAPI_XC_WINDOW)(pDisplayInstance->u8DIPWin), winLayer);
             msAPI_XC_SetWin_EX(&g_stDIP_PT_DeviceId, NULL, &cropWin, &dispWin, (E_MSAPI_XC_WINDOW)pDisplayInstance ->u8DIPWin);
+            if(pDisplayInstance->bSetSC1Window == FALSE)
+            {
+                if(u8CountSetSC1Window == 0)    msAPI_XC_SetWin_EX(&g_stXC_PT_DeviceId[1], NULL, NULL, NULL, E_XC_EX_MAIN_WINDOW);
+
+                pDisplayInstance->bSetSC1Window = TRUE;
+                u8CountSetSC1Window++;
+            }
 #endif //defined(MMSDK_MultiWin_MODE) && (MMSDK_MultiWin_MODE == 0)
-#if (MMSDK_DMS_ENABLE == 1)
+
+#if defined(MMSDK_DMS_ENABLE) && (MMSDK_DMS_ENABLE == 1)
             PT_Display_BlackScreen(DisplayItem, FALSE);
 #endif
             return TRUE;
@@ -1542,10 +1398,10 @@ MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_
 #endif //AVP_ENABLE
 
     MMSDK_BOOL bsetDsOnOff = pDisplayInstance->stDisplayInfo.bEnableDynScaling;
-    FLOWDISP("bsetDsOnOff=%d\n",bsetDsOnOff);
+    PT_DISP_DBG("bsetDsOnOff=%d\n",bsetDsOnOff);
     PT_Display_SetDSOnOFF(DisplayItem, bsetDsOnOff);
 
-    FLOWDISP("Callback ENABLE_DYNAMIC_SCALING = %d",
+    PT_DISP_DBG("Callback ENABLE_DYNAMIC_SCALING = %d",
              CALLBACK(E_MMSDK_DISPLAY_CALLBACK_IS_ENABLE_DYNAMIC_SCALING, NULL, NULL));
 
 #ifdef HDR_MM_DEV
@@ -1554,8 +1410,6 @@ MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_
 
     if (CALLBACK(E_MMSDK_DISPLAY_CALLBACK_IS_ENABLE_DYNAMIC_SCALING, NULL, NULL) && enMediaType == E_MMSDK_MEDIA_TYPE_MOVIE)
     {
-#if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
-        PNL_DeviceId stPNL_DeviceId = {g_stXC_PT_DeviceId[0].u32Version, g_stXC_PT_DeviceId[0].u32Id};
         MMSDK_U32 u32DynScalSize = pDisplayInstance->stDisplayInfo.u32DSSize;
         MMSDK_U32 u32DSAddr = pDisplayInstance->stDisplayInfo.u32DSInfoBaseAddr + u32DynScalSize;
         MMSDK_U32 u32CropBottom = pDisplayInstance->stDisplayInfo.u16CropBottom;
@@ -1566,39 +1420,18 @@ MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_
         if (TRUE != _DS_Get_VirtualBox_Info(&pstDSVBox))
         {
             // for backward capability
-            FLOWDISP("Warning!!! _DS_Get_VirtualBox_Info return fail, take FHD as VBox size");
+            PT_DISP_ERR("Warning!!! _DS_Get_VirtualBox_Info return fail, take FHD as VBox size");
         }
 
-        MS_BOOL bIsLoadPQ = FALSE;
-        E_XC_FB_LEVEL eFBLevel = MApi_XC_Get_FB_Level(MAIN_WINDOW);
-        XC_GET_FB_LEVEL stXCGetFBLevel;
-        memset(&stXCGetFBLevel, 0, sizeof(XC_GET_FB_LEVEL));
-
-        stXCGetFBLevel.stCropWin.width  = cropWin.width;
-        stXCGetFBLevel.stCropWin.height = cropWin.height;
-        stXCGetFBLevel.stDispWin.width  = dispWin.width;
-        stXCGetFBLevel.stDispWin.height = dispWin.height;
-
-        if (MApi_XC_GetChipCaps(E_XC_FB_CAPS_GET_FB_LEVEL, (MS_U32*)&stXCGetFBLevel, sizeof(XC_GET_FB_LEVEL)) == E_APIXC_RET_OK)
-        {
-            if(stXCGetFBLevel.eFBLevel != eFBLevel)
-            {
-                bIsLoadPQ = TRUE;
-            }
-        }
-
-        if((bIsLoadPQ == TRUE) && (stXCGetFBLevel.eFBLevel == E_XC_FB_LEVEL_FB))  //FBL ==> FB case: Need to load PQ first for data to frame buffer.
-        {   printf("[%s][%d] FBL ==> FB\n", __FUNCTION__,__LINE__);
-            MApi_XC_Set_FB_Level(E_XC_FB_LEVEL_FB ,MAIN_WINDOW);
-        }
-        else if((bIsLoadPQ == TRUE) && (stXCGetFBLevel.eFBLevel == E_XC_FB_LEVEL_FBL))  //FB ==> FBL case:
-        {   printf("[%s][%d] FB ==> FBL\n", __FUNCTION__,__LINE__);
-            MApi_XC_Set_FB_Level(E_XC_FB_LEVEL_FBL ,MAIN_WINDOW);
-        }
-
+        /* [Temp note]
+        1. For Kris/Kirin with 3M XC buffer and need set small display window, need recaculate Frame buffer level in msAPI_XC_SetWin_EX.
+        2. Remove only SetWindow once and may result flash when MM_MoveView. This change is necessary when incorporate DS flow in porting layer into msapi.
+        --> Side effect: MM_MoveView may flash.*/
+#if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
         if(pDisplayInstance->bFirstTimeSetWindow == TRUE)
         {
-            msAPI_XC_SetAspectRatioType_EX(&g_stXC_PT_DeviceId[0],E_MSAPI_XC_MAIN_WINDOW,E_MSAPI_XC_ASPECT_RATIO_NORMAL);
+#endif
+            msAPI_XC_SetAspectRatioType_EX(&DEVICE_ID_0, E_MSAPI_XC_MAIN_WINDOW, E_MSAPI_XC_ASPECT_RATIO_NORMAL);
 
             //use panel crop
             MSAPI_XC_VDEC_DispInfo stVidStatus;
@@ -1606,93 +1439,14 @@ MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_
 
             if ( E_MSAPI_XC_OK != msAPI_XC_GetVDECInfo_EX_ByPath(E_MSAPI_XC_MAIN_DECODER_PATH,&stVidStatus) )
             {
-                FLOWDISP(" Video Get Info Failed!! \n");
+                PT_DISP_ERR(" Video Get Info Failed!! \n");
                 return FALSE;
             }
-
             /*
              * reset VDEC information and Set MVOP for Dynamic scaling
              * set size as maximal width and maximal height (it must be fixed!)
              */
 
-            stVidStatus.u16HorSize          = pstDSVBox.u16VBox_Htotal; //+ stVidStatus.u16CropLeft + stVidStatus.u16CropRight;
-            stVidStatus.u16VerSize          = pstDSVBox.u16VBox_Vtotal; //+ stVidStatus.u16CropTop + stVidStatus.u16CropBottom;
-            stVidStatus.u32AspectWidth      = pstDSVBox.u16VBox_Htotal;
-            stVidStatus.u32AspectHeight     = pstDSVBox.u16VBox_Vtotal;
-
-            msAPI_XC_SetVDECInfo_EX_ByPath(E_MSAPI_XC_MAIN_DECODER_PATH,stVidStatus);
-            MS_BOOL bDS = TRUE;
-            msAPI_XC_SetCommand(NULL, E_MSAPI_XC_CMD_SET_DYNAMIC_SCALING, &bDS);
-            msAPI_XC_SetWin_EX(&g_stXC_PT_DeviceId[0], NULL, &cropWin, &dispWin, E_XC_EX_MAIN_WINDOW);
-            msAPI_XC_SetWin_EX(&g_stXC_PT_DeviceId[1], NULL, NULL, NULL, E_XC_EX_MAIN_WINDOW);
-            //[K3_Porting] msAPI_VE_SetMode();
-
-            if(pDisplayInstance->bIsAvpFlow == FALSE)
-            {
-                XC_EX_WINDOW_TYPE stDispWin1;
-
-                stDispWin1.x = dispWin.x + g_IPanelEx.HStart(&stPNL_DeviceId);
-                stDispWin1.y = dispWin.y + g_IPanelEx.VStart(&stPNL_DeviceId);
-                stDispWin1.width = dispWin.width;
-                stDispWin1.height = dispWin.height;
-
-                if(stDispWin1.width % 8 != 0)
-                {
-                    //[patch]
-                    //to avoid right green garbage line, set preview window width - 1 if width not align to 8 pixel.
-                    //Only DS need this setting because of OPM offset of DS is the same with display window align 8 pixel.
-                    //OPM of non-DS is the same with panel size (Do not need to align)
-                    stDispWin1.width = stDispWin1.width - 1;
-                }
-                MApi_XC_EX_SetDispWinToReg((XC_DEVICE_ID*)&g_stXC_PT_DeviceId[0], &stDispWin1, E_XC_EX_MAIN_WINDOW);
-            }
-            pDisplayInstance->bFirstTimeSetWindow = FALSE;
-        }
-#else
-
-        MMSDK_U32 u32DynScalSize = pDisplayInstance->stDisplayInfo.u32DSSize;
-        MMSDK_U32 u32DSAddr = pDisplayInstance->stDisplayInfo.u32DSInfoBaseAddr + u32DynScalSize;
-//        MMSDK_U32 u32CropBottom = pDisplayInstance->stDisplayInfo.u16CropBottom;
-//        MMSDK_U32 u32Height = pDisplayInstance->stDisplayInfo.u16SrcHeight;
-//        MMSDK_U32 u32Width = pDisplayInstance->stDisplayInfo.u16SrcWidth;
-
-        DS_VBOX_INFO pstDSVBox =  {.u16VBox_Htotal = DYNAMIC_SCALING_VB_H, .u16VBox_Vtotal = DYNAMIC_SCALING_VB_V};
-
-        if (TRUE != _DS_Get_VirtualBox_Info(&pstDSVBox))
-        {
-            // for backward capability
-            FLOWDISP("Warning!!! _DS_Get_VirtualBox_Info return fail, take FHD as VBox size");
-        }
-
-        /* [Temp note]
-        1. For Kris/Kirin with 3M XC buffer and need set small display window, need recaculate Frame buffer level in msAPI_XC_SetWin_EX.
-        2. Remove only SetWindow once and may result flash when MM_MoveView. This change is necessary when incorporate DS flow in porting layer into msapi.
-        --> Side effect: MM_MoveView may flash.
-        */
-        //if(pDisplayInstance->bFirstTimeSetWindow == TRUE)
-        //{
-            msAPI_XC_SetAspectRatioType_EX(&g_stXC_PT_DeviceId, E_MSAPI_XC_MAIN_WINDOW, E_MSAPI_XC_ASPECT_RATIO_NORMAL);
-
-            //use panel crop
-            MSAPI_XC_VDEC_DispInfo stVidStatus;
-            if ( TRUE != msAPI_XC_GetVDECInfo_EX_ByPath(E_MSAPI_XC_MAIN_DECODER_PATH, &stVidStatus) )
-            {
-                FLOWDISP(" Video Get Info Failed!! \n");
-                return FALSE;
-            }
-
-            //MApi_VDEC_SetBlueScreen(FALSE);
-            /*//Newer chip doesn't have this limitation
-            if ( TRUE == stVidStatus.u8Interlace )
-            {
-                FLOWDISP(" Only Support Progressive mode!! \n");
-                return FALSE;
-            }*/
-
-            /*
-             * reset VDEC information and Set MVOP for Dynamic scaling
-             * set size as maximal width and maximal height (it must be fixed!)
-             */
             stVidStatus.u16HorSize          = pstDSVBox.u16VBox_Htotal; //+ stVidStatus.u16CropLeft + stVidStatus.u16CropRight;
             stVidStatus.u16VerSize          = pstDSVBox.u16VBox_Vtotal; //+ stVidStatus.u16CropTop + stVidStatus.u16CropBottom;
             stVidStatus.u32AspectWidth      = pstDSVBox.u16VBox_Htotal;
@@ -1701,15 +1455,20 @@ MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_
             msAPI_XC_SetVDECInfo_EX_ByPath(E_MSAPI_XC_MAIN_DECODER_PATH, stVidStatus);
             MS_BOOL bDS = TRUE;
             msAPI_XC_SetCommand(NULL, E_MSAPI_XC_CMD_SET_DYNAMIC_SCALING, &bDS);
-            msAPI_XC_SetWin_EX(&g_stXC_PT_DeviceId, NULL, &cropWin, &dispWin, MAIN_WINDOW);
+            msAPI_XC_SetWin_EX(&DEVICE_ID_0, NULL, &cropWin, &dispWin, E_MSAPI_XC_MAIN_WINDOW);
+
+#if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
+            msAPI_XC_SetWin_EX(&DEVICE_ID_1, NULL, NULL, NULL, E_MSAPI_XC_MAIN_WINDOW);
+#else
             msAPI_VE_SetMode();
+#endif
 
             if(pDisplayInstance->bIsAvpFlow == FALSE)
             {
-                MS_WINDOW_TYPE stDispWin1;
+                MSAPI_XC_WINDOW_TYPE stDispWin1;
 
-                stDispWin1.x = dispWin.x + g_IPanel.HStart();
-                stDispWin1.y = dispWin.y + g_IPanel.VStart();
+                stDispWin1.x = dispWin.x + _PT_Display_GetPanelHStart();
+                stDispWin1.y = dispWin.y + _PT_Display_GetPanelVStart();
                 stDispWin1.width = dispWin.width;
                 stDispWin1.height = dispWin.height;
 
@@ -1721,30 +1480,41 @@ MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_
                     //OPM of non-DS is the same with panel size (Do not need to align)
                     stDispWin1.width = stDispWin1.width - 1;
                 }
-                MApi_XC_SetDispWinToReg(&stDispWin1, MAIN_WINDOW);
+
+                msAPI_XC_SetDispWinToReg_EX(&DEVICE_ID_0, &stDispWin1, E_MSAPI_XC_MAIN_WINDOW);
             }
             pDisplayInstance->bFirstTimeSetWindow = FALSE;
-        //}
+#if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
+        }
 #endif
-        FLOWDISPDS("---crop before recaluate x=%d, y=%d, w=%d, h=%d", cropWin.x, cropWin.y,
+        PT_DISP_DBG_DS("---crop before recaluate x=%d, y=%d, w=%d, h=%d", cropWin.x, cropWin.y,
         cropWin.width, cropWin.height);
         //cropWin.width = (MMSDK_U16)DYNAMIC_SCALING_VB_H * cropWin.width / u32Width;
         //because of panel crop, cropWin.width must be DYNAMIC_SCALING_VB_H always
         //cropWin.width = (MMSDK_U16)DYNAMIC_SCALING_VB_H;
         //cropWin.x = (MMSDK_U16)DYNAMIC_SCALING_VB_H * cropWin.x / u32Width;
 
-        FLOWDISPDS("----[DBG] (V, crop_h, h, crop_b) (%d,%d,%d,%d)", DYNAMIC_SCALING_VB_V, (int)cropWin.height, (int)u32Height, (int)u32CropBottom);
+        PT_DISP_DBG_DS("----[DBG] (V, crop_h, h, crop_b) (%d,%d,%d,%d)", DYNAMIC_SCALING_VB_V, (int)cropWin.height, (int)u32Height, (int)u32CropBottom);
 
         //because of panel crop, cropWin.height must be DYNAMIC_SCALING_VB_V always
         //cropWin.height = (MMSDK_U16)DYNAMIC_SCALING_VB_V * cropWin.height / (u32Height - u32CropBottom);
         //cropWin.height = (MMSDK_U16)DYNAMIC_SCALING_VB_V;
         //cropWin.y = (MMSDK_U16)DYNAMIC_SCALING_VB_V * cropWin.y / (u32Height - u32CropBottom);
 
-        FLOWDISPDS("---crop after reclauate x=%d, y=%d, w=%d, h=%d", cropWin.x, cropWin.y, cropWin.width, cropWin.height);
-        FLOWDISPDS("---decoded, w=%d, h=%d", (int)u32Width, (int)u32Height);
+        PT_DISP_DBG_DS("---crop after reclauate x=%d, y=%d, w=%d, h=%d", cropWin.x, cropWin.y, cropWin.width, cropWin.height);
+        PT_DISP_DBG_DS("---decoded, w=%d, h=%d", (int)u32Width, (int)u32Height);
 
         // if screen mute disabled, change zoom info only
-        FLOWDISPDS("DS_SendZoomInfo2Firmware %"DTC_MS_U32_x"", u32DSAddr);
+        PT_DISP_DBG_DS("DS_SendZoomInfo2Firmware %"DTC_MS_U32_x"", u32DSAddr);
+
+        // get scaler information
+#if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
+        XC_EX_ApiStatus stXCStatus;
+        MApi_XC_EX_GetStatus((XC_DEVICE_ID*)&g_stXC_PT_DeviceId[0], &stXCStatus, MAIN_WINDOW);
+#else
+        XC_ApiStatus stXCStatus;
+        MApi_XC_GetStatus(&stXCStatus, MAIN_WINDOW);
+#endif
 
         // direct write to shared memory with firmware
         ST_MM_DS_XC_STATUS *pstMMDS_Status = (ST_MM_DS_XC_STATUS*) MsOS_PA2KSEG1(u32DSAddr);
@@ -1759,29 +1529,23 @@ MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_
         pstMMDS_Status->stNewCropWin.width  = cropWin.width;
         pstMMDS_Status->stNewCropWin.height = cropWin.height;
 
-#if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
-        pstMMDS_Status->stNewDispWin.x      = dispWin.x + g_IPanelEx.HStart(&stPNL_DeviceId);
-        pstMMDS_Status->stNewDispWin.y      = dispWin.y + g_IPanelEx.VStart(&stPNL_DeviceId);
-#else
-        pstMMDS_Status->stNewDispWin.x      = dispWin.x + g_IPanel.HStart();
-        pstMMDS_Status->stNewDispWin.y      = dispWin.y + g_IPanel.VStart();
-#endif
+        pstMMDS_Status->stNewDispWin.x      = dispWin.x + _PT_Display_GetPanelHStart();
+        pstMMDS_Status->stNewDispWin.y      = dispWin.y + _PT_Display_GetPanelVStart();
+
         pstMMDS_Status->stNewDispWin.width  = dispWin.width;
         pstMMDS_Status->stNewDispWin.height = dispWin.height;
 
-        //DS must set line offset for crop pixel offset
-        //If don't set this, it will always be 1920.
-        //MS_U16 u16IPMOffset = MApi_XC_R2BYTE(0x121C);
-        MS_U16 u16IPMOffset = pstDSVBox.u16VBox_Htotal;
-        pstMMDS_Status->u16IPMOffset = u16IPMOffset;
+        //DS must set line offset for crop pixel offset. If don't set this, it will always be 1920.
+        pstMMDS_Status->u16IPMOffset = stXCStatus.u16IPMOffset;
+
         if(MApi_XC_IsCurrentFrameBufferLessMode() || msAPI_XC_GetRFBLMode())
         {
-            FLOWDISPDS("MMSDK porting DS_FBL");
+            PT_DISP_DBG_DS("MMSDK porting DS_FBL");
             pstMMDS_Status->u8MVOPCrop = 1;
         }
         else
         {
-            FLOWDISPDS("MMSDK porting DS_FB");
+            PT_DISP_DBG_DS("MMSDK porting DS_FB");
             pstMMDS_Status->u8MVOPCrop = 0;
         }
         pstMMDS_Status->u8EnhanceModeSetting = 1 << 5;
@@ -1792,32 +1556,22 @@ MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_
     }
     else
     {
-#if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
         if( enMediaType == E_MMSDK_MEDIA_TYPE_PHOTO || enMediaType == E_MMSDK_MEDIA_TYPE_MOVIE)
         {
             MS_BOOL bDS = FALSE;
 
-            FLOW("Set DS off before set window\n");
+            PT_DISP_DBG("Set DS off before set window\n");
             PT_Display_SetDSOnOFF(DisplayItem, bDS);
             msAPI_XC_SetCommand(NULL, E_MSAPI_XC_CMD_SET_DYNAMIC_SCALING, &bDS);
-            msAPI_XC_SetAspectRatioType_EX(&g_stXC_PT_DeviceId[0],E_MSAPI_XC_MAIN_WINDOW,E_MSAPI_XC_ASPECT_RATIO_NORMAL);
-            msAPI_XC_SetWin_EX(&g_stXC_PT_DeviceId[0], NULL, &cropWin, &dispWin, E_XC_EX_MAIN_WINDOW);
-            msAPI_XC_SetWin_EX(&g_stXC_PT_DeviceId[1], NULL, NULL, NULL, E_XC_EX_MAIN_WINDOW);
+            msAPI_XC_SetAspectRatioType_EX(&DEVICE_ID_0,E_MSAPI_XC_MAIN_WINDOW,E_MSAPI_XC_ASPECT_RATIO_NORMAL);
+            msAPI_XC_SetWin_EX(&DEVICE_ID_0, NULL, &cropWin, &dispWin, E_MSAPI_XC_MAIN_WINDOW);
+#if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
+            msAPI_XC_SetWin_EX(&DEVICE_ID_1, NULL, NULL, NULL, E_MSAPI_XC_MAIN_WINDOW);
             //[K3_Porting] msAPI_VE_SetMode();
-        }
 #else
-        if(enMediaType == E_MMSDK_MEDIA_TYPE_PHOTO || enMediaType == E_MMSDK_MEDIA_TYPE_MOVIE)
-        {
-            MS_BOOL bDS = FALSE;
-
-            FLOW("Set DS off before set window\n");
-            PT_Display_SetDSOnOFF(DisplayItem, bDS);
-            msAPI_XC_SetCommand(NULL, E_MSAPI_XC_CMD_SET_DYNAMIC_SCALING, &bDS);
-            msAPI_XC_SetAspectRatioType_EX(&g_stXC_PT_DeviceId, E_MSAPI_XC_MAIN_WINDOW, E_MSAPI_XC_ASPECT_RATIO_NORMAL);
-            msAPI_XC_SetWin_EX(&g_stXC_PT_DeviceId, NULL, &cropWin, &dispWin, E_MSAPI_XC_MAIN_WINDOW);
             msAPI_VE_SetMode();
-        }
 #endif
+        }
     }
     //[River] - RFBL will check in msAPI_XC_SetWin
     //MDrv_PQ_SetRFblMode(TRUE, FALSE);
@@ -1842,6 +1596,7 @@ MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_
             && (pDisplayInstance->bIsAvpFlow == FALSE) )
     {
         MMSDK_U32 u32DynScalSize = pDisplayInstance->stDisplayInfo.u32DSSize;
+
         _DS_SendXCStatus2Firmware((pDisplayInstance->stDisplayInfo.u32DSInfoBaseAddr + u32DynScalSize),
             &cropWin,&dispWin,MAIN_WINDOW);
         CALLBACK(E_MMSDK_DISPLAY_CALLBACK_UPDATE_XC_INFO, NULL, NULL);
@@ -1862,10 +1617,10 @@ MMSDK_BOOL PT_Display_SetXCWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_XC_
 
 MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_INFO *pDisplayInfo)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     if ((DisplayItem == NULL) || (pDisplayInfo == NULL))
     {
-        FLOW("DisplayItem or pDisplayInfo is NULL\n");
+        PT_DISP_ERR("DisplayItem or pDisplayInfo is NULL\n");
         return FALSE;
     }
     _ST_MMSDK_DISPLAY_INSTANCE* pDisplayInstance = (_ST_MMSDK_DISPLAY_INSTANCE*)DisplayItem;
@@ -1895,9 +1650,9 @@ MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_I
     //If decode JPEG to XC
     if (enMediaType == E_MMSDK_MEDIA_TYPE_PHOTO && PT_SYS_GetMMPhotoPath() == 1)
     {
-        FLOW("Show Photo by MVOP!!");
+        PT_DISP_DBG("Show Photo by MVOP!!");
 #if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
-        FLOWDISP("bMIU0 = %d", pDisplayInfo->bMIU0);
+        PT_DISP_DBG("bMIU0 = %d", pDisplayInfo->bMIU0);
 
         MSAPI_XC_VDEC_DispInfo stVidStatus = {0};
         memset(&stVidStatus, 0, sizeof(MSAPI_XC_VDEC_DispInfo));
@@ -1916,16 +1671,16 @@ MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_I
         if (pDisplayInfo->u8Interlace == FALSE)
         {
             stVidStatus.u8Interlace   = 0;
-            printf("JPEG is progressive!\n");
+            PT_DISP_DBG("JPEG is progressive!\n");
         }
         else
         {
             stVidStatus.u8Interlace   = 1;
-            printf("JPEG is NOT progressive!\n");
+            PT_DISP_DBG("JPEG is NOT progressive!\n");
         }
         MMSDK_U16 u16ImageWidth = pDisplayInfo->u16SrcWidth;
         MMSDK_U16 u16ImageHeight = pDisplayInfo->u16SrcHeight;
-        FLOWDISP("%u,%u", u16ImageWidth, u16ImageHeight);
+        PT_DISP_DBG("%u,%u", u16ImageWidth, u16ImageHeight);
         stVidStatus.u16HorSize      = (u16ImageWidth + 7) & 0xfff8;
         stVidStatus.u16VerSize      = u16ImageHeight;
         stVidStatus.u8AspectRate    = 2;
@@ -1942,13 +1697,13 @@ MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_I
         //set JPEG still image config
         stJpegInfo.u8MiuSel = (pDisplayInfo->bMIU0) ? 0 : 1;
         stJpegInfo.u32BufAddr = pDisplayInfo->u32DisplayBuffPhysicalAddr;
-        FLOWDISP("JPD output fb addr = 0x%"DTC_MS_U32_X", MIU = %d", stJpegInfo.u32BufAddr, stJpegInfo.u8MiuSel);
+        PT_DISP_DBG("JPD output fb addr = 0x%"DTC_MS_U32_X", MIU = %d", stJpegInfo.u32BufAddr, stJpegInfo.u8MiuSel);
         msAPI_XC_SetJPEGInfo(stJpegInfo);
 
         //set MVOP config
         msAPI_XC_ForceMVOPDramType_EX(E_MVOP_DEV_0, E_MSAPI_XC_MVOP_SOURCE_TYPE_422);
         msAPI_XC_SetMVOPMiuSel_EX(E_MSAPI_XC_MAIN_DECODER_PATH, TRUE, (pDisplayInfo->bMIU0)? 0 : 1);
-        msAPI_XC_SetMVOPConfig_EX(E_MSAPI_XC_MAIN_DECODER_PATH, MVOP_INPUT_DRAM);
+        CHECK_MAPI_XC_RETURN_VALUE(msAPI_XC_SetMVOPConfig_EX(E_MSAPI_XC_MAIN_DECODER_PATH, MVOP_INPUT_DRAM));
 
         msAPI_XC_SetConnect_EX(&g_stXC_PT_DeviceId[0], E_XC_EX_INPUT_SOURCE_DTV, E_MSAPI_XC_MAIN_WINDOW);
 
@@ -1960,7 +1715,7 @@ MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_I
         //disable black screen here
         msAPI_VE_SetVideoMute(DISABLE);
 #else
-        FLOWDISP("bMIU0 = %d", pDisplayInfo->bMIU0);
+        PT_DISP_DBG("bMIU0 = %d", pDisplayInfo->bMIU0);
 
         MSAPI_XC_VDEC_DispInfo stVidStatus = {0};
         memset(&stVidStatus, 0, sizeof(MSAPI_XC_VDEC_DispInfo));
@@ -1977,16 +1732,16 @@ MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_I
         if (pDisplayInfo->u8Interlace == FALSE)
         {
             stVidStatus.u8Interlace   = 0;
-            printf("JPEG is progressive!\n");
+            PT_DISP_DBG("JPEG is progressive!\n");
         }
         else
         {
             stVidStatus.u8Interlace   = 1;
-            printf("JPEG is NOT progressive!\n");
+            PT_DISP_DBG("JPEG is NOT progressive!\n");
         }
         MMSDK_U16 u16ImageWidth = pDisplayInfo->u16SrcWidth;
         MMSDK_U16 u16ImageHeight = pDisplayInfo->u16SrcHeight;
-        FLOWDISP("%u,%u", u16ImageWidth, u16ImageHeight);
+        PT_DISP_DBG("%u,%u", u16ImageWidth, u16ImageHeight);
         stVidStatus.u16HorSize      = (u16ImageWidth + 7) & 0xfff8;
         stVidStatus.u16VerSize      = u16ImageHeight;
         stVidStatus.u8AspectRate    = 2;
@@ -2003,13 +1758,13 @@ MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_I
         //set JPEG still image config
         stJpegInfo.u8MiuSel = (pDisplayInfo->bMIU0) ? 0 : 1;
         stJpegInfo.u32BufAddr = pDisplayInfo->u32DisplayBuffPhysicalAddr;
-        FLOWDISP("JPD output fb addr = 0x%lX, MIU = %d", stJpegInfo.u32BufAddr, stJpegInfo.u8MiuSel);
+        PT_DISP_DBG("JPD output fb addr = 0x%lX, MIU = %d", stJpegInfo.u32BufAddr, stJpegInfo.u8MiuSel);
         msAPI_XC_SetJPEGInfo(stJpegInfo);
 
         //set MVOP config
         msAPI_XC_ForceMVOPDramType_EX(E_MVOP_DEV_0, E_MSAPI_XC_MVOP_SOURCE_TYPE_422);
         msAPI_XC_SetMVOPMiuSel_EX(E_MSAPI_XC_MAIN_DECODER_PATH, TRUE, (pDisplayInfo->bMIU0)? 0 : 1);
-        msAPI_XC_SetMVOPConfig_EX(E_MSAPI_XC_MAIN_DECODER_PATH, MVOP_INPUT_DRAM);
+        CHECK_MAPI_XC_RETURN_VALUE(msAPI_XC_SetMVOPConfig_EX(E_MSAPI_XC_MAIN_DECODER_PATH, MVOP_INPUT_DRAM));
         msAPI_XC_SetConnect_EX(&g_stXC_PT_DeviceId, INPUT_SOURCE_DTV, E_MSAPI_XC_MAIN_WINDOW);
         //Because of VE sett output timing will enable ve black screen,
         //disable black screen here
@@ -2019,7 +1774,7 @@ MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_I
     else if(enMediaType == E_MMSDK_MEDIA_TYPE_MOVIE)
     {
 #if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
-        FLOWDISP("Video Type: %d.\n", pDisplayInfo->eVideoType);
+        PT_DISP_DBG("Video Type: %d.\n", pDisplayInfo->eVideoType);
         DS_VBOX_INFO pstDSVBox =  {.u16VBox_Htotal = DYNAMIC_SCALING_VB_H, .u16VBox_Vtotal = DYNAMIC_SCALING_VB_V};
         MVOP_InputSel tMvopInputSel = MVOP_INPUT_UNKNOWN;
         MS_U32 u32CodecType;
@@ -2041,7 +1796,7 @@ MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_I
             if (TRUE != _DS_Get_VirtualBox_Info(&pstDSVBox))
             {
                 // for backward capability
-                FLOWDISP("Warning!!! _DS_Get_VirtualBox_Info return fail, take FHD as VBox size");
+                PT_DISP_DBG("Warning!!! _DS_Get_VirtualBox_Info return fail, take FHD as VBox size");
             }
 
             stVidStatus.u16HorSize  = pstDSVBox.u16VBox_Htotal;
@@ -2101,7 +1856,7 @@ MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_I
             tMvopInputSel = MVOP_INPUT_MVD;
 
         msAPI_XC_SetMVOPMiuSel_EX(E_MSAPI_XC_MAIN_DECODER_PATH, TRUE, (pDisplayInfo->bMIU0)? 0 : 1);
-        msAPI_XC_SetMVOPConfig_EX(E_MSAPI_XC_MAIN_DECODER_PATH, tMvopInputSel);
+        CHECK_MAPI_XC_RETURN_VALUE(msAPI_XC_SetMVOPConfig_EX(E_MSAPI_XC_MAIN_DECODER_PATH, tMvopInputSel));
 
         msAPI_XC_SetConnect_EX(&g_stXC_PT_DeviceId[0], E_XC_EX_INPUT_SOURCE_DTV, E_MSAPI_XC_MAIN_WINDOW);
 
@@ -2115,7 +1870,7 @@ MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_I
         //disable black screen here
         msAPI_VE_SetVideoMute(DISABLE);
 #else
-        FLOWDISP("_DS_Get_VirtualBox_Info");
+        PT_DISP_DBG("_DS_Get_VirtualBox_Info");
         DS_VBOX_INFO pstDSVBox =  {.u16VBox_Htotal = DYNAMIC_SCALING_VB_H, .u16VBox_Vtotal = DYNAMIC_SCALING_VB_V};
         MS_U16 u16SrcWidth = pDisplayInfo->u16SrcWidth;
         MS_U16 u16SrcHeight = pDisplayInfo->u16SrcHeight;
@@ -2124,16 +1879,16 @@ MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_I
             if (TRUE != _DS_Get_VirtualBox_Info(&pstDSVBox))
             {
                 // for backward capability
-                FLOWDISP("Warning!!! _DS_Get_VirtualBox_Info return fail, take FHD as VBox size");
+                PT_DISP_DBG("Warning!!! _DS_Get_VirtualBox_Info return fail, take FHD as VBox size");
             }
 
-            FLOWDISP("vdec_debug VBox Height   %d", pstDSVBox.u16VBox_Vtotal);
-            FLOWDISP("vdec_debug VBox Width    %d", pstDSVBox.u16VBox_Htotal);
+            PT_DISP_DBG("vdec_debug VBox Height   %d", pstDSVBox.u16VBox_Vtotal);
+            PT_DISP_DBG("vdec_debug VBox Width    %d", pstDSVBox.u16VBox_Htotal);
             u16SrcWidth  = pstDSVBox.u16VBox_Htotal;
             u16SrcHeight = pstDSVBox.u16VBox_Vtotal;
         }
 
-        FLOWDISP("Video Type: %d.\n", pDisplayInfo->eVideoType);
+        PT_DISP_DBG("Video Type: %d.\n", pDisplayInfo->eVideoType);
 
         MVOP_InputSel tMvopInputSel;
         MS_U32 u32CodecType;
@@ -2141,7 +1896,7 @@ MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_I
         //MS504x set MVOP as MIU1 Group1
 
         MDrv_MVOP_Init();
-        FLOWDISP("pDisplayInfo->bMIU0=%d", pDisplayInfo->bMIU0);
+        PT_DISP_DBG("pDisplayInfo->bMIU0=%d", pDisplayInfo->bMIU0);
         MDrv_MVOP_MiuSwitch((pDisplayInfo->bMIU0)? 0 : 1);
         MDrv_MVOP_Enable(FALSE); //wait setting done
         u32CodecType = pDisplayInfo->eVideoType;
@@ -2202,12 +1957,12 @@ MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_I
         /////////////////////////
         msAPI_XC_SetVDECInfo_EX_ByPath(E_MSAPI_XC_MAIN_DECODER_PATH, stVidStatus);
 
-        FLOWDISP("MM_DispInfo dWidth %d, dHeight %d, dFrameRate %d dInterlace %d",
+        PT_DISP_DBG("MM_DispInfo dWidth %d, dHeight %d, dFrameRate %d dInterlace %d",
                  pDisplayInfo->u16SrcWidth, pDisplayInfo->u16SrcHeight, pDisplayInfo->u16FrameRate, pDisplayInfo->u8Interlace);
-        FLOWDISP("MM_DispInfo dCropLeft %d, dCropRight %d, dCropTop %d, dCropBottom %d",
+        PT_DISP_DBG("MM_DispInfo dCropLeft %d, dCropRight %d, dCropTop %d, dCropBottom %d",
                  pDisplayInfo->u16CropLeft, pDisplayInfo->u16CropRight, pDisplayInfo->u16CropTop, pDisplayInfo->u16CropBottom);
 
-        msAPI_XC_SetMVOPConfig_EX(E_MSAPI_XC_MAIN_DECODER_PATH, tMvopInputSel);
+        CHECK_MAPI_XC_RETURN_VALUE(msAPI_XC_SetMVOPConfig_EX(E_MSAPI_XC_MAIN_DECODER_PATH, tMvopInputSel));
         msAPI_XC_SetConnect_EX(&g_stXC_PT_DeviceId, INPUT_SOURCE_DTV, E_MSAPI_XC_MAIN_WINDOW);
         //Because of VE sett output timing will enable ve black screen,
         //disable black screen here
@@ -2220,7 +1975,7 @@ MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_I
     }
     else
     {
-        FLOW("Show Photo by GOP!!");
+        PT_DISP_DBG("Show Photo by GOP!!");
 #if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
         //for SD out [temp], use AA mode
         msAPI_XC_SetConnect_EX(&g_stXC_PT_DeviceId[1], E_XC_EX_INPUT_SOURCE_SCALER_OP, E_MSAPI_XC_MAIN_WINDOW);
@@ -2230,7 +1985,7 @@ MMSDK_BOOL PT_Display_SetMode(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_I
 #endif
     }
     //[River] - Need set frame buffer again?
-    //printf("Scaler start: 0x%lx, size: 0x%lx.\n", pDisplayInfo->u32ScalerBuffStart, pDisplayInfo->u32ScalerBuffSize);
+    //PT_DISP_DBG("Scaler start: 0x%lx, size: 0x%lx.\n", pDisplayInfo->u32ScalerBuffStart, pDisplayInfo->u32ScalerBuffSize);
     //_SetFrameBufferSize(pDisplayInfo->u32ScalerBuffStart, pDisplayInfo->u32ScalerBuffSize);
 
     //msAPI_XC_SetDebugLevel(E_MSAPI_XC_DBG_LEVEL_NONE);
@@ -2248,7 +2003,7 @@ MMSDK_U16 PT_Display_GetMaxFrameNumInMem(PT_DISPLAYITEM DisplayItem)
     {
         return FALSE;
     }
-    FLOW("%u", pXC_ApiInfo->u8MaxFrameNumInMem);
+    PT_DISP_DBG("%u", pXC_ApiInfo->u8MaxFrameNumInMem);
     return pXC_ApiInfo->u8MaxFrameNumInMem;
 }
 MMSDK_U16 PT_Display_GetMaxFieldNumInMem(PT_DISPLAYITEM DisplayItem)
@@ -2262,7 +2017,7 @@ MMSDK_U16 PT_Display_GetMaxFieldNumInMem(PT_DISPLAYITEM DisplayItem)
     {
         return FALSE;
     }
-    FLOW("%u", pXC_ApiInfo->u8MaxFieldNumInMem);
+    PT_DISP_DBG("%u", pXC_ApiInfo->u8MaxFieldNumInMem);
 
     return pXC_ApiInfo->u8MaxFieldNumInMem;
 }
@@ -2270,11 +2025,11 @@ MMSDK_U16 PT_Display_GetMaxFieldNumInMem(PT_DISPLAYITEM DisplayItem)
 MMSDK_U16 PT_Display_GetPanelWidth(PT_DISPLAYITEM DisplayItem)
 {
 #if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
-    PNL_DeviceId stPNL_DeviceId = {g_stXC_PT_DeviceId[0].u32Version, g_stXC_PT_DeviceId[0].u32Id};
-    FLOW("%u", g_IPanelEx.Width(&stPNL_DeviceId));
+    PNL_DeviceId stPNL_DeviceId = {DEVICE_ID_0.u32Version, DEVICE_ID_0.u32Id};
+    PT_DISP_DBG("%u", g_IPanelEx.Width(&stPNL_DeviceId));
     return g_IPanelEx.Width(&stPNL_DeviceId);
 #else
-    FLOW("%u", g_IPanel.Width());
+    PT_DISP_DBG("%u", g_IPanel.Width());
     return g_IPanel.Width();
 #endif
 }
@@ -2283,17 +2038,17 @@ MMSDK_U16 PT_Display_GetPanelHeight(PT_DISPLAYITEM DisplayItem)
 {
 #if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
     PNL_DeviceId stPNL_DeviceId = {g_stXC_PT_DeviceId[0].u32Version, g_stXC_PT_DeviceId[0].u32Id};
-    FLOW("%u", g_IPanelEx.Height(&stPNL_DeviceId));
+    PT_DISP_DBG("%u", g_IPanelEx.Height(&stPNL_DeviceId));
     return g_IPanelEx.Height(&stPNL_DeviceId);
 #else
-    FLOW("%u", g_IPanel.Height());
+    PT_DISP_DBG("%u", g_IPanel.Height());
     return g_IPanel.Height();
 #endif
 }
 
 void PT_Display_WaitVSync(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bIsInput, MMSDK_U8 u8NumVSyncs, MMSDK_U16 u16Timeout)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     if (bIsInput)
     {
         //[River] - how about subwin? Oringianl MM use class member variable
@@ -2316,7 +2071,7 @@ void PT_Display_WaitVSync(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bIsInput, MMSDK
 
 void PT_Display_Reset(PT_DISPLAYITEM DisplayItem)
 {
-    FLOW("");
+    PT_DISP_DBG("");
 
     //[River] in mmsdk_photoplayer function deletemediaitem call this.
     //STB set frame rate convert when in Y8M4 mode
@@ -2327,17 +2082,17 @@ void PT_Display_Reset(PT_DISPLAYITEM DisplayItem)
 
 MMSDK_BOOL PT_Display_CaptureMVopOutput(PT_DISPLAYITEM DisplayItem, ST_MMSDK_VIDEO_FRAME_INFO* pstFrameInfo, const ST_MMSDK_RECT* pstCropRect, MMSDK_U32 u32BuffAddr, MMSDK_U32 u32BuffSize)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     return TRUE;
 }
 
 #if (MM_3D_ENABLE == 1)
 static MMSDK_BOOL _PT_Display_SetPhoto3D(PT_DISPLAYITEM DisplayItem)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     if (DisplayItem == NULL)
     {
-        FLOW("DisplayItem is NULL\n");
+        PT_DISP_ERR("DisplayItem is NULL\n");
         return FALSE;
     }
 
@@ -2347,7 +2102,7 @@ static MMSDK_BOOL _PT_Display_SetPhoto3D(PT_DISPLAYITEM DisplayItem)
 
     if (TRUE == pDisplayInstance->bISSet3D)
     {
-        FLOW("Skip mm set 3D\n");
+        PT_DISP_DBG("Skip mm set 3D\n");
         return TRUE;
     }
 
@@ -2360,10 +2115,10 @@ static MMSDK_BOOL _PT_Display_SetPhoto3D(PT_DISPLAYITEM DisplayItem)
 
 static MMSDK_BOOL _PT_Display_SetVideo3D(PT_DISPLAYITEM DisplayItem)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     if (DisplayItem == NULL)
     {
-        FLOW("DisplayItem is NULL\n");
+        PT_DISP_ERR("DisplayItem is NULL\n");
         return FALSE;
     }
 
@@ -2374,17 +2129,17 @@ static MMSDK_BOOL _PT_Display_SetVideo3D(PT_DISPLAYITEM DisplayItem)
 
     if (CALLBACK(E_MMSDK_DISPLAY_CALLBACK_IS_ENABLE_DYNAMIC_SCALING, NULL, NULL))
     {
-        FLOW("Disable 3D mode, becasue DS need to be set OFF!\n");
+        PT_DISP_ERR("Disable 3D mode, becasue DS need to be set OFF!\n");
         return FALSE;
     }
 
     if (TRUE == pDisplayInstance->bISSet3D)
     {
-        FLOW("Skip mm set 3D\n");
+        PT_DISP_DBG("Skip mm set 3D\n");
         return TRUE;
     }
 
-    FLOW("3D enum from stream %d\n", pDisplayInstance->stDisplayInfo.en3DLayout);
+    PT_DISP_DBG("3D enum from stream %d\n", pDisplayInstance->stDisplayInfo.en3DLayout);
 
     // Get 3D info from VDEC
     // Cover play the special stream received 3D info after first time set display
@@ -2400,15 +2155,15 @@ static MMSDK_BOOL _PT_Display_SetVideo3D(PT_DISPLAYITEM DisplayItem)
                 case E_MMSDK_3DLAYOUT_TOP_BOTTOM_LT:
                     enCurrent3DType = E_MSAPI_XC_3D_OUTPUT_TOP_BOTTOM;
                     //enInput3DType = E_MSAPI_XC_3D_INPUT_TOP_BOTTOM;
-                    FLOW("Enable 3D with Top Bottom!\n");
+                    PT_DISP_DBG("Enable 3D with Top Bottom!\n");
                     break;
                 case E_MMSDK_3DLAYOUT_FRAME_PACKING:
                     enCurrent3DType = E_MSAPI_XC_3D_OUTPUT_FRAME_PACKING;
                     //enInput3DType = E_MSAPI_XC_3D_INPUT_FRAME_PACKING;
-                    FLOW("Enable 3D with Frame Packing!\n");
+                    PT_DISP_DBG("Enable 3D with Frame Packing!\n");
                     break;
                 default:
-                    FLOW("Unsupported 3D mode!\n");
+                    PT_DISP_ERR("Unsupported 3D mode!\n");
                     return FALSE;
             }
         }
@@ -2420,16 +2175,16 @@ static MMSDK_BOOL _PT_Display_SetVideo3D(PT_DISPLAYITEM DisplayItem)
                 case E_MMSDK_3DLAYOUT_TOP_BOTTOM_LT:
                     enCurrent3DType = E_MSAPI_XC_3D_OUTPUT_TOP_BOTTOM;
                     //enInput3DType = E_MSAPI_XC_3D_INPUT_TOP_BOTTOM;
-                    FLOW("Enable 3D with Top Bottom!\n");
+                    PT_DISP_DBG("Enable 3D with Top Bottom!\n");
                     break;
                 case E_MMSDK_3DLAYOUT_SIDE_BY_SIDE_LF:
                 case E_MMSDK_3DLAYOUT_SIDE_BY_SIDE_RF:
                     enCurrent3DType = E_MSAPI_XC_3D_OUTPUT_SIDE_BY_SIDE_HALF;
                     //enInput3DType = E_MSAPI_XC_3D_INPUT_SIDE_BY_SIDE_HALF;
-                    FLOW("Enable 3D with SIDE BY SIDE!\n");
+                    PT_DISP_DBG("Enable 3D with SIDE BY SIDE!\n");
                     break;
                 default:
-                    FLOW("Unsupported 3D mode!\n");
+                    PT_DISP_ERR("Unsupported 3D mode!\n");
                     return FALSE;
             }
         }
@@ -2442,7 +2197,7 @@ static MMSDK_BOOL _PT_Display_SetVideo3D(PT_DISPLAYITEM DisplayItem)
     }
     else
     {
-        FLOW("Not 3D Video!\n");
+        PT_DISP_ERR("Not 3D Video!\n");
         return FALSE;
     }
 
@@ -2452,10 +2207,10 @@ static MMSDK_BOOL _PT_Display_SetVideo3D(PT_DISPLAYITEM DisplayItem)
 
 MMSDK_BOOL PT_Display_Set3DOnOff(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bEnable3D)
 {
-    FLOW("[ (bEnable3D=%d)]", bEnable3D);
+    PT_DISP_DBG("[ (bEnable3D=%d)]", bEnable3D);
     if (DisplayItem == NULL)
     {
-         FLOW("DisplayItem is NULL\n");
+         PT_DISP_ERR("DisplayItem is NULL\n");
          return FALSE;
     }
 
@@ -2473,9 +2228,9 @@ MMSDK_BOOL PT_Display_Set3DOnOff(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bEnable3
              return _PT_Display_SetPhoto3D(DisplayItem);
         }
 
-        FLOWDISP("PT_Display_Set3DOnOff: unsupported operation\n");
+        PT_DISP_DBG("PT_Display_Set3DOnOff: unsupported operation\n");
 #else
-        FLOWDISP("Attention: 3D feature is not enabled by this project!\n");
+        PT_DISP_DBG("Attention: 3D feature is not enabled by this project!\n");
 #endif
      }
      return TRUE;
@@ -2484,15 +2239,12 @@ MMSDK_BOOL PT_Display_Set3DOnOff(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bEnable3
 MMSDK_U16 PT_Display_GetOutputFrameRate(PT_DISPLAYITEM DisplayItem)
 {
     MMSDK_U16 FrameRate = 0;
-    //FLOW("");
+    //PT_DISP_DBG("");
     E_MSAPI_XC_OUTPUT_TIMING_TYPE eTiming;
 
-#if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
-    msAPI_XC_GetOutputResolution_EX(&g_stXC_PT_DeviceId[0],&eTiming);
-#else
-    msAPI_XC_GetOutputResolution_EX(&g_stXC_PT_DeviceId, &eTiming);
-#endif
-    //FLOW("E_MSAPI_XC_OUTPUT_TIMING_TYPE = %d\n", eTiming);
+    msAPI_XC_GetOutputResolution_EX(&DEVICE_ID_0, &eTiming);
+
+    //PT_DISP_DBG("E_MSAPI_XC_OUTPUT_TIMING_TYPE = %d\n", eTiming);
     switch (eTiming)
     {
         case E_MSAPI_XC_RES_720x576I_50Hz:
@@ -2533,26 +2285,23 @@ MMSDK_U16 PT_Display_GetOutputFrameRate(PT_DISPLAYITEM DisplayItem)
             FrameRate = 60;
             break;
         default:
-            //FLOW("warning!! no-match timing, use 60 hz\n");
+            //PT_DISP_DBG("warning!! no-match timing, use 60 hz\n");
             FrameRate = 60;
             break;
     }
-    //FLOW("PT_Display_GetOutputFrameRate = %d\n", FrameRate);
+    //PT_DISP_DBG("PT_Display_GetOutputFrameRate = %d\n", FrameRate);
     return FrameRate;
 }
 
 MMSDK_BOOL PT_Display_IsOutputInterlace(PT_DISPLAYITEM DisplayItem)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     MMSDK_BOOL IsOutputInterlace = 0;
     E_MSAPI_XC_OUTPUT_TIMING_TYPE eTiming;
 
-#if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
-    msAPI_XC_GetOutputResolution_EX(&g_stXC_PT_DeviceId[0],&eTiming);
-#else
-    msAPI_XC_GetOutputResolution_EX(&g_stXC_PT_DeviceId, &eTiming);
-#endif
-    FLOW("E_MSAPI_XC_OUTPUT_TIMING_TYPE = %d\n", eTiming);
+    msAPI_XC_GetOutputResolution_EX(&DEVICE_ID_0,&eTiming);
+
+    PT_DISP_DBG("E_MSAPI_XC_OUTPUT_TIMING_TYPE = %d\n", eTiming);
     switch (eTiming)
     {
         case E_MSAPI_XC_RES_720x480I_60Hz:
@@ -2565,7 +2314,7 @@ MMSDK_BOOL PT_Display_IsOutputInterlace(PT_DISPLAYITEM DisplayItem)
             IsOutputInterlace = FALSE;
             break;
     }
-    FLOW("PT_Display_IsOutputInterlace = %d\n", IsOutputInterlace);
+    PT_DISP_DBG("PT_Display_IsOutputInterlace = %d\n", IsOutputInterlace);
     return IsOutputInterlace;
 }
 
@@ -2574,18 +2323,24 @@ MMSDK_BOOL PT_Display_SetHighDynamicRange(PT_DISPLAYITEM DisplayItem, ST_MMSDK_H
 #ifdef HDR_MM_DEV
     if (DisplayItem == NULL || pHDRMetaData == NULL)
     {
-        FLOW("DisplayItem or pHDRMetaData is NULL\n");
+        PT_DISP_DBG("DisplayItem or pHDRMetaData is NULL\n");
         return FALSE;
     }
     _gu32HDRMetadataType = pHDRMetaData->u32HDRMetadataType;
-    FLOW("HDR type = 0x%"DTC_MS_U32_X" ", pHDRMetaData->u32HDRMetadataType);
 
-/*
     // Diff Type of HDR
     if (pHDRMetaData->u32HDRMetadataType & E_MMSDK_HDR_TYPE_CTL_FLAG_VUI)
     {
-    }
+        MMSDK_U8 u8transferCharateristics = pHDRMetaData->stHdrMetadataMpegVUI.u8TransferCharacteristics;
 
+        if ((u8transferCharateristics != DISP_HDR_SMPTE2084) && (u8transferCharateristics != DISP_HDR_HLG))
+        {
+            // If HDR type == 0x1, but transferCharateristics != 0x10 or 0x12 -> Not HDR stream
+            PT_DISP_DBG("Fake HDR10 stream, u8transferCharateristics = %d\n", u8transferCharateristics);
+            _gu32HDRMetadataType = E_MMSDK_HDR_TYPE_CTL_FLAG_NONE;
+        }
+    }
+/*
     if (pHDRMetaData->u32HDRMetadataType & E_MMSDK_HDR_TYPE_CTL_FLAG_SEI_COLOR_VOLUME)
     {
     }
@@ -2598,6 +2353,8 @@ MMSDK_BOOL PT_Display_SetHighDynamicRange(PT_DISPLAYITEM DisplayItem, ST_MMSDK_H
     {
     }
 */
+
+    PT_DISP_DBG("HDR type = 0x%"DTC_MS_U32_X" ", _gu32HDRMetadataType);
 #endif
     return TRUE;
 }
@@ -2605,10 +2362,10 @@ MMSDK_BOOL PT_Display_SetHighDynamicRange(PT_DISPLAYITEM DisplayItem, ST_MMSDK_H
 #ifdef OPTEE_ENABLE
 MMSDK_BOOL PT_Display_GetXCPipeId(PT_DISPLAYITEM DisplayItem, ST_MMSDK_PIPE_INFO * pstPipeInfo)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     if ((DisplayItem == NULL) || (pstPipeInfo == NULL))
     {
-        FLOW("DisplayItem or pstPipeInfo is NULL\n");
+        PT_DISP_ERR("DisplayItem or pstPipeInfo is NULL\n");
         return FALSE;
     }
 
@@ -2620,17 +2377,17 @@ MMSDK_BOOL PT_Display_GetXCPipeId(PT_DISPLAYITEM DisplayItem, ST_MMSDK_PIPE_INFO
 
     MApi_XC_OPTEE_Control(E_XC_OPTEE_GET_PIPE_ID, &stOpteeHandler);
     pstPipeInfo->u32SvpPplID = stOpteeHandler.pipeID;
-    FLOW("XC pipe ID = %d\n", pstPipeInfo->u32SvpPplID);
+    PT_DISP_DBG("XC pipe ID = %d\n", pstPipeInfo->u32SvpPplID);
 
     return TRUE;
 }
 
 MMSDK_BOOL PT_Display_XC_PipeLock(PT_DISPLAYITEM DisplayItem, ST_MMSDK_PIPE_INFO * pstPipeInfo, MMSDK_BOOL bEnable)
 {
-    FLOW("Enable = %d", bEnable);
+    PT_DISP_DBG("Enable = %d", bEnable);
     if ((DisplayItem == NULL) || (pstPipeInfo == NULL))
     {
-        FLOW("DisplayItem or pstPipeInfo is NULL\n");
+        PT_DISP_DBG("DisplayItem or pstPipeInfo is NULL\n");
         return FALSE;
     }
 
@@ -2657,13 +2414,30 @@ MMSDK_BOOL PT_Display_XC_PipeLock(PT_DISPLAYITEM DisplayItem, ST_MMSDK_PIPE_INFO
 #ifndef AVP_ENABLE
 MMSDK_BOOL PT_Display_SetOneField(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bEnable)
 {
-    FLOW("");
+    PT_DISP_DBG("bEnable=%d", bEnable);
 
-#if (MMSDK_DISPLAY_DUALXC_PORTING == 1)
-    msAPI_XC_EnableMADiForceMotion_EX(&g_stXC_PT_DeviceId[0], E_MSAPI_XC_MAIN_WINDOW, E_MSAPI_XC_MADI_MOTION_YC, bEnable);
-#else
-    msAPI_XC_EnableMADiForceMotion_EX(&g_stXC_PT_DeviceId, E_MSAPI_XC_MAIN_WINDOW, E_MSAPI_XC_MADI_MOTION_YC, bEnable);
-#endif
+    if (DisplayItem == NULL)
+    {
+        PT_DISP_ERR("DisplayItem is NULL\n");
+        return FALSE;
+    }
+
+    _ST_MMSDK_DISPLAY_INSTANCE* pDisplayInstance = (_ST_MMSDK_DISPLAY_INSTANCE*)DisplayItem;
+
+    if(!(pDisplayInstance->bIsFirstTimeSetOneField))
+    {
+        if(pDisplayInstance->bIsOneField == bEnable)
+        {
+            return TRUE;
+        }
+    }
+    else
+    {
+        pDisplayInstance->bIsFirstTimeSetOneField = FALSE;
+    }
+    pDisplayInstance->bIsOneField = bEnable;
+
+    msAPI_XC_EnableMADiForceMotion_EX(&DEVICE_ID_0, E_MSAPI_XC_MAIN_WINDOW, E_MSAPI_XC_MADI_MOTION_YC, bEnable);
 
     return TRUE;
 }
@@ -2672,10 +2446,10 @@ MMSDK_BOOL PT_Display_SetOneField(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bEnable
 #ifdef AVP_ENABLE
 MMSDK_BOOL PT_Display_InitializeEx(PT_DISPLAYITEM* pDisplayItem, void* pWindow)
 {
-     FLOW("");
+     PT_DISP_DBG("");
     if (pDisplayItem == NULL)
     {
-        FLOW("pDisplayItem is NULL\n");
+        PT_DISP_DBG("pDisplayItem is NULL\n");
         return FALSE;
     }
 
@@ -2706,24 +2480,25 @@ MMSDK_BOOL PT_Display_InitializeEx(PT_DISPLAYITEM* pDisplayItem, void* pWindow)
            break;
        }
    }
-   printf("[%s][%d]====pDisplayInstance ->u8ID_BitMask=%d===\n",__FUNCTION__,__LINE__,pDisplayInstance ->u8ID_BitMask);
+   PT_DISP_DBG("[%s][%d]====pDisplayInstance ->u8ID_BitMask=%d===\n",__FUNCTION__,__LINE__,pDisplayInstance ->u8ID_BitMask);
    *pDisplayItem  = (void*)pDisplayInstance;
+   msAPI_XC_DIPMultiView_Init(2, E_MSAPI_XC_DIP_FMT_YUV422);
    return TRUE;
 }
 
 MMSDK_BOOL PT_Display_SetModeEX(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY_INFO_EXT *pDisplayInfoExt)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     if ((DisplayItem == NULL) || (pDisplayInfoExt == NULL))
     {
-        FLOW("DisplayItem or pDisplayInfoExt is NULL\n");
+        PT_DISP_ERR("DisplayItem or pDisplayInfoExt is NULL\n");
         return FALSE;
     }
 
-    printf("[%s][%d]========TRACE=== DisplayItem=%p==\n",__FUNCTION__,__LINE__,DisplayItem);
+    PT_DISP_DBG("[%s][%d]========TRACE=== DisplayItem=%p==\n",__FUNCTION__,__LINE__,DisplayItem);
     _ST_MMSDK_DISPLAY_INSTANCE* pDisplayInstance = (_ST_MMSDK_DISPLAY_INSTANCE*)DisplayItem;
-    printf("[%s][%d]====pDisplayInfoExt ->u8DisplayOutputPath=%d===\n",__FUNCTION__,__LINE__,pDisplayInfoExt ->u8DisplayOutputPath);
-    printf("[%s][%d]====pDisplayInstance ->u8ID_BitMask=%d===\n",__FUNCTION__,__LINE__,pDisplayInstance ->u8ID_BitMask);
+    PT_DISP_DBG("[%s][%d]====pDisplayInfoExt ->u8DisplayOutputPath=%d===\n",__FUNCTION__,__LINE__,pDisplayInfoExt ->u8DisplayOutputPath);
+    PT_DISP_DBG("[%s][%d]====pDisplayInstance ->u8ID_BitMask=%d===\n",__FUNCTION__,__LINE__,pDisplayInstance ->u8ID_BitMask);
 
     pDisplayInstance->bIsAvpFlow = TRUE;
     memcpy(&(pDisplayInstance->stDisplayInfo), &(pDisplayInfoExt->stDispInfo), sizeof(ST_MMSDK_SET_DISPLAY_INFO));
@@ -2745,14 +2520,14 @@ MMSDK_BOOL PT_Display_SetModeEX(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY
         switch(pDisplayInfoExt ->u8DisplayOutputPath)
         {
             case DIP_FLOW:
-                printf("[%s][%d]====DIP_FLOW====\n",__FUNCTION__,__LINE__);
+                PT_DISP_DBG("[%s][%d]====DIP_FLOW====\n",__FUNCTION__,__LINE__);
                 stCusSetModeInfo.u8Flow = DIP_FLOW;
                 pDisplayInstance ->u8Flow = DIP_FLOW;
                 bRet = gstSysCusFunPtr.pSetMode2(u16MediaType, &stCusSetModeInfo, NULL);
                 break;
             case XC_FLOW:
             default:
-                printf("[%s][%d]====XC_FLOW====\n",__FUNCTION__,__LINE__);
+                PT_DISP_DBG("[%s][%d]====XC_FLOW====\n",__FUNCTION__,__LINE__);
                 pDisplayInstance ->u8Flow = XC_FLOW;
                 bRet = PT_Display_SetMode(DisplayItem, &(pDisplayInfoExt->stDispInfo));
                 break;
@@ -2765,8 +2540,8 @@ MMSDK_BOOL PT_Display_SetModeEX(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY
         case DIP_FLOW:
 #if defined(MMSDK_MultiWin_MODE) && (MMSDK_MultiWin_MODE == 0)
 #else
-        printf("[%s][%d]====DIP_FLOW====\n",__FUNCTION__,__LINE__);
-#if (MMSDK_DMS_ENABLE == 1)
+        PT_DISP_DBG("[%s][%d]====DIP_FLOW====\n",__FUNCTION__,__LINE__);
+#if defined(MMSDK_DMS_ENABLE) && (MMSDK_DMS_ENABLE == 1)
         PT_Display_BlackScreen(DisplayItem, TRUE);
 #endif
 
@@ -2774,7 +2549,14 @@ MMSDK_BOOL PT_Display_SetModeEX(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY
         _PT_Display_CFDInit();
 #endif
         pDisplayInstance ->u8Flow = DIP_FLOW;
-        msAPI_XC_DIPMultiView_Init(2, E_MSAPI_XC_DIP_FMT_YUV422);
+//        msAPI_XC_DIPMultiView_Init(2, E_MSAPI_XC_DIP_FMT_YUV422);
+
+        // Get Window ID
+        if(_PT_Display_GetWindowID(&(pDisplayInstance ->u8DIPWin)) == FALSE)
+        {
+            PT_DISP_DBG("DMS get Window ID fail\n");
+            return FALSE;
+        }
 
         //for SD out [temp], use AA mode
         msAPI_XC_SetConnect_EX(&g_stXC_PT_DeviceId[1], E_XC_EX_INPUT_SOURCE_SCALER_OP, E_MSAPI_XC_MAIN_WINDOW);
@@ -2788,7 +2570,7 @@ MMSDK_BOOL PT_Display_SetModeEX(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY
         break;
         case XC_FLOW:
         default:
-        printf("[%s][%d]====XC_FLOW====\n",__FUNCTION__,__LINE__);
+        PT_DISP_DBG("[%s][%d]====XC_FLOW====\n",__FUNCTION__,__LINE__);
         pDisplayInstance ->u8Flow = XC_FLOW;
         PT_Display_SetMode(DisplayItem, &(pDisplayInfoExt->stDispInfo));
         break;
@@ -2799,31 +2581,31 @@ MMSDK_BOOL PT_Display_SetModeEX(PT_DISPLAYITEM DisplayItem, ST_MMSDK_SET_DISPLAY
 
 MMSDK_BOOL PT_Display_SetOneField(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bEnable)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     return FALSE;
 }
 
 MMSDK_BOOL PT_Display_MvopSendCommand(PT_DISPLAYITEM DisplayItem, void* pHandle, MMSDK_U32 u32Cmd, void *pPara)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     return FALSE;
 }
 
 MMSDK_BOOL PT_Display_MvopGetCommand(PT_DISPLAYITEM DisplayItem, void* pHandle, MMSDK_U32 u32Cmd, void *pPara, MMSDK_U32 u32ParamSize)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     return FALSE;
 }
 
 MMSDK_BOOL PT_Display_IsCurrentFBLMode(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL *pbFBL)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     return FALSE;
 }
 
 MMSDK_BOOL PT_Display_Enable_FBL_TwoInitFactor(PT_DISPLAYITEM DisplayItem, MMSDK_BOOL bEnable)
 {
-    FLOW("");
+    PT_DISP_DBG("");
     return FALSE;
 }
 
@@ -2881,15 +2663,15 @@ E_MSAPI_XC_VIDEO_SCAN_TYPE _PT_Display_GetXCScanType(MS_U8 u8ScanType)
 
 MMSDK_BOOL PT_Display_PushVideoFrame(PT_DISPLAYITEM DisplayItem, ST_MMSDK_VIDEO_FRAME_INFO_EXT *pstPushInfo)
 {
-    //FLOW("");
+    //PT_DISP_DBG("");
     if ((DisplayItem == NULL) || (pstPushInfo == NULL))
     {
-        FLOW("DisplayItem or pstPushInfo is NULL\n");
+        PT_DISP_ERR("DisplayItem or pstPushInfo is NULL\n");
         return FALSE;
     }
 
 #if (MMSDK_MultiWin_MODE == 0)
-    FLOW("Unsupport DIP Flow!!");
+    PT_DISP_ERR("Unsupport DIP Flow!!");
     return FALSE;
 
 #else
@@ -2900,8 +2682,8 @@ MMSDK_BOOL PT_Display_PushVideoFrame(PT_DISPLAYITEM DisplayItem, ST_MMSDK_VIDEO_
 
     if(pDisplayInstance ->u8DIPWin == DIP_Win_NonUse)          //invalid winID
         return FALSE;
-    //FLOW("[%d]====pDisplayInstance ->u8DIPWin=%d===",__LINE__,pDisplayInstance ->u8DIPWin);
-    //FLOW("[%d]====pDisplayInstance ->u8ID_BitMask=%d===",__LINE__,pDisplayInstance ->u8ID_BitMask);
+    //PT_DISP_DBG("[%d]====pDisplayInstance ->u8DIPWin=%d===",__LINE__,pDisplayInstance ->u8DIPWin);
+    //PT_DISP_DBG("[%d]====pDisplayInstance ->u8ID_BitMask=%d===",__LINE__,pDisplayInstance ->u8ID_BitMask);
     VDECDispFrame.u32FrameRate                                 = pstPushInfo->u32FrameRate;
     VDECDispFrame.eWindow                                      = (E_MSAPI_XC_WINDOW)(pDisplayInstance->u8DIPWin);
     VDECDispFrame.eCODEC                                       = pstPushInfo->astFrameInfo[0].enType;
@@ -2951,7 +2733,7 @@ MMSDK_BOOL PT_Display_PushVideoFrame(PT_DISPLAYITEM DisplayItem, ST_MMSDK_VIDEO_
 
         if(VDECDispFrame.stFrames[u8FrameIdx].b10bitData == TRUE)
         {
-            //FLOW("b10bit stream");
+            //PT_DISP_DBG("b10bit stream");
             VDECDispFrame.stFrames[u8FrameIdx].stHWFormat.u16Src10bitPitch               = pstPushInfo->astFrameFormat[u8FrameIdx].u16Pitch_2bit ;
             VDECDispFrame.stFrames[u8FrameIdx].stHWFormat.u32SrcLumaAddr_2bit            = pstPushInfo->au32LumaAddrExt[E_MMSDK_DISP_FRM_INFO_EXT_TYPE_10BIT];
             VDECDispFrame.stFrames[u8FrameIdx].stHWFormat.u32SrcChromaAddr_2bit          = pstPushInfo->au32ChromaAddrExt[E_MMSDK_DISP_FRM_INFO_EXT_TYPE_10BIT];
@@ -2974,18 +2756,18 @@ MMSDK_BOOL PT_Display_PushVideoFrame(PT_DISPLAYITEM DisplayItem, ST_MMSDK_VIDEO_
 
             VDECDispFrame.stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.u8MIU_Select       = (pstPushInfo->u32MFCodecInfo >> 24) & 0xF;
             VDECDispFrame.stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.phyBitlen_Base     = (MS_PHY)pstPushInfo->u32MFCBitlenAddr;
-//          FLOW("MFDec_Enable : [%d] ",VDECDispFrame.stMFdecInfo.bMFDec_Enable);
-//          FLOW("MFDec enable u8MFDec_Select : [%d] ",VDECDispFrame.stMFdecInfo.u8MFDec_Select );
-//          FLOW("MFDec enable phyBitlen_Base : [0x%"DTC_MS_PHY_x"] ",VDECDispFrame.stMFdecInfo.phyBitlen_Base);
+//          PT_DISP_DBG("MFDec_Enable : [%d] ",VDECDispFrame.stMFdecInfo.bMFDec_Enable);
+//          PT_DISP_DBG("MFDec enable u8MFDec_Select : [%d] ",VDECDispFrame.stMFdecInfo.u8MFDec_Select );
+//          PT_DISP_DBG("MFDec enable phyBitlen_Base : [0x%"DTC_MS_PHY_x"] ",VDECDispFrame.stMFdecInfo.phyBitlen_Base);
         }
         else
         {
             VDECDispFrame.stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.bMFDec_Enable      = 0;
-//          FLOW("MFDec disable");
+//          PT_DISP_DBG("MFDec disable");
         }
 
-//          FLOW("u8FrameIdx:%d u32ScanType:%d bFieldOrder:%d eFieldType:%d\n",u8FrameIdx, VDECDispFrame.eScanType,VDECDispFrame.eFieldOrderType, VDECDispFrame.stFrames[u8FrameIdx].eFieldType);
-//          FLOW("id[%d] bMFDec_Enable:[%d]  bMFDec_Sel:[%d] 10bit:[%d]\n",VDECDispFrame.stVDECStream_Id_Version.u32VDECStreamID,VDECDispFrame.stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.bMFDec_Enable, VDECDispFrame.stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.u8MFDec_Select, VDECDispFrame.stFrames[u8FrameIdx].b10bitData);
+//          PT_DISP_DBG("u8FrameIdx:%d u32ScanType:%d bFieldOrder:%d eFieldType:%d\n",u8FrameIdx, VDECDispFrame.eScanType,VDECDispFrame.eFieldOrderType, VDECDispFrame.stFrames[u8FrameIdx].eFieldType);
+//          PT_DISP_DBG("id[%d] bMFDec_Enable:[%d]  bMFDec_Sel:[%d] 10bit:[%d]\n",VDECDispFrame.stVDECStream_Id_Version.u32VDECStreamID,VDECDispFrame.stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.bMFDec_Enable, VDECDispFrame.stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.u8MFDec_Select, VDECDispFrame.stFrames[u8FrameIdx].b10bitData);
     }
 
     if (E_MSAPI_XC_OK == msAPI_XC_DIPMultiView_PushFrame(&VDECDispFrame))
@@ -3003,15 +2785,15 @@ MMSDK_BOOL PT_Display_PushVideoFrame(PT_DISPLAYITEM DisplayItem, ST_MMSDK_VIDEO_
 
 MMSDK_BOOL PT_Display_WaitPushVideoFrameDone(PT_DISPLAYITEM DisplayItem, ST_MMSDK_VIDEO_FRAME_INFO_EXT *pstFrameInfo)
 {
-    //FLOW("");
+    //PT_DISP_DBG("");
     if ((DisplayItem == NULL) || (pstFrameInfo == NULL))
     {
-        FLOW("DisplayItem or pstFrameInfo is NULL\n");
+        PT_DISP_ERR("DisplayItem or pstFrameInfo is NULL\n");
         return FALSE;
     }
 
 #if (MMSDK_MultiWin_MODE == 0)
-    FLOW("Unsupport DIP Flow!!");
+    PT_DISP_ERR("Unsupport DIP Flow!!");
     return FALSE;
 
 #elif (MMSDK_MultiWin_MODE == 1)
@@ -3021,8 +2803,8 @@ MMSDK_BOOL PT_Display_WaitPushVideoFrameDone(PT_DISPLAYITEM DisplayItem, ST_MMSD
     MMSDK_U8 u8FrameIdx = 0;
     MMSDK_U16 u16VsyncTime = 0;
 
-    //FLOW("[%d]====pDisplayInstance ->u8DIPWin=%d===",__LINE__,pDisplayInstance ->u8DIPWin);
-    //FLOW("[%d]====pDisplayInstance ->u8ID_BitMask=%d===",__LINE__,pDisplayInstance ->u8ID_BitMask);
+    //PT_DISP_DBG("[%d]====pDisplayInstance ->u8DIPWin=%d===",__LINE__,pDisplayInstance ->u8DIPWin);
+    //PT_DISP_DBG("[%d]====pDisplayInstance ->u8ID_BitMask=%d===",__LINE__,pDisplayInstance ->u8ID_BitMask);
     u16VsyncTime = (MMSDK_U16)(1000/PT_Display_GetOutputFrameRate(pDisplayInstance));
     VDECDispFrame.eWindow      = (E_MSAPI_XC_WINDOW)(pDisplayInstance->u8DIPWin);
 
@@ -3051,4 +2833,570 @@ MMSDK_BOOL PT_Display_WaitPushVideoFrameDone(PT_DISPLAYITEM DisplayItem, ST_MMSD
 #endif
 }
 
+
+#if defined(MMSDK_DMS_ENABLE) && (MMSDK_DMS_ENABLE == 1)
+E_MSAPI_XC_VIDEO_CODEC _PT_Display_GetXCVideoCodec(EN_DMS_CODECTYPE eCodecType)
+{
+    EN_MMSDK_VIDEO_CODEC eVideoCodec = E_MMSDK_VIDEO_CODEC_UNKNOWN;
+
+    switch(eCodecType)
+    {
+        case E_DMS_CODEC_TYPE_MPEG4:
+            eVideoCodec = E_MSAPI_XC_VIDEO_CODEC_MPEG4;
+            break;
+        case E_DMS_CODEC_TYPE_MJPEG:
+            eVideoCodec = E_MSAPI_XC_VIDEO_CODEC_MJPEG;
+            break;
+        case E_DMS_CODEC_TYPE_H264:
+            eVideoCodec = E_MSAPI_XC_VIDEO_CODEC_H264;
+            break;
+        case E_DMS_CODEC_TYPE_RV8:
+            eVideoCodec = E_MSAPI_XC_VIDEO_CODEC_TYPE_RV8;
+            break;
+        case E_DMS_CODEC_TYPE_RV9:
+            eVideoCodec = E_MSAPI_XC_VIDEO_CODEC_TYPE_RV9;
+            break;
+        case E_DMS_CODEC_TYPE_MPEG2:
+            eVideoCodec = E_MSAPI_XC_VIDEO_CODEC_MPEG;
+            break;
+        case E_DMS_CODEC_TYPE_VC1_MAIN:
+            eVideoCodec = E_MSAPI_XC_VIDEO_CODEC_VC1;
+            break;
+        case E_DMS_CODEC_TYPE_AVS:
+            eVideoCodec = E_MSAPI_XC_VIDEO_CODEC_AVS;
+            break;
+        case E_DMS_CODEC_TYPE_FLV:
+            eVideoCodec = E_MSAPI_XC_VIDEO_CODEC_FLV;
+            break;
+        case E_DMS_CODEC_TYPE_MVC:
+            eVideoCodec = E_MSAPI_XC_VIDEO_CODEC_MVC;
+            break;
+        //case E_MMSDK_VIDEO_CODEC_VP6:
+        //    eVideoCodec = E_MMSDK_VIDEO_CODEC_VP6;
+        //    break;
+        case E_DMS_CODEC_TYPE_VP8:
+            eVideoCodec = E_MSAPI_XC_VIDEO_CODEC_VP8;
+            break;
+        case E_DMS_CODEC_TYPE_HEVC:
+            eVideoCodec = E_MSAPI_XC_VIDEO_CODEC_HEVC;
+            break;
+        case E_DMS_CODEC_TYPE_VP9:
+            eVideoCodec = E_MSAPI_XC_VIDEO_CODEC_VP9;
+            break;
+        case E_DMS_CODEC_TYPE_HEVC_DV:
+            eVideoCodec = E_MSAPI_XC_VIDEO_CODEC_HEVC_DV;
+            break;
+        default:
+            eVideoCodec = E_MSAPI_XC_VIDEO_CODEC_UNKNOWN;
+            break;
+    }
+
+    return eVideoCodec;
+
+}
+
+MMSDK_BOOL _PT_Display_ConvertFrmFormat(MMSDK_U32 u32WindowID, const ST_MMSDK_DMS_DISPFRAMEFORMAT *pstDispFrameFormat, MSAPI_XC_VDECFRAME_INFO *pstVDECDispFrame)
+{
+    MMSDK_U8 u8FrameNum = 0;
+    MMSDK_U8 u8FrameIdx = 0;
+    MMSDK_BOOL bIs10bit = FALSE;
+
+    memset(pstVDECDispFrame, 0x00, sizeof(MSAPI_XC_VDECFRAME_INFO));
+    pstVDECDispFrame->u32Version = pstDispFrameFormat->u32Version;
+    pstVDECDispFrame->u32Length = pstDispFrameFormat->u32Length;
+//    pstVDECDispFrame->u32OverlayID = pstDispFrameFormat->u32OverlayID;
+//    pstVDECDispFrame->bValid =
+
+    bIs10bit = (pstDispFrameFormat->enColorFormat ==  E_MMSDK_DMS_COLOR_FORMAT_10BIT_TILE);
+    u8FrameNum = pstDispFrameFormat->u32FrameNum; // DV Dual layer & interlace field = 2
+
+    pstVDECDispFrame->u32FrameRate                                  = pstDispFrameFormat->u32FrameRate;
+    pstVDECDispFrame->eWindow                                       = (E_MSAPI_XC_WINDOW)u32WindowID;
+    pstVDECDispFrame->eCODEC                                        = _PT_Display_GetXCVideoCodec(pstDispFrameFormat->u32CodecType);   /// need convert
+    pstVDECDispFrame->eTileMode                                     = pstDispFrameFormat->u32TileMode; /// need convert
+    pstVDECDispFrame->u64Pts                                        = pstDispFrameFormat->u64Pts;
+    pstVDECDispFrame->eFmt                                          = _PT_Display_GetDIPDataFMT(pstVDECDispFrame->eCODEC, bIs10bit); /// need convert
+    pstVDECDispFrame->eFieldOrderType                               = !(pstDispFrameFormat->u8BottomFieldFirst);
+    pstVDECDispFrame->stVDECStream_Id_Version.u32VDECStreamID       = pstDispFrameFormat->u32VdecStreamId;
+    pstVDECDispFrame->stVDECStream_Id_Version.u32VDECStreamVersion  = pstDispFrameFormat->u32VdecStreamVersion;
+    pstVDECDispFrame->eScanType                                     = _PT_Display_GetXCScanType(pstDispFrameFormat->u8Interlace);
+
+    pstVDECDispFrame->u8FieldCtrl                                   = pstDispFrameFormat->u8FieldCtrl;          // control one field mode, always top or bot when FF or FR
+    pstVDECDispFrame->u8AspectRate                                  = pstDispFrameFormat->u8AspectRate;
+    pstVDECDispFrame->u8Interlace                                   = pstDispFrameFormat->u8Interlace;
+    pstVDECDispFrame->u8FrcMode                                     = pstDispFrameFormat->u8FrcMode;
+    pstVDECDispFrame->u83DMode                                      = pstDispFrameFormat->u83DMode;
+    pstVDECDispFrame->u8FreezeThisFrame                             = pstDispFrameFormat->u8FreezeThisFrame;
+    pstVDECDispFrame->u8ToggleTime                                  = pstDispFrameFormat->u8ToggleTime;
+    pstVDECDispFrame->u83DLayout                                    = pstDispFrameFormat->u83DLayout;           // 3D layout from SEI, the possible value is OMX_3D_LAYOUT enum in OMX_Video.h
+    pstVDECDispFrame->u8ColorInXVYCC                                = pstDispFrameFormat->u8ColorInXVYCC;
+    pstVDECDispFrame->u8LowLatencyMode                              = pstDispFrameFormat->u8LowLatencyMode;     // for CTS or other application, drop new frame when render too fast
+    pstVDECDispFrame->u8VdecComplexity                              = pstDispFrameFormat->u8VdecComplexity;
+    pstVDECDispFrame->u8AFD                                         = pstDispFrameFormat->u8AFD;               //active frame code
+    pstVDECDispFrame->u8HTLBTableId                                 = pstDispFrameFormat->u8HTLBTableId;
+    pstVDECDispFrame->u8HTLBEntriesSize                             =  pstDispFrameFormat->u8HTLBEntriesSize;
+    pstVDECDispFrame->phyHTLBEntriesAddr                            = pstDispFrameFormat->phyHTLBEntriesAddr;
+
+//    PT_DISP_DBG("\033[36m [%s][%d] scan type = %d, codec = %d, color fmt = %d  \033[0m\n", __FUNCTION__, __LINE__,
+//        pstVDECDispFrame->eScanType, pstVDECDispFrame->eCODEC, pstVDECDispFrame->eFmt );
+
+
+    for(u8FrameIdx = 0;u8FrameIdx < u8FrameNum; u8FrameIdx++)
+    {
+        pstVDECDispFrame->stFrames[u8FrameIdx].u32Version                                = pstDispFrameFormat->stFrames[u8FrameIdx].u32Version;
+        pstVDECDispFrame->stFrames[u8FrameIdx].u32Length                                 = pstDispFrameFormat->stFrames[u8FrameIdx].u32Length;
+        pstVDECDispFrame->stFrames[u8FrameIdx].u16SrcWidth                               = (MS_U16) pstDispFrameFormat->stFrames[u8FrameIdx].u32Width;
+        pstVDECDispFrame->stFrames[u8FrameIdx].u16SrcHeight                              = (MS_U16) pstDispFrameFormat->stFrames[u8FrameIdx].u32Height;
+        pstVDECDispFrame->stFrames[u8FrameIdx].eFieldType                                = (E_MSAPI_XC_VIDEO_FIELD_TYPE)pstDispFrameFormat->stFrames[u8FrameIdx].enFieldType;
+        pstVDECDispFrame->stFrames[u8FrameIdx].u16CropRight                              = (MS_U16) pstDispFrameFormat->stFrames[u8FrameIdx].u32CropRight;
+        pstVDECDispFrame->stFrames[u8FrameIdx].u16CropLeft                               = (MS_U16) pstDispFrameFormat->stFrames[u8FrameIdx].u32CropLeft;
+        pstVDECDispFrame->stFrames[u8FrameIdx].u16CropBottom                             = (MS_U16) pstDispFrameFormat->stFrames[u8FrameIdx].u32CropBottom;
+        pstVDECDispFrame->stFrames[u8FrameIdx].u16CropTop                                = (MS_U16) pstDispFrameFormat->stFrames[u8FrameIdx].u32CropTop;
+        pstVDECDispFrame->stFrames[u8FrameIdx].u32FrameIndex                             = pstDispFrameFormat->stFrames[u8FrameIdx].u32Idx;
+        pstVDECDispFrame->stFrames[u8FrameIdx].u32PriData                                = pstDispFrameFormat->stFrames[u8FrameIdx].u32PriData;
+        pstVDECDispFrame->stFrames[u8FrameIdx].b10bitData                                = bIs10bit;
+
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u32Version                     = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u32Version;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u32Length                      = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u32Length;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u32SrcLumaAddr                 = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.phyLumaAddr;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u32SrcChromaAddr               = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.phyChromaAddr;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u16SrcPitch                    = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u32LumaPitch;
+
+#if defined(MMSDK_FRAME_FORMAT_EXT_VER) && (MMSDK_FRAME_FORMAT_EXT_VER == 1)
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u8V7DataValid                  = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u8V7DataValid;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u32LumaAddr_subsample          = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.phyLumaAddr_subsample;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u32ChromaAddr_subsample        = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.phyChromaAddr_subsample;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u16Pitch_subsample             = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u16Pitch_subsample;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u8TileMode_subsample           = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u8TileMode_subsample; // vsync do not send it
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u32HTLBTableAddr               = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.phyHTLBTableAddr;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u8HTLBPageSizes                = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u8HTLBPageSizes;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u8HTLBChromaEntriesSize        = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u8HTLBChromaEntriesSize;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u32HTLBChromaEntriesAddr       = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.phyHTLBChromaEntriesAddr;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u16MaxContentLightLevel        = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u16MaxContentLightLevel;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u16MaxPicAverageLightLevel     = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u16MaxPicAverageLightLevel;
+
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u16Width_subsample             = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u16Width_subsample;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u16Height_subsample            = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u16Height_subsample;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u64NumUnitsInTick              = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u64NumUnitsInTick;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u64TimeScale                   = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u64TimeScale;
+        memcpy(pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u16Histogram, pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u16Histogram, sizeof(MS_U16) * MMSDK_SWDRHISTOGRAM_INDEX_NUM);
+#endif
+
+        if(bIs10bit)
+        {
+            //PT_DISP_DBG("b10bit stream");
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u16Src10bitPitch               = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u32LumaPitch2Bit;
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u32SrcLumaAddr_2bit            = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.phyLumaAddr2Bit;
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u32SrcChromaAddr_2bit          = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.phyChromaAddr2Bit;
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u8LumaBitdepth                 = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.phyLumaAddr2Bit;
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.u8ChromaBitdepth               = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.phyChromaAddr2Bit;
+        }
+        //mfcodec info
+
+        MMSDK_U32 u32MFCInfo = pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.u32MFCodecInfo;
+        pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.bMFDec_Enable = u32MFCInfo & 0xFF ;
+        if(pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.bMFDec_Enable != 0 && pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.bMFDec_Enable != 0xFF)
+        {
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.bMFDec_Enable      = 1;
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.bBypass_codec_mode = 0;
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.u8MFDec_Select     = (u32MFCInfo >>  8) & 0x3;  //Bit[8]      MFDec ID. 1: MFDec 1; 0: MFDec 0; 2: MFDec 2
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.bUncompress_mode   = (u32MFCInfo >> 28) & 0x1;  //Bit[28]     1: MFCodec uncompress mode; 0: data is compressed
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.en_MFDecVP9_mode   = (u32MFCInfo >> 29) & 0x1;  //Bit[29]     1: MFCodec 3.0 vp9 mode; 0: MFCodec 3.0 h26x mode
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.u16Bitlen_Pitch    = (u32MFCInfo >> 16) & 0xFF; //Bits[23:16] MFCodec pitch setting
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.u16StartX          = (MS_U16) pstDispFrameFormat->stFrames[u8FrameIdx].u32CropLeft;
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.u16StartY          = (MS_U16) pstDispFrameFormat->stFrames[u8FrameIdx].u32CropTop;
+
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.u8MIU_Select       = (u32MFCInfo >> 24) & 0xF;
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.phyBitlen_Base     =  pstDispFrameFormat->stFrames[u8FrameIdx].stHWFormat.phyMFCBITLEN;
+            //          PT_DISP_DBG("MFDec_Enable : [%d] ",VDECDispFrame.stMFdecInfo.bMFDec_Enable);
+            //          PT_DISP_DBG("MFDec enable u8MFDec_Select : [%d] ",VDECDispFrame.stMFdecInfo.u8MFDec_Select );
+            //          PT_DISP_DBG("MFDec enable phyBitlen_Base : [0x%"DTC_MS_PHY_x"] ",VDECDispFrame.stMFdecInfo.phyBitlen_Base);
+        }
+        else
+        {
+            pstVDECDispFrame->stFrames[u8FrameIdx].stHWFormat.stMFdecInfo.bMFDec_Enable      = 0;
+            //          PT_DISP_DBG("MFDec disable");
+        }
+    }
+
+    pstVDECDispFrame->stHDRInfo.u32Version                                      = pstDispFrameFormat->stHDRInfo.u32Version;
+    pstVDECDispFrame->stHDRInfo.u32Length                                       = pstDispFrameFormat->stHDRInfo.u32Length;
+    pstVDECDispFrame->stHDRInfo.u32FrmInfoExtAvail                              = pstDispFrameFormat->stHDRInfo.u32FrmInfoExtAvail;
+
+    pstVDECDispFrame->stHDRInfo.stColorDescription.u32Version                   = pstDispFrameFormat->stHDRInfo.stColorDescription.u32Version;
+    pstVDECDispFrame->stHDRInfo.stColorDescription.u32Length                    = pstDispFrameFormat->stHDRInfo.stColorDescription.u32Length;
+    pstVDECDispFrame->stHDRInfo.stColorDescription.u8ColorPrimaries             = pstDispFrameFormat->stHDRInfo.stColorDescription.u8ColorPrimaries;
+    pstVDECDispFrame->stHDRInfo.stColorDescription.u8TransferCharacteristics    = pstDispFrameFormat->stHDRInfo.stColorDescription.u8TransferCharacteristics;
+    pstVDECDispFrame->stHDRInfo.stColorDescription.u8MatrixCoefficients         = pstDispFrameFormat->stHDRInfo.stColorDescription.u8MatrixCoefficients;
+
+#if 0        // Vsync do not send MasterColorDisplay Info
+    pstVDECDispFrame->stHDRInfo.stMasterColorDisplay.u32Version = pstDispFrameFormat->stHDRInfo.stMasterColorDisplay.u32Version;      /// MSAPI_XC_MASTERCOLORDISPLAY version
+    pstVDECDispFrame->stHDRInfo.stMasterColorDisplay.u32Length = pstDispFrameFormat->stHDRInfo.stMasterColorDisplay.u32Length;        /// sizeof(MSAPI_XC_MASTERCOLORDISPLAY)
+    //mastering color display: color volumne of a display
+    pstVDECDispFrame->stHDRInfo.stMasterColorDisplay.u32MaxLuminance = pstDispFrameFormat->stHDRInfo.stMasterColorDisplay.u32MaxLuminance;
+    pstVDECDispFrame->stHDRInfo.stMasterColorDisplay.u32MinLuminance = pstDispFrameFormat->stHDRInfo.stMasterColorDisplay.u32MinLuminance;
+    memcpy(pstVDECDispFrame->stHDRInfo.stMasterColorDisplay.u16DisplayPrimaries, pstDispFrameFormat->stHDRInfo.stMasterColorDisplay.u16DisplayPrimaries, sizeof(pstDispFrameFormat->stHDRInfo.stMasterColorDisplay.u16DisplayPrimaries));
+    memcpy(pstVDECDispFrame->stHDRInfo.stMasterColorDisplay.u16WhitePoint, pstDispFrameFormat->stHDRInfo.stMasterColorDisplay.u16WhitePoint, sizeof(pstDispFrameFormat->stHDRInfo.stMasterColorDisplay.u16WhitePoint));
+#endif
+
+    pstVDECDispFrame->stHDRInfo.stDolbyHDRInfo.u32Version                       = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u32Version;        /// MSAPI_XC_DOLBYHDRINFO version
+    pstVDECDispFrame->stHDRInfo.stDolbyHDRInfo.u32Length                        = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u32Length;          /// sizeof(MSAPI_XC_DOLBYHDRINFO)
+    // bit[0:1] 0: Disable 1:Single layer 2: Dual layer, bit[2] 0:Base Layer 1:Enhance Layer
+    pstVDECDispFrame->stHDRInfo.stDolbyHDRInfo.u8DVMode                         = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u8DVMode;
+    pstVDECDispFrame->stHDRInfo.stDolbyHDRInfo.phyHDRMetadataAddr               = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.phyHDRMetadataAddr;
+    pstVDECDispFrame->stHDRInfo.stDolbyHDRInfo.u32HDRMetadataSize               = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u32HDRMetadataSize;
+    pstVDECDispFrame->stHDRInfo.stDolbyHDRInfo.phyHDRRegAddr                    = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.phyHDRRegAddr;
+    pstVDECDispFrame->stHDRInfo.stDolbyHDRInfo.u32HDRRegSize                    = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u32HDRRegSize;
+    pstVDECDispFrame->stHDRInfo.stDolbyHDRInfo.phyHDRLutAddr                    = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.phyHDRLutAddr;
+    pstVDECDispFrame->stHDRInfo.stDolbyHDRInfo.u32HDRLutSize                    = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u32HDRLutSize;
+    pstVDECDispFrame->stHDRInfo.stDolbyHDRInfo.u8DMEnable                       = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u8DMEnable;
+    pstVDECDispFrame->stHDRInfo.stDolbyHDRInfo.u8CompEnable                     = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u8CompEnable;
+    pstVDECDispFrame->stHDRInfo.stDolbyHDRInfo.u8CurrentIndex                   = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u8CurrentIndex;
+
+#if 0        // msapi XC has no interface to  receive
+    pstVDECDispFrame->stFrames[0].eFrameType = (EN_MMSDK_DMS_FRAMETYPE)pstDispFrameFormat->stFrames[0].eFrameType;
+    pstVDECDispFrame->stFrames[0].enViewType = (EN_MMSDK_DMS_VIEWTYPE)pstDispFrameFormat->stFrames[0].eViewType;
+    pstVDECDispFrame->stFrames[0].stHWFormat.u32ChromaPitch = pstDispFrameFormat->stFrames[0].stHWFormat.u32ChromaPitch;
+
+    // FIXME: 2 bit patch
+    pstVDECDispFrame->stFrames[0].stHWFormat.u32ChromaPitch2Bit = pstDispFrameFormat->stFrames[0].stHWFormat.u32ChromaPitch2Bit
+
+    //pstVDECDispFrame->u32FrameNum = pstDispFrameFormat->FrameNum;
+    pstVDECDispFrame->u32AspectWidth = pstDispFrameFormat->u32AspectWidth;
+    pstVDECDispFrame->u32AspectHeight = pstDispFrameFormat->u32AspectHeight;
+    pstVDECDispFrame->u32UniqueId = pstDispFrameFormat->u32UniqueId;
+    pstVDECDispFrame->u8MCUMode = pstDispFrameFormat->u8MCUMode;
+    pstVDECDispFrame->u8ApplicationType = pstDispFrameFormat->u8ApplicationType;
+    memcpy(&pDMSDff->stDispFrmInfoExt, &pDff->sDispFrmInfoExt, sizeof(ST_MMSDK_DMS_DISP_FRM_INFO_EXT));
+    //pstVDECDispFrame->u16MIUBandwidth;
+    //pstVDECDispFrame->u16Bitrate;
+    pstVDECDispFrame->phyVsyncBridgeAddr = pstDispFrameFormat->u32SHMAddr;
+    pstVDECDispFrame->phyVsyncBridgeExtAddr = pstDispFrameFormat->phyVsyncBridgeExtAddr;
+#endif
+
+    return TRUE;
+}
+
+
+MMSDK_BOOL _PT_Display_ConvertFrmFormat_DMS(MMSDK_U32 u32WindowID, const ST_MMSDK_DMS_DISPFRAMEFORMAT *pstDispFrameFormat, ST_DMS_DISPFRAMEFORMAT *pstDispFrameFmt)
+{
+    int i=0;
+
+    memset(pstDispFrameFmt, 0, sizeof(ST_DMS_DISPFRAMEFORMAT));
+    pstDispFrameFmt->u32Version = pstDispFrameFormat->u32Version;
+    pstDispFrameFmt->u32Length = pstDispFrameFormat->u32Length;
+    pstDispFrameFmt->u32OverlayID = pstDispFrameFormat->u32OverlayID;
+
+    pstDispFrameFmt->stFrames[0].u32Version = pstDispFrameFormat->stFrames[0].u32Version;
+    pstDispFrameFmt->stFrames[0].u32Length = pstDispFrameFormat->stFrames[0].u32Length;
+    pstDispFrameFmt->stFrames[0].enFrameType = pstDispFrameFormat->stFrames[0].enFrameType;
+    pstDispFrameFmt->stFrames[0].enFieldType = pstDispFrameFormat->stFrames[0].enFieldType;
+    pstDispFrameFmt->stFrames[0].enViewType = pstDispFrameFormat->stFrames[0].enViewType;
+    pstDispFrameFmt->stFrames[0].u32Width = pstDispFrameFormat->stFrames[0].u32Width;
+    pstDispFrameFmt->stFrames[0].u32Height = pstDispFrameFormat->stFrames[0].u32Height;
+    pstDispFrameFmt->stFrames[0].u32CropLeft = pstDispFrameFormat->stFrames[0].u32CropLeft;
+    pstDispFrameFmt->stFrames[0].u32CropRight = pstDispFrameFormat->stFrames[0].u32CropRight;
+    pstDispFrameFmt->stFrames[0].u32CropTop = pstDispFrameFormat->stFrames[0].u32CropTop;
+    pstDispFrameFmt->stFrames[0].u32CropBottom = pstDispFrameFormat->stFrames[0].u32CropBottom;
+
+    pstDispFrameFmt->stFrames[0].stHWFormat.u32Version = pstDispFrameFormat->stFrames[0].stHWFormat.u32Version;
+    pstDispFrameFmt->stFrames[0].stHWFormat.u32Length = pstDispFrameFormat->stFrames[0].stHWFormat.u32Length;
+    pstDispFrameFmt->stFrames[0].stHWFormat.phyLumaAddr = pstDispFrameFormat->stFrames[0].stHWFormat.phyLumaAddr;
+    pstDispFrameFmt->stFrames[0].stHWFormat.phyChromaAddr = pstDispFrameFormat->stFrames[0].stHWFormat.phyChromaAddr;
+    pstDispFrameFmt->stFrames[0].stHWFormat.phyLumaAddr2Bit = pstDispFrameFormat->stFrames[0].stHWFormat.phyLumaAddr2Bit;
+    pstDispFrameFmt->stFrames[0].stHWFormat.phyChromaAddr2Bit = pstDispFrameFormat->stFrames[0].stHWFormat.phyChromaAddr2Bit;
+    pstDispFrameFmt->stFrames[0].stHWFormat.u32LumaPitch = pstDispFrameFormat->stFrames[0].stHWFormat.u32LumaPitch;
+    pstDispFrameFmt->stFrames[0].stHWFormat.u32ChromaPitch = pstDispFrameFormat->stFrames[0].stHWFormat.u32ChromaPitch;
+
+    //  2 bit patch
+    pstDispFrameFmt->stFrames[0].stHWFormat.u32LumaPitch2Bit = pstDispFrameFormat->stFrames[0].stHWFormat.u32LumaPitch2Bit;
+    pstDispFrameFmt->stFrames[0].stHWFormat.u32ChromaPitch2Bit = pstDispFrameFormat->stFrames[0].stHWFormat.u32ChromaPitch2Bit;
+
+    pstDispFrameFmt->stFrames[0].stHWFormat.u32MFCodecInfo = pstDispFrameFormat->stFrames[0].stHWFormat.u32MFCodecInfo;
+    pstDispFrameFmt->stFrames[0].stHWFormat.phyMFCBITLEN = pstDispFrameFormat->stFrames[0].stHWFormat.phyMFCBITLEN;
+
+    pstDispFrameFmt->stFrames[0].stHWFormat.u8V7DataValid = pstDispFrameFormat->stFrames[0].stHWFormat.u8V7DataValid;
+    pstDispFrameFmt->stFrames[0].stHWFormat.u16Width_subsample = pstDispFrameFormat->stFrames[0].stHWFormat.u16Width_subsample;
+    pstDispFrameFmt->stFrames[0].stHWFormat.u16Height_subsample = pstDispFrameFormat->stFrames[0].stHWFormat.u16Height_subsample;
+    pstDispFrameFmt->stFrames[0].stHWFormat.phyLumaAddr_subsample = pstDispFrameFormat->stFrames[0].stHWFormat.phyLumaAddr_subsample;
+    pstDispFrameFmt->stFrames[0].stHWFormat.phyChromaAddr_subsample = pstDispFrameFormat->stFrames[0].stHWFormat.phyChromaAddr_subsample;
+    pstDispFrameFmt->stFrames[0].stHWFormat.u16Pitch_subsample = pstDispFrameFormat->stFrames[0].stHWFormat.u16Pitch_subsample;
+    pstDispFrameFmt->stFrames[0].stHWFormat.u32HTLBTableAddr = pstDispFrameFormat->stFrames[0].stHWFormat.phyHTLBTableAddr;
+    pstDispFrameFmt->stFrames[0].stHWFormat.u8HTLBPageSizes = pstDispFrameFormat->stFrames[0].stHWFormat.u8HTLBPageSizes;
+
+    pstDispFrameFmt->stFrames[0].stHWFormat.u8HTLBChromaEntriesSize = pstDispFrameFormat->stFrames[0].stHWFormat.u8HTLBChromaEntriesSize;
+    pstDispFrameFmt->stFrames[0].stHWFormat.u32HTLBChromaEntriesAddr = pstDispFrameFormat->stFrames[0].stHWFormat.phyHTLBChromaEntriesAddr;
+    pstDispFrameFmt->stFrames[0].stHWFormat.u16MaxContentLightLevel = pstDispFrameFormat->stFrames[0].stHWFormat.u16MaxContentLightLevel;
+
+    pstDispFrameFmt->stFrames[0].stHWFormat.u16MaxPicAverageLightLevel = pstDispFrameFormat->stFrames[0].stHWFormat.u16MaxPicAverageLightLevel;
+    pstDispFrameFmt->stFrames[0].stHWFormat.u64NumUnitsInTick = pstDispFrameFormat->stFrames[0].stHWFormat.u64NumUnitsInTick;
+    pstDispFrameFmt->stFrames[0].stHWFormat.u64TimeScale = pstDispFrameFormat->stFrames[0].stHWFormat.u64TimeScale;
+    for (i = 0; i < MMSDK_SWDRHISTOGRAM_INDEX_NUM; i++) {
+        pstDispFrameFmt->stFrames[0].stHWFormat.u16Histogram[i] = pstDispFrameFormat->stFrames[0].stHWFormat.u16Histogram[i];
+    }
+
+    pstDispFrameFmt->stFrames[0].u32Idx = pstDispFrameFormat->stFrames[0].u32Idx;
+    pstDispFrameFmt->stFrames[0].u32PriData = pstDispFrameFormat->stFrames[0].u32PriData;
+    pstDispFrameFmt->stFrames[0].u8LumaBitdepth = pstDispFrameFormat->stFrames[0].u8LumaBitdepth;
+    pstDispFrameFmt->stFrames[0].u8ChromaBitdepth = pstDispFrameFormat->stFrames[0].u8ChromaBitdepth;
+
+    if (pstDispFrameFormat->u32FrameNum == 2) {
+        pstDispFrameFmt->stFrames[1].u32Version = pstDispFrameFormat->stFrames[1].u32Version;
+        pstDispFrameFmt->stFrames[1].u32Length = pstDispFrameFormat->stFrames[1].u32Length;
+        pstDispFrameFmt->stFrames[1].enFrameType = pstDispFrameFormat->stFrames[1].enFrameType;
+        pstDispFrameFmt->stFrames[1].enFieldType = pstDispFrameFormat->stFrames[1].enFieldType;
+        pstDispFrameFmt->stFrames[1].enViewType = pstDispFrameFormat->stFrames[1].enViewType;
+        pstDispFrameFmt->stFrames[1].u32Width = pstDispFrameFormat->stFrames[1].u32Width;
+        pstDispFrameFmt->stFrames[1].u32Height = pstDispFrameFormat->stFrames[1].u32Height;
+        pstDispFrameFmt->stFrames[1].u32CropLeft = pstDispFrameFormat->stFrames[1].u32CropLeft;
+        pstDispFrameFmt->stFrames[1].u32CropRight = pstDispFrameFormat->stFrames[1].u32CropRight;
+        pstDispFrameFmt->stFrames[1].u32CropTop = pstDispFrameFormat->stFrames[1].u32CropTop;
+        pstDispFrameFmt->stFrames[1].u32CropBottom = pstDispFrameFormat->stFrames[1].u32CropBottom;
+                                                                                                         ;
+        pstDispFrameFmt->stFrames[1].stHWFormat.u32Version = pstDispFrameFormat->stFrames[1].stHWFormat.u32Version;
+        pstDispFrameFmt->stFrames[1].stHWFormat.u32Length = pstDispFrameFormat->stFrames[1].stHWFormat.u32Length;
+        pstDispFrameFmt->stFrames[1].stHWFormat.phyLumaAddr = pstDispFrameFormat->stFrames[1].stHWFormat.phyLumaAddr;
+        pstDispFrameFmt->stFrames[1].stHWFormat.phyChromaAddr = pstDispFrameFormat->stFrames[1].stHWFormat.phyChromaAddr;
+        pstDispFrameFmt->stFrames[1].stHWFormat.phyLumaAddr2Bit = pstDispFrameFormat->stFrames[1].stHWFormat.phyLumaAddr2Bit;
+        pstDispFrameFmt->stFrames[1].stHWFormat.phyChromaAddr2Bit = pstDispFrameFormat->stFrames[1].stHWFormat.phyChromaAddr2Bit;
+        pstDispFrameFmt->stFrames[1].stHWFormat.u32LumaPitch = pstDispFrameFormat->stFrames[1].stHWFormat.u32LumaPitch;
+        pstDispFrameFmt->stFrames[1].stHWFormat.u32ChromaPitch = pstDispFrameFormat->stFrames[1].stHWFormat.u32ChromaPitch;
+
+        //  2 bit patch
+        pstDispFrameFmt->stFrames[1].stHWFormat.u32LumaPitch2Bit = pstDispFrameFormat->stFrames[1].stHWFormat.u32LumaPitch2Bit;
+        pstDispFrameFmt->stFrames[1].stHWFormat.u32ChromaPitch2Bit = pstDispFrameFormat->stFrames[1].stHWFormat.u32ChromaPitch2Bit;
+
+        pstDispFrameFmt->stFrames[1].stHWFormat.u32MFCodecInfo = pstDispFrameFormat->stFrames[1].stHWFormat.u32MFCodecInfo;
+        pstDispFrameFmt->stFrames[1].stHWFormat.phyMFCBITLEN = pstDispFrameFormat->stFrames[1].stHWFormat.phyMFCBITLEN;
+        //pstDispFrameFormat->stFrames[1].sHWFormat.phyLumaAddr_subsample;
+        //pstDispFrameFormat->stFrames[1].sHWFormat.phyChromaAddr_subsample;
+        //pstDispFrameFormat->stFrames[1].sHWFormat.u16Pitch_subsample
+
+        pstDispFrameFmt->stFrames[1].u32Idx = pstDispFrameFormat->stFrames[1].u32Idx;
+        pstDispFrameFmt->stFrames[1].u32PriData = pstDispFrameFormat->stFrames[1].u32PriData;
+        pstDispFrameFmt->stFrames[1].u8LumaBitdepth = pstDispFrameFormat->stFrames[1].u8LumaBitdepth;
+        pstDispFrameFmt->stFrames[1].u8ChromaBitdepth = pstDispFrameFormat->stFrames[1].u8ChromaBitdepth;
+
+        for (i = 0; i < MMSDK_SWDRHISTOGRAM_INDEX_NUM; i++) {
+            pstDispFrameFmt->stFrames[1].stHWFormat.u16Histogram[i] = pstDispFrameFormat->stFrames[1].stHWFormat.u16Histogram[i];
+        }
+    }
+    pstDispFrameFmt->enColorFormat = pstDispFrameFormat->enColorFormat;
+    pstDispFrameFmt->u32FrameNum = pstDispFrameFormat->u32FrameNum;
+    pstDispFrameFmt->u64Pts = pstDispFrameFormat->u64Pts;
+    pstDispFrameFmt->u32CodecType = pstDispFrameFormat->u32CodecType;
+    pstDispFrameFmt->u32FrameRate = pstDispFrameFormat->u32FrameRate;
+    pstDispFrameFmt->u32AspectWidth = pstDispFrameFormat->u32AspectWidth;
+    pstDispFrameFmt->u32AspectHeight = pstDispFrameFormat->u32AspectHeight;
+    pstDispFrameFmt->u32VdecStreamVersion = pstDispFrameFormat->u32VdecStreamVersion;
+    pstDispFrameFmt->u32VdecStreamId = pstDispFrameFormat->u32VdecStreamId;
+    pstDispFrameFmt->u32UniqueId = pstDispFrameFormat->u32UniqueId;
+    pstDispFrameFmt->u8AspectRate = pstDispFrameFormat->u8AspectRate;
+    pstDispFrameFmt->u8Interlace = pstDispFrameFormat->u8Interlace;
+    pstDispFrameFmt->u8FrcMode = pstDispFrameFormat->u8FrcMode;
+    pstDispFrameFmt->u83DMode = pstDispFrameFormat->u83DMode;
+    pstDispFrameFmt->u8BottomFieldFirst = pstDispFrameFormat->u8BottomFieldFirst;
+    pstDispFrameFmt->u8FreezeThisFrame = pstDispFrameFormat->u8FreezeThisFrame;
+    pstDispFrameFmt->u8ToggleTime = pstDispFrameFormat->u8ToggleTime;
+    pstDispFrameFmt->u8MCUMode = pstDispFrameFormat->u8MCUMode;
+    pstDispFrameFmt->u8FieldCtrl = pstDispFrameFormat->u8FieldCtrl;
+    pstDispFrameFmt->u8ApplicationType = pstDispFrameFormat->u8ApplicationType;
+    pstDispFrameFmt->u83DLayout = pstDispFrameFormat->u83DLayout;
+    pstDispFrameFmt->u8ColorInXVYCC = pstDispFrameFormat->u8ColorInXVYCC;
+    pstDispFrameFmt->u8LowLatencyMode = pstDispFrameFormat->u8LowLatencyMode;
+    pstDispFrameFmt->u8VdecComplexity = pstDispFrameFormat->u8VdecComplexity;
+    pstDispFrameFmt->u8HTLBTableId = pstDispFrameFormat->u8HTLBTableId;
+    pstDispFrameFmt->u8HTLBEntriesSize = pstDispFrameFormat->u8HTLBEntriesSize;
+    pstDispFrameFmt->u8AFD = pstDispFrameFormat->u8AFD;
+
+    pstDispFrameFmt->stHDRInfo.u32Version = pstDispFrameFormat->stHDRInfo.u32Version;
+    pstDispFrameFmt->stHDRInfo.u32Length = pstDispFrameFormat->stHDRInfo.u32Length;
+    pstDispFrameFmt->stHDRInfo.u32FrmInfoExtAvail = pstDispFrameFormat->stHDRInfo.u32FrmInfoExtAvail;
+
+    pstDispFrameFmt->stHDRInfo.stColorDescription.u32Version = pstDispFrameFormat->stHDRInfo.stColorDescription.u32Version;
+    pstDispFrameFmt->stHDRInfo.stColorDescription.u32Length = pstDispFrameFormat->stHDRInfo.stColorDescription.u32Length;
+    pstDispFrameFmt->stHDRInfo.stColorDescription.u8ColorPrimaries = pstDispFrameFormat->stHDRInfo.stColorDescription.u8ColorPrimaries;
+    pstDispFrameFmt->stHDRInfo.stColorDescription.u8TransferCharacteristics = pstDispFrameFormat->stHDRInfo.stColorDescription.u8TransferCharacteristics;
+    pstDispFrameFmt->stHDRInfo.stColorDescription.u8MatrixCoefficients = pstDispFrameFormat->stHDRInfo.stColorDescription.u8MatrixCoefficients;
+
+    //pstDispFrameFormat->sHDRInfo.stMasterColorDisplay                                                   //pstDispFrameFormat->sHDRInfo.stMasterColorDisplay
+
+    pstDispFrameFmt->stHDRInfo.stDolbyHDRInfo.u32Version = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u32Version;
+    pstDispFrameFmt->stHDRInfo.stDolbyHDRInfo.u32Length = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u32Length;
+    pstDispFrameFmt->stHDRInfo.stDolbyHDRInfo.u8DVMode = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u8DVMode;
+    pstDispFrameFmt->stHDRInfo.stDolbyHDRInfo.phyHDRMetadataAddr = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.phyHDRMetadataAddr;
+    pstDispFrameFmt->stHDRInfo.stDolbyHDRInfo.u32HDRMetadataSize = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u32HDRMetadataSize;
+    pstDispFrameFmt->stHDRInfo.stDolbyHDRInfo.phyHDRRegAddr = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.phyHDRRegAddr;
+    pstDispFrameFmt->stHDRInfo.stDolbyHDRInfo.u32HDRRegSize = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u32HDRRegSize;
+    pstDispFrameFmt->stHDRInfo.stDolbyHDRInfo.phyHDRLutAddr = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.phyHDRLutAddr;
+    pstDispFrameFmt->stHDRInfo.stDolbyHDRInfo.u32HDRLutSize = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u32HDRLutSize;
+    pstDispFrameFmt->stHDRInfo.stDolbyHDRInfo.u8DMEnable = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u8DMEnable;
+    pstDispFrameFmt->stHDRInfo.stDolbyHDRInfo.u8CompEnable = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u8CompEnable;
+    pstDispFrameFmt->stHDRInfo.stDolbyHDRInfo.u8CurrentIndex = pstDispFrameFormat->stHDRInfo.stDolbyHDRInfo.u8CurrentIndex;
+
+    //memcpy(&pstDispFrameFmt->stDispFrmInfoExt, &pstDispFrameFormat->stDispFrmInfoExt, sizeof(ST_MMSDK_DMS_DISP_FRM_INFO_EXT));
+    // FIXME: frame info EXT V7
+    //pstDispFrameFormat->u16MIUBandwidth;
+    //pstDispFrameFormat->u16Bitrate;
+    pstDispFrameFmt->u32TileMode = pstDispFrameFormat->u32TileMode;
+    //ALOGD("u32TileMode = %d", pstDispFrameFormat->u32TileMode);
+    //pstDispFrameFormat->phyHTLBEntriesAddr;
+
+    pstDispFrameFmt->phyVsyncBridgeAddr = pstDispFrameFormat->phyVsyncBridgeAddr;
+    pstDispFrameFmt->phyVsyncBridgeExtAddr = pstDispFrameFormat->phyVsyncBridgeExtAddr;
+
+    return TRUE;
+}
+
+MMSDK_BOOL _PT_Display_ConvertWinInfo(const ST_MMSDK_DMS_SETWIN_INFO *pstMMSDKSetWinInfo, ST_DMS_SETWIN_INFO *pstDMSSetWinInfo)
+{
+    memset(pstDMSSetWinInfo, 0, sizeof(ST_DMS_SETWIN_INFO));
+
+    pstDMSSetWinInfo->u32Version = pstMMSDKSetWinInfo->u32Version;
+    pstDMSSetWinInfo->u32Length  = pstMMSDKSetWinInfo->u32Length;
+
+    pstDMSSetWinInfo->stOutputWinInfo.stCropWin.u32x        = pstMMSDKSetWinInfo->stOutputWinInfo.stCropWin.u32x;
+    pstDMSSetWinInfo->stOutputWinInfo.stCropWin.u32y        = pstMMSDKSetWinInfo->stOutputWinInfo.stCropWin.u32y;
+    pstDMSSetWinInfo->stOutputWinInfo.stCropWin.u32width    = pstMMSDKSetWinInfo->stOutputWinInfo.stCropWin.u32width;
+    pstDMSSetWinInfo->stOutputWinInfo.stCropWin.u32height   = pstMMSDKSetWinInfo->stOutputWinInfo.stCropWin.u32height;
+
+    pstDMSSetWinInfo->stOutputWinInfo.stOutputWin.u32x      = pstMMSDKSetWinInfo->stOutputWinInfo.stOutputWin.u32x;
+    pstDMSSetWinInfo->stOutputWinInfo.stOutputWin.u32y      = pstMMSDKSetWinInfo->stOutputWinInfo.stOutputWin.u32y;
+    pstDMSSetWinInfo->stOutputWinInfo.stOutputWin.u32width  = pstMMSDKSetWinInfo->stOutputWinInfo.stOutputWin.u32width;
+    pstDMSSetWinInfo->stOutputWinInfo.stOutputWin.u32height = pstMMSDKSetWinInfo->stOutputWinInfo.stOutputWin.u32height;
+    pstDMSSetWinInfo->u32OnOutputLayer = pstMMSDKSetWinInfo->u32OnOutputLayer;
+    pstDMSSetWinInfo->enARC = pstMMSDKSetWinInfo->enARC;
+
+    return TRUE;
+}
+
+EN_MMSDK_DMS_RESULT PT_Display_SetDigitalDecodeSignalInfo(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_DMS_DISPFRAMEFORMAT *pstDispFrameFormat)
+{
+    PT_DISP_DBG("");
+
+    _ST_MMSDK_DISPLAY_INSTANCE* pDisplayInstance = (_ST_MMSDK_DISPLAY_INSTANCE*)DisplayItem;
+    MMSDK_U32 u32WindowID = (MMSDK_U32)pDisplayInstance->u8DIPWin;
+    ST_DMS_DISPFRAMEFORMAT stDispFrameFmt = {};
+
+    _PT_Display_ConvertFrmFormat_DMS(u32WindowID, pstDispFrameFormat, &stDispFrameFmt);
+
+    return (EN_MMSDK_DMS_RESULT)MApi_DMS_SetDigitalDecodeSignalInfo(u32WindowID, &stDispFrameFmt);
+}
+
+EN_MMSDK_DMS_RESULT PT_Display_ClearDigitalDecodeSignalInfo(PT_DISPLAYITEM DisplayItem)
+{
+    PT_DISP_DBG("");
+
+//    _ST_MMSDK_DISPLAY_INSTANCE* pDisplayInstance = (_ST_MMSDK_DISPLAY_INSTANCE*)DisplayItem;
+//    MMSDK_U32 u32WindowID = (MMSDK_U32)pDisplayInstance->u8DIPWin;
+//    MApi_DMS_ClearDigitalDecodeSignalInfo(u32WindowID);
+
+    return E_MMSDK_DMS_OK;
+}
+
+EN_MMSDK_DMS_RESULT PT_Display_SetWindow(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_DMS_SETWIN_INFO *pstDMS_SetWin_Info)
+{
+    PT_DISP_DBG("");
+
+    _ST_MMSDK_DISPLAY_INSTANCE* pDisplayInstance = (_ST_MMSDK_DISPLAY_INSTANCE*)DisplayItem;
+    MMSDK_U32 u32WindowID = (MMSDK_U32)pDisplayInstance->u8DIPWin;
+    ST_DMS_SETWIN_INFO stSetWindowInfo = {};
+    if(u32WindowID == E_MSAPI_XC_MAIN_WINDOW && !PT_SYS_GetFlagResizeWindowByUser(u32WindowID))
+    {
+        PT_DISP_DBG("DS stream trigger ResizeWindow, DO NOT call MApi_DMS_SetWindow");
+        return E_MMSDK_DMS_OK;
+    }
+
+    PT_SYS_SetFlagResizeWindowByUser(u32WindowID, FALSE);
+
+    _PT_Display_ConvertWinInfo(pstDMS_SetWin_Info, &stSetWindowInfo);
+
+    // [temp solution]    1439893 not fixed, Call PT_Display_SetXCWindow to  change Z-order
+    //return (EN_MMSDK_DMS_RESULT)MApi_DMS_SetWindow(u32WindowID, &stSetWindowInfo);
+
+    ST_MMSDK_XC_RECT stCropRect = {}, stDispRect = {};
+
+    stCropRect.u16X         = (MMSDK_U16)stSetWindowInfo.stOutputWinInfo.stCropWin.u32x;
+    stCropRect.u16Y         = (MMSDK_U16)stSetWindowInfo.stOutputWinInfo.stCropWin.u32y;
+    stCropRect.u16Width     = (MMSDK_U16)stSetWindowInfo.stOutputWinInfo.stCropWin.u32width;
+    stCropRect.u16Height    = (MMSDK_U16)stSetWindowInfo.stOutputWinInfo.stCropWin.u32height;
+
+    stDispRect.u16X         = (MMSDK_U16)stSetWindowInfo.stOutputWinInfo.stOutputWin.u32x;
+    stDispRect.u16Y         = (MMSDK_U16)stSetWindowInfo.stOutputWinInfo.stOutputWin.u32y;
+    stDispRect.u16Width     = (MMSDK_U16)stSetWindowInfo.stOutputWinInfo.stOutputWin.u32width;
+    stDispRect.u16Height    = (MMSDK_U16)stSetWindowInfo.stOutputWinInfo.stOutputWin.u32height;
+
+    return (PT_Display_SetXCWindow(DisplayItem, &stCropRect, &stDispRect, 0) == TRUE)? E_MMSDK_DMS_OK : E_MMSDK_DMS_FAIL;
+
+}
+
+EN_MMSDK_DMS_RESULT PT_Display_Video_Flip(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_DMS_DISPFRAMEFORMAT* pstDispFrameFormat)
+{
+//    PT_DISP_DBG("");
+    _ST_MMSDK_DISPLAY_INSTANCE* pDisplayInstance = (_ST_MMSDK_DISPLAY_INSTANCE*)DisplayItem;
+    MMSDK_U32 u32WindowID = (MMSDK_U32)pDisplayInstance->u8DIPWin;
+    MSAPI_XC_VDECFRAME_INFO VDECDispFrame={};
+    _PT_Display_ConvertFrmFormat(u32WindowID, pstDispFrameFormat, &VDECDispFrame);
+
+    MMSDK_BOOL bStepDbg = FALSE;
+
+    PT_SYS_GetOptions(u32WindowID, E_PT_SYS_STEP_DBG, (void*)&bStepDbg);
+
+    if(bStepDbg == TRUE && pDisplayInstance->bIsFramePushed == TRUE)
+    {
+        MMSDK_BOOL bStepNextFrame = FALSE;
+        do
+        {
+            PT_SYS_GetOptions(u32WindowID, E_PT_SYS_STEP_NEXTFRAME, (void*)&bStepNextFrame);
+            MsOS_DelayTask(50);
+        }while(!bStepNextFrame);
+
+        bStepDbg = FALSE;
+        PT_SYS_SetOptions(u32WindowID, E_PT_SYS_STEP_NEXTFRAME, &bStepDbg);
+        PT_DISP_DBG("disp cnt=%d", pDisplayInstance->u32DispCount);
+    }
+
+    if (E_MSAPI_XC_OK == msAPI_XC_DIPMultiView_PushFrame(&VDECDispFrame))
+    {
+        pDisplayInstance->bIsFramePushed = TRUE;
+        pDisplayInstance->u32DispCount++;
+        //PT_DISP_DBG("disp cnt=%d", pDisplayInstance->u32DispCount);
+
+        return E_MMSDK_DMS_OK;
+    }
+    else
+    {
+        return E_MMSDK_DMS_FAIL;
+    }
+}
+
+EN_MMSDK_DMS_RESULT PT_Display_SetZOrder(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_DMS_ZORDER_INFO *pstZorderInfo)
+{
+    // AVP SN flow does not use this API
+    return E_MMSDK_DMS_OK;
+}
+
+EN_MMSDK_DMS_RESULT PT_Display_GetCapability(PT_DISPLAYITEM DisplayItem, EN_MMSDK_DMS_CAPABILITY *peCapability)
+{
+    PT_DISP_DBG("");
+    EN_DMS_CAPABILITY eDMSCapability;
+    MApi_DMS_GetCapability(&eDMSCapability);
+    *peCapability = (EN_MMSDK_DMS_CAPABILITY)eDMSCapability;
+    //*peCapability |= E_MMSDK_DMS_CAPABILITY_MULTI_WINDOW;
+
+    return E_MMSDK_DMS_OK;
+}
+
+EN_MMSDK_DMS_RESULT PT_Display_SetOutputLayer(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_DMS_WINDOW *pstLayer)
+{
+    // AVP SN flow does not use this API
+    return E_MMSDK_DMS_OK;
+}
+
+EN_MMSDK_DMS_RESULT PT_Display_Video_Freeze(PT_DISPLAYITEM DisplayItem, const ST_MMSDK_DMS_FREEZE_WINDOW_INFO *pstWindowFreeze)
+{
+    // AVP SN flow does not use this API
+    return E_MMSDK_DMS_OK;
+}
+#endif
 #endif

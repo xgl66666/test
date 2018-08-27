@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (!Â¡Â±MStar Confidential Information!Â¡L) by the recipient.
+// (!¡±MStar Confidential Information!¡L) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -128,7 +128,7 @@
 #if CH_SCAN_DBG
 #define ch_scan_print(fmt, args...)  printf("[%s][%d]" fmt, __FUNCTION__, __LINE__, ## args)
 #else
-#define ch_scan_print(fmt, args...)  while(0);
+#define ch_scan_print(fmt, args...)
 #endif
 
 #define TEDDY_CH_SCAN_DONE 0//to fix, by Teddy.Chen
@@ -173,6 +173,7 @@ static BLINDSCAN_STATUS _geBlindScanStatus = BLINDSCAN_READY;
 static MS_U16 _gu16GetTPSNum = 0;
 static MS_U8 _gu8TPBlindScanProgress = 0;//the progress of blind scan 1 frequency
 static MS_U8 _gu8MotorPosition=0;
+/*
 static MS_SAT_PARAM _gstSat_param = {
                     .e0V12VOnOff = EN_0V12V_ONOFF_ON,
                     .e22KOnOff = EN_22K_AUTO,
@@ -187,7 +188,8 @@ static MS_SAT_PARAM _gstSat_param = {
                     .u8Position = 0,
                     .bPorInvert = 0,
                     };
-
+*/
+static MS_SAT_PARAM* _gpstSat_param = NULL;
 static MS_FE_CARRIER_PARAM _gstAfe_param[MAX_TPSOFSAT_NUM];
 static stFreqPG* _gpstProgramList=NULL;
 
@@ -815,53 +817,63 @@ MS_U8 _Demo_RfChannel_Freq2ChannelNumber(MS_U8 u8Country, MS_U32 u32Frequency)
 }
 
 #if   DISEQC13_ONLY_GOTOX
-static MS_BOOL _Demo_TurnMotor(MS_SAT_PARAM stSatParam, MS_BOOL bForceTune)
+static MS_BOOL _Demo_TurnMotor(MS_SAT_PARAM* pstSatParam, MS_BOOL bForceTune)
 {
     MS_BOOL bRet = FALSE;
 
     //_GetSatInfor(_ScanParam.pu8SatIDList[_gu8CurScanSATPos],&stSatParam);
-    memcpy((void*)&stSatParam,(void*)&_gstSat_param,sizeof(stSatParam));
-    if(stSatParam.u8Position > 0)
+    if(_gpstSat_param == NULL)
     {
-        if(IsUSALS(stSatParam))
+        if(!appDemo_DigiTuner_GetSatParam(EN_CABLE_LNB_NOT_SET, &_gpstSat_param))
+            return FALSE;
+    }
+    memcpy((void*)pstSatParam,(void*)_gpstSat_param,sizeof(MS_SAT_PARAM));
+    if(pstSatParam->u8Position > 0)
+    {
+        if(pstSatParam->u8Position & DISEQC_USALS_BIT)
         {
             if(bForceTune&&!(_gu8MotorPosition&DISEQC_USALS_BIT))
             {
-              MApi_DigiTuner_DiSEqC_GoSatPos(stSatParam);
+              MApi_DigiTuner_DiSEqC_GoSatPos(pstSatParam);
             }
             bRet = TRUE;
         }
-        else if((stSatParam.u8Position&DISEQC12_USALS_POSITION_MASK) != (_gu8MotorPosition&DISEQC12_USALS_POSITION_MASK))
+        else if((pstSatParam->u8Position&DISEQC12_USALS_POSITION_MASK) != (_gu8MotorPosition&DISEQC12_USALS_POSITION_MASK))
         {
             if(bForceTune)
             {
-              MApi_DigiTuner_DiSEqC_GoSatPos(stSatParam);
+              MApi_DigiTuner_DiSEqC_GoSatPos(pstSatParam);
             }
             bRet = TRUE;
         }
     }
-    _gu8MotorPosition = stSatParam.u8Position;
+    _gu8MotorPosition = pstSatParam->u8Position;
     return bRet;
 }
 #else
-static MS_BOOL _Demo_TurnMotor(MS_SAT_PARAM stSatParam, MS_BOOL bForceTune)
+static MS_BOOL _Demo_TurnMotor(MS_SAT_PARAM* pstSatParam, MS_BOOL bForceTune)
 {
     MS_BOOL bRet = FALSE;
 
     //_GetSatInfor(_gu8CurScanSATPos,&stSatParam);
-    memcpy((void*)&stSatParam,(void*)&_gstSat_param,sizeof(stSatParam));
-    if((stSatParam.u8Position&DISEQC12_USALS_POSITION_MASK) > 0)
+    if(_gpstSat_param == NULL)
     {
-        if((stSatParam.u8Position&DISEQC12_USALS_POSITION_MASK) != _gu8MotorPosition)
+        if(!appDemo_DigiTuner_GetSatParam(EN_CABLE_LNB_NOT_SET, &_gpstSat_param))
+            return FALSE;
+    }
+    memcpy((void*)pstSatParam,(void*)_gpstSat_param,sizeof(MS_SAT_PARAM));
+    if((pstSatParam->u8Position&DISEQC12_USALS_POSITION_MASK) > 0)
+    {
+        if((pstSatParam->u8Position&DISEQC12_USALS_POSITION_MASK) != _gu8MotorPosition)
         {
             if(bForceTune)
             {
-              MApi_DigiTuner_DiSEqC_GoSatPos(_gu8TunerIndex, stSatParam.u8Position&DISEQC12_USALS_POSITION_MASK);
+              MApi_DigiTuner_DiSEqC_GoSatPos(_gu8TunerIndex, pstSatParam->u8Position&DISEQC12_USALS_POSITION_MASK);
             }
             bRet = TRUE;
         }
     }
-    _gu8MotorPosition = stSatParam.u8Position&DISEQC12_USALS_POSITION_MASK;
+    _gu8MotorPosition = pstSatParam->u8Position&DISEQC12_USALS_POSITION_MASK;
     return bRet;
 }
 #endif
@@ -885,7 +897,7 @@ static MS_BOOL _BlindScan_AddTP2List(MS_FE_CARRIER_PARAM* TP)
         {
             memcpy(&_gstScanParam.stTPSInfo,&_gstScanParam.pstTPIdxTable[_gu32TPSOFSAT_NUM],sizeof(MS_FE_CARRIER_PARAM));
         }
-        
+
         _gu32TPSOFSAT_NUM ++;
         return TRUE;
     }
@@ -929,10 +941,16 @@ static TaskState _Demo_ChBlindScan_Start(void)
     u8Status ++;
     u8Status %= BLINDSCAN_STATUS_NUM;
 
-    if(_gstSat_param.eSwt10Port == EN_SWT_PORT_OFF
-      &&_gstSat_param.eSwt11Port == EN_SWT_PORT_OFF)
+    if(_gpstSat_param == NULL)
     {
-        if(_gstSat_param.eLNBPwrOnOff == EN_LNBPWR_13V)
+        if(!appDemo_DigiTuner_GetSatParam(EN_CABLE_LNB_NOT_SET, &_gpstSat_param))
+            return E_TASK_STATE_IDLE;
+    }
+
+    if(_gpstSat_param->eSwt10Port == EN_SWT_PORT_OFF
+      &&_gpstSat_param->eSwt11Port == EN_SWT_PORT_OFF)
+    {
+        if(_gpstSat_param->eLNBPwrOnOff == EN_LNBPWR_13V)
         {
             if(u8Status == BLINDSCAN_H_LoLOF
             ||u8Status == BLINDSCAN_H_HiLOF)
@@ -940,7 +958,7 @@ static TaskState _Demo_ChBlindScan_Start(void)
                 u8Status ++;
             }
         }
-        else if(_gstSat_param.eLNBPwrOnOff == EN_LNBPWR_18V)
+        else if(_gpstSat_param->eLNBPwrOnOff == EN_LNBPWR_18V)
         {
             if(u8Status == BLINDSCAN_V_LoLOF
             ||u8Status == BLINDSCAN_V_HiLOF)
@@ -950,20 +968,20 @@ static TaskState _Demo_ChBlindScan_Start(void)
         }
     }
 
-    if(_gstSat_param.u16LoLOF == _gstSat_param.u16HiLOF)
+    if(_gpstSat_param->u16LoLOF == _gpstSat_param->u16HiLOF)
     {
         if(u8Status >= BLINDSCAN_H_HiLOF)
         {
             u8Status = BLINDSCAN_GETTP_FINISH;
         }
     }
-    else if(_gstSat_param.u16LoLOF < MAX_C_LOF_FREQ) //c band   L-LOF for H  H-LOF for V
+    else if(_gpstSat_param->u16LoLOF < MAX_C_LOF_FREQ) //c band   L-LOF for H  H-LOF for V
     {
         if(u8Status == BLINDSCAN_V_LoLOF
         ||u8Status == BLINDSCAN_H_HiLOF)
         {
             u8Status = BLINDSCAN_V_HiLOF;
-            if(_gstSat_param.eLNBPwrOnOff == EN_LNBPWR_18V)
+            if(_gpstSat_param->eLNBPwrOnOff == EN_LNBPWR_18V)
             {
                u8Status = BLINDSCAN_GETTP_FINISH;
             }
@@ -997,11 +1015,11 @@ static TaskState _Demo_ChBlindScan_Start(void)
             break;
     }
 
-    if(MApi_DigiTuner_BlindScan_Start(_gu8TunerIndex, &_gstSat_param,u8Polarity,bHiLoF))
-    {   
+    if(MApi_DigiTuner_BlindScan_Start(_gu8TunerIndex, _gpstSat_param,u8Polarity,bHiLoF))
+    {
         _gu16GetTPSNum = 0;
 
-        _Demo_TurnMotor(_gstSat_param,FALSE);
+        _Demo_TurnMotor(_gpstSat_param,FALSE);
         return E_TASK_STATE_BLIND_NEXTFREQ;
     }
 
@@ -1060,6 +1078,7 @@ static TaskState _Demo_ChBlindScan_GetTPlist(void)
     MS_FE_CARRIER_PARAM carrierTPList[MAX_TPS_LPF];
     MS_BOOL bAddTPStatus = FALSE;
 
+    memset(carrierTPList, 0, sizeof(MS_FE_CARRIER_PARAM)*MAX_TPS_LPF);//coverity issue.
     if(MApi_DigiTuner_BlindScan_GetChannel(_gu8TunerIndex, _gu16GetTPSNum,&u16TPNum, carrierTPList))
     {
         if(u16TPNum > 0)
@@ -1069,7 +1088,7 @@ static TaskState _Demo_ChBlindScan_GetTPlist(void)
             MS_SAT_PARAM SATParam;
 
             //_GetSatInfor(_gu8CurScanSATPos,&SATParam);
-            memcpy((void*)&SATParam,(void*)&_gstSat_param,sizeof(SATParam));
+            memcpy((void*)&SATParam,(void*)_gpstSat_param,sizeof(SATParam));
 
             if(_geBlindScanStatus == BLINDSCAN_V_LoLOF || _geBlindScanStatus == BLINDSCAN_V_HiLOF)
             {
@@ -1143,6 +1162,7 @@ static TaskState _Demo_ChScan_Start(void)
     MS_U32 u32BW;
     MS_U8 u8CurChNo;
     MS_U16 u16Bandwidth = 0;
+    MS_U32 u32NULLArg=0;
 
     if (_gstScanParam.bScanMode == E_CHSCAN_MODE_CHANNEL_NO)
     {
@@ -1192,7 +1212,7 @@ static TaskState _Demo_ChScan_Start(void)
     }
     else if(_gu32ScanFEType == DVBS)
     {
-        if(!appDemo_DigiTuner_SetFreqCheck(&_gstScanParam.stTPSInfo.u32Frequency, &u32SymbolRate, NULL))
+        if(!appDemo_DigiTuner_SetFreqCheck(&_gstScanParam.stTPSInfo.u32Frequency, &u32SymbolRate, &u32NULLArg))
         {
             printf("%s: Fail!!!\n", __FUNCTION__);
             return E_TASK_STATE_IDLE;
@@ -1200,13 +1220,13 @@ static TaskState _Demo_ChScan_Start(void)
     }else if(_gu32ScanFEType == DVBT2)
     {
          u32BW = (MS_U32)((u16Bandwidth - 6000)/1000 + 1);// 1: 6M, 2:7M,  3:8M
-        if(!appDemo_DigiTuner_SetFreqCheck(&_gstScanParam.stTPSInfo.u32Frequency, &u32BW, NULL))
+        if(!appDemo_DigiTuner_SetFreqCheck(&_gstScanParam.stTPSInfo.u32Frequency, &u32BW, &u32NULLArg))
         {
             printf("%s: Fail!!!\n", __FUNCTION__);
             return E_TASK_STATE_IDLE;
         }
     }
-        
+
 
     if(_gu32ScanFEType != DVBS)
         _gu32ScanTime = MsOS_GetSystemTime();
@@ -1264,7 +1284,7 @@ static TaskState _Demo_ChScan_Tune2RF(void)
         else
             MApi_Frontend_SetBroadcastType(_gu8TunerIndex, DVBS);
 
-        if(!MApi_DigiTuner_Tune2RfCh_DVBS(_gu8TunerIndex, &_gstSat_param, &_gstScanParam.stTPSInfo, FE_TUNE_AUTO))
+        if(!MApi_DigiTuner_Tune2RfCh_DVBS(_gu8TunerIndex, _gpstSat_param, &_gstScanParam.stTPSInfo, FE_TUNE_AUTO))
         {
             printf("%s: failed.\n", __FUNCTION__);
             return E_TASK_STATE_IDLE;
@@ -1303,7 +1323,10 @@ static TaskState _Demo_ChScan_WaitLock(void)
                 return FALSE;
             }
 #endif
-    MApi_DigiTuner_GetLock(_gu8TunerIndex, &eStatus);
+    if(!MApi_DigiTuner_GetLock(_gu8TunerIndex, &eStatus))
+    {
+        return FALSE;
+    }
 
     if ( eStatus == E_DEMOD_LOCK)
     {
@@ -1326,7 +1349,7 @@ static TaskState _Demo_ChScan_WaitLock(void)
                return E_TASK_STATE_IDLE;
            else
                pstPG = _gpstProgramList + _gu32NumOfChanScan;
-           
+
            if(!_Demo_GetProgram(E_DMX_FLOW_LIVE0, pstPG))
               pstPG->u32PgNum = 0;
 
@@ -1343,7 +1366,7 @@ static TaskState _Demo_ChScan_WaitLock(void)
         else
             return E_TASK_STATE_SETTPS;
     }
-    else if ( (eStatus == E_DEMOD_UNLOCK)  || ((MsOS_GetSystemTime() - _gu32LockTime) > _gu32LockTimeMax)
+    else if ( /*(eStatus == E_DEMOD_UNLOCK)  || */((MsOS_GetSystemTime() - _gu32LockTime) > _gu32LockTimeMax)
               || (eStatus == E_DEMOD_T_T2_UNLOCK))
     {
         printf("%s: Timeout!\n", __FUNCTION__);
@@ -1474,6 +1497,7 @@ static TaskState _Demo_ChScan_SetTPS(void)
 //-------------------------------------------------------------------------------------------------
 static TaskState _Demo_ChScan_Idle(void)
 {
+
     return E_TASK_STATE_IDLE;
 }
 
@@ -1485,13 +1509,16 @@ static TaskState _Demo_ChScan_Idle(void)
 static MS_BOOL _Demo_ChanScan_Start(ChScan_Param* pstScanParam)
 {
     memcpy(&_gstScanParam, pstScanParam, sizeof(ChScan_Param));
-    
+
     if(E_SCAN_TYPE_SCAN_EACH_TP_AND_ITS_PG == _eBlindScanType)
         _gu32NumOfChanScan = 0;
     else
         _gu32NumOfChanScan = 1;
-    _eChScanState = E_TASK_STATE_START;
 
+    _eChScanState = E_TASK_STATE_START;
+    _geBlindScanStatus = BLINDSCAN_READY;
+    _gu16GetTPSNum = 0;
+    _gu8TPBlindScanProgress = 0;//the progress of blind scan 1 frequency
     return TRUE;
 }
 
@@ -1553,7 +1580,14 @@ MS_BOOL _Demo_DigiTuner_BlindScan(void)
 
     _gu8CurScanSATPos = 0;
 
-    memcpy(_gstSat_param.aSatName,AntennaSatList_BuiltIn[_gu8CurScanSATPos].pSatName,strlen((char *)AntennaSatList_BuiltIn[_gu8CurScanSATPos].pSatName));
+    if(_gpstSat_param == NULL)
+    {
+        if(!appDemo_DigiTuner_GetSatParam(EN_CABLE_LNB_NOT_SET, &_gpstSat_param))
+            return FALSE;
+    }
+
+    memcpy(_gpstSat_param->aSatName,AntennaSatList_BuiltIn[_gu8CurScanSATPos].pSatName,strlen((char *)AntennaSatList_BuiltIn[_gu8CurScanSATPos].pSatName));
+/*
     _gstSat_param.e0V12VOnOff = EN_0V12V_ONOFF_ON;
     _gstSat_param.e22KOnOff = EN_22K_AUTO;    // effective
     _gstSat_param.eDiseqcLevel = EN_DISEQC_LVL_OFF;
@@ -1566,7 +1600,7 @@ MS_BOOL _Demo_DigiTuner_BlindScan(void)
     _gstSat_param.u16HiLOF = 10600;
     _gstSat_param.u16LoLOF = 9750;
     _gstSat_param.u8Position = 0;
-
+*/
     if(MApi_DigiTuner_Init((MS_U8)(_gu8TunerIndex))== FALSE)
     {
         printf("MApi_DigiTuner_Init fail \n");
@@ -1636,13 +1670,15 @@ MS_BOOL Demo_ChScan_Auto(MS_U32* puCountry, MS_U32* pu32Arg1, MS_U32* pu32Arg2)
         stScanParam.bScanMode = E_CHSCAN_MODE_TPSIDX_TABLE;
         stScanParam.eAutoTune = FE_TUNE_AUTO;
         stScanParam.eTvSysType = E_TV_DVBS;
-        //stScanParam.pu8SatIDList= NULL; 
+        //stScanParam.pu8SatIDList= NULL;
         stScanParam.pstTPIdxTable = _gstAfe_param;
         _Demo_ChanScan_Start(&stScanParam);
 
-        
+
         if(E_SCAN_TYPE_SCAN_EACH_TP_AND_ITS_PG == _eBlindScanType)
         {
+          if(_gpstProgramList == NULL)
+          {
             _gpstProgramList = (stFreqPG*)malloc(sizeof(stFreqPG)*100); // temp set 100
             if(_gpstProgramList == NULL)
             {
@@ -1652,8 +1688,9 @@ MS_BOOL Demo_ChScan_Auto(MS_U32* puCountry, MS_U32* pu32Arg1, MS_U32* pu32Arg2)
             }
             else
                 memset(_gpstProgramList, 0x0, sizeof(stFreqPG)*100);
+           }
         }
-        
+
         return _Demo_DigiTuner_BlindScan();
     }
 

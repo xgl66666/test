@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -124,15 +124,27 @@
 #include "demo_audio.h"
 #endif
 
-#if(DEMO_AUDIO_MULTI_TEST == 1)
-#include "demo_audio_multi.h"
-#endif
-
 #include "demo_utility.h"
 
 //-------------------------------------------------------------------------------------------------
 // Macros
 //-------------------------------------------------------------------------------------------------
+/// Zapping AV check device ID
+#if (DEMO_VDEC_MULTI_TEST == 1 || DEMO_VDEC_NDECODE_TEST == 1)
+#define DEMO_ZAPPING_CHECK_DEVICE_ID(u8Id)                            \
+    if (((EN_AV_Device)u8Id >= E_AV_DEVICE_MAX) || ((EN_AV_Device)u8Id == E_AV_DEVICE_INVALID))         \
+    {                                                             \
+        printf("[%s][%d] Wrong Device ID %d\n",__FUNCTION__,__LINE__, u8Id);      \
+        return FALSE;                                             \
+    }
+#else
+#define DEMO_ZAPPING_CHECK_DEVICE_ID(u8Id)                            \
+    if (((EN_AV_Device)u8Id > 0) || ((EN_AV_Device)u8Id == E_AV_DEVICE_INVALID))        \
+    {                                                             \
+        printf("[%s][%d] Not support vdec multi Device ID %d\n",__FUNCTION__,__LINE__, u8Id);      \
+        return FALSE;                                             \
+    }
+#endif
 //-------------------------------------------------------------------------------------------------
 // Global Definition
 //-------------------------------------------------------------------------------------------------
@@ -146,7 +158,7 @@
 #if ZAPPING_DBG
 #define db_print(fmt, args...)  printf("[%s][%d]" fmt, __FUNCTION__, __LINE__, ## args)
 #else
-#define db_print(fmt, args...)  while(0);
+#define db_print(fmt, args...)
 #endif
 //-------------------------------------------------------------------------------------------------
 // Global Variables
@@ -184,11 +196,6 @@ typedef struct
     MS_U32 u32PCRPID;
     MS_U32 u32VdecType;
     MS_U32 u32AdecType;
-    EN_DEMO_DMX_FLOW DmxPlayback;
-    EN_DEMO_DMX_FLOW_INPUT DmxInput;
-    int DmxClkInv;
-    int DmxExtSync;
-    int DmxParallal;
 } ST_ZAPPING_CHANNEL_INFO;
 
 typedef struct
@@ -200,20 +207,19 @@ typedef struct
     int DmxParallal;
 } ST_ZAPPING_TUNER_INFO;
 
-
-static EN_ZAPPING_TYPE eZappingType = E_ZAPPING_NORMAL;
-
-static MS_U32 u32LastChannel = E_ZAPPING_CHNUM;
-
-#if(DEMO_VDEC_MULTI_TEST == 1)
-static MS_U32 u32LastChannel1 = E_ZAPPING_CHNUM;
-#endif
+typedef struct
+{
+    EN_ZAPPING_TYPE eZappingType;
+    ST_AV_ShowFrameInfo stShowFrameInfo;
+    MS_U32 u32LastChannel;
+} ST_ZAPPING_DEVICE_INFO;
 
 static ST_ZAPPING_CHANNEL_INFO ChannelInfo[E_ZAPPING_CHNUM];
 static ST_ZAPPING_TUNER_INFO TunerInfo[E_ZAPPING_TUNERMAX];
+static ST_ZAPPING_DEVICE_INFO DeviceInfo[E_AV_DEVICE_MAX];
+
 
 #if (DEMO_ZAPPING_FQ_TEST == 1)
-static MSAPI_XC_DEVICE_ID _gstXC_DeviceId = {0, E_MSAPI_XC_DEVICE0};
 EN_AV_Device _geDevice = E_AV_DEVICE_MAIN;
 MS_U32 _gu32Ch = 0;
 
@@ -226,27 +232,28 @@ static void* FQ_Buffer[E_ZAPPING_CHNUM] = {NULL};
 typedef struct
 {
     MS_U32 u32PhyAddr;
+    MS_U32 u32Size;
     MS_U32 u32MemType;
 } ST_FQ_BUF_TYPE;
 
 static ST_FQ_BUF_TYPE FQ_AllocatedBuf[E_ZAPPING_CHNUM] =  {
 #ifdef TSP_FQ_BUF_ADR
-    {TSP_FQ_BUF_ADR,  TSP_FQ_BUF_MEMORY_TYPE},
+    {TSP_FQ_BUF_ADR, TSP_FQ_BUF_LEN, TSP_FQ_BUF_MEMORY_TYPE},
 #else
     {0,0},
 #endif
 #ifdef TSP_FQ_BUF1_ADR
-    {TSP_FQ_BUF1_ADR, TSP_FQ_BUF1_MEMORY_TYPE},
+    {TSP_FQ_BUF1_ADR, TSP_FQ_BUF1_LEN, TSP_FQ_BUF1_MEMORY_TYPE},
 #else
     {0,0},
 #endif
 #ifdef TSP_FQ_BUF2_ADR
-    {TSP_FQ_BUF2_ADR, TSP_FQ_BUF2_MEMORY_TYPE},
+    {TSP_FQ_BUF2_ADR, TSP_FQ_BUF2_LEN, TSP_FQ_BUF2_MEMORY_TYPE},
 #else
     {0,0},
 #endif
 #ifdef TSP_FQ_BUF3_ADR
-    {TSP_FQ_BUF3_ADR, TSP_FQ_BUF3_MEMORY_TYPE},
+    {TSP_FQ_BUF3_ADR, TSP_FQ_BUF3_LEN, TSP_FQ_BUF3_MEMORY_TYPE},
 #else
     {0,0},
 #endif
@@ -260,6 +267,83 @@ static MS_S32 s32MstarNonCachedPoolID = INVALID_POOL_ID;
 //-------------------------------------------------------------------------------------------------
 // Local function
 //-------------------------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------
+/// @brief zapping use auto PlayVideo
+/// @param[in] Device
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+//------------------------------------------------------------------------------
+static MS_BOOL _Demo_Zapping_PlayVideo(EN_AV_Device eDevice)
+{
+
+    MS_U32 u32XCDevice = 0;
+    MS_U32 u32XCWindow = eDevice;
+    MS_U32 u32XCInpusrc = 0;
+    static MS_BOOL bFirstDevice = TRUE;
+    EN_AV_ShowFrame_Mode eAVShowFrameMode = E_AV_ShowFrame_MODE_MAX;
+
+    if (Demo_AV_GetAVInfo(&eDevice, E_AV_GetCmd_WindowShowFrameMode, &eAVShowFrameMode) != TRUE)
+    {
+         printf("[%s][%d]Get Frame mode fail!!!\n",__FUNCTION__,__LINE__);
+    }
+
+    switch(eDevice)
+    {
+        case E_AV_DEVICE_MAIN:
+#if (DEMO_VDEC_NDECODE_TEST == 1)
+        case E_AV_DEVICE_SECOND:
+        case E_AV_DEVICE_THIRD:
+        case E_AV_DEVICE_FOURTH:
+#endif
+            {
+                u32XCDevice = 0;
+                u32XCInpusrc = E_DDI_XC_INPUT_SOURCE_DTV;
+                printf("[%s][%d]Demo_XC_PlayVideo u32XCDevice:%"DTC_MS_U32_d"  u32XCWindow:%"DTC_MS_U32_d" FromDTV\n",__FUNCTION__,__LINE__,u32XCDevice,u32XCWindow);
+                Demo_XC_PlayVideo(&u32XCDevice, &u32XCWindow, &u32XCInpusrc);
+#if (DEMO_XC_DUALXC_TEST == 1)
+                u32XCDevice = 1;
+#if (DEMO_XC_DUALXC_IDENTICAL_DISPLAY_TEST == 1)
+                u32XCInpusrc = E_DDI_XC_INPUT_SOURCE_SCALER0_OP;
+                //Check SC0 GOP seamless zapping can go through SC1
+                //Do not change OSD2VE path when SC1 video play. SC1 video will shake.
+                MApi_XC_SetOSD2VEMode(E_VOP_SEL_OSD_LAST);
+#else
+                u32XCInpusrc = E_DDI_XC_INPUT_SOURCE_DTV;
+#endif
+                if(bFirstDevice &&((eAVShowFrameMode == E_AV_MVOP_MODE)||(eAVShowFrameMode == E_AV_PureMCU_MODE)))
+                {
+                    Demo_XC_PlayVideo(&u32XCDevice, &u32XCWindow, &u32XCInpusrc);
+                }
+#endif
+                if(bFirstDevice &&((eAVShowFrameMode == E_AV_MVOP_MODE)||(eAVShowFrameMode == E_AV_PureMCU_MODE)))
+                {
+                    Demo_VE_PlayVideo();
+                }
+
+                bFirstDevice = FALSE;
+            }
+            break;
+#if (DEMO_VDEC_MULTI_TEST == 1)
+        case E_AV_DEVICE_SUB:
+            {
+                u32XCDevice = 0;
+                u32XCInpusrc = E_DDI_XC_INPUT_SOURCE_DTV2;
+                printf("[%s][%d]Demo_XC_PlayVideo u32XCDevice:%"DTC_MS_U32_d"  u32XCWindow:%"DTC_MS_U32_d" FromDTV2\n",__FUNCTION__,__LINE__,u32XCDevice,u32XCWindow);
+                Demo_XC_PlayVideo(&u32XCDevice, &u32XCWindow, &u32XCInpusrc);
+            }
+            break;
+#endif
+        default:
+            break;
+
+    }
+
+    return TRUE;
+}
+
 //------------------------------------------------------------------------------
 /// @brief save tuner frequency and bandwidth info for zapping
 /// @param[in] channel (kHz)
@@ -338,6 +422,82 @@ MS_BOOL Demo_Zapping_SaveTunerConfig(MS_U32* pu32TunerIndex, EN_DEMO_DMX_FLOW* D
 
 
 //------------------------------------------------------------------------------
+/// @brief save Device show frame mode for zapping
+/// @param[in] Device
+/// @param[in] ShowFrame_Type
+/// @param[in] Window
+/// @param[in] Window X
+/// @param[in] Window Y
+/// @param[in] Window Width
+/// @param[in] Window Height
+/// @param[in] Window Layer
+/// @return TRUE: success.
+/// @return FALSE: Process fail or Invalid input argument.
+/// @sa
+/// @note
+/// Command: \b Zapping_SaveDeviceInfo 0 0x2 0 0 0 1920 1080 2 \n
+//------------------------------------------------------------------------------
+MS_BOOL Demo_Zapping_SaveDeviceInfo(EN_AV_Device* peDevice, MS_U32* pu32Mode, MS_U32* pu32Window, MS_U16* pu16X, MS_U16* pu16Y, MS_U16* pu16Width, MS_U16* pu16Height, MS_U16* pu16Layer)
+{
+    printf("================Demo_Zapping_SaveDeviceInfo [Device][ShowFrame_Type][Window][X][Y][Width][Height][Layer]================\n");
+    printf("ShowFrame_Type 0x0 : MVOP1_MODE\n");
+    printf("ShowFrame_Type 0x1 : MVOP2_MODE\n");
+    printf("ShowFrame_Type 0x2 : DIP_MODE\n");
+    printf("ShowFrame_Type 0x3 : SWDetile_MODE\n");
+    printf("Layer number choose your window layer \n");
+    printf("==============End Demo_Zapping_SaveDeviceInfo==============\n");
+
+    DeviceInfo[*peDevice].stShowFrameInfo.bValid = TRUE;
+    DeviceInfo[*peDevice].stShowFrameInfo.eDevice = *peDevice;
+    DeviceInfo[*peDevice].stShowFrameInfo.eShowFrameMode = *pu32Mode;
+    DeviceInfo[*peDevice].stShowFrameInfo.u32Window = *pu32Window;
+    DeviceInfo[*peDevice].stShowFrameInfo.u16X = *pu16X;
+    DeviceInfo[*peDevice].stShowFrameInfo.u16Y = *pu16Y;
+    DeviceInfo[*peDevice].stShowFrameInfo.u16Width = *pu16Width;
+    DeviceInfo[*peDevice].stShowFrameInfo.u16Height = *pu16Height;
+    DeviceInfo[*peDevice].stShowFrameInfo.u16Layer = *pu16Layer;
+
+    Demo_AV_Initialize(peDevice);
+
+    return TRUE;
+}
+
+//------------------------------------------------------------------------------
+/// @brief save ZappingType for zapping
+/// @param[in] Device
+/// @param[in] ZappingType
+/// @return TRUE: success.
+/// @return FALSE: Process fail or Invalid input argument.
+/// @sa
+/// @note
+/// Command: \b Zapping_ZappingType_EX 0 0 \n
+///                \b Zapping_ZappingType_EX 0 1 \n
+///                \b Zapping_ZappingType_EX 0 2 \n
+//------------------------------------------------------------------------------
+
+MS_BOOL Demo_Zapping_ZappingType_EX(EN_AV_Device* peDevice,MS_U8* pu8ZappingType)
+{
+
+    printf("======================ZappingType======================\n");
+    printf("0x0 : E_ZAPPING_NORMAL\n");
+    printf("0x1 : E_ZAPPING_XC_SEAMLESS\n");
+    printf("0x2 : E_ZAPPING_GOP_SEAMLESS\n");
+    printf("0x4 : E_ZAPPING_DIP_SEAMLESS\n");
+    printf("====================End ZappingType====================\n");
+
+    if(*pu8ZappingType == DeviceInfo[*peDevice].eZappingType)
+    {
+        // Initialize - no good place to init
+        DeviceInfo[*peDevice].u32LastChannel = E_ZAPPING_CHNUM;
+    }
+
+    DeviceInfo[*peDevice].eZappingType = *pu8ZappingType;
+
+    return TRUE;
+}
+
+
+//------------------------------------------------------------------------------
 /// @brief save ZappingType for zapping
 /// @param[in] ZappingType
 /// @return TRUE: success.
@@ -351,18 +511,43 @@ MS_BOOL Demo_Zapping_SaveTunerConfig(MS_U32* pu32TunerIndex, EN_DEMO_DMX_FLOW* D
 
 MS_BOOL Demo_Zapping_ZappingType(MS_U8* pu8ZappingType)
 {
-
-    printf("======================ZappingType======================\n");
-    printf("0x0 : E_ZAPPING_NORMAL\n");
-    printf("0x1 : E_ZAPPING_XC_SEAMLESS\n");
-    printf("0x2 : E_ZAPPING_GOP_SEAMLESS\n");
-    printf("====================End ZappingType====================\n");
-
-    eZappingType = *pu8ZappingType;
+    EN_AV_Device eDevice = 0;
+    Demo_Zapping_ZappingType_EX(&eDevice,pu8ZappingType);
 
     return TRUE;
 }
 
+#if (DEMO_GOP_SEAMLESS_ZAPPING_TEST == 1)
+MS_BOOL Demo_Zapping_GOP_SEAMLESS_Control(EN_AV_Device* peDevice,MS_BOOL *pbDisplayMute)
+{
+    /***** GOP enable freeze image *****/
+    //change NO black screen
+
+#if (DEMO_XC_DUALXC_TEST == 1)
+
+    MS_U32 u32XCDevice = 0;
+    MS_U32 u32XCWindow = *peDevice;
+
+    if(*pbDisplayMute == ENABLE)
+        Demo_AV_PauseAV(peDevice);
+
+    Demo_XC_EnableStillImage_ByDevice(&u32XCDevice, &u32XCWindow, pbDisplayMute);
+
+    if(msAPI_VE_GetSourceType() != E_MSAPI_VE_SOURCE_SCALER_OP2)
+    {
+        if(*peDevice == E_AV_DEVICE_MAIN)
+        {
+            u32XCDevice = 1;
+            Demo_XC_EnableStillImage_ByDevice(&u32XCDevice, &u32XCWindow, pbDisplayMute);
+        }
+    }
+#else
+    Demo_XC_EnableStillImage(pbDisplayMute);
+#endif //(DEMO_XC_DUALXC)
+
+    return TRUE;
+}
+#endif
 //------------------------------------------------------------------------------
 /// @brief The sample code to zapping channel
 /// @param[in] Main or Sub Device or Other Device
@@ -377,58 +562,41 @@ MS_BOOL Demo_Zapping_ZappingType(MS_U8* pu8ZappingType)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_Zapping_Channel(EN_AV_Device* peDevice,MS_U32* pu32Ch)
 {
-
-    MS_U32 u32XCDevice = 0;
-    MS_U32 u32XCWindow = *peDevice;
-    MS_U32 u32XCInpusrc = 0;
-
     printf("[%s][%d]Demo_Zapping_Channel : %"DTC_MS_U32_u" \n",__FUNCTION__,__LINE__,*pu32Ch);
 
-#if(DEMO_VDEC_MULTI_TEST == 1)
-    if (*peDevice >= E_AV_DEVICE_MAX)
-    {
-        printf("[%s][%d] Wrong Decoder \n",__FUNCTION__,__LINE__);
-        return FALSE;
-    }
-#else
-    if (*peDevice > 0)
-    {
-        printf("[%s][%d] Not support vdec multi \n",__FUNCTION__,__LINE__);
-        return FALSE;
-    }
+#if(DEMO_VDEC_NDECODE_TEST == 1)
+    EN_AV_Device eTempDevice = *peDevice;
+    *peDevice = Demo_AV_VDEC_Device_Mapping(*peDevice);
 #endif
 
-    if((*pu32Ch >= E_ZAPPING_CHNUM) || (*pu32Ch < E_ZAPPING_CH1))
+    DEMO_ZAPPING_CHECK_DEVICE_ID(*peDevice)
+
+    if((*pu32Ch >= E_ZAPPING_CHNUM))
     {
         printf("[%s][%d]Error channel number!\n",__FUNCTION__,__LINE__);
         return FALSE;
     }
 
-
-    if(*peDevice == E_AV_DEVICE_MAIN && *pu32Ch == u32LastChannel)
+    if(*pu32Ch == DeviceInfo[*peDevice].u32LastChannel)
     {
         printf("[%s][%d]No channel switch!\n",__FUNCTION__,__LINE__);
         return TRUE;
     }
-#if(DEMO_VDEC_MULTI_TEST == 1)
-    if(*peDevice == E_AV_DEVICE_SUB && *pu32Ch == u32LastChannel1)
-    {
-        printf("[%s][%d]No channel switch!\n",__FUNCTION__,__LINE__);
-        return TRUE;
-    }
-#endif
 
-
-    switch(eZappingType)
+    switch(DeviceInfo[*peDevice].eZappingType)
     {
         case E_ZAPPING_XC_SEAMLESS:
         #if (DEMO_XC_SEAMLESS_ZAPPING_TEST == 1)
+        {
             /***** XC enable freeze image *****/
             //change NO black screen
             printf("[%s][%d]E_ZAPPING_XC_SEAMLESS!\n",__FUNCTION__,__LINE__);
 
             MS_U32 u32DisplayMute = ENABLE;
-            u32XCDevice = 0;
+
+            MS_U32 u32XCDevice = 0;
+            MS_U32 u32XCWindow = *peDevice;
+            MS_U32 u32XCInpusrc = 0;
 
             Demo_XC_EnableSeamlessZapping(&u32XCDevice, &u32XCWindow,&u32DisplayMute);
             Demo_XC_SeamlessZapping_SetFreeze(&u32XCDevice, &u32XCWindow, &u32DisplayMute); //Freeze HDMI
@@ -438,107 +606,84 @@ MS_BOOL Demo_Zapping_Channel(EN_AV_Device* peDevice,MS_U32* pu32Ch)
                 Demo_XC_EnableSeamlessZapping(&u32XCDevice, &u32XCWindow,&u32DisplayMute);
                 Demo_XC_SeamlessZapping_SetFreeze(&u32XCDevice, &u32XCWindow, &u32DisplayMute);//Freeze CVBS
             }
+        }
         #else
             printf("[%s][%d]NOT Support E_ZAPPING_XC_SEAMLESS!\n",__FUNCTION__,__LINE__);
-            eZappingType = E_ZAPPING_NORMAL;
+            DeviceInfo[*peDevice].eZappingType = E_ZAPPING_NORMAL;
         #endif
             break;
 
         case E_ZAPPING_GOP_SEAMLESS:
         #if (DEMO_GOP_SEAMLESS_ZAPPING_TEST == 1)
-            /***** GOP enable freeze image *****/
-            //change NO black screen
-            printf("[%s][%d]E_ZAPPING_GOP_SEAMLESS!\n",__FUNCTION__,__LINE__);
-
+        {
             MS_BOOL bDisplayMute = ENABLE;
-
-#if (DEMO_XC_DUALXC_TEST == 1)
-            u32XCDevice = 0;
-            Demo_AV_PauseAV((EN_AV_Device*)&u32XCWindow);
-            Demo_XC_EnableStillImage_ByDevice(&u32XCDevice, &u32XCWindow, &bDisplayMute);
-
-            if(msAPI_VE_GetSourceType() != E_MSAPI_VE_SOURCE_SCALER_OP2)
-            {
-                if(*peDevice == E_AV_DEVICE_MAIN)
-                {
-                    u32XCDevice = 1;
-                    Demo_XC_EnableStillImage_ByDevice(&u32XCDevice, &u32XCWindow, &bDisplayMute);
-                }
-            }
-#else
-            Demo_XC_EnableStillImage(&bDisplayMute);
-#endif //(DEMO_XC_DUALXC)
+            Demo_Zapping_GOP_SEAMLESS_Control(peDevice,&bDisplayMute);
+        }
         #else
             printf("[%s][%d]NOT Support E_ZAPPING_GOP_SEAMLESS!\n",__FUNCTION__,__LINE__);
-            eZappingType = E_ZAPPING_NORMAL;
+            DeviceInfo[*peDevice].eZappingType = E_ZAPPING_NORMAL;
         #endif
             break;
 
+        case E_ZAPPING_DIP_SEAMLESS:
+        #if (DEMO_DMS_TEST == 1)
+        {
+            MS_BOOL bTRUE = TRUE;
+            Demo_AV_SetAVInfo(peDevice,E_AV_SetCmd_NotInitialize,(void *)&bTRUE);
+
+            MS_U32 u32XCDevice = 0;
+            MS_U32 u32window = DeviceInfo[*peDevice].stShowFrameInfo.u32Window;
+            MS_BOOL bEnable = TRUE;
+
+            Demo_XC_EnableStillImage_ByDevice(&u32XCDevice, &u32window, &bEnable);
+        }
+        #endif
+            printf("[%s][%d]E_ZAPPING_DIP_SEAMLESS!\n",__FUNCTION__,__LINE__);
+            break;
         case E_ZAPPING_NORMAL:
         default:
             printf("[%s][%d]NORMAL_SEAMLESS_ZAPPING!!!\n",__FUNCTION__,__LINE__);
             break;
     }
 
-
     /***** DigiTuner *****/
 
-    if(*peDevice == E_AV_DEVICE_MAIN)
+    if(DeviceInfo[*peDevice].u32LastChannel == E_ZAPPING_CHNUM)  // First time
     {
-        if(u32LastChannel == E_ZAPPING_CHNUM)  // First time
+        if(!appDemo_DigiTuner_SetFreq(&ChannelInfo[*pu32Ch].u32Freq, &ChannelInfo[*pu32Ch].u32QAM, &ChannelInfo[*pu32Ch].u32SymbolRate))
+        {
+            return FALSE;
+        }
+    }
+    else
+    {
+        if(ChannelInfo[*pu32Ch].u32Freq != ChannelInfo[DeviceInfo[*peDevice].u32LastChannel].u32Freq)
         {
             if(!appDemo_DigiTuner_SetFreq(&ChannelInfo[*pu32Ch].u32Freq, &ChannelInfo[*pu32Ch].u32QAM, &ChannelInfo[*pu32Ch].u32SymbolRate))
             {
                 return FALSE;
             }
         }
-        else
-        {
-            if(ChannelInfo[*pu32Ch].u32Freq != ChannelInfo[u32LastChannel].u32Freq)
-            {
-                if(!appDemo_DigiTuner_SetFreq(&ChannelInfo[*pu32Ch].u32Freq, &ChannelInfo[*pu32Ch].u32QAM, &ChannelInfo[*pu32Ch].u32SymbolRate))
-                {
-                    return FALSE;
-                }
-            }
-        }
     }
-#if(DEMO_VDEC_MULTI_TEST == 1)
-    else if(*peDevice == E_AV_DEVICE_SUB)
-    {
-        if(u32LastChannel1 == E_ZAPPING_CHNUM)  // First time
-        {
-            if(!appDemo_DigiTuner_SetFreq(&ChannelInfo[*pu32Ch].u32Freq, &ChannelInfo[*pu32Ch].u32QAM, &ChannelInfo[*pu32Ch].u32SymbolRate))
-            {
-                return FALSE;
-            }
-        }
-        else
-        {
-            if(ChannelInfo[*pu32Ch].u32Freq != ChannelInfo[u32LastChannel1].u32Freq)
-            {
-                if(!appDemo_DigiTuner_SetFreq(&ChannelInfo[*pu32Ch].u32Freq, &ChannelInfo[*pu32Ch].u32QAM, &ChannelInfo[*pu32Ch].u32SymbolRate))
-                {
-                    return FALSE;
-                }
-            }
-        }
-    }
-#endif
+
     Demo_AV_StopAV(peDevice);
 
     MS_U8 u8TunerIndex = appDemo_DigiTuner_GetIndex();
-
     Demo_AV_Tuner_Config(peDevice,&TunerInfo[u8TunerIndex].DmxPlayback,&TunerInfo[u8TunerIndex].DmxInput,&TunerInfo[u8TunerIndex].DmxClkInv,&TunerInfo[u8TunerIndex].DmxExtSync,&TunerInfo[u8TunerIndex].DmxParallal);
+
+    MS_U32 u32ShowFrameMode = DeviceInfo[*peDevice].stShowFrameInfo.eShowFrameMode;
+    Demo_AV_SetShowFrameMode(peDevice, &u32ShowFrameMode, &DeviceInfo[*peDevice].stShowFrameInfo.u32Window, &DeviceInfo[*peDevice].stShowFrameInfo.u16X, &DeviceInfo[*peDevice].stShowFrameInfo.u16Y, &DeviceInfo[*peDevice].stShowFrameInfo.u16Width, &DeviceInfo[*peDevice].stShowFrameInfo.u16Height, &DeviceInfo[*peDevice].stShowFrameInfo.u16Layer);
 
     /***** SetPid *****/
     if(!Demo_AV_TSP_SetPid(peDevice,&ChannelInfo[*pu32Ch].u32VideoPID, &ChannelInfo[*pu32Ch].u32AudioPID, &ChannelInfo[*pu32Ch].u32PCRPID, &ChannelInfo[*pu32Ch].u32VdecType, &ChannelInfo[*pu32Ch].u32AdecType))
     {
         return FALSE;
     }
-
-
+#if(DEMO_VDEC_NDECODE_TEST == 1)
+    if( TRUE != Demo_AV_PlayAV(&eTempDevice))   //use ori device
+#else
     if( TRUE != Demo_AV_PlayAV(peDevice))
+#endif
     {
         printf("[%s][%d]Demo_AV_PlayAV is Fail!!\n Please Check Out the Code Flow!!\n", __FUNCTION__, __LINE__);
         return FALSE;
@@ -548,7 +693,7 @@ MS_BOOL Demo_Zapping_Channel(EN_AV_Device* peDevice,MS_U32* pu32Ch)
 #if ENABLE_MIU_1
 #else
     VDEC_StreamId *stVDECStreamId = NULL;
-    stVDECStreamId = Demo_VDEC_GetStreamID(eDevice);
+    stVDECStreamId = Demo_VDEC_GetStreamID((EN_VDEC_Device*)peDevice);
 
     // FOR Single MIU0 we have to reduce bandwidth usage
     if(E_VDEC_EX_OK != MApi_VDEC_EX_DisableDeblocking(&stVDECStreamId,TRUE))
@@ -563,79 +708,41 @@ MS_BOOL Demo_Zapping_Channel(EN_AV_Device* peDevice,MS_U32* pu32Ch)
 #endif
 #endif
 
-    if (*peDevice == E_AV_DEVICE_MAIN)
-    {
-        u32XCDevice = 0;
-        u32XCInpusrc = E_DDI_XC_INPUT_SOURCE_DTV;
-        printf("[%s][%d]Demo_XC_PlayVideo u32XCDevice:%"DTC_MS_U32_d"  u32XCWindow:%"DTC_MS_U32_d" FromDTV\n",__FUNCTION__,__LINE__,u32XCDevice,u32XCWindow);
-        Demo_XC_PlayVideo(&u32XCDevice, &u32XCWindow, &u32XCInpusrc);
-#if (DEMO_XC_DUALXC_TEST == 1)
-        u32XCDevice = 1;
 
-#ifndef temp_Kano
-u32XCInpusrc = E_DDI_XC_INPUT_SOURCE_DTV;
-#else
-u32XCInpusrc = E_DDI_XC_INPUT_SOURCE_SCALER0_OP;
-//Check SC0 GOP seamless zapping can go through SC1
-//Do not change OSD2VE path when SC1 video play. SC1 video will shake.
-MApi_XC_SetOSD2VEMode(E_VOP_SEL_OSD_LAST);
+#if (DEMO_DMS_TEST == 1)
+    if(DeviceInfo[*peDevice].eZappingType != E_ZAPPING_DIP_SEAMLESS)
 #endif
-        Demo_XC_PlayVideo(&u32XCDevice, &u32XCWindow, &u32XCInpusrc);
-#endif
-        Demo_VE_PlayVideo();
-    }
-#if (DEMO_VDEC_MULTI_TEST == 1)
-    else if(*peDevice == E_AV_DEVICE_SUB)
     {
-        u32XCDevice = 0;
-        u32XCInpusrc = E_DDI_XC_INPUT_SOURCE_DTV2;
-        printf("[%s][%d]Demo_XC_PlayVideo u32XCDevice:%"DTC_MS_U32_d"  u32XCWindow:%"DTC_MS_U32_d" FromDTV2\n",__FUNCTION__,__LINE__,u32XCDevice,u32XCWindow);
-        Demo_XC_PlayVideo(&u32XCDevice, &u32XCWindow, &u32XCInpusrc);
+        _Demo_Zapping_PlayVideo(*peDevice);
     }
-#endif
 
-    if(eZappingType == E_ZAPPING_GOP_SEAMLESS)
+    if(DeviceInfo[*peDevice].eZappingType == E_ZAPPING_GOP_SEAMLESS)
     {
 #if (DEMO_GOP_SEAMLESS_ZAPPING_TEST == 1)
-        /***** GOP enable freeze image *****/
-        //change NO black screen
         MS_BOOL bDisplayMute = DISABLE;
-
-#if (DEMO_XC_DUALXC_TEST == 1)
-        u32XCDevice = 0;
-        Demo_XC_EnableStillImage_ByDevice(&u32XCDevice, &u32XCWindow, &bDisplayMute);
-
-        if(msAPI_VE_GetSourceType() != E_MSAPI_VE_SOURCE_SCALER_OP2)
-        {
-            if(*peDevice == E_AV_DEVICE_MAIN)
-            {
-                u32XCDevice = 1;
-                Demo_XC_EnableStillImage_ByDevice(&u32XCDevice, &u32XCWindow, &bDisplayMute);
-            }
-        }
-#else
-        Demo_XC_EnableStillImage(&bDisplayMute);
-#endif //(DEMO_XC_DUALXC)
-
+        Demo_Zapping_GOP_SEAMLESS_Control(peDevice,&bDisplayMute);
 #endif
     }
+#if (DEMO_DMS_TEST == 1)
+    else if(DeviceInfo[*peDevice].eZappingType == E_ZAPPING_DIP_SEAMLESS)
+    {
+        MS_U32 u32XCDevice = 0;
+        MS_U32 u32window = DeviceInfo[*peDevice].stShowFrameInfo.u32Window;
+        MS_BOOL bEnable = FALSE;
 
-    if(*peDevice == E_AV_DEVICE_MAIN)
-    {
-        u32LastChannel = *pu32Ch;
-    }
-#if(DEMO_VDEC_MULTI_TEST == 1)
-    else if(*peDevice == E_AV_DEVICE_SUB)
-    {
-        u32LastChannel1 = *pu32Ch;
+        Demo_XC_EnableStillImage_ByDevice(&u32XCDevice, &u32window, &bEnable);
+        printf("[%s][%d]E_ZAPPING_DIP_SEAMLESS! disable\n",__FUNCTION__,__LINE__);
     }
 #endif
+
+    DeviceInfo[*peDevice].u32LastChannel = *pu32Ch;
 
     return TRUE;
 }
 
 //------------------------------------------------------------------------------
 /// @brief get ZappingType
+/// @param[in] Device
 /// @param[out] ZappingType
 /// @return TRUE: success.
 /// @return FALSE: Process fail or Invalid input argument.
@@ -643,9 +750,9 @@ MApi_XC_SetOSD2VEMode(E_VOP_SEL_OSD_LAST);
 /// @note
 //------------------------------------------------------------------------------
 
-MS_BOOL Demo_Zapping_GetZappingType(EN_ZAPPING_TYPE* peZappingType)
+MS_BOOL Demo_Zapping_GetZappingType(EN_AV_Device* peDevice,EN_ZAPPING_TYPE* peZappingType)
 {
-    *peZappingType = eZappingType;
+    *peZappingType = DeviceInfo[*peDevice].eZappingType;
     return TRUE;
 }
 
@@ -674,6 +781,8 @@ MS_BOOL Demo_FQ_Eng_Init(MS_U32* pu32Ch,MS_U32* pu32FillFQTime)
     DMX_FQ_Info stFQInfo;
     MS_U32  u32FQEng;
     MS_U32  u32PhyAddr;
+    MS_U32  u32Size;
+    MS_U8 u8TunerIndex = appDemo_DigiTuner_GetIndex();
 
 
     if(*pu32Ch >= E_ZAPPING_CHNUM)
@@ -682,7 +791,7 @@ MS_BOOL Demo_FQ_Eng_Init(MS_U32* pu32Ch,MS_U32* pu32FillFQTime)
         return FALSE;
     }
 
-    if((u32FQEng = Demo_DMX_FlowToFQEngMapping(ChannelInfo[*pu32Ch].DmxPlayback)) == E_DMX_FLOW_INVALID)
+    if((u32FQEng = Demo_DMX_FlowToFQEngMapping(TunerInfo[u8TunerIndex].DmxPlayback)) == E_DMX_FLOW_INVALID)
     {
         db_print("DMX flow is wrong !!\n");
         return FALSE;
@@ -692,6 +801,7 @@ MS_BOOL Demo_FQ_Eng_Init(MS_U32* pu32Ch,MS_U32* pu32FillFQTime)
     {
         db_print("use pre-allocated buffer !!\n");
         u32PhyAddr = MEM_ADR_BY_MIU(FQ_AllocatedBuf[u32FQEng].u32PhyAddr, FQ_AllocatedBuf[u32FQEng].u32MemType);
+        u32Size = FQ_AllocatedBuf[u32FQEng].u32Size;
     }
     else
     {
@@ -703,24 +813,26 @@ MS_BOOL Demo_FQ_Eng_Init(MS_U32* pu32Ch,MS_U32* pu32FillFQTime)
             return FALSE;
         }
         u32PhyAddr = MsOS_VA2PA((MS_VIRT)FQ_Buffer[u32FQEng]);
+        u32Size = ZAPPING_FQ_BUF_LEN;
     }
 
     stFQInfo.u8AddrMode = FALSE;
     stFQInfo.u32BufStart = u32PhyAddr;
-    stFQInfo.u32BufSize = ZAPPING_FQ_BUF_LEN;
+    stFQInfo.u32BufSize = u32Size;
 
     if(MApi_DMX_FQ_Init(u32FQEng, &stFQInfo) != DMX_FILTER_STATUS_OK)
         return FALSE;
 
     MsOS_DelayTask(*pu32FillFQTime);//for FQ filling
 
-    eZappingType = E_ZAPPING_FQ;
+    DeviceInfo[_geDevice].eZappingType = E_ZAPPING_FQ;
     return TRUE;
 }
 
 MS_BOOL Demo_FQ_Eng_Exit(MS_U32* pu32Ch)
 {
     MS_U32  u32FQEng;
+    MS_U8 u8TunerIndex = appDemo_DigiTuner_GetIndex();
 
     if(*pu32Ch >= E_ZAPPING_CHNUM)
     {
@@ -728,7 +840,7 @@ MS_BOOL Demo_FQ_Eng_Exit(MS_U32* pu32Ch)
         return FALSE;
     }
 
-    if((u32FQEng = Demo_DMX_FlowToFQEngMapping(ChannelInfo[*pu32Ch].DmxPlayback)) == E_DMX_FLOW_INVALID)
+    if((u32FQEng = Demo_DMX_FlowToFQEngMapping(TunerInfo[u8TunerIndex].DmxPlayback)) == E_DMX_FLOW_INVALID)
     {
         db_print("DMX flow is wrong !!\n");
         return FALSE;
@@ -753,13 +865,19 @@ MS_BOOL Demo_FQ_Exit(void)
 
 MS_BOOL Demo_FQ_Eng_Zapping(EN_AV_Device* peDevice,MS_U32* pu32Ch)
 {
+#if(DEMO_VDEC_NDECODE_TEST == 1)
+    *peDevice = Demo_AV_VDEC_Device_Mapping(*peDevice);
+#endif
+
     MS_U32 u32AudioType = AUDIO_APP_DTV;
     MS_U32 u32During = 0;
     MS_U32 u32XCWindow = E_MSAPI_XC_MAIN_WINDOW;
-    VDEC_StreamId* pstVDECStreamId = Demo_VDEC_GetStreamID(*peDevice);
+    VDEC_StreamId* pstVDECStreamId = Demo_VDEC_GetStreamID((EN_VDEC_Device*)peDevice);
     EN_PCR_ENG eSetSTC = E_PCR_ENG0;
     MS_U32 u32DisplayMute = TRUE;
     ST_AV_INFO stAVInfo;
+    ST_AV_ShowFrameInfo stAvShowFrameInfo;
+    MS_U8 u8TunerIndex = appDemo_DigiTuner_GetIndex();
 
     printf("appDemo_FQ_Zapping \n");
     u32During = MsOS_GetSystemTime();
@@ -767,12 +885,16 @@ MS_BOOL Demo_FQ_Eng_Zapping(EN_AV_Device* peDevice,MS_U32* pu32Ch)
     MS_BOOL bMute = TRUE;
     Demo_Audio_SetMute(&bMute);
 
+    MS_U32 u32XCDevice = 0;
+
     Demo_VE_SetVideoMute(&u32DisplayMute);
-    msAPI_XC_SetVideoMuteByMode_EX(&_gstXC_DeviceId, ENABLE, u32XCWindow, E_MSAPI_XC_VIDEO_MUTE_MODE_AUTO_SYNC);
+    Demo_XC_SetVideoMute(&u32XCDevice, &u32XCWindow, &u32DisplayMute);
 
     /***** SetFlow *****/
-    Demo_AV_SetAVInfo(*peDevice,E_AV_INFO_DMX_FLOW,(void *)(&ChannelInfo[*pu32Ch].DmxPlayback));
+    Demo_AV_SetAVInfo(peDevice,E_AV_SetCmd_DMXFlow,(void *)(&TunerInfo[u8TunerIndex].DmxPlayback));
 
+    /***** SetInput *****/
+    Demo_AV_SetAVInfo(peDevice,E_AV_SetCmd_DMXInput,(void *)(&TunerInfo[u8TunerIndex].DmxInput));
 
     /***** SetPid *****/
     if(!Demo_AV_TSP_SetPid(peDevice,&ChannelInfo[*pu32Ch].u32VideoPID, &ChannelInfo[*pu32Ch].u32AudioPID, &ChannelInfo[*pu32Ch].u32PCRPID, &ChannelInfo[*pu32Ch].u32VdecType, &ChannelInfo[*pu32Ch].u32AdecType))
@@ -781,15 +903,39 @@ MS_BOOL Demo_FQ_Eng_Zapping(EN_AV_Device* peDevice,MS_U32* pu32Ch)
         return FALSE;
     }
 
-    Demo_AV_GetAVInfo(*peDevice,&stAVInfo);
-    eSetSTC = stAVInfo.stPCRParams.u8PCREngID;
+    if(Demo_AV_GetAVInfo(peDevice,E_AV_GetCmd_LiveInfo,&stAVInfo) == FALSE)
+    {
+        printf("[%s][%d] Demo_AV_GetAVInfo E_AV_GetCmd_LiveInfo fail\n", __FUNCTION__, __LINE__);
+        return FALSE;
+    }
+
+    eSetSTC = stAVInfo.stPCRParams.ePCREngID;
 
     if (stAVInfo.stVideoParams.u8Filter != INVALID_FILTER_ID)
     {
         MApi_DMX_FQ_SetFltRushPass(stAVInfo.stVideoParams.u8Filter, TRUE);
     }
 
-    if (TRUE != Demo_VDEC_Init(*peDevice, pstVDECStreamId,ChannelInfo[*pu32Ch].u32VdecType,E_VDEC_DDI_SRC_MODE_DTV,eSetSTC)) // default mepg2
+    Demo_AV_GetAVInfo(peDevice, E_AV_GetCmd_WindowInfo, &stAvShowFrameInfo);
+
+    db_print("[%s] eShowFrameMode: %u\n", __FUNCTION__, stAvShowFrameInfo.eShowFrameMode);
+    db_print("[%s] u32Window: %u\n", __FUNCTION__, stAvShowFrameInfo.u32Window);
+    db_print("[%s] u16X: %u\n", __FUNCTION__, stAvShowFrameInfo.u16X);
+    db_print("[%s] u16Y: %u\n", __FUNCTION__, stAvShowFrameInfo.u16Y);
+    db_print("[%s] u16Width: %u\n", __FUNCTION__, stAvShowFrameInfo.u16Width);
+    db_print("[%s] u16Height: %u\n", __FUNCTION__, stAvShowFrameInfo.u16Height);
+    db_print("[%s] u16Layer: %u\n", __FUNCTION__, stAvShowFrameInfo.u16Layer);
+
+    if(Demo_VDEC_Stop((EN_VDEC_Device*)peDevice, pstVDECStreamId) != TRUE)
+    {
+        printf("[%s][%d] Demo_VDEC_Stop fail\n", __FUNCTION__, __LINE__);
+        return FALSE;
+    }
+
+    MS_U32 u32ShowFrameMode = stAvShowFrameInfo.eShowFrameMode;
+    Demo_AV_SetShowFrameMode(peDevice, &u32ShowFrameMode, &stAvShowFrameInfo.u32Window, &stAvShowFrameInfo.u16X, &stAvShowFrameInfo.u16Y, &stAvShowFrameInfo.u16Width, &stAvShowFrameInfo.u16Height, &stAvShowFrameInfo.u16Layer);
+
+    if (TRUE != Demo_VDEC_Init((EN_VDEC_Device*)peDevice, pstVDECStreamId,ChannelInfo[*pu32Ch].u32VdecType,E_VDEC_DDI_SRC_MODE_DTV,eSetSTC)) // default mepg2
     {
         printf("[%s][%d] Demo_VDEC_Init fail\n", __FUNCTION__, __LINE__);
         return FALSE;
@@ -799,30 +945,15 @@ MS_BOOL Demo_FQ_Eng_Zapping(EN_AV_Device* peDevice,MS_U32* pu32Ch)
         printf("eDevice : %d ,Stream ID After Init  0x%"DTC_MS_U32_x"\n",*peDevice, pstVDECStreamId->u32Id);
     }
 
-    //change sync offset to 120ms, this value will influence lip-sync
-    //If you want to change this value, please inform video and audio team at the same time
-    if(E_VDEC_EX_OK != MApi_VDEC_EX_AVSyncOn(pstVDECStreamId,TRUE, 180, 0))
+    if (TRUE != Demo_VDEC_Play((EN_VDEC_Device*)peDevice, pstVDECStreamId, E_AV_SYNC_PCR_MODE))
     {
-        printf("[%s][%d] MApi_VDEC_EX_AVSyncOn fail\n", __FUNCTION__, __LINE__);
+        printf("[%s][%d] Demo_VDEC_Play fail\n", __FUNCTION__, __LINE__);
         return FALSE;
     }
-    //set the threshold of Freerun condition.If the difference of STC and PTS large than
-    // threshold, FW will free run. The threshold value is 90KHZ base.
-    //set 0xFFFFFFFF to make sure VDEC will keep doing AV-sync till rush data is comsumed.
+
     if(E_VDEC_EX_OK != MApi_VDEC_EX_SetAVSyncFreerunThreshold(pstVDECStreamId,0xFFFFFFFF))
     {
         printf("[%s][%d] MApi_VDEC_EX_SetAVSyncFreerunThreshold fail\n", __FUNCTION__, __LINE__);
-        return FALSE;
-    }
-
-    //Set Field Delay count befor VDEC play
-    MApi_VDEC_EX_SetControl(pstVDECStreamId, E_VDEC_EX_USER_CMD_FD_MASK_DELAY_COUNT, 8);
-    MApi_VDEC_EX_SetControl(pstVDECStreamId, E_VDEC_EX_USER_CMD_SHOW_FIRST_FRAME_DIRECT,1);
-    MApi_VDEC_EX_SetControl(pstVDECStreamId, E_VDEC_EX_USER_CMD_AVSYNC_REPEAT_TH,0xFF);
-
-    if (E_VDEC_EX_OK != MApi_VDEC_EX_Play(pstVDECStreamId))
-    {
-        printf("[%s][%d] MApi_VDEC_EX_Play fail\n", __FUNCTION__, __LINE__);
         return FALSE;
     }
 
@@ -832,7 +963,7 @@ MS_BOOL Demo_FQ_Eng_Zapping(EN_AV_Device* peDevice,MS_U32* pu32Ch)
         printf("[%s][%d]\n", __FUNCTION__, __LINE__);
     }
 
-    MApi_DMX_FQ_RushEnable(Demo_DMX_FlowToFQEngMapping(ChannelInfo[*pu32Ch].DmxPlayback));
+    MApi_DMX_FQ_RushEnable(Demo_DMX_FlowToFQEngMapping(TunerInfo[u8TunerIndex].DmxPlayback));
 
     MS_U32 u32DelayTaskTime = 1;
     Demo_VDEC_DelayTaskTime(&u32DelayTaskTime);
@@ -843,17 +974,59 @@ MS_BOOL Demo_FQ_Eng_Zapping(EN_AV_Device* peDevice,MS_U32* pu32Ch)
         return FALSE;
     }
 
+    MSAPI_XC_WINDOW_TYPE stDestWin = {0};
 
-    msAPI_XC_SetWin_EX(&_gstXC_DeviceId, NULL, NULL, NULL, u32XCWindow);
+    stDestWin.x = stAvShowFrameInfo.u16X;
+    stDestWin.y = stAvShowFrameInfo.u16Y;
+    stDestWin.width = stAvShowFrameInfo.u16Width;
+    stDestWin.height = stAvShowFrameInfo.u16Height;
+
+    if(stAvShowFrameInfo.eShowFrameMode == E_AV_DIP_MODE || stAvShowFrameInfo.eShowFrameMode == E_AV_PureMCU_MODE)
+    {
+        printf("[%s] DIP or PureMCU_MODE!!!!!!!!!!!\n", __FUNCTION__);
+
+        VDEC_EX_DispInfo stDispinfo;
+        memset(&stDispinfo, 0, sizeof(VDEC_EX_DispInfo));
+        Demo_VDEC_GetDispInfo((EN_VDEC_Device *)peDevice, &stDispinfo);
+
+        MSAPI_XC_WINDOW_TYPE stCropWin = {0};
+
+        stCropWin.x = 0;
+        stCropWin.y = 0;
+        stCropWin.width  = stDispinfo.u16HorSize - (stDispinfo.u16CropRight + stDispinfo.u16CropLeft);
+        stCropWin.height = stDispinfo.u16VerSize - (stDispinfo.u16CropTop + stDispinfo.u16CropBottom);
+
+        db_print("[%s] stDispinfo.u16HorSize = %u\n", __FUNCTION__, stDispinfo.u16HorSize);
+        db_print("[%s] stDispinfo.u16VerSize = %u\n", __FUNCTION__, stDispinfo.u16VerSize);
+        db_print("[%s] stDispinfo.u16CropLeft = %u\n", __FUNCTION__, stDispinfo.u16CropLeft);
+        db_print("[%s] stDispinfo.u16CropRight = %u\n", __FUNCTION__, stDispinfo.u16CropRight);
+        db_print("[%s] stDispinfo.u16CropTop = %u\n", __FUNCTION__, stDispinfo.u16CropTop);
+        db_print("[%s] stDispinfo.u16CropBottom = %u\n", __FUNCTION__, stDispinfo.u16CropBottom);
+        db_print("------------------------------\n");
+        db_print("[%s] stCropWin.width = %u\n", __FUNCTION__, stCropWin.width);
+        db_print("[%s] stCropWin.height = %u\n", __FUNCTION__, stCropWin.height);
+
+        MSAPI_XC_DEVICE_ID g_stDIP_DeviceId = {0, E_MSAPI_XC_DEVICE_DIP_0};
+
+        msAPI_XC_SetWin_EX(&g_stDIP_DeviceId, NULL, &stCropWin, &stDestWin, stAvShowFrameInfo.u32Window);
+    }
+    else if(stAvShowFrameInfo.eShowFrameMode == E_AV_MVOP_MODE)
+    {
+        printf("[%s] SC !!!!!!!!!!!\n", __FUNCTION__);
+
+        MSAPI_XC_DEVICE_ID _gstXC_DeviceId = {0, E_MSAPI_XC_DEVICE0};
+
+        msAPI_XC_SetWin_EX(&_gstXC_DeviceId, NULL, NULL, &stDestWin, stAvShowFrameInfo.u32Window);
+    }
 
     msAPI_VE_SetMode();
 
     //Disable Blue Screen to avoid garbage video
     u32DisplayMute = FALSE;
     Demo_VE_SetVideoMute(&u32DisplayMute);
-    msAPI_XC_SetVideoMuteByMode_EX(&_gstXC_DeviceId, DISABLE, u32XCWindow, E_MSAPI_XC_VIDEO_MUTE_MODE_AUTO_SYNC);
+    Demo_XC_SetVideoMute(&u32XCDevice, &u32XCWindow, &u32DisplayMute);
 
-    printf("[%s][%d]Check Point 1:  %"DTC_MS_U32_d" \n",__FUNCTION__,__LINE__,(MsOS_GetSystemTime()-u32During));
+    printf("\033[35m[%s][%d]Check Point 1:  %"DTC_MS_U32_d"  \033[0m\n",__FUNCTION__,__LINE__,(MsOS_GetSystemTime()-u32During));
 
     //Handle audio later to manifestly demo the improvement of FQ
     Demo_Audio_Stop(*peDevice, u32AudioType);
@@ -882,20 +1055,22 @@ MS_BOOL Demo_FQ_Eng_Zapping(EN_AV_Device* peDevice,MS_U32* pu32Ch)
     u32DelayTaskTime = 10;
     Demo_VDEC_DelayTaskTime(&u32DelayTaskTime);
 
-    Demo_VDEC_IsAVSyncDone(*peDevice);
+    Demo_VDEC_IsAVSyncDone((EN_VDEC_Device*)peDevice);
 
-    printf("[%s][%d]Check Point 2: %"DTC_MS_U32_d" \n",__FUNCTION__,__LINE__,(MsOS_GetSystemTime()-u32During));
+    printf("\033[35m[%s][%d]Check Point 2: %"DTC_MS_U32_d" \033[0m\n",__FUNCTION__,__LINE__,(MsOS_GetSystemTime()-u32During));
     return TRUE;
 }
 
 
 MS_BOOL Demo_FQ_Init(MS_U32* pu32FillFQTime)
 {
-    ST_AV_INFO sAVInfo;
+    ST_AV_DMX_INFO sAVDMXInfo;
+    MS_U32 u32TunerIndex = (MS_U32)appDemo_DigiTuner_GetIndex();
 
     //Get main device dmx info and save to channel 0
-    Demo_AV_GetAVInfo(_geDevice,&sAVInfo);
-    Demo_Zapping_SaveTunerConfig(&_gu32Ch, &(sAVInfo.stDMXflowParams.eFlow), &(sAVInfo.stDMXflowParams.eDmxInput),&(sAVInfo.stDMXflowParams.DmxClkInv),&(sAVInfo.stDMXflowParams.DmxExtSync),&(sAVInfo.stDMXflowParams.DmxParallal));
+    Demo_AV_GetAVInfo(&_geDevice,E_AV_GetCmd_DMXFlowInfo,&sAVDMXInfo);
+
+    Demo_Zapping_SaveTunerConfig(&u32TunerIndex, &(sAVDMXInfo.eFlow), &(sAVDMXInfo.eDmxInput),&(sAVDMXInfo.DmxClkInv),&(sAVDMXInfo.DmxExtSync),&(sAVDMXInfo.DmxParallal));
 
     Demo_FQ_Eng_Init(&_gu32Ch,pu32FillFQTime);
 

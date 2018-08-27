@@ -71,6 +71,12 @@ typedef struct _BusAddrInfo
         {0x00000000, 0x00000000, 0x10000000},
         {0x10000000, 0x50000000, 0x30000000}
     };
+#elif CHIP_KAYLA
+    BusAddrInfo BusAddrMIU0[] =
+    {
+        {0x00000000, 0x00000000, 0x10000000},
+        {0x10000000, 0x50000000, 0x30000000}
+    };
 #elif CHIP_MUJI
     BusAddrInfo BusAddrMIU0[] =
     {
@@ -102,9 +108,36 @@ typedef struct _BusAddrInfo
     BusAddrInfo BusAddrMIU0[] =
     {
         {0x00000000, 0x00000000, 0x10000000},
-        {0x10000000, 0x40000000, 0x10000000}
+        {0x10000000, 0x50000000, 0x10000000}
     };
-#elif CHIP_KASTOR
+#elif CHIP_K6
+    BusAddrInfo BusAddrMIU0[] =
+    {
+        {0x00000000, 0x20000000, 0x80000000}
+    };
+
+    #define MIU1_IN_USE
+    BusAddrInfo BusAddrMIU1[] =
+    {
+        {0x00000000, 0x60000000, 0x80000000}
+    };
+#elif CHIP_CURRY
+    BusAddrInfo BusAddrMIU0[] =
+    {
+        {0x00000000, 0x20000000, 0x80000000}
+    };
+
+    #define MIU1_IN_USE
+    BusAddrInfo BusAddrMIU1[] =
+    {
+        {0x00000000, 0xC0000000, 0x40000000}
+    };
+#elif CHIP_C2P
+    BusAddrInfo BusAddrMIU0[] =
+    {
+        {0x00000000, 0x20000000, 0x80000000}
+    };
+#elif CHIP_K6LITE
     BusAddrInfo BusAddrMIU0[] =
     {
         {0x00000000, 0x20000000, 0x40000000}
@@ -113,8 +146,33 @@ typedef struct _BusAddrInfo
     #define MIU1_IN_USE
     BusAddrInfo BusAddrMIU1[] =
     {
-        {0x00000000, 0xC0000000, 0x40000000}
-    };    
+        {0x00000000, 0x60000000, 0x40000000}
+    };
+#elif CHIP_K5TN
+    BusAddrInfo BusAddrMIU0[] =
+    {
+        {0x00000000, 0x40000000, 0x40000000},
+    };
+#elif CHIP_K1C
+    BusAddrInfo BusAddrMIU0[] =
+    {
+        {0x00000000, 0x40000000, 0x40000000},
+    };
+#elif CHIP_K5AP
+    BusAddrInfo BusAddrMIU0[] =
+    {
+        {0x00000000, 0x40000000, 0x40000000},
+    };
+#elif CHIP_K7U
+    BusAddrInfo BusAddrMIU0[] =
+    {
+        {0x00000000, 0x20000000, 0x80000000}
+    };
+    #define MIU1_IN_USE
+    BusAddrInfo BusAddrMIU1[] =
+    {
+        {0x00000000, 0xa0000000, 0x40000000}
+    };
 #endif
 
 int GetBusOffset(unsigned int miu_type, unsigned long phy_start, unsigned long phy_len, unsigned long *retBuAddr)
@@ -140,7 +198,7 @@ int GetBusOffset(unsigned int miu_type, unsigned long phy_start, unsigned long p
         if (phy_start >= (pBusAddr[idx].phy_start+pBusAddr[idx].len))
             continue;
 
-        if ((phy_start+phy_len) >= (pBusAddr[idx].phy_start+pBusAddr[idx].len))
+        if ((phy_start+phy_len) > (pBusAddr[idx].phy_start+pBusAddr[idx].len))
         {
             return 0;
         }
@@ -154,13 +212,39 @@ int GetBusOffset(unsigned int miu_type, unsigned long phy_start, unsigned long p
     return 1;
 }
 
+void GetPhyAddrOffset(unsigned int miu_type, unsigned long phy_start, unsigned long *retBuAddr)
+{
+    int idx = 0, idx_max = 0;
+    BusAddrInfo *pBusAddr = NULL;
+#ifdef MIU1_IN_USE
+    if ((miu_type & MIU1) == MIU1)
+    {
+        // Increase MIU interval for physical Address
+        *retBuAddr = phy_start + 0x80000000;
+    }
+    else
+#endif
+    {
+        *retBuAddr = phy_start;
+    }
+}
 
 void main(int argc, char** argv)
 {
   unsigned long BusAddr = 0;
-
-  FILE* var_fp = fopen("../../../bsp/linux/partition/auto_gen_output/var_list", "ab");
-  FILE* con_fp = fopen("../../../bsp/linux/partition/auto_gen_output/conf_list", "ab");
+  unsigned long PhyAddr = 0;
+  FILE* var_fp;
+  FILE* con_fp;
+  //printf("argc=%d\n",argc);
+  if(argc > 1){
+    if(!strcmp(argv[1], "ecos")){
+      var_fp = fopen("../../../bsp/ecos/partition/auto_gen_output/var_list", "ab");
+      con_fp = fopen("../../../bsp/ecos/partition/auto_gen_output/conf_list", "wb");
+    }
+  }else{
+    var_fp = fopen("../../../bsp/linux/partition/auto_gen_output/var_list", "ab");
+    con_fp = fopen("../../../bsp/linux/partition/auto_gen_output/conf_list", "wb");
+  }
 
 /* output memory map info to var_list */
   fprintf(var_fp, "\n### Parsed from MMAP ###\n");
@@ -189,6 +273,24 @@ void main(int argc, char** argv)
 #else
   fprintf(var_fp, "GMAC_MEM_LEN=0x%08X\n", 0);
 #endif
+#ifdef E_MMAP_ID_PM51_USAGE_MEM_ADR
+  fprintf(var_fp, "E_MMAP_ID_PM51_USAGE_MEM_ADR=0x%08X\n", E_MMAP_ID_PM51_USAGE_MEM_ADR);
+#else
+  fprintf(var_fp, "E_MMAP_ID_PM51_USAGE_MEM_ADR=0x%08X\n", 0);
+#endif
+
+#ifdef E_MMAP_ID_HW_AES_BUF_ADR
+  fprintf(var_fp, "E_MMAP_ID_HW_AES_BUF_ADR=0x%08X\n", E_MMAP_ID_HW_AES_BUF_ADR);
+#else
+  fprintf(var_fp, "E_MMAP_ID_HW_AES_BUF_ADR=0x%08X\n", 0);
+#endif
+
+#ifdef E_MMAP_ID_HW_AES_BUF_LEN
+  fprintf(var_fp, "E_MMAP_ID_HW_AES_BUF_LEN=0x%08X\n", E_MMAP_ID_HW_AES_BUF_LEN);
+#else
+  fprintf(var_fp, "E_MMAP_ID_HW_AES_BUF_LEN=0x%08X\n", 0);
+#endif
+
 #ifdef KERNEL_POOL2_ADR
   fprintf(var_fp, "LX_MEM2=0x%08X\n", KERNEL_POOL2_ADR);
 #else
@@ -205,6 +307,9 @@ void main(int argc, char** argv)
     fprintf(var_fp, "LX_MEM2_BUS_ADDR=0x%08lX\n", BusAddr);
   else
     fprintf(var_fp, "LX_MEM2_BUS_ADDR=%s\n", "INVALID");
+
+  GetPhyAddrOffset((unsigned int)KERNEL_POOL2_MEMORY_TYPE, (unsigned long)KERNEL_POOL2_ADR, &PhyAddr);
+  fprintf(var_fp, "LX_MEM2_PHY_ADDR=0x%08lX\n", PhyAddr);
 #else
   fprintf(var_fp, "LX_MEM2_TYPE=0x%08X\n", 0);
 #endif
@@ -224,6 +329,8 @@ void main(int argc, char** argv)
     fprintf(var_fp, "LX_MEM3_BUS_ADDR=0x%08lX\n", BusAddr);
   else
     fprintf(var_fp, "LX_MEM3_BUS_ADDR=%s\n", "INVALID");
+  GetPhyAddrOffset((unsigned int)KERNEL_POOL3_MEMORY_TYPE, (unsigned long)KERNEL_POOL3_ADR, &PhyAddr);
+  fprintf(var_fp, "LX_MEM3_PHY_ADDR=0x%08lX\n", PhyAddr);
 #else
   fprintf(var_fp, "LX_MEM3_TYPE=0x%08X\n", 0);
 #endif
@@ -232,6 +339,86 @@ void main(int argc, char** argv)
 #else
   fprintf(var_fp, "VDEC_FRAME_BUF_ADR=0x%08X\n", 0);
 #endif
+
+// The MMAP for bootvideo
+#ifdef MAD_ADV_BUF_ADR
+    fprintf(var_fp, "MAD_ADV_BUF_ADR=0x%08X\n", MAD_ADV_BUF_ADR);
+#else
+    fprintf(var_fp, "MAD_ADV_BUF_ADR=0x%08X\n", 0);
+#endif
+#ifdef MAD_ADV_BUF_LEN
+    fprintf(var_fp, "MAD_ADV_BUF_LEN=0x%08X\n", MAD_ADV_BUF_LEN);
+#else
+    fprintf(var_fp, "MAD_ADV_BUF_LEN=0x%08X\n", 0);
+#endif
+#ifdef VDEC_AEON_ADR
+    fprintf(var_fp, "VDEC_AEON_ADR=0x%08X\n", VDEC_AEON_ADR);
+#else
+    fprintf(var_fp, "VDEC_AEON_ADR=0x%08X\n", 0);
+#endif
+#ifdef VDEC_AEON_LEN
+    fprintf(var_fp, "VDEC_AEON_LEN=0x%08X\n", VDEC_AEON_LEN);
+#else
+    fprintf(var_fp, "VDEC_AEON_LEN=0x%08X\n", 0);
+#endif
+#ifdef VDEC_FRAME_BUF_LEN
+    fprintf(var_fp, "VDEC_FRAME_BUF_LEN=0x%08X\n", VDEC_FRAME_BUF_LEN);
+#else
+    fprintf(var_fp, "VDEC_FRAME_BUF_LEN=0x%08X\n", 0);
+#endif
+#ifdef VDEC_BIT_STREAM_ADR
+    fprintf(var_fp, "VDEC_BIT_STREAM_ADR=0x%08X\n", VDEC_BIT_STREAM_ADR);
+#else
+    fprintf(var_fp, "VDEC_BIT_STREAM_ADR=0x%08X\n", 0);
+#endif
+#ifdef VDEC_BIT_STREAM_LEN
+    fprintf(var_fp, "VDEC_BIT_STREAM_LEN=0x%08X\n", VDEC_BIT_STREAM_LEN);
+#else
+    fprintf(var_fp, "VDEC_BIT_STREAM_LEN=0x%08X\n", 0);
+#endif
+#ifdef SC0_MAIN_FB_ADR
+    fprintf(var_fp, "SC0_MAIN_FB_ADR=0x%08X\n", SC0_MAIN_FB_ADR);
+#else
+    fprintf(var_fp, "SC0_MAIN_FB_ADR=0x%08X\n", 0);
+#endif
+#ifdef SC0_MAIN_FB_LEN
+    fprintf(var_fp, "SC0_MAIN_FB_LEN=0x%08X\n", SC0_MAIN_FB_LEN);
+#else
+    fprintf(var_fp, "SC0_MAIN_FB_LEN=0x%08X\n", 0);
+#endif
+#ifdef SC1_MAIN_FB_ADR
+    fprintf(var_fp, "SC1_MAIN_FB_ADR=0x%08X\n", SC1_MAIN_FB_ADR);
+#else
+    fprintf(var_fp, "SC1_MAIN_FB_ADR=0x%08X\n", 0);
+#endif
+#ifdef SC1_MAIN_FB_LEN
+    fprintf(var_fp, "SC1_MAIN_FB_LEN=0x%08X\n", SC1_MAIN_FB_LEN);
+#else
+    fprintf(var_fp, "SC1_MAIN_FB_LEN=0x%08X\n", 0);
+#endif
+
+#ifdef SC0_MENULOAD_BUF_ADR
+    fprintf(var_fp, "SC0_MENULOAD_BUF_ADR=0x%08X\n", SC0_MENULOAD_BUF_ADR);
+#else
+    fprintf(var_fp, "SC0_MENULOAD_BUF_ADR=0x%08X\n", 0);
+#endif
+#ifdef SC0_MENULOAD_BUF_LEN
+    fprintf(var_fp, "SC0_MENULOAD_BUF_LEN=0x%08X\n", SC0_MENULOAD_BUF_LEN);
+#else
+    fprintf(var_fp, "SC0_MENULOAD_BUF_LEN=0x%08X\n", 0);
+#endif
+#ifdef BOOTVIDEO_FILE_IN_ADR
+    fprintf(var_fp, "BOOTVIDEO_FILE_IN_ADR=0x%08X\n", BOOTVIDEO_FILE_IN_ADR);
+#else
+    fprintf(var_fp, "BOOTVIDEO_FILE_IN_ADR=0x%08X\n", 0);
+#endif
+#ifdef BOOTVIDEO_FILE_IN_LEN
+    fprintf(var_fp, "BOOTVIDEO_FILE_IN_LEN=0x%08X\n", BOOTVIDEO_FILE_IN_LEN);
+#else
+    fprintf(var_fp, "BOOTVIDEO_FILE_IN_LEN=0x%08X\n", 0);
+#endif
+
+
 #ifdef JPD_OUT_ADR
   fprintf(var_fp, "JPD_OUT_ADR=0x%08X\n", JPD_OUT_ADR);
 #else
@@ -266,6 +453,14 @@ void main(int argc, char** argv)
   fprintf(var_fp, "VE_FRAME_BUF_ADR=0x%08X\n", VE_FRAME_BUF_ADR);
 #else
   fprintf(var_fp, "VE_FRAME_BUF_ADR=0x%08X\n", 0);
+#endif
+#ifdef VE_FRAME_BUF_LEN
+  fprintf(var_fp, "VE_FRAME_BUF_LEN=0x%08X\n", VE_FRAME_BUF_LEN);
+#else
+  fprintf(var_fp, "VE_FRAME_BUF_LEN=0x%08X\n", 0);
+#endif
+#if defined(MI_PHOTO_SHARE_MEM_ADR) && defined(MI_PHOTO_SHARE_MEM_LEN)
+  fprintf(var_fp, "DFB_FRAMEBUFFER_ADR=0x%08X\n",(MI_PHOTO_SHARE_MEM_ADR+MI_PHOTO_SHARE_MEM_LEN));
 #endif
   fclose(var_fp);
 

@@ -104,7 +104,7 @@ echo "set sysroot ${MISC_DIR}/gdb/ROOTFS" >> gdbc_cmd
 echo "TOOLCHAIN=${TOOLCHAIN}"
 
 #replace current utopia lib absolute path
-if [ "$TOOLCHAIN" == "arm-none-linux-gnueabi" ]
+if [ "$TOOLCHAIN" == "arm-none-linux-gnueabi" ] || [ "$TOOLCHAIN" == "arm-linux-gnueabihf" ]
 	then
 		FROM_PATH=`${TOOLCHAIN}-readelf ../../../bsp/lib_dynamic/liblinux.so --debug-dump | grep "drvSysInfo.c" | grep "DW_AT_name" | awk '{print $8}' | sed 's/THEALE.*//g'`
 else

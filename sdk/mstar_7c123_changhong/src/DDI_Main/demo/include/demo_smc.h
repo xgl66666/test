@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -98,5 +98,6 @@
 MS_BOOL Demo_SMC_Help(void);
 MS_BOOL Demo_SMC_Start(MS_U8 *pu8SC_Id, MS_U8 *pu8CardCat, MS_U8 *pu8VccClass, MS_U8 *pu8ClkType);
 MS_BOOL Demo_SMC_Stop(MS_U8 *pu8SC_Id);
+MS_BOOL Demo_SMC_SetDbgLevel(MS_U8 *pu8DbgLevel);
 
 #endif

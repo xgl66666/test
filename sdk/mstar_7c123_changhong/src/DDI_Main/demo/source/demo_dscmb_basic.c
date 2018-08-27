@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -881,11 +881,11 @@ MS_BOOL Demo_DSCMB_ConnectPID(MS_U32 *u32DeviceId)
         return FALSE;
     }
 
-    if(Demo_AV_GetAVInfo(*u32DeviceId, &pstAVInfo))
+    if(Demo_AV_GetAVInfo((EN_AV_Device*)u32DeviceId,E_AV_GetCmd_LiveInfo,&pstAVInfo))
     {
         u32PidFlt[0] = (MS_U32)pstAVInfo.stVideoParams.u8Filter;
         u32PidFlt[1] = (MS_U32)pstAVInfo.stAudioParams.u8Filter;
-        u32PidFlt[2] = (MS_U32)pstAVInfo.stPCRParams.u8PCREngID;
+        u32PidFlt[2] = (MS_U32)pstAVInfo.stPCRParams.ePCREngID;
         printf("VideoPidFlt=%ld AudioFlt=%ld\n", u32PidFlt[0], u32PidFlt[1]);
     }
     else
@@ -898,9 +898,16 @@ MS_BOOL Demo_DSCMB_ConnectPID(MS_U32 *u32DeviceId)
     {
         for(i = 0; i < 2; i++)
         {
-            Demo_DSCMB_DisconnectFltId(u32DscmbId[*u32DeviceId], u32PidFlt[i]);
+            if(Demo_DSCMB_DisconnectFltId(u32DscmbId[*u32DeviceId], u32PidFlt[i]) == FALSE)
+            {
+                printf("MDrv_DSCMB2_FltDisconnectFltId() failed\n");
+            }
+
         }
-        Demo_DSCMB_Destroy_Resource(u32DscmbId[*u32DeviceId]);
+        if(Demo_DSCMB_Destroy_Resource(u32DscmbId[*u32DeviceId]) == FALSE)
+        {
+            printf("Demo_DSCMB_Destroy_Resource() failed\n");
+        }
         u32DscmbId[*u32DeviceId] = DRV_DSCMB_FLT_NULL;
 
         //Record LIVE DSCMB Config: Clear buff
@@ -950,11 +957,11 @@ MS_BOOL Demo_DSCMB_DisconnectPID(MS_U32 *u32DeviceId)
         return FALSE;
     }
 
-    if(Demo_AV_GetAVInfo(*u32DeviceId,&pstAVInfo))
+    if(Demo_AV_GetAVInfo((EN_AV_Device*)u32DeviceId,E_AV_GetCmd_LiveInfo,&pstAVInfo))
     {
         u32PidFlt[0] = (MS_U32)pstAVInfo.stVideoParams.u8Filter;
         u32PidFlt[1] = (MS_U32)pstAVInfo.stAudioParams.u8Filter;
-        u32PidFlt[2] = (MS_U32)pstAVInfo.stPCRParams.u8PCREngID;
+        u32PidFlt[2] = (MS_U32)pstAVInfo.stPCRParams.ePCREngID;
         printf("VideoPidFlt=%ld AudioFlt=%ld\n", u32PidFlt[0], u32PidFlt[1]);
     }
     else
@@ -1003,6 +1010,11 @@ MS_BOOL Demo_DSCMB_DisconnectPID(MS_U32 *u32DeviceId)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_DSCMB_SetType(MS_U32 *u32DeviceId, MS_U8 *u8Type)
 {
+    if(strlen((const char *)u8Type) > 32)
+    {
+        printf("[%s][%d]Input string size out of 32 byte \n",__FUNCTION__,__LINE__);
+        return FALSE;
+    }
 
     if ((u32DeviceId == NULL)||(u8Type == NULL))
     {

@@ -1,4 +1,4 @@
-#ifndef  _MXL254_H_
+#ifndef  _MXL542_H_
 #define _MXL542_H_
 #include "MxLWare_HYDRA_CommonApi.h"
 #include "MxLWare_HYDRA_DemodTunerApi.h"
@@ -11,6 +11,13 @@
 //----------------------------------------------------------//
 #define MxL542_MAX_INPUT_FREQ 2350
 #define MxL542_MIN_INPUT_FREQ 250
+#define EXAMPLE_DEV_MAX   2
+#define MxL542_MAX_CHANNEL_COUNT 4
+#define MxL582_MAX_CHANNEL_COUNT 8
+#define MXL_XTAL_CAP_VALUE 33 
+#define SHOW_PARAM_AFTER_LOCK 0
+#define MxL5XX_ADAPTIVE_TS_CLK 1
+
 //----------------------------------------------------------//
 //                   Internal Structure                            //
 //----------------------------------------------------------//
@@ -32,10 +39,24 @@ typedef struct
   MXL_HYDRA_BCAST_STD_E eBCAST_STD;
 } BLIND_SCAN_CHAN_INFO;
 
+typedef struct 
+{
+    MS_U8 u8Rx[32];
+    MS_U8 u8Len[16];
+    MS_U8 u8RxHead;
+    MS_U8 u8RxTail;
+    MS_U8 u8LenHead;
+    MS_U8 u8LenTail;
+} DISEQC_RX_RING_BUF;
+
 
 //----------------------------------------------------------//
 //                   R840 Public Parameter                     //
 //----------------------------------------------------------//
+
+DRV_TUNER_TABLE_TYPE GET_TUNER_ENTRY_NODE(TUNER_MXL542) DDI_DRV_TUNER_TABLE_ENTRY(tunertab);
+DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MXL542) DDI_DRV_TABLE_ENTRY(demodtab);
+
 
 //----------------------------------------------------------//
 //                   R840 Public Function                       //

@@ -16,7 +16,10 @@
 
 //may not suitable for the following header file
 #include "Board.h"
-#define FLOW(fmt, arg...)         printf("\033[1;33m######[%s]######"fmt" \033[0m\n",__FUNCTION__,##arg)
+
+#define PT_AUDIO_ERR(fmt, arg...)   PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_ERR, "\033[1;33m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
+#define PT_AUDIO_DBG(fmt, arg...)   PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_DBG, "\033[1;33m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
+
 /*
 #if defined (MS_DEBUG)
   #define MS_DEBUG_MSG(x)       x
@@ -68,9 +71,18 @@ static void _MApi_AUDIO_Init(En_DVB_decSystemType enDecSystem)
         AudioDecStatus_t stAudDecStatus;
 
         MApi_AUDIO_SetAudioParam2(_gADECId , Audio_ParamType_playControl, MMA_STOP);
-        MApi_AUDIO_GetDecodeSystem(_gADECId,  &stAudDecStatus);
+
+        if(MApi_AUDIO_GetDecodeSystem(_gADECId,  &stAudDecStatus) == FALSE)
+        {
+            PT_AUDIO_ERR("[ERR] MApi_AUDIO_GetDecodeSystem FAIL");
+        }
+
         stAudDecStatus.eAudFormat = enDecSystem;
-        MApi_AUDIO_SetDecodeSystem(_gADECId, &stAudDecStatus);
+        if(MApi_AUDIO_SetDecodeSystem(_gADECId, &stAudDecStatus) == FALSE)
+        {
+            PT_AUDIO_ERR("[ERR] MApi_AUDIO_SetDecodeSystem FAIL");
+        }
+
     }
     else
     {
@@ -329,7 +341,7 @@ static MS_U8 _MApi_AUDIO_CheckPlayDone(void)
         }
         else
         {
-            printf("[ERR] Get Audio Info failed!\n");
+            PT_AUDIO_ERR("[ERR] Get Audio Info failed!\n");
         }
     }
     else
@@ -786,7 +798,7 @@ static void _Music_Init(const En_DVB_decSystemType enDecSystem)
     }
     else
     {
-        printf("[%s][%d] Assert fail here!!!!\n", __FUNCTION__, __LINE__);
+        PT_AUDIO_ERR("[%s][%d] Assert fail here!!!!\n", __FUNCTION__, __LINE__);
         ASSERT(0);
     }
 }
@@ -908,7 +920,7 @@ MMSDK_BOOL PT_Audio_Initialize(PT_AUDIOITEM* pAudioItem)
 
     if (pAudioItem == NULL)
     {
-        printf("Error: pAudioItem=%p\n" ,pAudioItem);
+        PT_AUDIO_ERR("Error: pAudioItem=%p\n" ,pAudioItem);
         return FALSE;
     }
 
@@ -936,7 +948,7 @@ MMSDK_BOOL PT_Audio_Finalize(PT_AUDIOITEM* pAudioItem)
 {
     if ((pAudioItem == NULL) || (*pAudioItem == NULL))
     {
-        printf("Error: pAudioItem=%p\n",pAudioItem);
+        PT_AUDIO_ERR("Error: pAudioItem=%p\n",pAudioItem);
         return FALSE;
     }
 
@@ -984,7 +996,7 @@ MMSDK_BOOL PT_Audio_ReleaseDecoder(PT_AUDIOITEM AudioItem)
 MMSDK_BOOL PT_Audio_StartDecode(PT_AUDIOITEM AudioItem, const ST_MMSDK_AUDIO_START_INFO* pstAudioStart)
 {
 /*
-    FLOW("");
+    PT_AUDIO_DBG("");
     mapi_audio* pAudio = mapi_interface::Get_mapi_audio();
 
     if (pAudio == NULL)
@@ -1062,7 +1074,7 @@ MMSDK_BOOL PT_Audio_StartDecode(PT_AUDIOITEM AudioItem, const ST_MMSDK_AUDIO_STA
 }
 MMSDK_BOOL PT_Audio_AllocateDecoder(PT_AUDIOITEM AudioItem, const EN_MMSDK_AUDIO_CODEC eCodecType)
 {
-/*    FLOW("");
+/*    PT_AUDIO_DBG("");
     mapi_audio* pAudio = mapi_interface::Get_mapi_audio();
 
     if ( pAudio == NULL)
@@ -1090,7 +1102,7 @@ MMSDK_BOOL PT_Audio_AllocateDecoder(PT_AUDIOITEM AudioItem, const EN_MMSDK_AUDIO
 
     if (_PT_CheckAudioCapability(eCodecType) == FALSE)
     {
-        FLOW("Not support codec %d\n", eCodecType);
+        PT_AUDIO_DBG("Not support codec %d\n", eCodecType);
         return FALSE;
     }
 
@@ -1098,7 +1110,7 @@ MMSDK_BOOL PT_Audio_AllocateDecoder(PT_AUDIOITEM AudioItem, const EN_MMSDK_AUDIO
     {
         if((PT_SYS_GetAudDecID(&_gADECId) == FALSE) || (_gADECId == AU_DEC_INVALID))
         {
-            FLOW("Get audio decoder ID fail.\n");
+            PT_AUDIO_DBG("Get audio decoder ID fail.\n");
             return FALSE;
         }
     }
@@ -1132,7 +1144,7 @@ MMSDK_BOOL PT_Audio_AllocateDecoderEx(PT_AUDIOITEM AudioItem, const EN_MMSDK_AUD
 
 MMSDK_BOOL PT_Audio_SetParam(PT_AUDIOITEM AudioItem, const EN_MMSDK_AUDIO_CODEC eCodecType, const void* pstParamInfo)
 {
-/*    FLOW("");
+/*    PT_AUDIO_DBG("");
 
     ST_MMSDK_AUDIO_WMA_INIT_INFO* pstWMAInfo = (ST_MMSDK_AUDIO_WMA_INIT_INFO* )pstParamInfo;
     ST_MMSDK_AUDIO_MP3_INIT_INFO* pstMP3Info = (ST_MMSDK_AUDIO_MP3_INIT_INFO* )pstParamInfo;
@@ -1279,7 +1291,7 @@ MMSDK_BOOL PT_Audio_SetParam(PT_AUDIOITEM AudioItem, const EN_MMSDK_AUDIO_CODEC 
                     ePCMType = IMA_ADPCM_;
                     break;
                 default:
-                    printf("[ERR] error PCM codec\n");
+                    PT_AUDIO_ERR("[ERR] error PCM codec\n");
                     break;
             }
             pAudio->SetXPCMParam(ePCMType, pstPCMInfo->u8ChannelNum - 1, pstPCMInfo->u16SampleRate, pstPCMInfo->u16BitsPerSample, pstPCMInfo->u16BlockSize, pstPCMInfo->u16SamplePerBlock);
@@ -1418,13 +1430,13 @@ MMSDK_BOOL PT_Audio_SetParam(PT_AUDIOITEM AudioItem, const EN_MMSDK_AUDIO_CODEC 
                 _MApi_AUDIO_SetCommAudioInfo(Audio_Comm_infoType_MMFileSize, FILE_SIZE_1KB, 0);
             }
 
-            printf("WMA_PARAMTYPE_PARSINGBYAPP_ :%d\n", (int)pstWMAInfo->u32ParsingByApp);
-            printf("WMA_PARAMTYPE_VERSION_ %d\n", (int)pstWMAInfo->u32Version);
-            printf("WMA_PARAMTYPE_CHANNELS_ :%d", (int)pstWMAInfo->u32Channels);
-            printf("WMA_PARAMTYPE_SAMPLERATE_:%d", (int)pstWMAInfo->u32SampleRate);
-            printf("WMA_PARAMTYPE_BYTERATE_ %d", (int)pstWMAInfo->u32ByteRate);
-            printf("WMA_PARAMTYPE_BLOCKALIGN_ :%d", (int)pstWMAInfo->u32BlockAlign);
-            printf("WMA_PARAMTYPE_ENCOPT_ :%d", (int)pstWMAInfo->u32Encopt);
+            PT_AUDIO_ERR("WMA_PARAMTYPE_PARSINGBYAPP_ :%d\n", (int)pstWMAInfo->u32ParsingByApp);
+            PT_AUDIO_ERR("WMA_PARAMTYPE_VERSION_ %d\n", (int)pstWMAInfo->u32Version);
+            PT_AUDIO_ERR("WMA_PARAMTYPE_CHANNELS_ :%d", (int)pstWMAInfo->u32Channels);
+            PT_AUDIO_ERR("WMA_PARAMTYPE_SAMPLERATE_:%d", (int)pstWMAInfo->u32SampleRate);
+            PT_AUDIO_ERR("WMA_PARAMTYPE_BYTERATE_ %d", (int)pstWMAInfo->u32ByteRate);
+            PT_AUDIO_ERR("WMA_PARAMTYPE_BLOCKALIGN_ :%d", (int)pstWMAInfo->u32BlockAlign);
+            PT_AUDIO_ERR("WMA_PARAMTYPE_ENCOPT_ :%d", (int)pstWMAInfo->u32Encopt);
 
             Audio_ASF_Param stParam={};
 
@@ -1498,7 +1510,7 @@ MMSDK_BOOL PT_Audio_SetParam(PT_AUDIOITEM AudioItem, const EN_MMSDK_AUDIO_CODEC 
                     ePCMType = E_MMSDK_XPCM_TYPE_IMA_ADPCM;
                     break;
                 default:
-                    printf("[ERR] error PCM codec\n");
+                    PT_AUDIO_ERR("[ERR] error PCM codec\n");
                     break;
             }
             //pAudio->SetXPCMParam(ePCMType, pstPCMInfo->u8ChannelNum - 1, pstPCMInfo->u16SampleRate, pstPCMInfo->u16BitsPerSample, pstPCMInfo->u16BlockSize, pstPCMInfo->u16SamplePerBlock);
@@ -1517,7 +1529,7 @@ MMSDK_BOOL PT_Audio_Mute(PT_AUDIOITEM AudioItem, const MMSDK_BOOL bMuteOnOff)
 {
     MMSDK_BOOL bMovSDMute;
 
-/*    FLOW("Mute=%d (0: Off 1: On)\n",bMuteOnOff);
+/*    PT_AUDIO_DBG("Mute=%d (0: Off 1: On)\n",bMuteOnOff);
 
     mapi_audio* pAudio = mapi_interface::Get_mapi_audio();
     if (pAudio == NULL)
@@ -1711,7 +1723,7 @@ MMSDK_BOOL PT_Audio_GetAudioUnsupport(PT_AUDIOITEM AudioItem, MMSDK_U64 *pu64Inf
 {
     if ((AudioItem == NULL) || (pu64Info == NULL))
     {
-        printf("[ERR] GetAudioUnsupport failed!\n");
+        PT_AUDIO_ERR("[ERR] GetAudioUnsupport failed!\n");
         return FALSE;
     }
 

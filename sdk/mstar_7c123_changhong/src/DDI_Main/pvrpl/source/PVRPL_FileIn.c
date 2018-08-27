@@ -114,24 +114,42 @@
 #include "drvDTC.h"
 
 
-#define PVRPL_FILEIN_DBGMSG(_level,_f) {if(_u32PVRPLFILEINDbgLevel >= (_level)) (_f);}
-static MS_U32  _u32PVRPLFILEINDbgLevel = PVRPL_DBG_ERR;
-
-
-
-extern MS_S32 gs32CachedPoolID ;
 extern MS_S32 gs32NonCachedPoolID;
 
+#define CMDQ_TIMEOUT        1000
+#define FILEIN_ENG_NUM      2
 
-#define CMDQ_TIMEOUT 1000
-#define FILEIN_ENG_NUM 2
+// Debug level
+static PVRPL_DBGMSG_LEVEL _ePVRPL_FileInDbgLevel = PVRPL_DBG_ERR;
 
-static MS_U32 u32FltStartIdx = 0;
+#define PVRPL_FILEIN_DBGMSG(_level,msg, args...)        {if(_ePVRPL_FileInDbgLevel >= (_level)) printf("[%s][%d] " msg, __FUNCTION__, __LINE__, ## args);}
+#define MOD_NAME                                        PVR
 
+#if defined(HB_ERR)
+    #define PVRPL_FILEIN_DBGMSG_ERR(msg, args...)       HB_ERR(msg, ##args)
+#else
+    #define PVRPL_FILEIN_DBGMSG_ERR(msg, args...)       PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR, msg, ##args)
+#endif
+
+#if defined(HB_INFO)
+    #define PVRPL_FILEIN_DBGMSG_INFO(msg, args...)      HB_INFO(msg, ##args)
+#else
+    #define PVRPL_FILEIN_DBGMSG_INFO(msg, args...)      PVRPL_FILEIN_DBGMSG(PVRPL_DBG_INFO, msg, ##args)
+#endif
+
+#if defined(HB_TRACE)
+    #define PVRPL_FILEIN_DBGMSG_TRACE(msg, args...)     HB_TRACE(msg, ##args)
+#else
+    #define PVRPL_FILEIN_DBGMSG_TRACE(msg, args...)     PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE, msg, ##args)
+#endif
+
+#if defined(HB_DBG)
+    #define PVRPL_FILEIN_DBGMSG_DEBUG(msg, args...)     HB_DBG(msg, ##args)
+#else
+    #define PVRPL_FILEIN_DBGMSG_DEBUG(msg, args...)     PVRPL_FILEIN_DBGMSG(PVRPL_DBG_FUNC, msg, ##args)
+#endif
 
 //@TODO consider record start time is not 0
-
-
 
 //@NOTE
 //Let User to select which filein eng
@@ -148,13 +166,13 @@ static DMX_FILTER_TYPE _PVRPL_FileIn_Mapping_DmxFltSrc(EN_PVRPL_FILEIN_PATH enFi
         case E_PVRPL_FILEIN_TSIF3:
             return  DMX_FILTER_SOURCE_TYPE_FILE3;
         default:
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("Wrong PVRPL FileIn Path\n"));
+            PVRPL_FILEIN_DBGMSG_ERR("Wrong PVRPL FileIn Path\n");
             return DMX_FILTER_SOURCE_TYPE_FILE;
     }
 }
 
 //@NOTE
-//Let User to select which A/V FIFO 
+//Let User to select which A/V FIFO
 static DMX_FILTER_TYPE _PVRPL_FileIn_Mapping_DmxFltType(MS_U32 u32PVRPLFltType)
 {
     switch(u32PVRPLFltType)
@@ -167,22 +185,169 @@ static DMX_FILTER_TYPE _PVRPL_FileIn_Mapping_DmxFltType(MS_U32 u32PVRPLFltType)
             return  DMX_FILTER_TYPE_AUDIO;
         case PVRPL_FILEIN_FILTER_TYPE_AUDIO2:
             return  DMX_FILTER_TYPE_AUDIO2;
-		case PVRPL_FILEIN_FILTER_TYPE_AUDIO3:
-			return	DMX_FILTER_TYPE_AUDIO3;
-		case PVRPL_FILEIN_FILTER_TYPE_AUDIO4:
-			return	DMX_FILTER_TYPE_AUDIO4;
-		case PVRPL_FILEIN_FILTER_TYPE_PCR:
-			return	DMX_FILTER_TYPE_PCR;
-		case PVRPL_FILEIN_FILTER_TYPE_SECTION:
-			return	DMX_FILTER_TYPE_SECTION;        
-		case PVRPL_FILEIN_FILTER_TYPE_PES:
-			return	DMX_FILTER_TYPE_PES;
+        case PVRPL_FILEIN_FILTER_TYPE_AUDIO3:
+            return  DMX_FILTER_TYPE_AUDIO3;
+        case PVRPL_FILEIN_FILTER_TYPE_AUDIO4:
+            return  DMX_FILTER_TYPE_AUDIO4;
+        case PVRPL_FILEIN_FILTER_TYPE_PCR:
+            return  DMX_FILTER_TYPE_PCR;
+        case PVRPL_FILEIN_FILTER_TYPE_SECTION:
+            return  DMX_FILTER_TYPE_SECTION;
+        case PVRPL_FILEIN_FILTER_TYPE_PES:
+            return  DMX_FILTER_TYPE_PES;
         default:
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("Wrong PVRPL Flt Type:%"DTC_MS_U32_d"\n",u32PVRPLFltType));            
+            PVRPL_FILEIN_DBGMSG_ERR("Wrong PVRPL Flt Type:%"DTC_MS_U32_d"\n",u32PVRPLFltType);
             return DMX_FILTER_TYPE_VIDEO;
     }
 }
+static DMX_FILEIN_PATH _PVRPL_FileIn_Mapping_DmxFileInPath(EN_PVRPL_FILEIN_PATH ePVRPLPath)
+{
+    switch(ePVRPLPath)
+    {
+        case E_PVRPL_FILEIN_TSIF0:
+            return DMX_FILEIN_TSIF0;
+        case E_PVRPL_FILEIN_TSIF1:
+            return  DMX_FILEIN_TSIF1;
+        case E_PVRPL_FILEIN_TSIF2:
+            return  DMX_FILEIN_TSIF2;
+        case E_PVRPL_FILEIN_TSIF3:
+            return  DMX_FILEIN_TSIF3;
+        default:
+            PVRPL_FILEIN_DBGMSG_ERR("Wrong PVRPL FileIn Path:%d\n",ePVRPLPath);
+            return E_PVRPL_FILEIN_TSIF0;
+    }
 
+}
+
+static EN_PVRPL_FILEIN_PATH _DmxFileInPath_Mapping_PVRPL_FileIn(DMX_FILEIN_PATH eDMXPath)
+{
+    switch(eDMXPath)
+    {
+        case DMX_FILEIN_TSIF0:
+            return E_PVRPL_FILEIN_TSIF0;
+        case DMX_FILEIN_TSIF1:
+            return E_PVRPL_FILEIN_TSIF1;
+        case DMX_FILEIN_TSIF2:
+            return E_PVRPL_FILEIN_TSIF2;
+        case DMX_FILEIN_TSIF3:
+            return E_PVRPL_FILEIN_TSIF3;
+        default:
+            PVRPL_FILEIN_DBGMSG_ERR("Wrong DMX FileIn Path:%d\n",eDMXPath);
+            return E_PVRPL_FILEIN_TSIF0;
+    }
+
+}
+
+static DMX_FLOW _PVRPL_DmxFlow_Mapping_DmxFlow(EN_PVRPL_DMX_FLOW ePVRPLDmxFlow)
+{
+    switch(ePVRPLDmxFlow)
+    {
+
+        case E_PVRPL_DMX_FLOW_PLAYBACK:
+            return DMX_FLOW_PLAYBACK;
+        case E_PVRPL_DMX_FLOW_PVR:
+            return DMX_FLOW_PVR;
+        case E_PVRPL_DMX_FLOW_PVR1:
+            return  DMX_FLOW_PVR1;
+
+        case E_PVRPL_DMX_FLOW_PVRCA:
+            return  DMX_FLOW_PVRCA;
+
+        case E_PVRPL_DMX_FLOW_FILEIN_MM:
+            return  DMX_FLOW_FILEIN_MM;
+
+        case E_PVRPL_DMX_FLOW_FILEIN_MM3D:
+            return  DMX_FLOW_FILEIN_MM3D;
+
+
+        case E_PVRPL_DMX_FLOW_CIPHSS_PLAYBACK:
+            return  DMX_FLOW_CIPHSS_PLAYBACK;
+        case E_PVRPL_DMX_FLOW_CIPHSS_PVRCA:
+            return  DMX_FLOW_CIPHSS_PVRCA;
+
+        case E_PVRPL_DMX_FLOW_PVR2:
+            return  DMX_FLOW_PVR2;
+        case E_PVRPL_DMX_FLOW_PVR3:
+            return  DMX_FLOW_PVR3;
+        case E_PVRPL_DMX_FLOW_PVR4:
+            return  DMX_FLOW_PVR4;
+        case E_PVRPL_DMX_FLOW_PVR5:
+            return  DMX_FLOW_PVR5;
+
+        case E_PVRPL_DMX_FLOW_TSO_PLAYBACK:
+            return  DMX_FLOW_TSO_PLAYBACK;
+        case E_PVRPL_DMX_FLOW_PLAYBACK1:
+            return  DMX_FLOW_PLAYBACK1;
+        case E_PVRPL_DMX_FLOW_PVRCA1:
+            return  DMX_FLOW_PVRCA1;
+
+        case E_PVRPL_DMX_FLOW_TSO_PLAYBACK1:
+            return  DMX_FLOW_TSO_PLAYBACK1;
+        case E_PVRPL_DMX_FLOW_PLAYBACK2:
+            return  DMX_FLOW_PLAYBACK2;
+        case E_PVRPL_DMX_FLOW_PLAYBACK3:
+            return  DMX_FLOW_PLAYBACK3;
+
+
+        default:
+            PVRPL_FILEIN_DBGMSG_ERR("Wrong PVRPL Flt Type:%d\n",ePVRPLDmxFlow);
+            return DMX_FLOW_PLAYBACK;
+    }
+}
+static EN_PVRPL_DMX_FLOW _DmxFlow_Mapping_PVRPL_DmxFlow(DMX_FLOW eDmxFlow)
+{
+    switch(eDmxFlow)
+    {
+        case DMX_FLOW_PLAYBACK:
+            return E_PVRPL_DMX_FLOW_PLAYBACK;
+        case DMX_FLOW_PVR:
+            return E_PVRPL_DMX_FLOW_PVR;
+        case DMX_FLOW_PVR1:
+            return  E_PVRPL_DMX_FLOW_PVR1;
+
+        case DMX_FLOW_PVRCA:
+            return  E_PVRPL_DMX_FLOW_PVRCA;
+
+        case DMX_FLOW_FILEIN_MM:
+            return  E_PVRPL_DMX_FLOW_FILEIN_MM;
+
+        case DMX_FLOW_FILEIN_MM3D:
+            return  E_PVRPL_DMX_FLOW_FILEIN_MM3D;
+
+
+        case DMX_FLOW_CIPHSS_PLAYBACK:
+            return  E_PVRPL_DMX_FLOW_CIPHSS_PLAYBACK;
+        case DMX_FLOW_CIPHSS_PVRCA:
+            return  E_PVRPL_DMX_FLOW_CIPHSS_PVRCA;
+
+        case DMX_FLOW_PVR2:
+            return  E_PVRPL_DMX_FLOW_PVR2;
+        case DMX_FLOW_PVR3:
+            return  E_PVRPL_DMX_FLOW_PVR3;
+        case DMX_FLOW_PVR4:
+            return  E_PVRPL_DMX_FLOW_PVR4;
+        case DMX_FLOW_PVR5:
+            return  E_PVRPL_DMX_FLOW_PVR5;
+
+        case DMX_FLOW_TSO_PLAYBACK:
+            return  E_PVRPL_DMX_FLOW_TSO_PLAYBACK;
+        case DMX_FLOW_PLAYBACK1:
+            return  E_PVRPL_DMX_FLOW_PLAYBACK1;
+        case DMX_FLOW_PVRCA1:
+            return  E_PVRPL_DMX_FLOW_PVRCA1;
+
+        case DMX_FLOW_TSO_PLAYBACK1:
+            return  E_PVRPL_DMX_FLOW_TSO_PLAYBACK1;
+        case DMX_FLOW_PLAYBACK2:
+            return  E_PVRPL_DMX_FLOW_PLAYBACK2;
+        case DMX_FLOW_PLAYBACK3:
+            return  E_PVRPL_DMX_FLOW_PLAYBACK3;
+
+        default:
+            PVRPL_FILEIN_DBGMSG_ERR("Wrong DMX Flow:%d\n",eDmxFlow);
+            return E_PVRPL_DMX_FLOW_PLAYBACK;
+    }
+}
 
 static DMX_FILTER_TYPE _PVRPL_FileIn_Mapping_DmxFltDst(EN_PVRPL_FILEIN_PATH enFileInPath,DMX_FILTER_TYPE u32FltType)
 {
@@ -192,17 +357,18 @@ static DMX_FILTER_TYPE _PVRPL_FileIn_Mapping_DmxFltDst(EN_PVRPL_FILEIN_PATH enFi
     {
         case E_PVRPL_FILEIN_TSIF0:
             if((u32FltType&0xF) == DMX_FILTER_TYPE_VIDEO)
-            {	PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("To Video FIFO\n"));            
+            {
+                PVRPL_FILEIN_DBGMSG_TRACE("To Video FIFO\n");
                 sFltDst = DMX_FILTER_TYPE_VIDEO;
             }
             else if((u32FltType&0xF) == DMX_FILTER_TYPE_AUDIO)
             {
-            	PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("To Audio FIFO\n"));
+                PVRPL_FILEIN_DBGMSG_TRACE("To Audio FIFO\n");
                 sFltDst = DMX_FILTER_TYPE_AUDIO;
             }
             else if((u32FltType&0xF) == DMX_FILTER_TYPE_PCR)
             {
-            	PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("To PCR FIFO\n"));
+                PVRPL_FILEIN_DBGMSG_TRACE("To PCR FIFO\n");
                 sFltDst = DMX_FILTER_TYPE_PCR;
             }
             else
@@ -213,17 +379,17 @@ static DMX_FILTER_TYPE _PVRPL_FileIn_Mapping_DmxFltDst(EN_PVRPL_FILEIN_PATH enFi
         case E_PVRPL_FILEIN_TSIF1:
             if((u32FltType&0xF) == DMX_FILTER_TYPE_VIDEO)
             {
-            	PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("To Video3D FIFO\n"));
+                PVRPL_FILEIN_DBGMSG_TRACE("To Video3D FIFO\n");
                 sFltDst = DMX_FILTER_TYPE_VIDEO3D;
             }
             else if((u32FltType&0xF) == DMX_FILTER_TYPE_AUDIO)
             {
-            	PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("To Audio2 FIFO\n"));
+                PVRPL_FILEIN_DBGMSG_TRACE("To Audio2 FIFO\n");
                 sFltDst = DMX_FILTER_TYPE_AUDIO2;
             }
             else if((u32FltType&0xF) == DMX_FILTER_TYPE_PCR)
             {
-            	PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("To Pcr FIFO\n"));
+                PVRPL_FILEIN_DBGMSG_TRACE("To Pcr FIFO\n");
                 sFltDst = DMX_FILTER_TYPE_PCR;
             }
             else
@@ -232,7 +398,7 @@ static DMX_FILTER_TYPE _PVRPL_FileIn_Mapping_DmxFltDst(EN_PVRPL_FILEIN_PATH enFi
             }
             break;
         default:
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("Wrong Path:%d\n",enFileInPath));
+            PVRPL_FILEIN_DBGMSG_ERR("Wrong Path:%d\n",enFileInPath);
             sFltDst = u32FltType;
             break;
     }
@@ -253,13 +419,11 @@ void _FlushFileInQueue(FileInResource *sCurFileInQueueInfo)
     sCurFileInQueueInfo->bQueFullTag = FALSE;
 }
 
-
 static MS_U8 _CalculateFileInQueueWaterLevel(FileInResource *sCurFileInInfo)
 {
     MS_U32 u32CmdEmptyCount = 0;
     MS_U8 u8CmdWRLevel = 0;
-
-    MApi_DMX_Filein_Eng_CMDQ_GetEmptyNum(sCurFileInInfo->eFileInPath,&u32CmdEmptyCount);
+    MApi_DMX_Filein_Eng_CMDQ_GetEmptyNum(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath),&u32CmdEmptyCount);
 
     // each CMD uses 5 blocks
     if (u32CmdEmptyCount <= 1)       //  0 - 1
@@ -274,7 +438,7 @@ static MS_U8 _CalculateFileInQueueWaterLevel(FileInResource *sCurFileInInfo)
     {
         u8CmdWRLevel = 0x02;
     }
-    else if (!MApi_DMX_Filein_Eng_IsIdle(sCurFileInInfo->eFileInPath)) // 12 - 16 && Busy
+    else if (!MApi_DMX_Filein_Eng_IsIdle(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath))) // 12 - 16 && Busy
     {
         u8CmdWRLevel = 0x01;
     }
@@ -283,14 +447,10 @@ static MS_U8 _CalculateFileInQueueWaterLevel(FileInResource *sCurFileInInfo)
         u8CmdWRLevel = 0x0;
     }
 
-    
-
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] u32CmdCount:%"DTC_MS_U32_u" u8CmdWRLevel:%d\n",__FILE__,__FUNCTION__,__LINE__,u32CmdEmptyCount,u8CmdWRLevel));
+    PVRPL_FILEIN_DBGMSG_TRACE("u32CmdCount:%"DTC_MS_U32_u" u8CmdWRLevel:%d\n", u32CmdEmptyCount,u8CmdWRLevel);
 
     return u8CmdWRLevel;
-
 }
-
 
 static EN_PVRPL_FILEIN_STATUS _PVRPL_FileIn_MoveFileInBlockToFileInEng(FileInResource *sCurFileInInfo)
 {
@@ -298,18 +458,18 @@ static EN_PVRPL_FILEIN_STATUS _PVRPL_FileIn_MoveFileInBlockToFileInEng(FileInRes
 
     if ( sCurFileInInfo->u32CurWaterLevel < sCurFileInInfo->u32NumofFeeded)
     {
-        //printf("[Consumer]------- (Cur:FeedNum)(%lu:%lu) -Not Full-\n",sCurFileInInfo->u32CurWaterLevel,sCurFileInInfo->u32NumofFeeded);
+        PVRPL_FILEIN_DBGMSG_TRACE("[Consumer]------- (Cur:FeedNum)(%"DTC_MS_U32_u":%"DTC_MS_U32_u") -Not Full-\n",sCurFileInInfo->u32CurWaterLevel,sCurFileInInfo->u32NumofFeeded);
         MS_U32 u32CousumedCnt =  sCurFileInInfo->u32NumofFeeded - sCurFileInInfo->u32CurWaterLevel;
-        sCurFileInInfo->u8QueFront = (sCurFileInInfo->u8QueFront + u32CousumedCnt)% sCurFileInInfo->u8MaxQueNum;      
+        sCurFileInInfo->u8QueFront = (sCurFileInInfo->u8QueFront + u32CousumedCnt)% sCurFileInInfo->u8MaxQueNum;
         sCurFileInInfo->u32NumofFeeded = sCurFileInInfo->u32NumofFeeded - u32CousumedCnt;
         sCurFileInInfo->bQueFullTag = FALSE;
     }
-    
+
     if ((sCurFileInInfo->u8QueRear == sCurFileInInfo->u8Feeded2HW) /*&& (sCurFileInInfo->bQueFullTag == FALSE)*/)
     {
         // no data can be feed to TSP HW
-        //printf("[Consumer]------- -Empty-\n");
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] FileInBlock Queue is Empty\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_TRACE("[Consumer]------- -Empty-\n");
+        PVRPL_FILEIN_DBGMSG_TRACE("FileInBlock Queue is Empty\n");
     }
     else
     {
@@ -318,10 +478,10 @@ static EN_PVRPL_FILEIN_STATUS _PVRPL_FileIn_MoveFileInBlockToFileInEng(FileInRes
         if (sCurFileInInfo->u32CurWaterLevel > sCurFileInInfo->eQueThreshold)
         {
             //TSP full cannot feed data
-        
-            //printf("FileIn Eng is too busy to send cmdq\n");
-            //printf("[Consumer]------- (Cur:%lu) -TSP BUSY-\n",sCurFileInInfo->u32CurWaterLevel);
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] FileIn Eng is too busy to send cmdq => WaterLevel:%d Threshold:%d\n",__FILE__,__FUNCTION__,__LINE__,_CalculateFileInQueueWaterLevel(sCurFileInInfo),sCurFileInInfo->eQueThreshold));
+
+            PVRPL_FILEIN_DBGMSG_TRACE("FileIn Eng is too busy to send cmdq\n");
+            PVRPL_FILEIN_DBGMSG_TRACE("[Consumer]------- (Cur:%"DTC_MS_U32_u") -TSP BUSY-\n",sCurFileInInfo->u32CurWaterLevel);
+            PVRPL_FILEIN_DBGMSG_TRACE("FileIn Eng is too busy to send cmdq => WaterLevel:%d Threshold:%d\n", _CalculateFileInQueueWaterLevel(sCurFileInInfo),sCurFileInInfo->eQueThreshold);
             return E_PVRPL_FILEIN_FAIL;
         }
         else
@@ -329,33 +489,34 @@ static EN_PVRPL_FILEIN_STATUS _PVRPL_FileIn_MoveFileInBlockToFileInEng(FileInRes
             // TSP had slot to feed
             MS_U32 u32PhyAddr = sCurFileInInfo->psFileInQueue[sCurFileInInfo->u8Feeded2HW].u32PhyAddr;
             MS_U32 u32Size = sCurFileInInfo->psFileInQueue[sCurFileInInfo->u8Feeded2HW].u32Size;
-            //printf("[Consumer] (Front:Addr)(%d:%lx)\n",sCurFileInInfo->u8Feeded2HW,u32PhyAddr);
+            PVRPL_FILEIN_DBGMSG_TRACE("[Consumer] (Front:Addr)(%d:%"DTC_MS_U32_x")\n",sCurFileInInfo->u8Feeded2HW,u32PhyAddr);
 
             sCurFileInInfo->u8Feeded2HW = (sCurFileInInfo->u8Feeded2HW +1)% sCurFileInInfo->u8MaxQueNum;
             sCurFileInInfo->u32NumofFeeded++;
 
             MS_PHY PHYPhyAddr = (MS_PHY)u32PhyAddr;
-            MApi_DMX_Filein_Eng_Start(sCurFileInInfo->eFileInPath,DMX_PES_NO_BYPASS_FIFO,PHYPhyAddr,u32Size);
+            MApi_DMX_Filein_Eng_Start(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath),DMX_PES_NO_BYPASS_FIFO,PHYPhyAddr,u32Size);
 
             //debug
             MS_U32 u32viraddr = MsOS_PA2KSEG1(PHYPhyAddr);
 
             if(((MS_U8 *)u32viraddr)[4]!=0x47)
-                printf("Path %d Consume ====> TimeStamp to FILE-IN Eng:0x%x 0x%x 0x%x 0x%x 0x%x \n",sCurFileInInfo->u8PathIdx,((MS_U8 *)u32viraddr)[0],((MS_U8 *)u32viraddr)[1],((MS_U8 *)u32viraddr)[2],((MS_U8 *)u32viraddr)[3],((MS_U8 *)u32viraddr)[4]);
+                PVRPL_FILEIN_DBGMSG_TRACE("Path %d Consume ====> TimeStamp to FILE-IN Eng:0x%x 0x%x 0x%x 0x%x 0x%x \n",GET_PVR_PATH_IDX(sCurFileInInfo->u8PathIdx),((MS_U8 *)u32viraddr)[0],((MS_U8 *)u32viraddr)[1],((MS_U8 *)u32viraddr)[2],((MS_U8 *)u32viraddr)[3],((MS_U8 *)u32viraddr)[4]);
             //    video_fifo, audio_fifo,(video_fifo&DMX_FIFO_STATUS_LV_EMPTY), (audio_fifo&DMX_FIFO_STATUS_LV_EMPTY));
             //MS_U32 u32viraddr = MsOS_PA2KSEG1(u32PhyAddr);
-            //printf("Consume ====> TimeStamp to FILE-IN Eng:0x%x 0x%x 0x%x 0x%x 0x%x  VIDEO State: %lu  AUDIO State: %lu VIDEO EMPTY: %lu  AUDIO EMPTY: %lu\n",((MS_U8 *)u32viraddr)[0],((MS_U8 *)u32viraddr)[1],((MS_U8 *)u32viraddr)[2],((MS_U8 *)u32viraddr)[3],((MS_U8 *)u32viraddr)[4],
+            //PVRPL_FILEIN_DBGMSG_TRACE("Consume ====> TimeStamp to FILE-IN Eng:0x%x 0x%x 0x%x 0x%x 0x%x  VIDEO State: %lu  AUDIO State: %lu VIDEO EMPTY: %lu  AUDIO EMPTY: %lu\n",((MS_U8 *)u32viraddr)[0],((MS_U8 *)u32viraddr)[1],((MS_U8 *)u32viraddr)[2],((MS_U8 *)u32viraddr)[3],((MS_U8 *)u32viraddr)[4],
             //    video_fifo, audio_fifo,(video_fifo&DMX_FIFO_STATUS_LV_EMPTY), (audio_fifo&DMX_FIFO_STATUS_LV_EMPTY));
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] Path:%d Consume =>  u8QueRear:%d u8QueFront:%d PhyAddr:%"DTC_MS_U32_x" Size:%"DTC_MS_U32_x"\n",__FILE__,__FUNCTION__,__LINE__,sCurFileInInfo->u8PathIdx,sCurFileInInfo->u8QueRear,sCurFileInInfo->u8QueFront,u32PhyAddr,u32Size));
+            PVRPL_FILEIN_DBGMSG_TRACE("Path:%d Consume =>  u8QueRear:%d u8QueFront:%d PhyAddr:%"DTC_MS_U32_x" Size:%"DTC_MS_U32_x"\n", GET_PVR_PATH_IDX(sCurFileInInfo->u8PathIdx),sCurFileInInfo->u8QueRear,sCurFileInInfo->u8QueFront,u32PhyAddr,u32Size);
         }
 
     }
+
     return E_PVRPL_FILEIN_SUCESS;
 }
 
 static EN_PVRPL_FILEIN_STATUS _FlushFileInQueueAndEng(FileInResource *sCurFileInInfo)
 {
-    //printf("FUCHSIA CALL ============> FLUSH Start !!!\n");
+    PVRPL_FILEIN_DBGMSG_TRACE("FUCHSIA CALL ============> FLUSH Start !!!\n");
 
     MS_U32 u32CurrTime=0;
     u32CurrTime = MsOS_GetSystemTime();
@@ -371,7 +532,7 @@ static EN_PVRPL_FILEIN_STATUS _FlushFileInQueueAndEng(FileInResource *sCurFileIn
             if (MsOS_GetSystemTime() - u32CurrTime > CMDQ_TIMEOUT)
             {
                 printf("PVR_TSP::WaitForEmptyCMDQ Fail! IsFileInIdle() time out!\n");
-                PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR> IsFileInIdle() time out! duration:%lu CMDQ_TIMEOUT:%d\n",  __FILE__, __FUNCTION__,__LINE__,(MsOS_GetSystemTime() - u32CurrTime),CMDQ_TIMEOUT));
+                PVRPL_FILEIN_DBGMSG_ERR("<ERR> IsFileInIdle() time out! duration:%lu CMDQ_TIMEOUT:%d\n", (MsOS_GetSystemTime() - u32CurrTime),CMDQ_TIMEOUT);
                 MsOS_ReleaseMutex(s32FileinMutex);
 
                 printf("FUCHSIA CALL ============> FLUSH Done TimeOut!!!\n");
@@ -384,22 +545,22 @@ static EN_PVRPL_FILEIN_STATUS _FlushFileInQueueAndEng(FileInResource *sCurFileIn
 
      _FlushFileInQueue(sCurFileInInfo);
 
-    while(MApi_DMX_Filein_Eng_IsIdle(sCurFileInInfo->eFileInPath) != TRUE)
+    while(MApi_DMX_Filein_Eng_IsIdle(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath)) != TRUE)
     {
         // Delay 3 ms.
         // Reset AV FIFO with 384K * 3 takes 15-20 ms if bypass file-in timestamp.
         if (MsOS_GetSystemTime() - u32CurrTime > CMDQ_TIMEOUT)
         {
-            //printf("PVR_TSP::WaitForEmptyCMDQ Fail! IsFileInIdle() time out!\n");
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR> MApi_DMX_Filein_Eng_IsIdle() time out! duration:%"DTC_MS_U32_u"\n",  __FILE__, __FUNCTION__,__LINE__,(MsOS_GetSystemTime() - u32CurrTime)));
+            PVRPL_FILEIN_DBGMSG_TRACE("PVR_TSP::WaitForEmptyCMDQ Fail! IsFileInIdle() time out!\n");
+            PVRPL_FILEIN_DBGMSG_ERR("<ERR> MApi_DMX_Filein_Eng_IsIdle() time out! duration:%"DTC_MS_U32_u"\n", (MsOS_GetSystemTime() - u32CurrTime));
 
-            printf("FUCHSIA CALL ============> MApi_DMX_Filein_Eng_IsIdle TimeOut!!!\n");
+            PVRPL_FILEIN_DBGMSG_ERR("FUCHSIA CALL ============> MApi_DMX_Filein_Eng_IsIdle TimeOut!!!\n");
             return E_PVRPL_FILEIN_FAIL;
         }
         MsOS_DelayTask(3);
-     }
+    }
 
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d]\n",__FILE__,__FUNCTION__,__LINE__));
+    PVRPL_FILEIN_DBGMSG_TRACE("\n");
     return E_PVRPL_FILEIN_SUCESS;
 }
 
@@ -412,92 +573,81 @@ static EN_PVRPL_FILEIN_STATUS _FlushFileInQueueAndEng(FileInResource *sCurFileIn
 //5. Enable Playback timestamp
 EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_Init(FileInResource *sCurFileInInfo)
 {
-    MS_U8 u8PathID = sCurFileInInfo->u8PathIdx;
+    MS_U8 u8PathID = GET_PVR_PATH_IDX(sCurFileInInfo->u8PathIdx);
 
     if(u8PathID>= FILEIN_ENG_NUM)
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d]No Free FileIn Eng!!! Init Fail\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_ERR("No Free FileIn Eng!!! Init Fail\n");
         return E_PVRPL_FILEIN_FAIL;
     }
     else
     {
         if(sCurFileInInfo->bInit == TRUE)
         {
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d]File In Eng Already Init!\n",__FILE__,__FUNCTION__,__LINE__));
+            PVRPL_FILEIN_DBGMSG_ERR("File In Eng Already Init!\n");
             return E_PVRPL_FILEIN_FAIL;
         }
         sCurFileInInfo->bInit=TRUE;
     }
 
     //reset AV FIFO
-    #if (DEMO_PVR_V4_TEST == 1)
     MApi_DMX_AVFifo_Reset(Pool_GetVFifoType(u8PathID), TRUE);
     MApi_DMX_AVFifo_Reset(Pool_GetAFifoType(u8PathID), TRUE);
-    #endif
-
-    MApi_DMX_GetCap(DMX_CAP_PCRFLT_START_IDX, &u32FltStartIdx);
 
     //@TODO get resource from resource controller
     // RS_POOL_FileIn_Get().....
     sCurFileInInfo->eAVFIFO.eAudioType = (MS_U32)Pool_GetAFifoType(u8PathID);
     sCurFileInInfo->eAVFIFO.eVideoType = (MS_U32)Pool_GetVFifoType(u8PathID);
-    sCurFileInInfo->eDMXFlow = Pool_GetPVRDMXFlow(u8PathID);
+    sCurFileInInfo->eDMXFlow =  _DmxFlow_Mapping_PVRPL_DmxFlow(Pool_GetPVRDMXFlow(u8PathID));
     sCurFileInInfo->bByPassFileIn = FALSE;
-    sCurFileInInfo->eFileInPath = Pool_GetFileInSouce(u8PathID);
-
+    sCurFileInInfo->eFileInPath = _DmxFileInPath_Mapping_PVRPL_FileIn(Pool_GetFileInSouce(u8PathID));
 
     sCurFileInInfo->psFileInQueue = (FileInBlock *)MsOS_AllocateMemory((sizeof(FileInBlock))*(sCurFileInInfo->u8MaxQueNum),gs32NonCachedPoolID);
-    sCurFileInInfo->u32NumofFeeded = 0; 
+    sCurFileInInfo->u32NumofFeeded = 0;
     sCurFileInInfo->u32CurWaterLevel = 0;
     sCurFileInInfo->u8QueFront = 0;
     sCurFileInInfo->u8QueRear= 0;
     sCurFileInInfo->u8Feeded2HW = 0;
     sCurFileInInfo->bQueFullTag = FALSE;
     sCurFileInInfo->eQueThreshold = EN_FILEIN_NORMAL_MODE;
-
+    sCurFileInInfo->u8STCEng = (MS_U8)E_PVRPL_PCR_ENG_INVALID;
 
     DMX_Filein_info tsFileInInfo;
 
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] eDMXFlow:%d u8FileInPktMode:%d\n",__FILE__,__FUNCTION__,__LINE__,sCurFileInInfo->eDMXFlow,sCurFileInInfo->u8FileInPktMode));
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("eFileInPath:%d u8STCEng:%d eAudioType:%"DTC_MS_U32_u" eVideoType:%"DTC_MS_U32_u" u8MaxQueNum:%d\n",sCurFileInInfo->eFileInPath,sCurFileInInfo->u8STCEng,
-                        sCurFileInInfo->eAVFIFO.eAudioType,sCurFileInInfo->eAVFIFO.eVideoType,sCurFileInInfo->u8MaxQueNum));
+    PVRPL_FILEIN_DBGMSG_TRACE("eDMXFlow:%d u8FileInPktMode:%d\n", sCurFileInInfo->eDMXFlow,sCurFileInInfo->u8FileInPktMode);
+    PVRPL_FILEIN_DBGMSG_TRACE("eFileInPath:%d u8STCEng:%d eAudioType:%"DTC_MS_U32_u" eVideoType:%"DTC_MS_U32_u" u8MaxQueNum:%d\n",sCurFileInInfo->eFileInPath,sCurFileInInfo->u8STCEng,
+                        sCurFileInInfo->eAVFIFO.eAudioType,sCurFileInInfo->eAVFIFO.eVideoType,sCurFileInInfo->u8MaxQueNum);
 
     //MApi_DMX_FlowSet(sFileInInfo.eDMXFlow,DMX_FLOW_INPUT_MEM,FALSE,FALSE,TRUE);//spike original
-
-    MApi_DMX_FlowSet(sCurFileInInfo->eDMXFlow,DMX_FLOW_INPUT_MEM,FALSE,TRUE,TRUE);
+    MApi_DMX_FlowSet(_PVRPL_DmxFlow_Mapping_DmxFlow(sCurFileInInfo->eDMXFlow),DMX_FLOW_INPUT_MEM,FALSE,TRUE,TRUE);
 
     if(sCurFileInInfo->u8FileInPktMode == 192)
     {
         tsFileInInfo.PKT_Mode = DMX_PKTMODE_192;
         tsFileInInfo.Rate = 0;
-        MApi_DMX_Filein_Eng_PlaybackTimeStampEnable(sCurFileInInfo->eFileInPath);
-        MApi_DMX_Filein_Eng_SetPlaybackStamp(sCurFileInInfo->eFileInPath,0);  //mike temporily added
-        PVRPL_FileIn_EnableBypassFileInTime(sCurFileInInfo,FALSE);
-
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d]\n",__FILE__,__FUNCTION__,__LINE__));
+        MApi_DMX_Filein_Eng_PlaybackTimeStampEnable(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath));
+        MApi_DMX_Filein_Eng_SetPlaybackStamp(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath),0);  //mike temporily added
+        PVRPL_FILEIN_DBGMSG_TRACE("FileIn PacketMode = 192\n");
     }
     else if(sCurFileInInfo->u8FileInPktMode == 188)
     {
         tsFileInInfo.PKT_Mode = DMX_PKTMODE_188;
         tsFileInInfo.Rate = 0;
-        MApi_DMX_Filein_Eng_PlaybackTimeStampDisable(sCurFileInInfo->eFileInPath);
-        PVRPL_FileIn_EnableBypassFileInTime(sCurFileInInfo,TRUE);
-
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d]\n",__FILE__,__FUNCTION__,__LINE__));
+        MApi_DMX_Filein_Eng_PlaybackTimeStampDisable(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath));
+        PVRPL_FILEIN_DBGMSG_TRACE("FileIn PacketMode = 188\n");
     }
     else
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR>\n",__FILE__,__FUNCTION__,__LINE__));
-
+        PVRPL_FILEIN_DBGMSG_ERR("<ERR>\n");
         return E_PVRPL_FILEIN_FAIL;
     }
 
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] sFileInInfo.u8FileInPktMode:%d tsFileInInfo.PKT_Mode:%d tsFileInInfo.Rate:%"DTC_MS_U32_u"\n",
-                        __FILE__,__FUNCTION__,__LINE__,sCurFileInInfo->u8FileInPktMode,tsFileInInfo.PKT_Mode,tsFileInInfo.Rate));
+    PVRPL_FILEIN_DBGMSG_TRACE("sFileInInfo.u8FileInPktMode:%d tsFileInInfo.PKT_Mode:%d tsFileInInfo.Rate:%"DTC_MS_U32_u"\n",
+                        sCurFileInInfo->u8FileInPktMode,tsFileInInfo.PKT_Mode,tsFileInInfo.Rate);
 
-    if(MApi_DMX_Filein_Eng_Info(sCurFileInInfo->eFileInPath,&tsFileInInfo) == DMX_FILTER_STATUS_ERROR)
+    if(MApi_DMX_Filein_Eng_Info(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath),&tsFileInInfo) == DMX_FILTER_STATUS_ERROR)
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] Filein Info fail\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_ERR("Filein Info fail\n");
         return E_PVRPL_FILEIN_FAIL;
     }
 
@@ -507,83 +657,76 @@ EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_Init(FileInResource *sCurFileInInfo)
 //@NOTE This function is implemented to add/delete PID Filters
 EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_PIDFilterControl(FileInResource *sCurFileInInfo,MS_BOOL bAdd,MS_U8 *pu8FltID,MS_U16 u16PID,MS_U32 u32PVRPLFltType)
 {
-        if(bAdd == TRUE)
+    if(bAdd == TRUE)
+    {
+        //@NOTE
+        //Let AP user select filein-eng by path to play video(audio) or video3d(audio2)
+        DMX_FILTER_TYPE stDmxFltSrc =   _PVRPL_FileIn_Mapping_DmxFltSrc(sCurFileInInfo->eFileInPath);
+        DMX_FILTER_TYPE stDmxFltType =  _PVRPL_FileIn_Mapping_DmxFltDst(sCurFileInInfo->eFileInPath,_PVRPL_FileIn_Mapping_DmxFltType(u32PVRPLFltType));
+
+        PVRPL_FILEIN_DBGMSG_TRACE("Path:%d Ori_Type:%"DTC_MS_U32_x" Src_TypeFlt:%"DTC_MS_U32_x" \n", sCurFileInInfo->eFileInPath,u32PVRPLFltType,(stDmxFltType|stDmxFltSrc));
+
+        if(MApi_DMX_Open((DMX_FILTER_TYPE)(stDmxFltType|stDmxFltSrc),pu8FltID) == DMX_FILTER_STATUS_ERROR)
         {
-            //@NOTE
-            //Let AP user select filein-eng by path to play video(audio) or video3d(audio2) 
-            DMX_FILTER_TYPE stDmxFltSrc =   _PVRPL_FileIn_Mapping_DmxFltSrc(sCurFileInInfo->eFileInPath);
-            DMX_FILTER_TYPE stDmxFltType =  _PVRPL_FileIn_Mapping_DmxFltDst(sCurFileInInfo->eFileInPath,_PVRPL_FileIn_Mapping_DmxFltType(u32PVRPLFltType));
-
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] Path:%d Ori_Type:%"DTC_MS_U32_x" Src_TypeFlt:%"DTC_MS_U32_x" \n",__FILE__,__FUNCTION__,__LINE__,sCurFileInInfo->eFileInPath,u32PVRPLFltType,(stDmxFltType|stDmxFltSrc)));
-
-            if(MApi_DMX_Open((DMX_FILTER_TYPE)(stDmxFltType|stDmxFltSrc),pu8FltID) == DMX_FILTER_STATUS_ERROR)
-            {
-                PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] Open PID FLT ERROR\n",__FILE__,__FUNCTION__,__LINE__));
-                return E_PVRPL_FILEIN_FAIL;
-            }
-
-            if(MApi_DMX_Pid((*pu8FltID),(&u16PID),TRUE) == DMX_FILTER_STATUS_ERROR)
-            {
-                PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] SET PID ERROR\n",__FILE__,__FUNCTION__,__LINE__));
-                return E_PVRPL_FILEIN_FAIL;
-            }
-
-            if(MApi_DMX_Start((*pu8FltID)) == DMX_FILTER_STATUS_ERROR)
-            {
-                PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] START PID Flt\n",__FILE__,__FUNCTION__,__LINE__));
-                return E_PVRPL_FILEIN_FAIL;
-            }
-
-            if(((DMX_FILTER_TYPE)stDmxFltType) == DMX_FILTER_TYPE_PCR)
-            {
-                switch(*pu8FltID-u32FltStartIdx)
-                {
-                    case E_PVRPL_PCR_ENG0:
-                        sCurFileInInfo->u8STCEng = E_PVRPL_PCR_ENG0;
-                        break;
-                    case E_PVRPL_PCR_ENG1:
-                        sCurFileInInfo->u8STCEng = E_PVRPL_PCR_ENG1;
-                        break;
-                    default:
-                        printf("Wrong STC Engine => Set to Eng1 \n");
-                        sCurFileInInfo->u8STCEng = E_PVRPL_PCR_ENG1;
-                        break;
-                }
-            }
-
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d]Open FltType:0x%"DTC_MS_U32_x" FltID:0x%x PID:0x%x \n",__FILE__,__FUNCTION__,__LINE__,u32PVRPLFltType,(*pu8FltID),u16PID));
+            PVRPL_FILEIN_DBGMSG_ERR("Open PID FLT ERROR\n");
+            return E_PVRPL_FILEIN_FAIL;
         }
-        else
+
+        if(MApi_DMX_Pid((*pu8FltID),(&u16PID),TRUE) == DMX_FILTER_STATUS_ERROR)
         {
-            if(MApi_DMX_Stop((*pu8FltID)) == DMX_FILTER_STATUS_ERROR)
-            {
-                PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] Stop PID FLT:0x%x ERROR\n",__FILE__,__FUNCTION__,__LINE__,(*pu8FltID)));
-                return E_PVRPL_FILEIN_FAIL;
-            }
-
-
-            if(MApi_DMX_Close((*pu8FltID)) == DMX_FILTER_STATUS_ERROR)
-            {
-                PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] CLOSE PID FLT:0x%x ERROR\n",__FILE__,__FUNCTION__,__LINE__,(*pu8FltID)));
-                return E_PVRPL_FILEIN_FAIL;
-            }
-
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d]Close FltType:0x%"DTC_MS_U32_x" FltID:0x%x PID:0x%x \n",__FILE__,__FUNCTION__,__LINE__,u32PVRPLFltType,(*pu8FltID),u16PID));
+            PVRPL_FILEIN_DBGMSG_ERR("SET PID ERROR\n");
+            return E_PVRPL_FILEIN_FAIL;
         }
+
+        if(MApi_DMX_Start((*pu8FltID)) == DMX_FILTER_STATUS_ERROR)
+        {
+            PVRPL_FILEIN_DBGMSG_ERR("START PID Flt\n");
+            return E_PVRPL_FILEIN_FAIL;
+        }
+
+        if((DMX_FILTER_TYPE)stDmxFltType == DMX_FILTER_TYPE_PCR)
+        {
+            MS_U32 u32EngId = E_PVRPL_PCR_ENG_INVALID;
+            if(MApi_DMX_Pcr_Get_MapSTC((MS_U32)*pu8FltID, &u32EngId) == DMX_FILTER_STATUS_ERROR)
+            {
+                PVRPL_FILEIN_DBGMSG_ERR("PCR Get Map STC failed!\n");
+                return E_PVRPL_FILEIN_FAIL;
+            }
+            sCurFileInInfo->u8STCEng = (MS_U8)u32EngId;
+            PVRPL_FILEIN_DBGMSG_TRACE("STC eng: %d \n", sCurFileInInfo->u8STCEng);
+        }
+
+        PVRPL_FILEIN_DBGMSG_TRACE("Open FltType:0x%"DTC_MS_U32_x" FltID:0x%x PID:0x%x \n", u32PVRPLFltType,(*pu8FltID),u16PID);
+    }
+    else
+    {
+        if(MApi_DMX_Stop((*pu8FltID)) == DMX_FILTER_STATUS_ERROR)
+        {
+            PVRPL_FILEIN_DBGMSG_ERR("Stop PID FLT:0x%x ERROR\n", (*pu8FltID));
+            return E_PVRPL_FILEIN_FAIL;
+        }
+
+        if(MApi_DMX_Close((*pu8FltID)) == DMX_FILTER_STATUS_ERROR)
+        {
+            PVRPL_FILEIN_DBGMSG_ERR("CLOSE PID FLT:0x%x ERROR\n", (*pu8FltID));
+            return E_PVRPL_FILEIN_FAIL;
+        }
+
+        PVRPL_FILEIN_DBGMSG_TRACE("Close FltType:0x%"DTC_MS_U32_x" FltID:0x%x PID:0x%x \n", u32PVRPLFltType,(*pu8FltID),u16PID);
+    }
 
     return E_PVRPL_FILEIN_SUCESS;
 }
 
 EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_SetPlaybackTime(FileInResource *sCurFileInInfo,MS_U32 u32PlaybakTime)
 {
-    if(MApi_DMX_Filein_Eng_SetPlaybackStamp(sCurFileInInfo->eFileInPath, u32PlaybakTime) == DMX_FILTER_STATUS_ERROR)
+    if(MApi_DMX_Filein_Eng_SetPlaybackStamp(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath), u32PlaybakTime) == DMX_FILTER_STATUS_ERROR)
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR>\n",  __FILE__, __FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_ERR("<ERR>\n");
         return E_PVRPL_FILEIN_FAIL;
     }
 
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] u32PlaybakTime:%"DTC_MS_U32_x"\n",__FILE__,__FUNCTION__,__LINE__,u32PlaybakTime));
-
+    PVRPL_FILEIN_DBGMSG_TRACE("u32PlaybakTime:%"DTC_MS_U32_x"\n", u32PlaybakTime);
     return E_PVRPL_FILEIN_SUCESS;
 }
 
@@ -591,86 +734,83 @@ EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_EnableFileInPause(FileInResource *sCurFileIn
 {
     if(bEnable == TRUE)
     {
-        if(MApi_DMX_Filein_Eng_Pause(sCurFileInInfo->eFileInPath) == DMX_FILTER_STATUS_ERROR)
+        if(MApi_DMX_Filein_Eng_Pause(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath)) == DMX_FILTER_STATUS_ERROR)
         {
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR>\n",__FILE__,__FUNCTION__,__LINE__));
+            PVRPL_FILEIN_DBGMSG_ERR("<ERR>\n");
             return E_PVRPL_FILEIN_FAIL;
         }
 
         //@NOTE handle pause resume time
-        MApi_DMX_Filein_Eng_GetPlaybackStamp(sCurFileInInfo->eFileInPath,&sCurFileInInfo->u32PausedTime);
+        if(MApi_DMX_Filein_Eng_GetPlaybackStamp(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath),&sCurFileInInfo->u32PausedTime) == DMX_FILTER_STATUS_ERROR)
+        {
+            PVRPL_FILEIN_DBGMSG_ERR("<ERR>\n");
+            return E_PVRPL_FILEIN_FAIL;
+        }
     }
     else
     {
-        if(MApi_DMX_Filein_Eng_Resume(sCurFileInInfo->eFileInPath) == DMX_FILTER_STATUS_ERROR)
+        MApi_DMX_Filein_Eng_SetPlaybackStamp(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath),sCurFileInInfo->u32PausedTime);
+        if(MApi_DMX_Filein_Eng_Resume(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath)) == DMX_FILTER_STATUS_ERROR)
         {
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR>\n",__FILE__,__FUNCTION__,__LINE__));
+            PVRPL_FILEIN_DBGMSG_ERR("<ERR>\n");
             return E_PVRPL_FILEIN_FAIL;
         }
-
-        MApi_DMX_Filein_Eng_SetPlaybackStamp(sCurFileInInfo->eFileInPath,sCurFileInInfo->u32PausedTime);
     }
 
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] bEnable:%d u32PausedTime:%"DTC_MS_U32_u"\n",__FILE__,__FUNCTION__,__LINE__,bEnable,sCurFileInInfo->u32PausedTime));
-
+    PVRPL_FILEIN_DBGMSG_TRACE("bEnable:%d u32PausedTime:%"DTC_MS_U32_u"\n", bEnable,sCurFileInInfo->u32PausedTime);
     return E_PVRPL_FILEIN_SUCESS;
 }
 
 EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_EnablePlaybackTime(FileInResource *sCurFileInInfo,MS_BOOL bEnable)
 {
-    if(MApi_DMX_Filein_Eng_PlaybackTimeStampEnable(sCurFileInInfo->eFileInPath) == DMX_FILTER_STATUS_ERROR)
+    if(MApi_DMX_Filein_Eng_PlaybackTimeStampEnable(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath)) == DMX_FILTER_STATUS_ERROR)
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR>\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_ERR("<ERR>\n");
         return E_PVRPL_FILEIN_FAIL;
     }
 
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] bEnable:%d\n",  __FILE__, __FUNCTION__,__LINE__,bEnable));
-
+    PVRPL_FILEIN_DBGMSG_TRACE("bEnable:%d\n", bEnable);
     return E_PVRPL_FILEIN_SUCESS;
 }
 
 EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_EnableBypassFileInTime(FileInResource *sCurFileInInfo,MS_BOOL bBypass)
 {
-    MApi_DMX_Filein_Eng_BypassFileInTimeStamp(sCurFileInInfo->eFileInPath,bBypass);
+    MApi_DMX_Filein_Eng_BypassFileInTimeStamp(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath),bBypass);
     sCurFileInInfo->bByPassFileIn = bBypass;
 
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] bBypass:%d\n",__FILE__,__FUNCTION__,__LINE__,bBypass));
-
+    PVRPL_FILEIN_DBGMSG_TRACE("bBypass:%d\n", bBypass);
     return E_PVRPL_FILEIN_SUCESS;
 }
-
 
 EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_FeedFileInBlock(FileInResource *sCurFileInInfo,MS_U32 u32PhyAddr,MS_U32 u32Size)
 {
     if(sCurFileInInfo->bQueFullTag == TRUE)
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] FileInBlock Queue is Full\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_ERR("FileInBlock Queue is Full\n");
         return E_PVRPL_FILEIN_FAIL;
     }
     else
     {
-        // Feed a block at the position of u8QueRear 
-        //printf("[FileIn] (Rear:Addr)(%d:%lx)\n", sCurFileInInfo->u8QueRear, u32PhyAddr);
+        // Feed a block at the position of u8QueRear
+        PVRPL_FILEIN_DBGMSG_TRACE("[FileIn] (Rear:Addr)(%d:%"DTC_MS_U32_x")\n", sCurFileInInfo->u8QueRear, u32PhyAddr);
         sCurFileInInfo->psFileInQueue[sCurFileInInfo->u8QueRear].u32PhyAddr = u32PhyAddr;
         sCurFileInInfo->psFileInQueue[sCurFileInInfo->u8QueRear].u32Size = u32Size;
 
         sCurFileInInfo->u8QueRear = (sCurFileInInfo->u8QueRear+1) % sCurFileInInfo->u8MaxQueNum;
 
         // SW queue is FULL
-        //printf("[FileIn]------- (Q:F) (%d:%d)",sCurFileInInfo->u8QueRear,sCurFileInInfo->u8QueFront);
+        PVRPL_FILEIN_DBGMSG_TRACE("[FileIn]------- (Q:F) (%d:%d)",sCurFileInInfo->u8QueRear,sCurFileInInfo->u8QueFront);
         if(sCurFileInInfo->u8QueRear == sCurFileInInfo->u8QueFront)
         {
-            //printf("[FileIn] -----FULL!!!\n");
+            PVRPL_FILEIN_DBGMSG_TRACE("[FileIn] -----FULL!!!\n");
             sCurFileInInfo->bQueFullTag = TRUE;
         }
         //debug
         //MS_U32 u32viraddr = MsOS_PA2KSEG1(u32PhyAddr);
         //printf("FEED ====> TimeStamp to Queue:0x%x 0x%x 0x%x 0x%x 0x%x\n",((MS_U8 *)u32viraddr)[0],((MS_U8 *)u32viraddr)[1],((MS_U8 *)u32viraddr)[2],((MS_U8 *)u32viraddr)[3],((MS_U8 *)u32viraddr)[4]);
 
-
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] Feed =====> u8QueRear:%d u8QueFront:%d  u8QueRearu32PhyAddr:%"DTC_MS_U32_u" u32Size:%"DTC_MS_U32_u" bQueFullTag:%d\n",__FILE__,__FUNCTION__,__LINE__,sCurFileInInfo->u8QueRear,sCurFileInInfo->u8QueFront,
-           sCurFileInInfo->psFileInQueue[sCurFileInInfo->u8QueRear].u32PhyAddr,sCurFileInInfo->psFileInQueue[sCurFileInInfo->u8QueRear].u32Size,sCurFileInInfo->bQueFullTag));
-
+        PVRPL_FILEIN_DBGMSG_TRACE("Feed =====> u8QueRear:%d u8QueFront:%d  u8QueRearu32PhyAddr:%"DTC_MS_U32_u" u32Size:%"DTC_MS_U32_u" bQueFullTag:%d\n", sCurFileInInfo->u8QueRear,sCurFileInInfo->u8QueFront,
+           sCurFileInInfo->psFileInQueue[sCurFileInInfo->u8QueRear].u32PhyAddr,sCurFileInInfo->psFileInQueue[sCurFileInInfo->u8QueRear].u32Size,sCurFileInInfo->bQueFullTag);
     }
 
     return E_PVRPL_FILEIN_SUCESS;
@@ -684,28 +824,22 @@ EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_ConsumeFileInBlock(FileInResource *sCurFileI
 
 EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_ChangeFileInMode(FileInResource *sCurFileInInfo,PVRPL_FileInMode eFileInMode)
 {
-
     sCurFileInInfo->eQueThreshold = eFileInMode;
-
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d]\n",__FILE__,__FUNCTION__,__LINE__));
-
+    PVRPL_FILEIN_DBGMSG_TRACE("Success\n");
     return E_PVRPL_FILEIN_SUCESS;
 }
 
 //@TODO Is it correct?
-
 EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_ResetFileInEng(FileInResource *sCurFileInInfo)
 {
-    if(MApi_DMX_Filein_Eng_CMDQ_Reset(sCurFileInInfo->eFileInPath) == DMX_FILTER_STATUS_ERROR)
+    if(MApi_DMX_Filein_Eng_CMDQ_Reset(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath)) == DMX_FILTER_STATUS_ERROR)
     {
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR> reset file-in eng fail\n",__FILE__,__FUNCTION__,__LINE__));
-            return E_PVRPL_FILEIN_FAIL;
+        PVRPL_FILEIN_DBGMSG_ERR("<ERR> reset file-in eng fail\n");
+        return E_PVRPL_FILEIN_FAIL;
     }
 
     _FlushFileInQueue(sCurFileInInfo);
-
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d]\n",__FILE__,__FUNCTION__,__LINE__));
-
+    PVRPL_FILEIN_DBGMSG_TRACE("Success\n");
     return E_PVRPL_FILEIN_SUCESS;
 }
 
@@ -713,23 +847,30 @@ EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_CaliberatePlaybackTime(FileInResource *sCurF
 {
     MS_U32 u32FileinTimeStamp, u32PlaybackStamp;
 
-    MApi_DMX_Filein_Eng_GetFileInTimeStamp(sCurFileInInfo->eFileInPath,&u32FileinTimeStamp);
-    MApi_DMX_Filein_Eng_GetPlaybackStamp(sCurFileInInfo->eFileInPath,&u32PlaybackStamp);
+    if(MApi_DMX_Filein_Eng_GetFileInTimeStamp(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath),&u32FileinTimeStamp) == DMX_FILTER_STATUS_ERROR)
+    {
+        PVRPL_FILEIN_DBGMSG_ERR("<ERR> Get file-in timestamp failed\n");
+        return E_PVRPL_FILEIN_FAIL;
+    }
 
+    if(MApi_DMX_Filein_Eng_GetPlaybackStamp(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath),&u32PlaybackStamp) == DMX_FILTER_STATUS_ERROR)
+    {
+        PVRPL_FILEIN_DBGMSG_ERR("<ERR> Get playback timestamp failed\n");
+        return E_PVRPL_FILEIN_FAIL;
+    }
     //forward
     if(bForward == TRUE)
     {
         if ((u32FileinTimeStamp > u32PlaybackStamp) && (u32FileinTimeStamp - u32PlaybackStamp > 0x20000))
         {
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] u32FileinTimeStamp:%"DTC_MS_U32_x" u32PlaybackStamp:%"DTC_MS_U32_x"\n",__FILE__,__FUNCTION__,__LINE__,u32FileinTimeStamp,u32PlaybackStamp));
-
+            PVRPL_FILEIN_DBGMSG_TRACE("u32FileinTimeStamp:%"DTC_MS_U32_x" u32PlaybackStamp:%"DTC_MS_U32_x"\n", u32FileinTimeStamp,u32PlaybackStamp);
             u32PlaybackStamp = u32FileinTimeStamp + 0x1000;
-            MApi_DMX_Filein_Eng_SetPlaybackStamp(sCurFileInInfo->eFileInPath,u32PlaybackStamp);
+            MApi_DMX_Filein_Eng_SetPlaybackStamp(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath),u32PlaybackStamp);
             return E_PVRPL_FILEIN_SUCESS;
         }
         else
         {
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR>\n",__FILE__,__FUNCTION__,__LINE__));
+            PVRPL_FILEIN_DBGMSG_ERR("<ERR>: Forward Timestamp is wrong\n");
             return E_PVRPL_FILEIN_FAIL;
         }
     }
@@ -738,15 +879,14 @@ EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_CaliberatePlaybackTime(FileInResource *sCurF
     {
         if ((u32PlaybackStamp > u32FileinTimeStamp) && (u32PlaybackStamp - u32FileinTimeStamp > 0x20000))
         {
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] u32FileinTimeStamp:%"DTC_MS_U32_x" u32PlaybackStamp:%"DTC_MS_U32_x"\n",__FILE__,__FUNCTION__,__LINE__,u32FileinTimeStamp,u32PlaybackStamp));
-
+            PVRPL_FILEIN_DBGMSG_TRACE("u32FileinTimeStamp:%"DTC_MS_U32_x" u32PlaybackStamp:%"DTC_MS_U32_x"\n", u32FileinTimeStamp,u32PlaybackStamp);
             u32PlaybackStamp = u32FileinTimeStamp + 0x1000;
-            MApi_DMX_Filein_Eng_SetPlaybackStamp(sCurFileInInfo->eFileInPath,u32PlaybackStamp);
+            MApi_DMX_Filein_Eng_SetPlaybackStamp(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath),u32PlaybackStamp);
             return E_PVRPL_FILEIN_SUCESS;
         }
         else
         {
-            PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR>\n",__FILE__,__FUNCTION__,__LINE__));
+            PVRPL_FILEIN_DBGMSG_ERR("<ERR>: Backward Timestamp is wrong\n");
             return E_PVRPL_FILEIN_FAIL;
         }
     }
@@ -756,27 +896,25 @@ EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_CaliberatePlaybackTime(FileInResource *sCurF
 
 EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_GetPlaybackTime(FileInResource *sCurFileInInfo,MS_U32 *pu32PlaybackTime)
 {
-    if(MApi_DMX_Filein_Eng_GetPlaybackStamp(sCurFileInInfo->eFileInPath,pu32PlaybackTime) == DMX_FILTER_STATUS_ERROR)
+    if(MApi_DMX_Filein_Eng_GetPlaybackStamp(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath),pu32PlaybackTime) == DMX_FILTER_STATUS_ERROR)
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR>\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_ERR("<ERR>\n");
         return E_PVRPL_FILEIN_FAIL;
     }
 
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] PlaybackTime:%"DTC_MS_U32_x"\n",__FILE__,__FUNCTION__,__LINE__,*pu32PlaybackTime));
-
+    PVRPL_FILEIN_DBGMSG_TRACE("PlaybackTime:%"DTC_MS_U32_x"\n", *pu32PlaybackTime);
     return E_PVRPL_FILEIN_SUCESS;
 }
 
 EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_GetFileInTime(FileInResource *sCurFileInInfo,MS_U32 *pu32FileInTime)
 {
-    if(MApi_DMX_Filein_Eng_GetFileInTimeStamp(sCurFileInInfo->eFileInPath,pu32FileInTime) == DMX_FILTER_STATUS_ERROR)
+    if(MApi_DMX_Filein_Eng_GetFileInTimeStamp(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath),pu32FileInTime) == DMX_FILTER_STATUS_ERROR)
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR>\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_ERR("<ERR>\n");
         return E_PVRPL_FILEIN_FAIL;
     }
 
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] FileInTime:%"DTC_MS_U32_x"\n",__FILE__,__FUNCTION__,__LINE__,*pu32FileInTime));
-
+    PVRPL_FILEIN_DBGMSG_TRACE("FileInTime:%"DTC_MS_U32_x"\n", *pu32FileInTime);
     return E_PVRPL_FILEIN_SUCESS;
 }
 
@@ -789,13 +927,13 @@ EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_ResetAVFIFO(FileInResource *sCurFileInInfo)
 {
     if(MApi_DMX_AVFifo_Reset((DMX_FILTER_TYPE)(sCurFileInInfo->eAVFIFO.eAudioType), TRUE) == DMX_FILTER_STATUS_ERROR)
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR>\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_ERR("<ERR>: Audio\n");
         return E_PVRPL_FILEIN_FAIL;
     }
 
     if(MApi_DMX_AVFifo_Reset((DMX_FILTER_TYPE)(sCurFileInInfo->eAVFIFO.eVideoType), TRUE) == DMX_FILTER_STATUS_ERROR)
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR>\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_ERR("<ERR>: Video\n");
         return E_PVRPL_FILEIN_FAIL;
     }
 
@@ -803,34 +941,30 @@ EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_ResetAVFIFO(FileInResource *sCurFileInInfo)
 
     if(MApi_DMX_AVFifo_Reset((DMX_FILTER_TYPE)(sCurFileInInfo->eAVFIFO.eAudioType), FALSE) == DMX_FILTER_STATUS_ERROR)
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR>\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_ERR("<ERR>: Audio\n");
         return E_PVRPL_FILEIN_FAIL;
     }
 
     if(MApi_DMX_AVFifo_Reset((DMX_FILTER_TYPE)(sCurFileInInfo->eAVFIFO.eVideoType), FALSE) == DMX_FILTER_STATUS_ERROR)
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR>\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_ERR("<ERR>: Video\n");
         return E_PVRPL_FILEIN_FAIL;
     }
 
-
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d]\n",__FILE__,__FUNCTION__,__LINE__));
+    PVRPL_FILEIN_DBGMSG_TRACE("Success\n");
     return E_PVRPL_FILEIN_SUCESS;
 }
 
 //@NOTE the flush data need to enable bypass and disable pause file-in eng...
 EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_FlushData(FileInResource *sCurFileInInfo)
 {
-    MS_BOOL bLastPsueFileInState = MApi_DMX_Filein_Eng_IsPause(sCurFileInInfo->eFileInPath);
-    MS_BOOL bLastBypassFileInState = sCurFileInInfo->bByPassFileIn;
+    MS_BOOL bLastPsueFileInState = MApi_DMX_Filein_Eng_IsPause(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath));
 
-    PVRPL_FileIn_EnableBypassFileInTime(sCurFileInInfo, TRUE);
     PVRPL_FileIn_EnableFileInPause(sCurFileInInfo, FALSE);
     PVRPL_FileIn_ResetAVFIFO(sCurFileInInfo);
     PVRPL_FileIn_EnableFileInPause(sCurFileInInfo, bLastPsueFileInState);
-    PVRPL_FileIn_EnableBypassFileInTime(sCurFileInInfo, bLastBypassFileInState);
-    
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d]\n",__FILE__,__FUNCTION__,__LINE__));
+
+    PVRPL_FILEIN_DBGMSG_TRACE("Success\n");
     return E_PVRPL_FILEIN_SUCESS;
 }
 
@@ -838,12 +972,11 @@ EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_GetSTC(FileInResource *sCurFileInInfo,MS_U32
 {
     if(MApi_DMX_Stc_Eng_Get(sCurFileInInfo->u8STCEng,pu32Stc32,pu32Stc) == DMX_FILTER_STATUS_ERROR)
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR>\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_ERR("<ERR>\n");
         return E_PVRPL_FILEIN_FAIL;
     }
 
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] u32Stc32:%"DTC_MS_U32_x" u32Stc:%"DTC_MS_U32_x"\n",__FILE__,__FUNCTION__,__LINE__,*pu32Stc32,*pu32Stc));
-
+    PVRPL_FILEIN_DBGMSG_TRACE("u32Stc32:%"DTC_MS_U32_x" u32Stc:%"DTC_MS_U32_x"\n", *pu32Stc32,*pu32Stc);
     return E_PVRPL_FILEIN_SUCESS;
 }
 
@@ -851,56 +984,53 @@ EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_SetSTC(FileInResource *sCurFileInInfo,MS_U32
 {
     if(MApi_DMX_Stc_Eng_Set(sCurFileInInfo->u8STCEng,u32Stc32,u32Stc) == DMX_FILTER_STATUS_ERROR)
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_ERR,printf("[%s][%s][%d] <ERR>\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_ERR("<ERR>\n");
         return E_PVRPL_FILEIN_FAIL;
     }
 
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] u32Stc32:%"DTC_MS_U32_x" u32Stc:%"DTC_MS_U32_x"\n",__FILE__,__FUNCTION__,__LINE__,u32Stc32,u32Stc));
-
+    PVRPL_FILEIN_DBGMSG_TRACE("u32Stc32:%"DTC_MS_U32_x" u32Stc:%"DTC_MS_U32_x"\n", u32Stc32,u32Stc);
     return E_PVRPL_FILEIN_SUCESS;
 }
 
 //@TODO need to fix
 EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_IsFileInEnd(FileInResource *sCurFileInInfo)
 {
-    if((MApi_DMX_Filein_Eng_IsIdle(sCurFileInInfo->eFileInPath)== TRUE) && (PVRPL_FileIn_IsFileInBlockEmpty(sCurFileInInfo) == TRUE))
+    if((MApi_DMX_Filein_Eng_IsIdle(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath))== TRUE) && (PVRPL_FileIn_IsFileInBlockEmpty(sCurFileInInfo) == TRUE))
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] FileEnd\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_TRACE("FileEnd\n");
         return E_PVRPL_FILEIN_SUCESS;
     }
     else
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] Not FileEnd\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_TRACE("Not FileEnd\n");
         return E_PVRPL_FILEIN_FAIL;
     }
 }
 
 MS_BOOL PVRPL_FileIn_IsFileInBlockFull(FileInResource *sCurFileInInfo)
 {
-
     if(sCurFileInInfo->bQueFullTag == TRUE)
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] Queue is Full\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_TRACE("Queue is Full\n");
         return TRUE;
     }
     else
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] Queue is not Full\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_TRACE("Queue is not Full\n");
         return FALSE;
     }
 }
 
 MS_BOOL PVRPL_FileIn_IsFileInBlockEmpty(FileInResource *sCurFileInInfo)
 {
-
     if((sCurFileInInfo->u8QueRear == sCurFileInInfo->u8Feeded2HW))
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] Queue is Empty\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_TRACE("Queue is Empty\n");
         return TRUE;
     }
     else
     {
-        PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d] Queue is not Empty\n",__FILE__,__FUNCTION__,__LINE__));
+        PVRPL_FILEIN_DBGMSG_TRACE("Queue is not Empty\n");
         return FALSE;
     }
 }
@@ -911,14 +1041,14 @@ EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_Exit(FileInResource *sCurFileInInfo)
     MApi_DMX_AVFifo_Reset((DMX_FILTER_TYPE)(sCurFileInInfo->eAVFIFO.eVideoType), TRUE);
     MsOS_FreeMemory(sCurFileInInfo->psFileInQueue,gs32NonCachedPoolID);
     sCurFileInInfo->bInit= FALSE;
-    MApi_DMX_Filein_Eng_Stop(sCurFileInInfo->eFileInPath);
-    PVRPL_FILEIN_DBGMSG(PVRPL_DBG_TRACE,printf("[%s][%s][%d]\n",__FILE__,__FUNCTION__,__LINE__));
+    MApi_DMX_Filein_Eng_Stop(_PVRPL_FileIn_Mapping_DmxFileInPath(sCurFileInInfo->eFileInPath));
+    PVRPL_FILEIN_DBGMSG_TRACE("PVRPL_FileIn_Exit Success\n");
     return E_PVRPL_FILEIN_SUCESS;
 }
 
 void PVRPL_FileIn_SetDBGLevel(FileInResource *sCurFileInInfo,PVRPL_DBGMSG_LEVEL eDBGLevel)
 {
-    //_u32PVRPLFILEINDbgLevel = eDBGLevel;
+    _ePVRPL_FileInDbgLevel = eDBGLevel;
 }
 
 MS_U32 PVRPL_FileIn_Mapping_DmxFltType_To_PVRPLFltType(MS_U32 u32DmxFltType)
@@ -936,18 +1066,22 @@ MS_U32 PVRPL_FileIn_Mapping_DmxFltType_To_PVRPLFltType(MS_U32 u32DmxFltType)
         case DMX_FILTER_TYPE_PES:
             return  PVRPL_FILEIN_FILTER_TYPE_PES;
         default:
-            printf("Wrong DMX Flt Type:%"DTC_MS_U32_x"\n",u32DmxFltType);
+            PVRPL_FILEIN_DBGMSG_ERR("Wrong DMX Flt Type:%"DTC_MS_U32_x"\n",u32DmxFltType);
             return PVRPL_FILEIN_FILTER_TYPE_VIDEO;
     }
 }
 
 EN_PVRPL_FILEIN_STATUS PVRPL_FileIn_GetInfo(FileInResource *sCurFileInInfo, EN_FILEIN_INFO FileInInfo, MS_U32 *u32pmtr, void* structure)
 {
-    MS_U32 u32PCRhigh;
+    MS_U32 u32value = 0;
+
     switch(FileInInfo)
     {
         case EN_FILEIN_INFO_PCR:
-            MApi_DMX_Pcr_Eng_Get(sCurFileInInfo->u8STCEng,&u32PCRhigh,u32pmtr);
+            MApi_DMX_Pcr_Eng_Get(sCurFileInInfo->u8STCEng,&u32value,u32pmtr);
+            break;
+        case EN_FILEIN_INFO_PCR_HIGH_BIT:
+            MApi_DMX_Pcr_Eng_Get(sCurFileInInfo->u8STCEng,u32pmtr,&u32value);
             break;
         default:
             return E_PVRPL_FILEIN_FAIL;

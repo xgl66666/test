@@ -98,6 +98,8 @@
 /// @brief  CPL API
 /// @author MStar Semiconductor,Inc.
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+#include "drvDTC.h"
+
 #include "PVRPL_Audio.h"
 #include "PVRPL_FileIn.h"
 
@@ -111,36 +113,19 @@
 #include "apiHDMITx.h"
 #include "apiDMX.h"
 #include "PVRPL_ResourcePool.h"
-#include "drvDTC.h"
-
 
 
 /****************** START CONSTANT ******************/
-#define PVR_AUDIO_MAX_NUM 2
-
-#define EN_PVR_AUDPLAYERTYPE_NORMAL 0
-#define EN_PVR_AUDPLAYERTYPE_ESFILE 1
-
-#define EN_PVR_AUDPLAYMODE_AVSYNC 0
-#define EN_PVR_AUDPLAYMODE_FREERUN 1
-
-#define DEFAULT_VOLUME 100
+#define PVR_AUDIO_MAX_NUM           2
+#define DEFAULT_VOLUME              100
 /******************* END CONSTANT *******************/
 
-
 /****************** START LOCAL GLOBAL ******************/
-static MS_U8 enAudPlayType = EN_PVR_AUDPLAYERTYPE_NORMAL;
-static MS_U8 enAudPlayMode = EN_PVR_AUDPLAYMODE_AVSYNC;
-static MS_U32 u32PlayTimeInMs=0;
-static MS_BOOL _bAudioInit=FALSE;
+static MS_BOOL _bAudioInit      = FALSE;
 static MS_U32  _u32PVRPLAUDIODbgLevel = PVRPL_DBG_ERR;
-#define PVRPL_AUDIO_DBGMSG(_level,_f) {if(_u32PVRPLAUDIODbgLevel >= (_level)) (_f);}
-
 /******************* END LOCAL GLOBAL *******************/
 
 /****************** START LOCAL FUNCTIONS ******************/
-static MS_BOOL _PVRPL_Audio_SetNormalMode(AUDIO_DEC_ID AudioID);
-static MS_BOOL _PVRPL_Audio_SetTrickMode(AUDIO_DEC_ID AudioID);
 static void _PVRPL_Audio_Set(En_DVB_decSystemType AudioCodecType);
 
 //mutiple audio setting function
@@ -150,41 +135,85 @@ static MS_BOOL _PVRPL_Audio_SetSystem(PVRPL_AUDIO_DEC_INFO *AudioInfo, En_DVB_de
 static MS_BOOL _PVRPL_Audio_STC_Switch(PVRPL_AUDIO_DEC_INFO *AudioInfo, AUDIO_STC_SOURCE eSTC_Source);
 /******************* END LOCAL FUNCTIONS *******************/
 
+#define PVRPL_AUDIO_DBGMSG(_level, msg, args...)    {if(_u32PVRPLAUDIODbgLevel >= (_level)) printf("[%s][%d] " msg, __FUNCTION__, __LINE__, ## args);}
+#define MOD_NAME                                    PVR
+
+#if defined(HB_ERR)
+    #define PVRPL_AUDIO_DBGMSG_ERR(msg, args...)    HB_ERR(msg, ##args)
+#else
+    #define PVRPL_AUDIO_DBGMSG_ERR(msg, args...)    PVRPL_AUDIO_DBGMSG(PVRPL_DBG_ERR, msg, ##args)
+#endif
+
+#if defined(HB_ERR)
+    #define PVRPL_AUDIO_DBGMSG_MUST(msg, args...)    HB_ERR(msg, ##args)
+#else
+    #define PVRPL_AUDIO_DBGMSG_MUST(msg, args...)    PVRPL_AUDIO_DBGMSG(PVRPL_DBG_MUST, msg, ##args)
+#endif
+
+#if defined(HB_INFO)
+    #define PVRPL_AUDIO_DBGMSG_INFO(msg, args...)   HB_INFO(msg, ##args)
+#else
+    #define PVRPL_AUDIO_DBGMSG_INFO(msg, args...)   PVRPL_AUDIO_DBGMSG(PVRPL_DBG_INFO, msg, ##args)
+#endif
+
+#if defined(HB_TRACE)
+    #define PVRPL_AUDIO_DBGMSG_TRACE(msg, args...)  HB_TRACE(msg, ##args)
+#else
+    #define PVRPL_AUDIO_DBGMSG_TRACE(msg, args...)  PVRPL_AUDIO_DBGMSG(PVRPL_DBG_TRACE, msg, ##args)
+#endif
+
+#if defined(HB_DBG)
+    #define PVRPL_AUDIO_DBGMSG_DEBUG(msg, args...)  HB_DBG(msg, ##args)
+#else
+    #define PVRPL_AUDIO_DBGMSG_DEBUG(msg, args...)  PVRPL_AUDIO_DBGMSG(PVRPL_DBG_FUNC, msg, ##args)
+#endif
+
+static AUDIO_DEC_ID _PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(EN_AUDIO_CPL_DEC_ID eDecID);
+static EN_AUDIO_CPL_DEC_ID _AUDIO_DEC_ID_To_PVRPL_AUDIO_CPL_DEC_ID_Mapping(AUDIO_DEC_ID eDecID);
+
 
 // Audio Module
-PVRPL_AUDIO_STATUS PVRPL_Audio_Init(PVRPL_AUDIO_DEC_INFO *AudioInfo,MS_U32 u32ACodec,MS_U8 u8STCEng,void *pAudioID)
+PVRPL_AUDIO_STATUS PVRPL_Audio_Init(PVRPL_AUDIO_DEC_INFO *AudioInfo,PVRPL_ACODEC_TYPE u32ACodec,MS_U8 u8STCEng,void *pAudioID)
 {
-
-#if (DEMO_PVR_V4_TEST == 1)
 //@NOTE Demo_Audio_Init
 // todo  new audio interface needs to add
 // audio get system => adec ID  and return audio Handle to PVR MW
+    PVR_PATH u8PathIdx = GET_PVR_PATH_IDX(AudioInfo->u8PathIdx);
     AUDIO_INIT_INFO SystemInfo;
     AUDIO_OUT_INFO OutputInfo;
     AUDIO_PATH_INFO PathInfo;
-    AudioDecStatus_t stAudioDecStatus;
+    AudioDecStatus_t stAudioDecStatus = {0};
     En_DVB_decSystemType AudioCodecType;
 
     switch (u32ACodec)
     {
-    case 0x01:
-        AudioCodecType = MSAPI_AUD_DVB_MPEG;
-        break;
-    case 0x02:
-        AudioCodecType = MSAPI_AUD_DVB_AC3;
-        break;
-    case 0x03:
-        AudioCodecType = MSAPI_AUD_DVB_AC3P;
-        break;
-    case 0x04:
-        AudioCodecType = MSAPI_AUD_DVB_AAC;
-        break;
-    default:
-        AudioCodecType = MSAPI_AUD_DVB_NONE;
-        break;
+        case PVRPL_ACODEC_MPEG:
+            AudioCodecType = MSAPI_AUD_DVB_MPEG;
+            PVRPL_AUDIO_DBGMSG_TRACE("[Audio] ACodec=%d  [MPEG]\n",AudioCodecType);
+            break;
+        case PVRPL_ACODEC_AC3:
+            AudioCodecType = MSAPI_AUD_DVB_AC3;
+            PVRPL_AUDIO_DBGMSG_TRACE("[Audio] ACodec=%d [AC3]\n",AudioCodecType);
+            break;
+        case PVRPL_ACODEC_AC3P:
+            AudioCodecType = MSAPI_AUD_DVB_AC3P;
+            PVRPL_AUDIO_DBGMSG_TRACE("[Audio] ACodec=%d [AC3P]\n",AudioCodecType);
+            break;
+        case PVRPL_ACODEC_AAC:
+            AudioCodecType = MSAPI_AUD_DVB_AAC;
+            PVRPL_AUDIO_DBGMSG_TRACE("[Audio] ACodec=%d [AAC]\n",AudioCodecType);
+            break;
+        case PVRPL_ACODEC_DRA:
+            AudioCodecType = MSAPI_AUD_DVB_DRA;
+            PVRPL_AUDIO_DBGMSG_TRACE("[Audio] ACodec=%d [DRA]\n",AudioCodecType);
+            break;
+        default:
+            AudioCodecType = MSAPI_AUD_DVB_NONE;
+            PVRPL_AUDIO_DBGMSG_TRACE("[Audio] ACodec=%d [NONE]\n",AudioCodecType);
+            break;
     }
 
-    if (TRUE == _bAudioInit)
+    if (FALSE == _bAudioInit)
     {
         MApi_AUDIO_WritePreInitTable();
 
@@ -206,16 +235,11 @@ PVRPL_AUDIO_STATUS PVRPL_Audio_Init(PVRPL_AUDIO_DEC_INFO *AudioInfo,MS_U32 u32AC
         PathInfo.ScartOut = AUDIO_PATH_SCART1;
         MApi_AUDIO_SetPathInfo(&PathInfo);
 
-        //MW_AUD_GetBinAddress();//expand to next two functions:
 #if (DEMO_AUDIO_R2_MEM_ARCHI_TEST)
-        // if new IC (Keres/Clippers)
         MDrv_AUDIO_SetDspBaseAddr(DSP_ADV, 0, MAD_ADV_BUF_ADR);
 #else
         MDrv_AUDIO_SetDspBaseAddr(DSP_DEC, 0, MAD_DEC_BUF_ADR);
 #endif
-
-        //Todo SE Buffer need to check if added or not  => Keltic not need to add
-        //MDrv_AUDIO_SetDspBaseAddr(DSP_SE,  0, MAD_SE_BUF_ADR);
 
         MApi_AUDIO_Initialize();
         MApi_AUDIO_SetSourceInfo(E_AUDIO_INFO_DTV_IN);
@@ -231,20 +255,19 @@ PVRPL_AUDIO_STATUS PVRPL_Audio_Init(PVRPL_AUDIO_DEC_INFO *AudioInfo,MS_U32 u32AC
     //@TODO
     //add returning handler to pvr mw and pvr using the handler to operate Audio
     AudioInfo->bAInit = TRUE;
-
-    AudioInfo->eDecID = Pool_GetAudioID(AudioInfo->u8PathIdx);
+    AudioInfo->eDecID = _AUDIO_DEC_ID_To_PVRPL_AUDIO_CPL_DEC_ID_Mapping(Pool_GetAudioID(u8PathIdx));
 
     if(MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
     {
-        PVRPL_AUDIO_DBGMSG(PVRPL_DBG_TRACE, printf("[%s][%d] Getfrom demoaudio multi Audio Decode ID:%d Path Idx:%d\n",__FUNCTION__,__LINE__, AudioInfo->eDecID,AudioInfo->u8PathIdx));
+        PVRPL_AUDIO_DBGMSG_TRACE("Getfrom demoaudio multi Audio Decode ID:%d Path Idx:%u\n", AudioInfo->eDecID,u8PathIdx);
 
         //maybe have problem =>
         //1. call audio API function=> AudioInfo->stAudioDecStatus_t be inited
         //2. memset(&(AudioInfo->stAudioDecStatus_t), 0x00, sizeof(AudioDecStatus_t))
         // cause core dump in audio_module destructor function
-        if (MApi_AUDIO_GetDecodeSystem(AudioInfo->eDecID, &stAudioDecStatus) == FALSE)
+        if (MApi_AUDIO_GetDecodeSystem(_PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(AudioInfo->eDecID), &stAudioDecStatus) == FALSE)
         {
-            printf("[%s][%d] MApi_AUDIO_GetDecodeSystem fail!!!\n", __FUNCTION__, __LINE__);
+            PVRPL_AUDIO_DBGMSG_ERR("MApi_AUDIO_GetDecodeSystem fail!!!\n");
             return FALSE;
         }
 
@@ -254,27 +277,24 @@ PVRPL_AUDIO_STATUS PVRPL_Audio_Init(PVRPL_AUDIO_DEC_INFO *AudioInfo,MS_U32 u32AC
         /* init decoder system for main */
         if(stAudioDecStatus.bConnect == FALSE)
         {
-            if(_PVRPL_Audio_OpenDecSys(AudioInfo,&stAudioDecStatus, E_AUDIO_INFO_DTV_IN, MSAPI_AUD_DVB_MPEG) == FALSE)
+            if(_PVRPL_Audio_OpenDecSys(AudioInfo,&stAudioDecStatus, E_AUDIO_INFO_DTV_IN, AudioCodecType) == FALSE)
             {
-                printf("[%s][%d] open decode system (%d) fail.\n", __FUNCTION__, __LINE__,AudioInfo->u8PathIdx);
+                PVRPL_AUDIO_DBGMSG_TRACE("open decode system (%u) fail.\n", u8PathIdx);
             }
         }
 
         //set default channel path, or set output source may be fail
         //DSP1 -> main channel (ch5)
         //DSP2 -> sub channel (ch7)
-        if(AudioInfo->u8PathIdx == 0)
+        if(u8PathIdx == 0)
         {
             MApi_AUDIO_InputSwitch(AUDIO_DSP1_DVB_INPUT, E_AUDIO_GROUP_MAIN);
         }
-        else if(AudioInfo->u8PathIdx == 1)
+        else if(u8PathIdx == 1)
         {
             MApi_AUDIO_InputSwitch(AUDIO_DSP3_DVB_INPUT, E_AUDIO_GROUP_SUB);
         }
-
-
     }
-
 
     //@NOTE Demo_Audio_Play
 
@@ -298,45 +318,31 @@ PVRPL_AUDIO_STATUS PVRPL_Audio_Init(PVRPL_AUDIO_DEC_INFO *AudioInfo,MS_U32 u32AC
 
         if(_PVRPL_Audio_STC_Switch(AudioInfo, eSTC_Source) == FALSE)
         {
-            printf("[%s][%d] PathIdx=%u, set STC fail!!!\n",__FUNCTION__,__LINE__, AudioInfo->u8PathIdx);
+            PVRPL_AUDIO_DBGMSG_TRACE("PathIdx=%u, set STC fail!!!\n", u8PathIdx);
         }
 
-        MApi_AUDIO_SetDecodeCmd(AudioInfo->eDecID, MSAPI_AUD_DVB_DECCMD_PLAY);
-        MApi_AUDIO_SetDecodeCmd(AudioInfo->eDecID, MSAPI_AUD_DVB_DECCMD_AVSYNC);
         MApi_AUDIO_SourceConnect(stAudioDecStatus.eGroup, TRUE);
-
     }
     else
     {
         MApi_AUDIO_SetSystem(AudioCodecType);
-        MApi_AUDIO_SetCommand((En_DVB_decCmdType)MSAPI_AUD_DVB_DECCMD_PLAY);
-        MApi_AUDIO_SetCommand(MSAPI_AUD_DVB_DECCMD_AVSYNC);
     }
-
+    // The audio play is for both program change and set audio track
+    PVRPL_Audio_Play(AudioInfo);
     //TODO
     //need to consider reset audio or audio3D
-    MApi_DMX_AVFifo_Reset(Pool_GetAFifoType(AudioInfo->u8PathIdx), FALSE);
-
-    //printf("[%s][%d] Audio Decode ID:%d \n",__FUNCTION__,__LINE__, AudioInfo->eDecID);
-
-#else
-    AUDIO_DEC_ID *pAudioDecID = (AUDIO_DEC_ID *)pAudioID;
-    AudioInfo->bAInit = TRUE;
-    AudioInfo->eDecID = *pAudioDecID;
-    //printf("[%s][%s][%d] Adec Dec id:%d\n",__FILE__,__FUNCTION__,__LINE__,AudioInfo->eDecID);
-#endif
-
+    MApi_DMX_AVFifo_Reset(Pool_GetAFifoType(u8PathIdx), FALSE);
+    PVRPL_AUDIO_DBGMSG_TRACE("Audio Decode ID:%d \n", AudioInfo->eDecID);
     return PVRPL_AUDIO_STATUS_OK;
 }
 
-
 PVRPL_AUDIO_STATUS PVRPL_Audio_GetInfoWithPARAU64(PVRPL_AUDIO_DEC_INFO *AudioInfo, EN_AUDIO_CPL_INFO eAudioCmd, MS_U64 *u64pmtr, void* structure)
 {
-
+    PVR_PATH u8PathIdx = GET_PVR_PATH_IDX(AudioInfo->u8PathIdx);
     switch(eAudioCmd)
     {
         case EN_AUDIO_CPL_INFO_STCPTS_DIFF:
-            if(AudioInfo->u8PathIdx==0)
+            if(u8PathIdx==0)
             {
                 *u64pmtr = MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_ADEC1_33bit_STCPTS_DIFF);
             }
@@ -346,7 +352,7 @@ PVRPL_AUDIO_STATUS PVRPL_Audio_GetInfoWithPARAU64(PVRPL_AUDIO_DEC_INFO *AudioInf
             }
             break;
         case EN_AUDIO_CPL_INFO_PCMBUFF_LEVEL:
-            if(AudioInfo->u8PathIdx==0)
+            if(u8PathIdx==0)
             {
                 *u64pmtr = MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_ADEC1_pcmBuf_currLevel);
             }
@@ -356,7 +362,7 @@ PVRPL_AUDIO_STATUS PVRPL_Audio_GetInfoWithPARAU64(PVRPL_AUDIO_DEC_INFO *AudioInf
             }
             break;
         case EN_AUDIO_CPL_INFO_ESBUFF_LEVEL:
-            if(AudioInfo->u8PathIdx==0)
+            if(u8PathIdx==0)
             {
                 *u64pmtr = MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_ADEC1_esBuf_currLevel);
             }
@@ -369,7 +375,6 @@ PVRPL_AUDIO_STATUS PVRPL_Audio_GetInfoWithPARAU64(PVRPL_AUDIO_DEC_INFO *AudioInf
             *u64pmtr = MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Is_Audio_Sync);
             break;
         default:
-
             break;
     }
     return PVRPL_AUDIO_STATUS_OK;
@@ -377,10 +382,11 @@ PVRPL_AUDIO_STATUS PVRPL_Audio_GetInfoWithPARAU64(PVRPL_AUDIO_DEC_INFO *AudioInf
 
 PVRPL_AUDIO_STATUS PVRPL_Audio_GetInfoWithPARAU32(PVRPL_AUDIO_DEC_INFO *AudioInfo, EN_AUDIO_CPL_INFO eAudioCmd, MS_U32 *u32pmtr, void* structure)
 {
+    PVR_PATH u8PathIdx = GET_PVR_PATH_IDX(AudioInfo->u8PathIdx);
     switch(eAudioCmd)
     {
         case EN_AUDIO_CPL_INFO_PTS_IN_33BITS:
-            if(AudioInfo->u8PathIdx==0)
+            if(u8PathIdx==0)
             {
                 *u32pmtr=(MS_U32)MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_ADEC1_33bit_PTS);
             }
@@ -390,7 +396,7 @@ PVRPL_AUDIO_STATUS PVRPL_Audio_GetInfoWithPARAU32(PVRPL_AUDIO_DEC_INFO *AudioInf
             }
             break;
         case EN_AUDIO_CPL_INFO_GET_WATER_LEVEL:
-            if(AudioInfo->u8PathIdx==0)
+            if(u8PathIdx==0)
             {
                 *u32pmtr = (MS_U32)MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_ADEC1_esBuf_currLevel);
             }
@@ -401,147 +407,141 @@ PVRPL_AUDIO_STATUS PVRPL_Audio_GetInfoWithPARAU32(PVRPL_AUDIO_DEC_INFO *AudioInf
 
             break;
         case EN_AUDIO_CPL_INFO_GET_TIMESTAMP:
-            MApi_AUDIO_GetAudioInfo2(AudioInfo->eDecID, Audio_infoType_esBuf_req, (void *)u32pmtr);
+            if(MApi_AUDIO_GetAudioInfo2(_PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(AudioInfo->eDecID), Audio_infoType_esBuf_req, (void *)u32pmtr) == FALSE)
+            {
+                PVRPL_AUDIO_DBGMSG_ERR("Get audio information (%u) failed!!!\n", AudioInfo->eDecID);
+                return PVRPL_AUDIO_STATUS_ERROR;
+            }
             break;
         case EN_AUDIO_CPL_INFO_IS_SYNC:
             *u32pmtr = (MS_U32)MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Is_Audio_Sync);
             break;
         default:
-
             break;
     }
-    return PVRPL_AUDIO_STATUS_OK;
 
+    return PVRPL_AUDIO_STATUS_OK;
 }
 
-
-PVRPL_AUDIO_STATUS PVRPL_Audio_SetSpeed(PVRPL_AUDIO_DEC_INFO *AudioInfo, MS_S16 speed)
+PVRPL_AUDIO_STATUS PVRPL_Audio_SetSpeed(PVRPL_AUDIO_DEC_INFO *AudioInfo, MS_S32 s32Speed)
 {
-    if (AudioInfo->u8PathIdx >= PVR_AUDIO_MAX_NUM)
+    PVR_PATH u8PathIdx = GET_PVR_PATH_IDX(AudioInfo->u8PathIdx);
+    if (u8PathIdx >= PVR_AUDIO_MAX_NUM)
     {
-        printf("ERROR PVR_Audio Play , audio path index(%d)!!!\n",AudioInfo->u8PathIdx);
+        PVRPL_AUDIO_DBGMSG_ERR("ERROR PVR_Audio Play , audio path index(%u)!!!\n", u8PathIdx);
         return PVRPL_AUDIO_STATUS_ERROR;
     }
-    AudioInfo->s16ASpeed = speed;
-    if (AudioInfo->s16ASpeed == 0) //Mute audio
+    AudioInfo->s32ASpeed = s32Speed;
+
+    if (AudioInfo->s32ASpeed == 0) //Mute audio
     {
        if(MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
        {
-           MApi_AUDIO_SetDecodeCmd(AudioInfo->eDecID, MSAPI_AUD_DVB_DECCMD_PAUSE);
+           MApi_AUDIO_SetDecodeCmd(_PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(AudioInfo->eDecID), MSAPI_AUD_DVB_DECCMD_PAUSE);
        }
        else
        {
            MApi_AUDIO_PauseDecode();
        }
     }
-    else if (AudioInfo->s16ASpeed == 1) //Mute audio
+    else if (AudioInfo->s32ASpeed == 1) //Mute audio
     {
-        PVRPL_Audio_SetMute(AudioInfo,AudioInfo->u8PathIdx, TRUE);
-        _PVRPL_Audio_SetTrickMode(AudioInfo->eDecID);
+        PVRPL_Audio_SetMute(AudioInfo,u8PathIdx, TRUE);
+        MApi_DMX_AVFifo_Reset(Pool_GetAFifoType(u8PathIdx), TRUE);
     }
     else
     {
-        if (AudioInfo->s16ASpeed== 1000)
+        if (AudioInfo->s32ASpeed== 1000)
         {
-            PVRPL_AUDIO_DBGMSG(PVRPL_DBG_TRACE, printf("Set Normal mode \n"));
-
-            PVRPL_Audio_SetMute(AudioInfo,AudioInfo->u8PathIdx, TRUE);
+            MApi_DMX_AVFifo_Reset(Pool_GetAFifoType(u8PathIdx), FALSE);
+            PVRPL_AUDIO_DBGMSG_TRACE("Set Normal mode \n");
+            PVRPL_Audio_SetMute(AudioInfo,u8PathIdx, TRUE);
 
             AudioInfo->u32StartSyncTime = MsOS_GetSystemTime();
             AudioInfo->bMonitorSyncStatus = MAPI_TRUE;
 
             PVRPL_Audio_Play(AudioInfo);
-            _PVRPL_Audio_SetNormalMode(AudioInfo->eDecID);
         }
         else
         {
-            PVRPL_AUDIO_DBGMSG(PVRPL_DBG_TRACE, printf("Set Trick mode \n"));
-            PVRPL_Audio_SetMute(AudioInfo,AudioInfo->u8PathIdx, TRUE);
-            _PVRPL_Audio_SetTrickMode(AudioInfo->eDecID);
+            PVRPL_AUDIO_DBGMSG_TRACE("Set Trick mode \n");
+            PVRPL_Audio_SetMute(AudioInfo,u8PathIdx, TRUE);
+            MApi_DMX_AVFifo_Reset(Pool_GetAFifoType(u8PathIdx), TRUE);
         }
     }
+
     return PVRPL_AUDIO_STATUS_OK;
-
 }
-
 
 PVRPL_AUDIO_STATUS PVRPL_Audio_Play(PVRPL_AUDIO_DEC_INFO *AudioInfo)
 {
-    if (AudioInfo->u8PathIdx >= PVR_AUDIO_MAX_NUM)
+    if (GET_PVR_PATH_IDX(AudioInfo->u8PathIdx) >= PVR_AUDIO_MAX_NUM)
     {
-        printf("ERROR PVR_Audio Mute , audio path index(%d)!!!\n",AudioInfo->u8PathIdx);
+        PVRPL_AUDIO_DBGMSG_ERR("ERROR PVR_Audio Mute , audio path index(%u)!!!\n",GET_PVR_PATH_IDX(AudioInfo->u8PathIdx));
         return PVRPL_AUDIO_STATUS_ERROR;
     }
-
     //_CHECK_ADEC_VID_FAIL_WITH_RETURN(*AudioID);
-    if(enAudPlayType==EN_PVR_AUDPLAYERTYPE_ESFILE)
+
+    if(AudioInfo->eAVSyncMode == E_PVRPL_AV_SYNC_PCR_MASTER)
     {
+        // AV sync
         if(MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
         {
-            MApi_AUDIO_SetDecodeCmd(AudioInfo->eDecID, MSAPI_AUD_DVB_DECCMD_PLAYFILE);
+            MApi_AUDIO_SetDecodeCmd(_PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(AudioInfo->eDecID), MSAPI_AUD_DVB_DECCMD_AVSYNC);
         }
         else
         {
-            MApi_AUDIO_SetCommand(MSAPI_AUD_DVB_DECCMD_PLAYFILE);
+            MApi_AUDIO_SetCommand(MSAPI_AUD_DVB_DECCMD_AVSYNC);
         }
-        u32PlayTimeInMs=0;
-    }
-    else
-    {
+
+        // Play with audio decoder delay
         if(MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
         {
-            MApi_AUDIO_SetDecodeCmd(AudioInfo->eDecID, MSAPI_AUD_DVB_DECCMD_PLAY);
+            MApi_AUDIO_SetDecodeCmd(_PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(AudioInfo->eDecID), MSAPI_AUD_DVB_DECCMD_PLAY);
         }
         else
         {
             MApi_AUDIO_SetCommand(MSAPI_AUD_DVB_DECCMD_PLAY);
         }
     }
-
-    if(enAudPlayMode==EN_PVR_AUDPLAYMODE_FREERUN)
+    else if((AudioInfo->eAVSyncMode == E_PVRPL_AV_SYNC_AUDIO_MASTER) || (AudioInfo->eAVSyncMode ==  E_PVRPL_AV_SYNC_FREE_RUN))
     {
+        // Free run
+        PVRPL_AUDIO_DBGMSG_TRACE("Audio free run\n");
         if(MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
         {
-            MApi_AUDIO_SetDecodeCmd(AudioInfo->eDecID, MSAPI_AUD_DVB_DECCMD_FREE_RUN);
+            MApi_AUDIO_SetDecodeCmd(_PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(AudioInfo->eDecID), MSAPI_AUD_DVB_DECCMD_FREE_RUN);
         }
         else
         {
             MApi_AUDIO_SetCommand(MSAPI_AUD_DVB_DECCMD_FREE_RUN);
+        }
+
+        // Play without audio decoder delay
+        if(MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
+        {
+            MApi_AUDIO_SetDecodeCmd(_PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(AudioInfo->eDecID), MSAPI_AUD_DVB_DECCMD_PLAYFILETSP);
+        }
+        else
+        {
+            MApi_AUDIO_SetCommand(MSAPI_AUD_DVB_DECCMD_PLAYFILETSP);
         }
     }
     MsOS_DelayTask(20); // 20 ms, suggested by audio team
     return PVRPL_AUDIO_STATUS_OK;
 }
 
-
 PVRPL_AUDIO_STATUS PVRPL_Audio_SetMute(PVRPL_AUDIO_DEC_INFO *AudioInfo,MS_U8 u8PathID, MS_BOOL bMute)
 {
-
     //_CHECK_ADEC_VID_FAIL_WITH_RETURN(*AudioID);
     //AudioDecStatus_t p_AudioDecStatus;
     //MS_BOOL bConnect = !bMute;
-    MS_U32 u32AudParm;
-    AUDIO_DEC_ID AudioID=AU_DEC_INVALID;
-    if(bMute)
-    {
-        u32AudParm = 1;
-    }
-    else
-    {
-        u32AudParm = 0;
-    }
+    MS_U32 u32AudParm = bMute ? 1 : 0;
+    AUDIO_DEC_ID AudioID = AU_DEC_INVALID;
 
     if(MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
     {
-
-        if (AudioInfo->bAInit == FALSE)
-        {
-            AudioID = Pool_GetAudioID(u8PathID);
-        }
-        else
-        {
-            AudioID = AudioInfo->eDecID;
-        }
+        AudioID = AudioInfo->bAInit ? AudioInfo->eDecID : Pool_GetAudioID(u8PathID);
         MApi_AUDIO_SetAudioParam2(AudioID,Audio_ParamType_mute,u32AudParm);
     }
     else
@@ -551,12 +551,11 @@ PVRPL_AUDIO_STATUS PVRPL_Audio_SetMute(PVRPL_AUDIO_DEC_INFO *AudioInfo,MS_U8 u8P
     return PVRPL_AUDIO_STATUS_OK;
 }
 
-
 PVRPL_AUDIO_STATUS PVRPL_Audio_FlushData(PVRPL_AUDIO_DEC_INFO *AudioInfo)
 {
-    if (AudioInfo->u8PathIdx >= PVR_AUDIO_MAX_NUM)
+    if (GET_PVR_PATH_IDX(AudioInfo->u8PathIdx) >= PVR_AUDIO_MAX_NUM)
     {
-        printf("ERROR PVR_Audio Clear , audio path Handler(%d)!!!\n",AudioInfo->u8PathIdx);
+        PVRPL_AUDIO_DBGMSG_ERR("ERROR PVR_Audio Clear , audio path Handler(%d)!!!\n",GET_PVR_PATH_IDX(AudioInfo->u8PathIdx));
         return PVRPL_AUDIO_STATUS_ERROR;
     }
 
@@ -571,84 +570,49 @@ PVRPL_AUDIO_STATUS PVRPL_Audio_FlushData(PVRPL_AUDIO_DEC_INFO *AudioInfo)
     PVRPL_Audio_Play(AudioInfo);
 
     //2. Resume audio cmd
-    PVRPL_Audio_SetSpeed(AudioInfo,AudioInfo->s16ASpeed);
+    PVRPL_Audio_SetSpeed(AudioInfo,AudioInfo->s32ASpeed);
 
     return PVRPL_AUDIO_STATUS_OK;
-
 }
-
 
 PVRPL_AUDIO_STATUS PVRPL_Audio_Stop(PVRPL_AUDIO_DEC_INFO *AudioInfo)
 {
     if(MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
     {
-        MApi_AUDIO_SetDecodeCmd(AudioInfo->eDecID, MSAPI_AUD_DVB_DECCMD_STOP);
+        MApi_AUDIO_SetDecodeCmd(_PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(AudioInfo->eDecID), MSAPI_AUD_DVB_DECCMD_STOP);
     }
     else
     {
         MApi_AUDIO_StopDecode();
     }
+
     return PVRPL_AUDIO_STATUS_OK;
-
 }
-
 
 PVRPL_AUDIO_STATUS PVRPL_Audio_Exit(PVRPL_AUDIO_DEC_INFO *AudioInfo)
 {
-    //_bAudioInit = FALSE;
-    MApi_DMX_AVFifo_Reset(Pool_GetAFifoType(AudioInfo->u8PathIdx), TRUE);
-#if (DEMO_PVR_V4_TEST == 1)
+    MApi_DMX_AVFifo_Reset(Pool_GetAFifoType(GET_PVR_PATH_IDX(AudioInfo->u8PathIdx)), TRUE);
     PVRPL_Audio_Stop(AudioInfo);
-#endif
 
     AudioDecStatus_t stAudioDecStatus;
     if(MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
     {
-        MApi_AUDIO_GetDecodeSystem(AudioInfo->eDecID, &stAudioDecStatus);
+        if(MApi_AUDIO_GetDecodeSystem(_PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(AudioInfo->eDecID), &stAudioDecStatus) == FALSE)
+        {
+            PVRPL_AUDIO_DBGMSG_ERR("Get decode system (%u) failed!!!\n", AudioInfo->eDecID);
+        }
         _PVRPL_Audio_CloseDecSys(AudioInfo,&stAudioDecStatus);
     }
     AudioInfo->bAInit = FALSE;
     _bAudioInit = FALSE;
     return PVRPL_AUDIO_STATUS_OK;
-
 }
 
-/*
-AUDIO_DEC_ID _PVRPL_Audio_GETADEC_ID(MS_U8 u8AudioHandle)
-{
-    if (u8AudioHandle >= PVR_AUDIO_MAX_NUM)
-    {
-        return AU_DEC_ID1;
-    }
-    return stDualAudioInfo[u8AudioHandle].eDecID;
-}
-*/
-MS_BOOL _PVRPL_Audio_SetNormalMode(AUDIO_DEC_ID AudioID)
-{
-    return TRUE;
-}
-
-MS_BOOL _PVRPL_Audio_SetTrickMode(AUDIO_DEC_ID AudioID)
-{
-
-    if(MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
-    {
-         MApi_AUDIO_SetDecodeCmd(AudioID, MSAPI_AUD_DVB_DECCMD_SKIP);
-    }
-    else
-    {
-         MApi_AUDIO_SetCommand(MSAPI_AUD_DVB_DECCMD_SKIP);
-    }
-    return TRUE;
-}
 
 
 void _PVRPL_Audio_Set(En_DVB_decSystemType AudioCodecType)
-
 {
     //MS_U8 u8Volume = DEFAULT_VOLUME;
-    MS_BOOL bMute = FALSE;
-
     if (MSAPI_AUD_DVB_NONE == AudioCodecType)
     {
         return;
@@ -657,18 +621,17 @@ void _PVRPL_Audio_Set(En_DVB_decSystemType AudioCodecType)
     //Set MAD
     //MDrv_AUDIO_SetNormalPath(AUDIO_PATH_MAIN_SPEAKER, AUDIO_SOURCE_DTV, AUDIO_OUTPUT_MAIN_SPEAKER);
 
-
     //PVRPL_Audio_SetMute(u8AudioHandle, bMute);
     //mute line out
-    MApi_AUDIO_SetMute(AUDIO_PATH_MAIN_SPEAKER, bMute);
+    MApi_AUDIO_SetMute(AUDIO_PATH_MAIN_SPEAKER, FALSE);
     //mute HDMI PCM
-    MApi_AUDIO_SetMute(AUDIO_T3_PATH_HDMI, bMute);
+    MApi_AUDIO_SetMute(AUDIO_T3_PATH_HDMI, FALSE);
     //mute HDMI PCM + non PCM
-    MApi_AUDIO_HDMI_Tx_SetMute(bMute);
+    MApi_AUDIO_HDMI_Tx_SetMute(FALSE);
     //mute SPDIF PCM
-    MApi_AUDIO_SetMute(AUDIO_T3_PATH_SPDIF, bMute);
+    MApi_AUDIO_SetMute(AUDIO_T3_PATH_SPDIF, FALSE);
     //mute SPDIF PCM + non PCM
-    MApi_AUDIO_SPDIF_SetMute(bMute);
+    MApi_AUDIO_SPDIF_SetMute(FALSE);
 
     /* TODO START:  HDMITx Audio*/
     MApi_HDMITx_SetAudioOnOff((MS_BOOL)TRUE);
@@ -678,19 +641,17 @@ void _PVRPL_Audio_Set(En_DVB_decSystemType AudioCodecType)
 
     //u8Volume = DEFAULT_VOLUME;
     //appDemo_Audio_SetAbsoluteVolume(&u8Volume);
-
 }
 
-
-#if 1
 MS_BOOL _PVRPL_Audio_OpenDecSys(PVRPL_AUDIO_DEC_INFO *AudioInfo,AudioDecStatus_t *stAudioDecStatus, EN_AUDIO_APP_TYPE eAppType, En_DVB_decSystemType eCodecType)
 {
+    PVR_PATH u8PathIdx = GET_PVR_PATH_IDX(AudioInfo->u8PathIdx);
     AUDIO_SOURCE_INFO_TYPE eSrcType;
     AUDIO_OUTPORT_SOURCE_TYPE eOutSrcType;
 
     if(stAudioDecStatus->bConnect == TRUE)
     {
-        printf("[%s][%d] decode system (%u) already opened!!!\n", __FUNCTION__, __LINE__, AudioInfo->u8PathIdx);
+        PVRPL_AUDIO_DBGMSG_INFO("decode system (%u) already opened!!!\n", u8PathIdx);
         return TRUE;
     }
 
@@ -707,11 +668,11 @@ MS_BOOL _PVRPL_Audio_OpenDecSys(PVRPL_AUDIO_DEC_INFO *AudioInfo,AudioDecStatus_t
         eSrcType = E_AUDIO_INFO_GAME_IN;
     }
 
-    if(AudioInfo->u8PathIdx== 0)
+    if(u8PathIdx== 0)
     {
         eOutSrcType = E_CONNECT_MAIN;
     }
-    else if(AudioInfo->u8PathIdx == 1)
+    else if(u8PathIdx == 1)
     {
         eOutSrcType = E_CONNECT_SUB;
     }
@@ -729,14 +690,18 @@ MS_BOOL _PVRPL_Audio_OpenDecSys(PVRPL_AUDIO_DEC_INFO *AudioInfo,AudioDecStatus_t
     stAudioDecStatus->eGroup = eOutSrcType;
 
     //open main decoder system
-    AudioInfo->eDecID = MApi_AUDIO_OpenDecodeSystem(stAudioDecStatus);
-    if(AudioInfo->eDecID == (EN_AUDIO_CPL_DEC_ID)AU_DEC_INVALID)
+    AudioInfo->eDecID = _AUDIO_DEC_ID_To_PVRPL_AUDIO_CPL_DEC_ID_Mapping(MApi_AUDIO_OpenDecodeSystem(stAudioDecStatus));
+    if(AudioInfo->eDecID == _AUDIO_DEC_ID_To_PVRPL_AUDIO_CPL_DEC_ID_Mapping(AU_DEC_INVALID));
     {
-        PVRPL_AUDIO_DBGMSG(PVRPL_DBG_ERR, printf("[%s][%d] decode system (%u) failed!!!\n", __FUNCTION__, __LINE__, AudioInfo->u8PathIdx));
+        PVRPL_AUDIO_DBGMSG_ERR("decode system (%u) failed!!!\n", u8PathIdx);
         return FALSE;
     }
 
-    MApi_AUDIO_GetDecodeSystem(AudioInfo->eDecID, stAudioDecStatus);
+    if(MApi_AUDIO_GetDecodeSystem(_PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(AudioInfo->eDecID), stAudioDecStatus) == FALSE)
+    {
+        PVRPL_AUDIO_DBGMSG_ERR("Get decode system (%u) failed!!!\n", AudioInfo->eDecID);
+        return FALSE;
+    }
 
     return TRUE;
 }
@@ -745,16 +710,14 @@ MS_BOOL _PVRPL_Audio_CloseDecSys(PVRPL_AUDIO_DEC_INFO *AudioInfo,AudioDecStatus_
 {
     if((AudioInfo->eDecID != EN_AUDIO_CPL_DEC_INVALID) && (stAudioDecStatus->bConnect == TRUE))
     {
-        printf("_PVRPL_Audio_CloseDecSys \n");
+        PVRPL_AUDIO_DBGMSG_TRACE("_PVRPL_Audio_CloseDecSys \n");
         //@NOTE In PVR there is no need to release decode system
         //No need to release Audio decode when mode not change ex: DTV mode to MM mode
         //If call this api the DDI main can't go back live becuase DTV flow does not open dec sys again
         /* MApi_AUDIO_ReleaseDecodeSystem(AudioInfo->eDecID); */
-
         memset(stAudioDecStatus, 0x00, sizeof(AudioDecStatus_t));
         AudioInfo->eDecID = -1;
     }
-
 
     return TRUE;
 }
@@ -764,18 +727,18 @@ MS_BOOL _PVRPL_Audio_SetSystem(PVRPL_AUDIO_DEC_INFO *AudioInfo, En_DVB_decSystem
     AudioDecStatus_t stDecStatus;
     MS_BOOL bret = FALSE;
 
-    bret = MApi_AUDIO_GetDecodeSystem(AudioInfo->eDecID, &stDecStatus);
+    bret = MApi_AUDIO_GetDecodeSystem(_PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(AudioInfo->eDecID), &stDecStatus);
     if (bret == FALSE)
     {
-        printf("[%s][%d] MApi_AUDIO_GetDecodeSystem fail!!!\n", __FUNCTION__, __LINE__);
+        PVRPL_AUDIO_DBGMSG_ERR("MApi_AUDIO_GetDecodeSystem fail!!!\n");
         return FALSE;
     }
 
     stDecStatus.eAudFormat = eCodecType;
-    bret = MApi_AUDIO_SetDecodeSystem(AudioInfo->eDecID, &stDecStatus);
+    bret = MApi_AUDIO_SetDecodeSystem(_PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(AudioInfo->eDecID), &stDecStatus);
     if (bret == FALSE)
     {
-        printf("[%s][%d] MApi_AUDIO_SetDecodeSystem fail!!!\n", __FUNCTION__, __LINE__);
+        PVRPL_AUDIO_DBGMSG_ERR("MApi_AUDIO_SetDecodeSystem fail!!!\n");
         return FALSE;
     }
 
@@ -785,24 +748,53 @@ MS_BOOL _PVRPL_Audio_SetSystem(PVRPL_AUDIO_DEC_INFO *AudioInfo, En_DVB_decSystem
 MS_BOOL _PVRPL_Audio_STC_Switch(PVRPL_AUDIO_DEC_INFO *AudioInfo, AUDIO_STC_SOURCE eSTC_Source)
 {
     AudioDecStatus_t stDecStatus;
-    MS_BOOL bret = FALSE;
+    MS_BOOL bret = MApi_AUDIO_GetDecodeSystem(_PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(AudioInfo->eDecID), &stDecStatus);
 
-    bret = MApi_AUDIO_GetDecodeSystem(AudioInfo->eDecID, &stDecStatus);
     if (bret == FALSE)
     {
-        printf("[%s][%d] MApi_AUDIO_GetDecodeSystem fail!!!\n", __FUNCTION__, __LINE__);
+        PVRPL_AUDIO_DBGMSG_ERR("MApi_AUDIO_GetDecodeSystem fail!!!\n");
         return FALSE;
     }
 
     stDecStatus.eStcSource = eSTC_Source;
-    bret = MApi_AUDIO_SetDecodeSystem(AudioInfo->eDecID, &stDecStatus);
+    bret = MApi_AUDIO_SetDecodeSystem(_PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(AudioInfo->eDecID), &stDecStatus);
     if (bret == FALSE)
     {
-        printf("[%s][%d] MApi_AUDIO_SetDecodeSystem fail!!!\n", __FUNCTION__, __LINE__);
+        PVRPL_AUDIO_DBGMSG_ERR("MApi_AUDIO_SetDecodeSystem fail!!!\n");
         return FALSE;
     }
 
     return TRUE;
 }
 
-#endif
+static AUDIO_DEC_ID _PVRPL_AUDIO_CPL_DEC_ID_To_AUDIO_DEC_ID_Mapping(EN_AUDIO_CPL_DEC_ID eDecID)
+{
+    switch(eDecID)
+    {
+        case EN_AUDIO_CPL_DEC_ID1:
+            return AU_DEC_ID1;
+        case EN_AUDIO_CPL_DEC_ID2:
+            return AU_DEC_ID2;
+        case EN_AUDIO_CPL_DEC_ID3:
+            return AU_DEC_ID3;
+        default:
+            PVRPL_AUDIO_DBGMSG_ERR("Invalid DEC ID  %u\n", eDecID);
+            return AU_DEC_INVALID;
+    }
+}
+
+static EN_AUDIO_CPL_DEC_ID _AUDIO_DEC_ID_To_PVRPL_AUDIO_CPL_DEC_ID_Mapping(AUDIO_DEC_ID eDecID)
+{
+    switch(eDecID)
+    {
+        case AU_DEC_ID1:
+            return EN_AUDIO_CPL_DEC_ID1;
+        case AU_DEC_ID2:
+            return EN_AUDIO_CPL_DEC_ID2;
+        case AU_DEC_ID3:
+            return EN_AUDIO_CPL_DEC_ID3;
+        default:
+            PVRPL_AUDIO_DBGMSG_ERR("Invalid DEC ID  %u\n", eDecID);
+            return EN_AUDIO_CPL_DEC_INVALID;
+    }
+}

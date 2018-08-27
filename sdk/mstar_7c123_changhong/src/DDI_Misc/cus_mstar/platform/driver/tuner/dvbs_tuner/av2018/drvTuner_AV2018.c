@@ -55,7 +55,7 @@ static MS_BOOL AV2018_WriteReg(MS_U8 u8TunerIndex, MS_U8 u8SlaveID, MS_U8 u8Addr
 {
     MS_BOOL bRet=TRUE;
     MS_U8 u8Value[2];
-    HWI2C_PORT ePort;
+    MS_IIC_PORT ePort;
     ePort = getI2CPort(u8TunerIndex);
 
     u8Value[0]=u8Addr;
@@ -72,7 +72,7 @@ static MS_BOOL AV2018_WriteReg(MS_U8 u8TunerIndex, MS_U8 u8SlaveID, MS_U8 u8Addr
 static MS_BOOL AV2018_ReadReg(MS_U8 u8TunerIndex, MS_U8 u8SlaveID, MS_U8 u8Addr, MS_U8 *u8Data)
 {
     MS_BOOL bRet = TRUE;
-    HWI2C_PORT ePort;
+    MS_IIC_PORT ePort;
     ePort = getI2CPort(u8TunerIndex);
 
     bRet &= MDrv_IIC_WriteBytes(ePort, u8SlaveID, 0, 0, 1, &u8Addr);

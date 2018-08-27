@@ -95,53 +95,11 @@
 #define _DRV_DTC_H_
 
 #define UTOPIA 0
-#define UTOPIA2L_32BIT 1
-#define UTOPIA2L_64BIT 2
+#define UTOPIA2L 1
 
 #ifdef UTOPIA_TYPE
-    #if (UTOPIA_TYPE == UTOPIA2L_32BIT)
-        #define DTC_MS_U32_d "d"
-        #define DTC_MS_U32_i "i"
-        #define DTC_MS_U32_x "x"
-        #define DTC_MS_U32_X "X"
-        #define DTC_MS_U32_u "u"
-
-        #define DTC_MS_U64_d "lld"
-        #define DTC_MS_U64_i "lli"
-        #define DTC_MS_U64_x "llx"
-        #define DTC_MS_U64_X "llX"
-        #define DTC_MS_U64_u "llu"
-
-        #define DTC_MS_S32_d "d"
-        #define DTC_MS_S32_i "i"
-        #define DTC_MS_S32_x "x"
-        #define DTC_MS_S32_X "X"
-        #define DTC_MS_S32_u "u"
-
-        #define DTC_MS_S64_d "lld"
-        #define DTC_MS_S64_i "lli"
-        #define DTC_MS_S64_x "llx"
-        #define DTC_MS_S64_X "llX"
-        #define DTC_MS_S64_u "llu"
-
-        #define DTC_MS_PHY_d DTC_MS_U64_d
-        #define DTC_MS_PHY_i DTC_MS_U64_i
-        #define DTC_MS_PHY_x DTC_MS_U64_x
-        #define DTC_MS_PHY_X DTC_MS_U64_X
-        #define DTC_MS_PHY_u DTC_MS_U64_u
-
-        #define DTC_MS_VIRT_d "zd"
-        #define DTC_MS_VIRT_i "zi"
-        #define DTC_MS_VIRT_x "zx"
-        #define DTC_MS_VIRT_X "zX"
-        #define DTC_MS_VIRT_u "zu"
-
-        #define DTC_MS_PHYADDR_d "zd"
-        #define DTC_MS_PHYADDR_i "zi"
-        #define DTC_MS_PHYADDR_x "zx"
-        #define DTC_MS_PHYADDR_X "zX"
-        #define DTC_MS_PHYADDR_u "zu"
-    #elif (UTOPIA_TYPE == UTOPIA2L_64BIT)
+    #if (UTOPIA_TYPE == UTOPIA2L)
+        #if defined (__aarch64__)
         #define DTC_MS_U32_d "d"
         #define DTC_MS_U32_i "i"
         #define DTC_MS_U32_x "x"
@@ -183,6 +141,49 @@
         #define DTC_MS_PHYADDR_x "zx"
         #define DTC_MS_PHYADDR_X "zX"
         #define DTC_MS_PHYADDR_u "zu"
+        #else
+        #define DTC_MS_U32_d "d"
+        #define DTC_MS_U32_i "i"
+        #define DTC_MS_U32_x "x"
+        #define DTC_MS_U32_X "X"
+        #define DTC_MS_U32_u "u"
+
+        #define DTC_MS_U64_d "lld"
+        #define DTC_MS_U64_i "lli"
+        #define DTC_MS_U64_x "llx"
+        #define DTC_MS_U64_X "llX"
+        #define DTC_MS_U64_u "llu"
+
+        #define DTC_MS_S32_d "d"
+        #define DTC_MS_S32_i "i"
+        #define DTC_MS_S32_x "x"
+        #define DTC_MS_S32_X "X"
+        #define DTC_MS_S32_u "u"
+
+        #define DTC_MS_S64_d "lld"
+        #define DTC_MS_S64_i "lli"
+        #define DTC_MS_S64_x "llx"
+        #define DTC_MS_S64_X "llX"
+        #define DTC_MS_S64_u "llu"
+
+        #define DTC_MS_PHY_d DTC_MS_U64_d
+        #define DTC_MS_PHY_i DTC_MS_U64_i
+        #define DTC_MS_PHY_x DTC_MS_U64_x
+        #define DTC_MS_PHY_X DTC_MS_U64_X
+        #define DTC_MS_PHY_u DTC_MS_U64_u
+
+        #define DTC_MS_VIRT_d "zd"
+        #define DTC_MS_VIRT_i "zi"
+        #define DTC_MS_VIRT_x "zx"
+        #define DTC_MS_VIRT_X "zX"
+        #define DTC_MS_VIRT_u "zu"
+
+        #define DTC_MS_PHYADDR_d "zd"
+        #define DTC_MS_PHYADDR_i "zi"
+        #define DTC_MS_PHYADDR_x "zx"
+        #define DTC_MS_PHYADDR_X "zX"
+        #define DTC_MS_PHYADDR_u "zu"
+        #endif
     #else
         #define DTC_MS_U32_d "ld"
         #define DTC_MS_U32_i "li"

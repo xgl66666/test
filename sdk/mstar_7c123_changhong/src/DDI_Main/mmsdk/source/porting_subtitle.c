@@ -28,9 +28,11 @@ extern "C"
 ---------------------------------MARCROs DEBUG APIs----------------------------------------------------
 ---------------------------------------------------------------------------------------------------------
 */
-#define PT_SBTL_FLOW(fmt, arg...)        //printf("\033[1;31m######PortingSubtitle FLOW:[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg)
-#define PT_SBTL_INFO(fmt, arg...)        //printf("\033[1;32m######PortingSubtitle INFO:[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg)
-#define PT_SBTL_ERR(fmt, arg...)         printf("\033[1;33m######PortingSubtitle ERROR:[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg)
+
+#define PT_SBTL_MUST(fmt, arg...)  PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_ERR, fmt, ##arg);
+#define PT_SBTL_ERR(fmt, arg...)   PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_ERR, "\033[1;33m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
+#define PT_SBTL_INFO(fmt, arg...)  PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_INFO, "\033[1;32m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
+#define PT_SBTL_DBG(fmt, arg...)   PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_DBG, "\033[1;31m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
 
 #define AVALIABLE_TIME_TO_FREE_RUN (30)
 #define SBTL_PTHREAD_STACK_SIZE 8*1024 //8K
@@ -181,9 +183,9 @@ typedef struct
     /// InternalSubtitle.
     //void* pSubtitle;
     /// The instance of the subtitle's callback function
-    void* pCallbackClass;
+    //void* pCallbackClass;
     /// Subtitle callback function.
-    pfnMmsdkSubtitleCallback pCallBack;
+    //pfnMmsdkSubtitleCallback pCallBack;
     /// Page ID of DVB subtitle.
     //_ST_MMSDK_SUBTITLE_PAGEID stPageID;
     /// The window info of subtitle.
@@ -210,6 +212,12 @@ static MS_BOOL _scInterlace = FALSE;
 
 static MS_U8 _u8PrintText[LINE_TEXT_MAX] = {0};
 static MS_U16 _u16PrintText[LINE_TEXT_MAX] = {0};
+
+#ifdef AVP_ENABLE
+// Ring buffer to record subtitle data from AVP
+static MMSDK_U32 _gu32CurSubtitleQueueAddr = 0;
+static ST_MMSDK_BUF_INFO _gstSubtitlePESQueue = {0};
+#endif
 
 static void _SubtitleMIUSelection(MS_PHY phyAddr)
 {
@@ -239,11 +247,11 @@ static void _SubMem_Free_Cache(void* pBuf)
 {
     if(pBuf == NULL)
     {
-        printf("\n ----------cache error-----------");
+        PT_SBTL_ERR("\n ----------cache error-----------");
         return;
     }
     if (FALSE == MsOS_FreeMemory(pBuf, PT_SYS_GetCachePoolID()))
-        printf("!!!! ERROR: FreeCachedMem 0x%"DTC_MS_U32_x" fail \n",  (MS_U32)pBuf);
+        PT_SBTL_ERR("!!!! ERROR: FreeCachedMem 0x%"DTC_MS_U32_x" fail \n",  (MS_U32)pBuf);
 }
 static void* _SubMem_Alloc_NonCache(int size)
 {
@@ -253,11 +261,11 @@ static void _SubMem_Free_NonCache(void* pBuf)
 {
     if(pBuf == NULL)
     {
-        printf("\n ----------noncache error-----------");
+        PT_SBTL_ERR("\n ----------noncache error-----------");
         return;
     }
     if (FALSE ==  MsOS_FreeMemory(pBuf, PT_SYS_GetNonCachePoolID()))
-        printf("!!!! ERROR: FreeNoncachedMem 0x%"DTC_MS_U32_x" fail \n",  (MS_U32)pBuf);
+        PT_SBTL_ERR("!!!! ERROR: FreeNoncachedMem 0x%"DTC_MS_U32_x" fail \n",  (MS_U32)pBuf);
 }
 static MS_U32 _SubMem_VA2PA(MS_VIRT addr)
 {
@@ -273,14 +281,14 @@ static MS_U32 _SubMem_PA2VA(MS_PHY addr, int bCached)
 
 static MS_BOOL _SubOSD_Alloc(GFX_BufferInfo* pBufInfo, GFX_Buffer_Format ColorFmt, unsigned char* pu8Buf, unsigned int u16Width, unsigned int u16Height)
 {
-    //printf("__Hummingbird__[%s][%d] u16Width = %d, u16Height = %d\n", __FUNCTION__, __LINE__, u16Width, u16Height);
+    //PT_SBTL_DBG("__Hummingbird__[%s][%d] u16Width = %d, u16Height = %d\n", __FUNCTION__, __LINE__, u16Width, u16Height);
     MS_U8 fbId;
     MS_PHY phyaddr;
     GOP_GwinFBAttr fbAttr;
     fbId = MApi_GOP_GWIN_GetFreeFBID();
-    //printf("pu8Buf = 0x%x", (MS_U32)pu8Buf);
+    //PT_SBTL_DBG("pu8Buf = 0x%x", (MS_U32)pu8Buf);
     phyaddr = MsOS_VA2PA((MS_VIRT)pu8Buf);
-    //printf("pu8Buf(phy) = 0x%lx", phyaddr);
+    PT_SBTL_DBG("pu8Buf(phy) = 0x%lx", phyaddr);
     MApi_GOP_GWIN_CreateFBbyStaticAddr(fbId, 0, 0, u16Width, u16Height, ColorFmt, phyaddr);
 
     _u8SubGWIN_Id = MApi_GOP_GWIN_CreateWin_Assign_FB(E_GOP_Sub, fbId, 0, 0);
@@ -352,7 +360,7 @@ MS_BOOL _check_sc_interlace(void)
     else
     {
         _scInterlace = info.u8Interlace;
-        //printf("[%s][%d]Interlace = %u \n", __FUNCTION__, __LINE__,_scInterlace);
+        //PT_SBTL_DBG("[%s][%d]Interlace = %u \n", __FUNCTION__, __LINE__,_scInterlace);
         return TRUE;
     }
 }
@@ -366,7 +374,7 @@ static MS_BOOL _SubOSD_ResulotionSet(unsigned int u16X, unsigned int u16Y, unsig
             PT_SBTL_ERR("Get MApi_VDEC_EX_GetDispInfo failed \n");
         }
     }
-    //printf("__Hummingbird__[%s][%d] u16X = %d, u16Y = %d, u16W = %d, u16H = %d, u16ScaledW= %d, u16ScaledH = %d\n",
+    //PT_SBTL_DBG("__Hummingbird__[%s][%d] u16X = %d, u16Y = %d, u16W = %d, u16H = %d, u16ScaledW= %d, u16ScaledH = %d\n",
     //        __FUNCTION__, __LINE__, u16X, u16Y, u16W, u16H, u16ScaledW, u16ScaledH);
 
     //Set Stretch win
@@ -379,7 +387,7 @@ static MS_BOOL _SubOSD_ResulotionSet(unsigned int u16X, unsigned int u16Y, unsig
 
 static MS_BOOL _SubOSD_Reset(EN_GOP_DST_TYPE eGOPDstType)
 {
-    //printf("__Hummingbird__[%s][%d]OSD_Reset \n", __FUNCTION__, __LINE__);
+    //PT_SBTL_DBG("__Hummingbird__[%s][%d]OSD_Reset \n", __FUNCTION__, __LINE__);
 
     //Set Init Palette table
     MApi_GOP_GWIN_SwitchGOP(E_GOP_Sub); //U4, only GOP2 support palette table
@@ -399,7 +407,7 @@ static MS_BOOL _SubOSD_Reset(EN_GOP_DST_TYPE eGOPDstType)
     MsOS_DelayTask(1);
     if(GOP_API_SUCCESS != MApi_GOP_GWIN_SetPaletteOpt((GOP_PaletteEntry *)_gopI8Palette, 0, GOP_PALETTE_ENTRY_NUM - 1, E_GOP_PAL_ARGB8888))
     {
-        printf("\nMApi_GOP_GWIN_SetPaletteOpt failed\n");
+        PT_SBTL_ERR("\nMApi_GOP_GWIN_SetPaletteOpt failed\n");
     }
 
     //Set GOP Destination
@@ -414,7 +422,7 @@ static MS_BOOL _SubOSD_Reset(EN_GOP_DST_TYPE eGOPDstType)
 
 static MS_BOOL _SubOSD_Enable(int bEnable)
 {
-    //printf("__Hummingbird__[%s][%d] OSD_Enable = %d\n", __FUNCTION__, __LINE__, bEnable);
+    //PT_SBTL_DBG("__Hummingbird__[%s][%d] OSD_Enable = %d\n", __FUNCTION__, __LINE__, bEnable);
     MApi_GFX_FlushQueue();
     //MApi_GOP_GWIN_SetForceWrite(TRUE);
     MApi_GOP_GWIN_SwitchGOP(E_GOP_Sub); //U4, only GOP2 support palette table
@@ -427,7 +435,7 @@ static MS_BOOL _SubOSD_PaletteSet(unsigned char* pPalArray, unsigned char u32Pal
 {
     GOP_PaletteEntry _gopI8Palette[GOP_PALETTE_ENTRY_NUM];
 
-    //printf("__Hummingbird__[%s][%d] OSD_PaletteSet\n", __FUNCTION__, __LINE__);
+    //PT_SBTL_DBG("__Hummingbird__[%s][%d] OSD_PaletteSet\n", __FUNCTION__, __LINE__);
     // Wait the REGDMA data is really write to memory, then just ask GOP to update.
     // Testcase: \\mslab7369_2\Streams\China\From_Yurian\MTC2\9\Winter Hill_Ch-66_1a.ts
     MsOS_DelayTask(1);
@@ -446,14 +454,14 @@ static MS_BOOL _SubOSD_PaletteSet(unsigned char* pPalArray, unsigned char u32Pal
         _gopI8Palette[u16Loop].RGB.u8R =  pst_colour[0].u8_R;
         _gopI8Palette[u16Loop].RGB.u8G =  pst_colour[0].u8_G;
         _gopI8Palette[u16Loop].RGB.u8B =  pst_colour[0].u8_B;
-        //printf("Get palette[%d] = (0x%x, 0x%x, 0x%x, 0x%x)\n", u16Loop + u32PalOffset,
+        //PT_SBTL_DBG("Get palette[%d] = (0x%x, 0x%x, 0x%x, 0x%x)\n", u16Loop + u32PalOffset,
         //       0xFF - pst_colour[0].u8_A, pst_colour[0].u8_R, pst_colour[0].u8_G, pst_colour[0].u8_B);
     }
 
     MApi_GOP_GWIN_SwitchGOP(E_GOP_Sub); //U4, only GOP2 support palette table
     MApi_GOP_GWIN_SetPaletteOpt(_gopI8Palette, u32PalOffset, u32PalOffset + u32PalCount - 1, E_GOP_PAL_ARGB8888);
 
-    //printf("Set palette %x to %x\n", u32PalOffset, u32PalOffset + u32PalCount - 1);
+    //PT_SBTL_DBG("Set palette %x to %x\n", u32PalOffset, u32PalOffset + u32PalCount - 1);
 #else
     int i;
     for (i=0; i<GOP_PALETTE_ENTRY_NUM; i++)
@@ -473,7 +481,7 @@ static MS_BOOL _SubOSD_PaletteSet(unsigned char* pPalArray, unsigned char u32Pal
     GOP_PaletteEntry _get_gopI8Palette[GOP_PALETTE_ENTRY_NUM];
     MS_U32 palette_clr;
 
-    printf("\n");
+    PT_SBTL_DBG("\n");
 
     for (u16Loop = u32PalOffset; u16Loop < u32PalOffset + u32PalCount; u16Loop++)
     {
@@ -482,14 +490,14 @@ static MS_BOOL _SubOSD_PaletteSet(unsigned char* pPalArray, unsigned char u32Pal
         _get_gopI8Palette[u16Loop].RGB.u8R =  (palette_clr >> 16) & 0xFF;
         _get_gopI8Palette[u16Loop].RGB.u8G =  (palette_clr >> 8) & 0xFF;
         _get_gopI8Palette[u16Loop].RGB.u8B =  (palette_clr) & 0xFF;
-        printf(" Get palette table[%x] = (%x, %x, %x, %x)\n", u16Loop,
+        PT_SBTL_DBG(" Get palette table[%x] = (%x, %x, %x, %x)\n", u16Loop,
                _get_gopI8Palette[u16Loop].RGB.u8A, _get_gopI8Palette[u16Loop].RGB.u8R,
                _get_gopI8Palette[u16Loop].RGB.u8G, _get_gopI8Palette[u16Loop].RGB.u8B);
     }
 
     MApi_GOP_GWIN_Enable(_u8SubGWIN_Id, TRUE);
 
-    printf("\n");
+    PT_SBTL_DBG("\n");
 
 #endif
 
@@ -497,6 +505,36 @@ static MS_BOOL _SubOSD_PaletteSet(unsigned char* pPalArray, unsigned char u32Pal
 }
 
 #ifdef DVB_SUBTITLE_V2
+
+static GFX_Buffer_Format _PT_Subtitle_ConvertFmt(MsMW_ColorFmt eColorFmt)
+{
+    switch(eColorFmt)
+    {
+        case MsMW_CLRFMT_I2:
+            return GFX_FMT_I2;
+        case MsMW_CLRFMT_I8:
+            return GFX_FMT_I8;
+        case MsMW_CLRFMT_ARGB4444:
+            return GFX_FMT_ARGB4444;
+        case MsMW_CLRFMT_ARGB8888:
+            return GFX_FMT_ARGB8888;
+        default:
+            return 0xFFFF;
+    }
+}
+
+static GFX_ColorKeyMode _PT_Subtitle_ConvertKeyMode(MsMW_ColorKeyMode eColorKeyMode)
+{
+    switch(eColorKeyMode)
+    {
+        case MsMW_CK_OP_EQUAL:
+            return CK_OP_EQUAL;
+        case MsMW_CK_OP_NOT_EQUAL:
+            return CK_OP_NOT_EQUAL;
+        default:
+            return 0xFFFF;
+    }
+}
 
 static MS_BOOL _GFX_CheckSeg(
     const MS_U16 *pu16Src,
@@ -571,7 +609,7 @@ static MS_BOOL _GFX_CheckSeg(
         }
     }
 
-    PT_SBTL_FLOW("NeedSeg (%d) : from (%d) to (%d) \n", bNeedSeg, *pu16Src, *pu16Dst);
+    PT_SBTL_DBG("NeedSeg (%d) : from (%d) to (%d) \n", bNeedSeg, *pu16Src, *pu16Dst);
 
     return bNeedSeg;
 }
@@ -888,7 +926,7 @@ GFX_Result _GFX_BitBlt(GFX_DrawRect *ptDrawRect, ST_MMSDK_GFX_BitbltParam *ptPar
                 break;
             }
 
-            PT_SBTL_FLOW("allocate tmp buf addr : 0x%"DTC_MS_U32_x"\n", u32ExtDstAddr);
+            PT_SBTL_DBG("allocate tmp buf addr : 0x%"DTC_MS_U32_x"\n", u32ExtDstAddr);
             phyTmpDstVAddr = MEM_ALIGN(u32TmpSrcAlign, u32ExtDstAddr);
             memset((void*)(MS_PHYADDR)phyTmpDstVAddr, 0, (u32TmpDstW*u32TmpDstH*u8TmpSrcPixelSize));
 
@@ -959,7 +997,7 @@ GFX_Result _GFX_BitBlt(GFX_DrawRect *ptDrawRect, ST_MMSDK_GFX_BitbltParam *ptPar
         //protect to avoid out of range
         v1.x = (v1.x > u32TmpDstW)?u32TmpDstW:v1.x;
         v1.y = (v1.y > u32TmpDstH)?u32TmpDstH :v1.y;
-        PT_SBTL_FLOW("Clip range (%d, %d -> %d, %d )\n",v0.x,v0.y,v1.x,v1.y);
+        PT_SBTL_DBG("Clip range (%d, %d -> %d, %d )\n",v0.x,v0.y,v1.x,v1.y);
         if((eRet = MApi_GFX_SetClip(&v0, &v1)) != GFX_SUCCESS)
         {
             break;
@@ -973,7 +1011,7 @@ GFX_Result _GFX_BitBlt(GFX_DrawRect *ptDrawRect, ST_MMSDK_GFX_BitbltParam *ptPar
 
         u32DrawFlag = ((stTmpSrcRect.width== stTmpDstRect.width) && (stTmpSrcRect.height== stTmpDstRect.height))?(GFXDRAW_FLAG_DEFAULT):(GFXDRAW_FLAG_SCALE);
 
-        PT_SBTL_FLOW("bitblit from src to dst  ( %d, %d, %d, %d) -> ( %d, %d, %d, %d)\n",
+        PT_SBTL_DBG("bitblit from src to dst  ( %d, %d, %d, %d) -> ( %d, %d, %d, %d)\n",
             bitbltInfo.srcblk.x,bitbltInfo.srcblk.y,bitbltInfo.srcblk.width,bitbltInfo.srcblk.height,
             bitbltInfo.dstblk.x,bitbltInfo.dstblk.y,bitbltInfo.dstblk.width,bitbltInfo.dstblk.height);
 
@@ -1087,7 +1125,7 @@ static MS_BOOL _SubRnd_GetDispSize(MS_U16 *pu16X, MS_U16 *pu16Y, MS_U16 *pu16Wid
 
     eGOPSelType = _SubRnd_GetGOPPath(eDst);
 
-    PT_SBTL_FLOW("GOP destination: %d\n", eGOPSelType);
+    PT_SBTL_DBG("GOP destination: %d\n", eGOPSelType);
 
     if((E_VDEC_EX_OK == MApi_VDEC_EX_GetDispInfo(&StreamId, &Dispinfo)) &&
         (0 != Dispinfo.u16HorSize) &&
@@ -1122,6 +1160,7 @@ static MS_BOOL _SubRnd_GetDispSize(MS_U16 *pu16X, MS_U16 *pu16Y, MS_U16 *pu16Wid
 static MsMW_WinHandle _SubRnd_CreateWindow(MsMW_RndWinAttr *ptWinAttr, Sub_ObjHandle hSubObj)
 {
     MS_U8 u8Idx;
+
     ST_MMSDK_SUBTITLE_WININFO *pstWndData;
     SUB_OSD_DST eGOPDst;
     GFX_Buffer_Format eColorFmt;
@@ -1136,7 +1175,7 @@ static MsMW_WinHandle _SubRnd_CreateWindow(MsMW_RndWinAttr *ptWinAttr, Sub_ObjHa
 
     pstWndData->bDisplayAble = ptWinAttr->bDisplayAble;
 
-    /* color format mapping */
+    // color format mapping
     switch(ptWinAttr->eColor)
     {
     case MsMW_CLRFMT_I2:eColorFmt = GFX_FMT_I2;break;
@@ -1150,7 +1189,6 @@ static MsMW_WinHandle _SubRnd_CreateWindow(MsMW_RndWinAttr *ptWinAttr, Sub_ObjHa
     if(ptWinAttr->bDisplayAble)
     {
         MS_ASSERT((void*)(ptWinAttr->virtBufAddr) != NULL);
-
         if (0 == _SubOSD_DestinationSet(&eGOPDst))
         {
             PT_SBTL_ERR("OSD resulotion set fail\n");
@@ -1230,7 +1268,7 @@ static MS_BOOL _SubRnd_Bitblt(MsMW_DrawRect *pstRect, MsMW_BitbltParam *pstParam
     GFX_DrawRect stRect;
     ST_MMSDK_GFX_BitbltParam stParam={0};
 
-    PT_SBTL_FLOW("u8SrcWinIdx = %d, u8DstWinIdx = %d\n", u8SrcWinIdx, u8DstWinIdx);
+    PT_SBTL_DBG("u8SrcWinIdx = %d, u8DstWinIdx = %d\n", u8SrcWinIdx, u8DstWinIdx);
 
     if ((u8SrcWinIdx >= SUB_MAX_SUPPORT_WIN) ||
         (u8DstWinIdx >= SUB_MAX_SUPPORT_WIN) ||
@@ -1249,7 +1287,7 @@ static MS_BOOL _SubRnd_Bitblt(MsMW_DrawRect *pstRect, MsMW_BitbltParam *pstParam
         /* get display size */
         _SubRnd_GetDispSize(&u16DispX, &u16DispY, &u16DispWidth, &u16DispHeight);
 
-        PT_SBTL_FLOW(
+        PT_SBTL_DBG(
             "display info:\n"
             "  u16DispX = %d\n"
             "  u16DispY = %d\n"
@@ -1296,17 +1334,17 @@ static MS_BOOL _SubRnd_Bitblt(MsMW_DrawRect *pstRect, MsMW_BitbltParam *pstParam
 
     /* src/dst color key mapping */
     stParam.stSrcClrKey.bEnable = pstParam->stSrcClrKey.bEnable;
-    stParam.stSrcClrKey.eOpMode = pstParam->stSrcClrKey.eOpMode;
-    stParam.stSrcClrKey.eFmt = pstParam->stSrcClrKey.eFmt;
+    stParam.stSrcClrKey.eOpMode = _PT_Subtitle_ConvertKeyMode(pstParam->stSrcClrKey.eOpMode);
+    stParam.stSrcClrKey.eFmt = _PT_Subtitle_ConvertFmt(pstParam->stSrcClrKey.eFmt);
     stParam.stSrcClrKey.pvColorStart = pstParam->stSrcClrKey.pvColorStart;
     stParam.stSrcClrKey.pvColorEnd = pstParam->stSrcClrKey.pvColorEnd;
 
     stParam.stDstClrKey.bEnable = pstParam->stDstClrKey.bEnable;
-    stParam.stDstClrKey.eOpMode = pstParam->stDstClrKey.eOpMode;
-    stParam.stDstClrKey.eFmt = pstParam->stDstClrKey.eFmt;
+    stParam.stDstClrKey.eOpMode = _PT_Subtitle_ConvertKeyMode(pstParam->stDstClrKey.eOpMode);
+    stParam.stDstClrKey.eFmt = _PT_Subtitle_ConvertFmt(pstParam->stDstClrKey.eFmt);
     stParam.stDstClrKey.pvColorStart = pstParam->stDstClrKey.pvColorStart;
     stParam.stDstClrKey.pvColorEnd = pstParam->stDstClrKey.pvColorEnd;
-    PT_SBTL_FLOW("\n");
+    PT_SBTL_DBG("\n");
 
     /* palette mapping */
     if (pstParam->stPalette.pPalArray)
@@ -1597,7 +1635,7 @@ static void _Subtitle_DrawText(MS_U16 *pu16Text, MS_U16 u16Len)
             break;
         }
     }
-    printf("%s\n", _u8PrintText);
+    PT_SBTL_MUST("%s\n", _u8PrintText);
 }
 
 static void _SubtitleDecoderTaskProcess(_ST_MMSDK_SUBTITLE_PT * pSubtitle )
@@ -1686,9 +1724,9 @@ static void _SubtitleDecoderTaskProcess(_ST_MMSDK_SUBTITLE_PT * pSubtitle )
                         memset((void *)_u16PrintText, 0, sizeof(MS_U16)*LINE_TEXT_MAX);
                         if(_Subtitle_UTF8StingCoverUSC2String((MS_U8*)(u32SubBuff + stTag.u32SubtitlePos), _u16PrintText, LINE_TEXT_MAX) != FALSE)
                         {
-                            printf("[MMSDK Subtitle] Start.\n");
+                            PT_SBTL_MUST("[MMSDK Subtitle] Start.\n");
                             _Subtitle_DrawText(_u16PrintText, LINE_TEXT_MAX);
-                            printf("[MMSDK Subtitle] End.\n");
+                            PT_SBTL_MUST("[MMSDK Subtitle] End.\n");
                         }
                     }
                 }
@@ -2014,12 +2052,7 @@ MMSDK_BOOL PT_Subtitle_Initialize(void* pClass,  const pfnMmsdkSubtitleCallback 
 {
     PT_SBTL_INFO("PT_Subtitle_Initialize Runing\n");
 
-    if(_pstNewSubtitleItem != NULL)
-    {
-        _pCallBack = _pstNewSubtitleItem->pCallBack;
-        _pMMSDKClass = _pstNewSubtitleItem->pCallbackClass;
-    }
-    else
+    if(_pstNewSubtitleItem == NULL)
     {
         _pCallBack = pCallback;
         _pMMSDKClass = pClass;
@@ -2269,7 +2302,7 @@ MMSDK_BOOL PT_SubtitleInit(const ST_MMSDK_SUBTITLE_INIT_INFO *pstInfo)
 MMSDK_BOOL PT_SubtitlePush(const ST_MMSDK_SUBTITLE_PUSH_INFO *pstInfo)
 {
     MMSDK_BOOL bRet = FALSE;
-    PT_SBTL_INFO("PT_SubtitlePush Enters with[%d]--Addr[%x]\n",pstInfo->eType, (unsigned int)pstInfo->u32QueueStart);
+    PT_SBTL_INFO("PT_SubtitlePush Enters with[0x%x]--Addr[0x%x] Size[0x%x]\n",pstInfo->eType, (unsigned int)pstInfo->u32QueueStart, (unsigned int)pstInfo->u32QueueSize);
 
     switch(pstInfo->eType)
     {
@@ -2546,15 +2579,31 @@ MMSDK_BOOL PT_SubtitleDeInit(const ST_MMSDK_SUBTITLE_INIT_INFO *pstInfo)
 }
 
 #ifdef AVP_ENABLE
+
+static MMSDK_U32 _PT_New_SubtitleQueueGetAddr(MMSDK_U32 u32Len)
+{
+    MMSDK_U32 u32Ret =0;
+
+    if (_gu32CurSubtitleQueueAddr + u32Len > _gstSubtitlePESQueue.u32VirtualAddr + _gstSubtitlePESQueue.u32Size)
+    {
+        _gu32CurSubtitleQueueAddr = _gstSubtitlePESQueue.u32VirtualAddr;
+    }
+
+    u32Ret = _gu32CurSubtitleQueueAddr;
+    _gu32CurSubtitleQueueAddr += u32Len;
+
+    return u32Ret;
+}
+
 EN_MMSDK_SUBTITLE_RESULT PT_New_SubtitleInit(PT_SUBTITLEITEM* pSubtitleItem, const ST_MMSDK_SUBTITLE_INIT_INFO *pstInfo, const MMSDK_U8 u8DisplayWin, void* pClass, const pfnMmsdkSubtitleCallback pCallback)
 {
-    return E_MMSDK_SUBTITLE_NOT_SUPPORT;
-/*
-     if(pSubtitleItem == NULL)
-     {
-         PT_SBTL_ERR("Subtitle Item error!!!");
-         return E_MMSDK_SUBTITLE_INIT_FAIL;
-     }
+    MMSDK_BOOL bRet = E_MMSDK_SUBTITLE_INIT_UNKNOW_ERROR;
+
+    if(pSubtitleItem == NULL)
+    {
+        PT_SBTL_ERR("Subtitle Item error!!!");
+        return E_MMSDK_SUBTITLE_INIT_FAIL;
+    }
 
     if(u8DisplayWin == 0 || u8DisplayWin == 3)
     {
@@ -2566,15 +2615,24 @@ EN_MMSDK_SUBTITLE_RESULT PT_New_SubtitleInit(PT_SUBTITLEITEM* pSubtitleItem, con
         }
         memset(pSubItem,0,sizeof(_ST_MMSDK_SUBTITLEITEM));
 
-        pSubItem->pCallbackClass = pClass;
-        pSubItem->pCallBack = pCallback;
         pSubItem->u8DisplayWin = u8DisplayWin;
 
         *pSubtitleItem = (void*)pSubItem;
         _pstNewSubtitleItem = *pSubtitleItem;
+        _pCallBack = pCallback;
+        _pMMSDKClass = pClass;
     }
 
-    MMSDK_BOOL bRet = E_MMSDK_SUBTITLE_INIT_UNKNOW_ERROR;
+    if(PT_SYS_GetMmapInfo(&_gstSubtitlePESQueue, E_MMSDK_BUF_SUBTITLE_PUSH, 0) != 0)
+    {
+        _gu32CurSubtitleQueueAddr = _gstSubtitlePESQueue.u32VirtualAddr;
+    }
+    else
+    {
+        PT_SBTL_ERR("Get E_MMSDK_BUF_SUBTITLE_PUSH FAIL\n");
+        return bRet;
+    }
+
     bRet = (*pSubtitleItem != NULL) ? PT_SubtitleInit(pstInfo) : E_MMSDK_SUBTITLE_INIT_FAIL;
 
     if(bRet == E_MMSDK_SUBTITLE_INIT_UNKNOW_ERROR)
@@ -2585,13 +2643,11 @@ EN_MMSDK_SUBTITLE_RESULT PT_New_SubtitleInit(PT_SUBTITLEITEM* pSubtitleItem, con
     }
 
     return bRet;
-*/
 }
 
 MMSDK_BOOL PT_New_SubtitleDeInit(PT_SUBTITLEITEM* pSubtitleItem, const ST_MMSDK_SUBTITLE_INIT_INFO *pstInfo)
 {
-    return FALSE;
-/*
+
      if(pSubtitleItem == NULL)
      {
          PT_SBTL_ERR("Subtitle Item error!!!");
@@ -2610,43 +2666,43 @@ MMSDK_BOOL PT_New_SubtitleDeInit(PT_SUBTITLEITEM* pSubtitleItem, const ST_MMSDK_
     }
 
     return bRet;
-*/
 }
 
 MMSDK_BOOL PT_New_SubtitlePush(PT_SUBTITLEITEM pSubtitleItem, const ST_MMSDK_SUBTITLE_PUSH_INFO *pstInfo)
 {
-    return FALSE;
-/*
     _ST_MMSDK_SUBTITLEITEM* pItem = (_ST_MMSDK_SUBTITLEITEM*)pSubtitleItem;
     MMSDK_BOOL bRet = FALSE;
-    bRet = (pItem != NULL) ? PT_SubtitlePush(pstInfo) : FALSE;
+
+    ST_MMSDK_SUBTITLE_PUSH_INFO stPushInfo = {0};
+    MMSDK_U32 u32PESAddr = 0;
+
+    memcpy(&stPushInfo, pstInfo, sizeof(ST_MMSDK_SUBTITLE_PUSH_INFO));
+
+    u32PESAddr = _PT_New_SubtitleQueueGetAddr(stPushInfo.u32QueueSize);
+    memcpy((char*)u32PESAddr, (char*)stPushInfo.u32QueueStart, stPushInfo.u32QueueSize);
+    stPushInfo.u32QueueStart = u32PESAddr;
+
+    bRet = (pItem != NULL) ? PT_SubtitlePush(&stPushInfo) : FALSE;
 
     return bRet;
-*/
 }
 
 MMSDK_BOOL PT_New_SubtitleSetTrack(PT_SUBTITLEITEM pSubtitleItem, const ST_MMSDK_SBUTITLE_SET_TRACK_INFO *pstInfo)
 {
-    return FALSE;
-/*
     _ST_MMSDK_SUBTITLEITEM* pItem = (_ST_MMSDK_SUBTITLEITEM*)pSubtitleItem;
     MMSDK_BOOL bRet = FALSE;
     bRet = (pItem != NULL) ? PT_SubtitleSetTrack(pstInfo) : FALSE;
 
     return bRet;
-*/
 }
 
 MMSDK_BOOL PT_New_SubtitleDisplay(PT_SUBTITLEITEM pSubtitleItem, const ST_MMSDK_SUBTITLE_INIT_INFO *pstInfo)
 {
-    return FALSE;
-/*
     _ST_MMSDK_SUBTITLEITEM* pItem = (_ST_MMSDK_SUBTITLEITEM*)pSubtitleItem;
     MMSDK_BOOL bRet = FALSE;
     bRet = (pItem != NULL) ? PT_SubtitleDisplay(pstInfo) : FALSE;
 
     return bRet;
-*/
 }
 #endif
 

@@ -250,6 +250,10 @@ typedef enum
     E_MMSDK_BUF_DV_XC,
     /// video sharememory extend buf
     E_MMSDK_BUF_VDPLAYER_SHAREMEMORY_EXT,
+    /// OMX inputport buffer
+    E_MMSDK_BUF_OMX_INPUTPORT,
+    /// FBL Scaler buffer information, only for preview mode
+    E_MMSDK_BUF_XC_MAIN_FBL_PREVIEW,
     /// number of buffer
     E_MMSDK_BUF_NUM,
 }EN_MMSDK_BUF_ID;

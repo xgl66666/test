@@ -81,7 +81,7 @@
 #include "dibcom_i2c_app.h"
 #include "MsCommon.h"
 #include "drvIIC.h"
-
+#if 0//currently not using
 extern MS_U8 g_debugi2cdata;
 
 
@@ -444,4 +444,4 @@ MS_U8 dib0090_write_regs( MS_U8 subaddr, MS_U16 *i2c_rx_buf, int num )
     }
     return 0;
 }
-
+#endif

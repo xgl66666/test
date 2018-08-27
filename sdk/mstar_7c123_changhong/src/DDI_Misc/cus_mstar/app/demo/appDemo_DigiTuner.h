@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -123,5 +123,10 @@ MS_BOOL appDemo_Frontend_Init(const MS_U32 *u32TunerIndex);
 MS_BOOL appDemo_Frontend_HWReset(const MS_U32 *u32TunerIndex);
 MS_BOOL appDemo_Frontend_FEListShow(void);
 MS_BOOL appDemo_Frontend_SetDMD_PIDFlt(const MS_U32 *pu32PID, const MS_U32 *pu32Drop, const MS_U32 *pu32PIDRemap);
-
+MS_BOOL appDemo_DigiTuner_SetLNBLOF(const MS_U32 *HiLOF, const MS_U32 *LoLOF, const MS_U32 *CableID);
+MS_BOOL appDemo_DigiTuner_SetVCM_ISID(const MS_U32 *u32ISID, const MS_U32 *IsNextCH);
+MS_BOOL appDemo_DigiTuner_GetVCM_ISID_Info(void);
+MS_BOOL appDemo_DigiTuner_GetParam(const MS_U32 *u32Param);
+MS_BOOL appDemo_DigiTuner_GetSignalStatus(const MS_U32 *pu32PollingCnt);
+MS_BOOL appDemo_DigiTuner_GetSatParam(MS_U32 CableID, MS_SAT_PARAM** ppstSatParam);
 #endif

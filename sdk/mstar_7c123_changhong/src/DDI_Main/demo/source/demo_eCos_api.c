@@ -138,6 +138,14 @@ MS_BOOL Demo_eCos_CPUUsage(MS_U16* pu16Period)
   return TRUE;
 }
 
+MS_BOOL Demo_eCos_show_cpu_average_load(MS_U16* on)
+{
+    if (1 == *on)
+        Demo_eCos_CPULoad();
+    else if (0 == *on)
+        Demo_eCos_CPULoad_OFF();
+    return TRUE;
+}
 
 static void _CPULoadTaskStart (void)
 {
@@ -147,10 +155,11 @@ static void _CPULoadTaskStart (void)
 
     while(_s32CPULOAD_RUNIING == 1)
     {
-        MsOS_DelayTask(100);
+       // MsOS_DelayTask(1000);
 
         cyg_cpuload_get(cpuhandle,&average_point1s,&average_1s,&average_10s);
-        printf("@@--%s--average_point1s = %d% ; average_1s = %d% ; average_10s = %d%\n", __func__, average_point1s, average_1s, average_10s);
+        printf("@@--%s--average_point1s = %d ; average_1s = %d ; average_10s = %d\n", __func__, average_point1s, average_1s, average_10s);
+        MsOS_DelayTask(5000);
     }
 
     _s32CPULOAD_RUNIING = -1;

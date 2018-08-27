@@ -75,7 +75,6 @@
 //
 //******************************************************************************
 //<MStar Software>
-
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Copyright (c) 2006-2007 MStar Semiconductor, Inc.
@@ -92,7 +91,6 @@
 // rights to any and all damages, losses, costs and expenses resulting therefrom.
 //
 ////////////////////////////////////////////////////////////////////////////////
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 ///
 /// @file   PVRPL_Record.c
@@ -103,25 +101,18 @@
 /// @verbatim
 ///=================================================================================================
 #include "apiDMX.h"
-
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
 #include "apiSWPVR.h"
 #endif
-
 #include "drvDSCMB.h"
 #include "MsMemory.h"
 #include "MsCommon.h"
 #include "PVRPL_Record.h"
 #include "PVRPL_ResourcePool.h"
 #include "drvDTC.h"
-#include "apiPVR.h"
 
-#define PVRPL_RECORD_DBGMSG(_level,_f) {if(_u32PVRPLRECORDDbgLevel >= (_level)) (_f);}
-static  MS_U32  _u32PVRPLRECORDDbgLevel = E_PVRPL_RECORD_DBG_ERR;
-
-extern  MS_S32 gs32CachedPoolID ;
-extern  MS_S32 gs32NonCachedPoolID;
-
+#define PVRPL_RECORD_DBGMSG(_level,_f) {if(_ePVRPL_RecordDbgLevel >= (_level)) (_f);}
+static  EN_PVRPL_RECORD_DBGMSG_LEVEL _ePVRPL_RecordDbgLevel = E_PVRPL_RECORD_DBG_ERR;
 
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
 static  MS_BOOL bActiveSWPVR = FALSE;
@@ -131,11 +122,16 @@ EN_PVRPL_DMX_TSIF        eSWPVRTsif = E_PVRPL_DMX_TSIF_LIVE0;
 static MS_BOOL _PVRPL_Record_SWPVR_Init(MS_U32 u32PhyAdr, MS_U32 u32Size, MS_U32 u32SWEngNum);
 #endif
 
-#if (DEMO_PVR_UTOPIA2L_64BIT_TEST)
-#define PVRPL_UTOPIA64BIT_MASK(Dest, Source){Dest = Source & 0xFFFFFFFFUL;}
-#else
-#define PVRPL_UTOPIA64BIT_MASK(Dest, Source){Dest = Source;}
-#endif
+#define PVRPL_64BITADDR_DETECT(Addr) {if(Addr > 0xFFFFFFFFUL){printf("Addr(%"DTC_MS_PHY_x") > 32bits!\n", Addr);}}
+
+static DMX_FILTER_TYPE _PVRPL_Record_SourceID_To_FilterType_Mapping(MS_U8 u8SourceID);
+static DMX_FILTER_TYPE _PVRPL_Record_PVREng_To_FilterType_Mapping(EN_PVRPL_DMX_PVR_ENG eEng);
+static DMX_FILTER_TYPE _PVRPL_Record_TSIF_To_FilterType_Mapping(EN_PVRPL_DMX_TSIF eTsif);
+
+static EN_PVRPL_DMX_TSIF _PVRPL_Record_TSIF_To_PVR_TSIF_Mapping(DMX_TSIF eTsif);
+
+static DMX_PVR_ENG _PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(EN_PVRPL_DMX_PVR_ENG eEng);
+static EN_PVRPL_DMX_PVR_ENG _PVRPL_Record_DMX_PVR_ENG_To_PVREng_Mapping(DMX_PVR_ENG eEng);
 
 PVRPL_Rec_Filters _PVRRecFilters[128];
 
@@ -145,10 +141,10 @@ PVRPL_Rec_Filters _PVRRecFilters[128];
 //3. Set playback flowset and PVR flowset
 EN_PVRPL_RECORD_STATUS PVRPL_Record_Init(RecordResource *stResource,MS_U8 u8PKTMode,MS_U32 u32BufPhyAddr,MS_U32 u32BufSize,MS_BOOL bRecAll)
 {
+    MS_U8 u8PathID = GET_PVR_PATH_IDX(stResource->u8PathIdx);
 
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
     #define PVRPL_SWPVR_MAX_ENG_NUM     4
-
     if((stResource->u8PathIdx & PVRPL_SWPVR_INDICATOR_MASK) != 0)
     {
         //@NOTE Init SWPVR
@@ -164,15 +160,11 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_Init(RecordResource *stResource,MS_U8 u8PKTM
         }
     }
 
-#endif
-
-
-#if (DEMO_PVR_SUPPORT_SWPVR_TEST)
     if(bActiveSWPVR == TRUE)
     {
-        if(stResource->u8PathIdx >= PVRPL_SWPVR_MAX_ENG_NUM)
+        if(u8PathID >= PVRPL_SWPVR_MAX_ENG_NUM)
         {
-            PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d]Wrong PVR Idx:%d !!!\n",__FILE__,__FUNCTION__,__LINE__,stResource->u8PathIdx));
+            PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d]Wrong PVR Idx:%d !!!\n",__FILE__,__FUNCTION__,__LINE__,u8PathID));
             return E_PVRPL_RECORD_FAIL;
         }
     }
@@ -181,10 +173,9 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_Init(RecordResource *stResource,MS_U8 u8PKTM
     {
         MS_U32 u32MaxPVREngNum = 0;
         MApi_DMX_GetCap(DMX_CAP_PVR_ENG_NUM,(void *)(&u32MaxPVREngNum));
-
-        if(stResource->u8PathIdx >= u32MaxPVREngNum)
+        if(u8PathID >= u32MaxPVREngNum)
         {
-            PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d]Wrong PVR Idx:%d !!!\n",__FILE__,__FUNCTION__,__LINE__,stResource->u8PathIdx));
+            PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d]Wrong PVR Idx:%d !!!\n",__FILE__,__FUNCTION__,__LINE__,u8PathID));
             return E_PVRPL_RECORD_FAIL;
         }
     }
@@ -194,27 +185,22 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_Init(RecordResource *stResource,MS_U8 u8PKTM
         PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d]Record Eng Already Init!\n",__FILE__,__FUNCTION__,__LINE__));
         return E_PVRPL_RECORD_FAIL;
     }
-
     //@NOTE record resource allocation
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
     //@NOTE same as SWPVR PATH
     //the same HWPVR Enf of SWPVR
     if(bActiveSWPVR == TRUE)
     {
-        stResource->ePVREng = Pool_GetEng(stResource->u8PathIdx);
+        stResource->ePVREng = _PVRPL_Record_DMX_PVR_ENG_To_PVREng_Mapping(Pool_GetEng(u8PathID));
         stResource->eTsif = eSWPVRTsif;
     }
     else
 #endif
     {
-        #if (DEMO_PVR_V4_TEST == 1)
-        stResource->ePVREng = Pool_GetEng(stResource->u8PathIdx);
-        #else
-        stResource->ePVREng = Pool_GetRecEng();
-        #endif
+        stResource->ePVREng = _PVRPL_Record_DMX_PVR_ENG_To_PVREng_Mapping(Pool_GetEng(u8PathID));
         //@FIXME bad naming
         DMX_FLOW_INPUT eDmxFlowInput;
-        stResource->eTsif = Pool_GetSource(&eDmxFlowInput);
+        stResource->eTsif = _PVRPL_Record_TSIF_To_PVR_TSIF_Mapping(Pool_GetSource(&eDmxFlowInput));
         MS_U32 u32EngNum;
         MApi_DMX_GetCap(DMX_CAP_PVR_ENG_NUM,&u32EngNum);
         if(stResource->ePVREng >= u32EngNum)
@@ -224,13 +210,11 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_Init(RecordResource *stResource,MS_U8 u8PKTM
         }
     }
 
-    PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_TRACE,printf("!!!!!!  Get Record Eng:%d Path:%d!!!!!\n",stResource->ePVREng,stResource->u8PathIdx));
-
+    PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_TRACE,printf("!!!!!!  Get Record Eng:%d Path:%d!!!!!\n",stResource->ePVREng,u8PathID));
     //Init stResource
     stResource->u8PVRPktMode = u8PKTMode;
     stResource->bRecAll = bRecAll;
     stResource->u32PausedTime = 0;
-    stResource->u32RecordTime = 0;
     stResource->stDMXInfo.pPvrBuf0 = u32BufPhyAddr;
     stResource->stDMXInfo.u32PvrBufSize0 = (u32BufSize >> 1);
     stResource->stDMXInfo.pPvrBuf1 = u32BufPhyAddr + (u32BufSize >> 1);
@@ -242,30 +226,29 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_Init(RecordResource *stResource,MS_U8 u8PKTM
     {
         printf("packet mode = 188 \n");
 
-    #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
+#if (DEMO_PVR_SUPPORT_SWPVR_TEST)
         if(bActiveSWPVR == TRUE)
         {
             MApi_DMX_SWPVR_Eng_SetPacketMode((MS_U8)stResource->ePVREng,FALSE);
         }
         else
-    #endif
+#endif
         {
-            MApi_DMX_Pvr_Eng_SetPacketMode(stResource->ePVREng,FALSE);
+            MApi_DMX_Pvr_Eng_SetPacketMode(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),FALSE);
         }
     }
     else
     {
         printf("packet mode = 192 \n");
-
-    #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
+#if (DEMO_PVR_SUPPORT_SWPVR_TEST)
         if(bActiveSWPVR == TRUE)
         {
             MApi_DMX_SWPVR_Eng_SetPacketMode((MS_U8)stResource->ePVREng,TRUE);
         }
         else
-    #endif
+#endif
         {
-            MApi_DMX_Pvr_Eng_SetPacketMode(stResource->ePVREng,TRUE);
+            MApi_DMX_Pvr_Eng_SetPacketMode(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),TRUE);
         }
     }
 
@@ -289,7 +272,7 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_Init(RecordResource *stResource,MS_U8 u8PKTM
     else
 #endif
     {
-        if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_Open(stResource->ePVREng,&stPVRInfo))
+        if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_Open(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),&stPVRInfo))
         {
             PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Eng_Open() or MApi_DMX_SWPVR_Eng_Open()\n",  __FILE__, __FUNCTION__,__LINE__));
             return E_PVRPL_RECORD_FAIL;
@@ -299,12 +282,12 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_Init(RecordResource *stResource,MS_U8 u8PKTM
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
     if(bActiveSWPVR == TRUE)
     {
-        MApi_DMX_SWPVR_Eng_SetRecordStamp((MS_U8)stResource->ePVREng,0);
+        MApi_DMX_SWPVR_Eng_SetRecordStamp((MS_U8)stResource->ePVREng,stResource->u32RecordTime);
     }
     else
 #endif
     {
-        MApi_DMX_Pvr_Eng_SetRecordStamp(stResource->ePVREng,0);
+        MApi_DMX_Pvr_Eng_SetRecordStamp(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),stResource->u32RecordTime);
     }
 
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
@@ -316,21 +299,13 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_Init(RecordResource *stResource,MS_U8 u8PKTM
 #endif
     {
         //TSP ECO Mode Setup
-        MDrv_DSCMB2_PVR_RecCtrl(0, FALSE);
+        MDrv_DSCMB2_PVR_RecCtrl(0, TRUE);
 
-        #if (DEMO_PVR_V4_TEST == 1)
-        MApi_DMX_PVR_FlowSet(stResource->ePVREng,stResource->eTsif,FALSE);
-        #endif
+        MApi_DMX_PVR_FlowSet(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),(DMX_TSIF)stResource->eTsif,FALSE);
     }
 
     stResource->bInit = TRUE;
-    int i = 0;
-    printf("[%s][%d]\n",__FUNCTION__,__LINE__);
-    for (i = 0 ; i < 128 ; i++)
-    {
-        _PVRRecFilters[i].u8FilterID = INVALID_FILTER_ID;
-        _PVRRecFilters[i].u32PID = INVALID_PID;
-    }
+
     return E_PVRPL_RECORD_SUCCESS;
 }
 
@@ -339,7 +314,7 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_EnableRecordEng(RecordResource *stResource,M
     //Start
     if(bEnable == TRUE)
     {
-    #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
+#if (DEMO_PVR_SUPPORT_SWPVR_TEST)
         if(bActiveSWPVR == TRUE)
         {
             if(MApi_DMX_SWPVR_Eng_Start((MS_U8)stResource->ePVREng)==DMX_FILTER_STATUS_ERROR)
@@ -349,9 +324,9 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_EnableRecordEng(RecordResource *stResource,M
             }
         }
         else
-    #endif
+#endif
         {
-            if(MApi_DMX_Pvr_Eng_Start(stResource->ePVREng,stResource->bRecAll)==DMX_FILTER_STATUS_ERROR)
+            if(MApi_DMX_Pvr_Eng_Start(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),stResource->bRecAll)==DMX_FILTER_STATUS_ERROR)
             {
                 PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] MApi_DMX_PVR_Eng_Start Fail\n",  __FILE__, __FUNCTION__,__LINE__));
                 return E_PVRPL_RECORD_FAIL;
@@ -361,7 +336,7 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_EnableRecordEng(RecordResource *stResource,M
     //Stop
     else
     {
-    #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
+#if (DEMO_PVR_SUPPORT_SWPVR_TEST)
         if(bActiveSWPVR == TRUE)
         {
             if(MApi_DMX_SWPVR_Eng_Stop((MS_U8)stResource->ePVREng)==DMX_FILTER_STATUS_ERROR)
@@ -371,9 +346,9 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_EnableRecordEng(RecordResource *stResource,M
             }
         }
         else
-    #endif
+#endif
         {
-            if(MApi_DMX_Pvr_Eng_Stop(stResource->ePVREng)==DMX_FILTER_STATUS_ERROR)
+            if(MApi_DMX_Pvr_Eng_Stop(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng))==DMX_FILTER_STATUS_ERROR)
             {
                 PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] MApi_DMX_PVR_Eng_Stop Fail\n",  __FILE__, __FUNCTION__,__LINE__));
                 return E_PVRPL_RECORD_FAIL;
@@ -397,8 +372,8 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_EnableRecordPause(RecordResource *stResource
     else
 #endif
     {
-        MApi_DMX_Pvr_Eng_GetRecordStamp(stResource->ePVREng,&(stResource->u32PausedTime));
-        MApi_DMX_Pvr_Eng_Stop(stResource->ePVREng);
+        MApi_DMX_Pvr_Eng_GetRecordStamp(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),&(stResource->u32PausedTime));
+        MApi_DMX_Pvr_Eng_Stop(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng));
     }
 
     PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_TRACE,printf("[%s][%s][%d] Pause Record\n",  __FILE__, __FUNCTION__,__LINE__));
@@ -408,7 +383,6 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_EnableRecordPause(RecordResource *stResource
 EN_PVRPL_RECORD_STATUS PVRPL_Record_EnableRecordResume(RecordResource *stResource)
 {
     MS_U32 u32TmpTime = 0;
-
 //get record time
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
     if(bActiveSWPVR == TRUE)
@@ -418,7 +392,7 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_EnableRecordResume(RecordResource *stResourc
     else
 #endif
     {
-        MApi_DMX_Pvr_Eng_GetRecordStamp(stResource->ePVREng,&u32TmpTime);
+        MApi_DMX_Pvr_Eng_GetRecordStamp(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),&u32TmpTime);
     }
 
     if(stResource->u32PausedTime > u32TmpTime)
@@ -436,7 +410,7 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_EnableRecordResume(RecordResource *stResourc
     else
 #endif
     {
-        MApi_DMX_Pvr_Eng_SetRecordStamp(stResource->ePVREng,stResource->u32PausedTime);
+        MApi_DMX_Pvr_Eng_SetRecordStamp(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),stResource->u32PausedTime);
     }
 
 //start record eng
@@ -452,7 +426,7 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_EnableRecordResume(RecordResource *stResourc
     else
 #endif
     {
-        if (DMX_FILTER_STATUS_OK !=MApi_DMX_Pvr_Eng_Start(stResource->ePVREng,stResource->bRecAll))
+        if (DMX_FILTER_STATUS_OK !=MApi_DMX_Pvr_Eng_Start(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),stResource->bRecAll))
         {
             PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_PVR_Eng_Start()!\n",  __FILE__, __FUNCTION__,__LINE__));
             return E_PVRPL_RECORD_FAIL;
@@ -465,7 +439,6 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_EnableRecordResume(RecordResource *stResourc
 
 EN_PVRPL_RECORD_STATUS PVRPL_Record_GetRecordTime(RecordResource *stResource,MS_U32 *pu32RecordTime)
 {
-
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
     if(bActiveSWPVR == TRUE)
     {
@@ -478,7 +451,7 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_GetRecordTime(RecordResource *stResource,MS_
     else
 #endif
     {
-        if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_GetRecordStamp(stResource->ePVREng,pu32RecordTime))
+        if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_GetRecordStamp(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),pu32RecordTime))
         {
             PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_PVR_Eng_GetRecordStamp()!\n",  __FILE__, __FUNCTION__,__LINE__));
             return E_PVRPL_RECORD_FAIL;
@@ -491,7 +464,6 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_GetRecordTime(RecordResource *stResource,MS_
 
 EN_PVRPL_RECORD_STATUS PVRPL_Record_SetRecordTime(RecordResource *stResource,MS_U32  u32RecordTime)
 {
-
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
     if(bActiveSWPVR == TRUE)
     {
@@ -504,7 +476,7 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_SetRecordTime(RecordResource *stResource,MS_
     else
 #endif
     {
-        if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_SetRecordStamp(stResource->ePVREng,u32RecordTime))
+        if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_SetRecordStamp(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),u32RecordTime))
         {
             PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_PVR_Eng_SetRecordStamp()!\n",  __FILE__, __FUNCTION__,__LINE__));
             return E_PVRPL_RECORD_FAIL;
@@ -533,9 +505,8 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_ResetRecordEng(RecordResource *stResource)
     else
 #endif
     {
-        MApi_DMX_Pvr_Eng_GetRecordStamp(stResource->ePVREng,&(stResource->u32PausedTime));
+        MApi_DMX_Pvr_Eng_GetRecordStamp(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),&(stResource->u32PausedTime));
     }
-
 
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
     if(bActiveSWPVR == TRUE)
@@ -545,7 +516,7 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_ResetRecordEng(RecordResource *stResource)
     else
 #endif
     {
-        MApi_DMX_Pvr_Eng_Stop(stResource->ePVREng);
+        MApi_DMX_Pvr_Eng_Stop(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng));
     }
 
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
@@ -556,7 +527,7 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_ResetRecordEng(RecordResource *stResource)
     else
 #endif
     {
-        MApi_DMX_Pvr_Eng_Open(stResource->ePVREng,&stPVRInfo);
+        MApi_DMX_Pvr_Eng_Open(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),&stPVRInfo);
     }
 
     if(stResource->u8PVRPktMode == 192)
@@ -569,7 +540,7 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_ResetRecordEng(RecordResource *stResource)
         else
 #endif
         {
-            MApi_DMX_Pvr_Eng_SetPacketMode(stResource->ePVREng,TRUE);
+            MApi_DMX_Pvr_Eng_SetPacketMode(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),TRUE);
         }
     }
     else
@@ -582,7 +553,7 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_ResetRecordEng(RecordResource *stResource)
         else
 #endif
         {
-            MApi_DMX_Pvr_Eng_SetPacketMode(stResource->ePVREng,FALSE);
+            MApi_DMX_Pvr_Eng_SetPacketMode(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),FALSE);
         }
     }
 
@@ -595,54 +566,74 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_ResetRecordEng(RecordResource *stResource)
     else
 #endif
     {
-        MApi_DMX_Pvr_Eng_SetRecordStamp(stResource->ePVREng,stResource->u32PausedTime);
+        MApi_DMX_Pvr_Eng_SetRecordStamp(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),stResource->u32PausedTime);
     }
 
     //start record eng
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
     if(bActiveSWPVR == TRUE)
     {
-        MApi_DMX_SWPVR_Eng_Start((MS_U8)stResource->ePVREng);
+        if (DMX_FILTER_STATUS_OK != MApi_DMX_SWPVR_Eng_Start((MS_U8)stResource->ePVREng))
+        {
+            PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_SWPVR_Eng_Start()!\n",  __FILE__, __FUNCTION__,__LINE__));
+            return E_PVRPL_RECORD_FAIL;
+        }
     }
     else
 #endif
     {
-        MApi_DMX_Pvr_Eng_Start(stResource->ePVREng,stResource->bRecAll);
+        if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_Start(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),stResource->bRecAll))
+        {
+            PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Pvr_Eng_Start()!\n",  __FILE__, __FUNCTION__,__LINE__));
+            return E_PVRPL_RECORD_FAIL;
+        }
     }
 
     PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_TRACE,printf("[%s][%s][%d] Reset Record Eng\n",  __FILE__, __FUNCTION__,__LINE__));
     return E_PVRPL_RECORD_SUCCESS;
 }
 
-
-static EN_PVRPL_RECORD_STATUS _PVRPL_Record_PVRPIDFilterControl(RecordResource *stResource,MS_BOOL bAddDelete, MS_U8 *pu8PVRFltID, MS_U32 u32PID)
+static EN_PVRPL_RECORD_STATUS _PVRPL_Record_PVRPIDFilterControl(RecordResource *stResource,MS_BOOL bAddDelete, MS_U8 *pu8PVRFltID, MS_U16 u16PID)
 {
     if(bAddDelete == TRUE)
     {
-    #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
+#if (DEMO_PVR_SUPPORT_SWPVR_TEST)
         if(bActiveSWPVR == TRUE)
         {
-            if (DMX_FILTER_STATUS_OK != MApi_DMX_SWPVR_Eng_Pid_Open((MS_U8)stResource->ePVREng,u32PID,pu8PVRFltID))
+            if (DMX_FILTER_STATUS_OK != MApi_DMX_SWPVR_Eng_Pid_Open((MS_U8)stResource->ePVREng,u16PID,pu8PVRFltID))
             {
                 PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Pvr_Eng_Pid_Open()!\n",  __FILE__, __FUNCTION__,__LINE__));
                 return E_PVRPL_RECORD_FAIL;
             }
         }
         else
-    #endif
+#endif
         {
-            if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_Pid_Open(stResource->ePVREng,u32PID,pu8PVRFltID))
+            DMX_FILTER_TYPE eSource = _PVRPL_Record_TSIF_To_FilterType_Mapping(stResource->eTsif);
+            DMX_FILTER_TYPE eEng = _PVRPL_Record_PVREng_To_FilterType_Mapping(stResource->ePVREng);
+            DMX_FILTER_TYPE eSourceID = _PVRPL_Record_SourceID_To_FilterType_Mapping(stResource->u8SourceID);
+            DMX_FILTER_TYPE FilterType = eSource | eEng | eSourceID;
+            if (DMX_FILTER_STATUS_OK != MApi_DMX_Open(FilterType, pu8PVRFltID))
             {
-                PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Pvr_Eng_Pid_Open()!\n",  __FILE__, __FUNCTION__,__LINE__));
+                PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Open!\n",  __FILE__, __FUNCTION__,__LINE__));
                 return E_PVRPL_RECORD_FAIL;
             }
-            PVRPL_Record_SetFilters(*pu8PVRFltID,u32PID);
+            if (DMX_FILTER_STATUS_OK != MApi_DMX_Pid(*pu8PVRFltID, &u16PID, TRUE))
+            {
+                PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Pid!\n",  __FILE__, __FUNCTION__,__LINE__));
+                return E_PVRPL_RECORD_FAIL;
+            }
+            if (DMX_FILTER_STATUS_OK != MApi_DMX_Start(*pu8PVRFltID))
+            {
+                PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Start!\n",  __FILE__, __FUNCTION__,__LINE__));
+                return E_PVRPL_RECORD_FAIL;
+            }
+            PVRPL_Record_SetFilters(*pu8PVRFltID,u16PID);
         }
-
     }
     else
     {
-    #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
+#if (DEMO_PVR_SUPPORT_SWPVR_TEST)
         if(bActiveSWPVR == TRUE)
         {
             if (DMX_FILTER_STATUS_OK != MApi_DMX_SWPVR_Eng_PID_Close((MS_U8)stResource->ePVREng,(*pu8PVRFltID)))
@@ -652,17 +643,22 @@ static EN_PVRPL_RECORD_STATUS _PVRPL_Record_PVRPIDFilterControl(RecordResource *
             }
         }
         else
-    #endif
+#endif
         {
-            if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_Pid_Close(stResource->ePVREng,(*pu8PVRFltID)))
+            if (DMX_FILTER_STATUS_OK != MApi_DMX_Stop(*pu8PVRFltID))
             {
-                PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Pvr_Eng_Pid_Close()!\n",  __FILE__, __FUNCTION__,__LINE__));
+                PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Stop!\n",  __FILE__, __FUNCTION__,__LINE__));
+                return E_PVRPL_RECORD_FAIL;
+            }
+            if (DMX_FILTER_STATUS_OK != MApi_DMX_Close(*pu8PVRFltID))
+            {
+                PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Close!\n",  __FILE__, __FUNCTION__,__LINE__));
                 return E_PVRPL_RECORD_FAIL;
             }
         }
     }
 
-    PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_TRACE,printf("[%s][%s][%d] AddDelete:%d PVRFltID:%d PID:0x%"DTC_MS_U32_x"\n",  __FILE__,__FUNCTION__,__LINE__,bAddDelete,*pu8PVRFltID,u32PID));
+    PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_TRACE,printf("[%s][%s][%d] AddDelete:%d PVRFltID:%d PID:0x%"DTC_MS_U32_x"\n",  __FILE__,__FUNCTION__,__LINE__,bAddDelete,*pu8PVRFltID,(MS_U32)u16PID));
     return E_PVRPL_RECORD_SUCCESS;
 }
 
@@ -671,7 +667,7 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_DMX_PVR_PIDFilterControl(RecordResource *stR
     //open pvr flt
     if(bAddDelete == TRUE)
     {
-        if(E_PVRPL_RECORD_FAIL ==_PVRPL_Record_PVRPIDFilterControl(stResource,bAddDelete,pu8FltID,(MS_U32)u16PID))
+        if(E_PVRPL_RECORD_FAIL ==_PVRPL_Record_PVRPIDFilterControl(stResource,bAddDelete,pu8FltID,u16PID))
         {
             PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] Open PVR Flt Fail\n",__FILE__,__FUNCTION__,__LINE__));
             return E_PVRPL_RECORD_FAIL;
@@ -681,19 +677,17 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_DMX_PVR_PIDFilterControl(RecordResource *stR
     //close pvr flt
     else
     {
-        if(E_PVRPL_RECORD_FAIL ==_PVRPL_Record_PVRPIDFilterControl(stResource,bAddDelete,pu8FltID,(MS_U32)u16PID))
+        if(E_PVRPL_RECORD_FAIL ==_PVRPL_Record_PVRPIDFilterControl(stResource,bAddDelete,pu8FltID,u16PID))
         {
             return E_PVRPL_RECORD_FAIL;
         }
     }
 
     return E_PVRPL_RECORD_SUCCESS;
-
 }
 
 EN_PVRPL_RECORD_STATUS PVRPL_Record_GetRecordAddr(RecordResource *stResource,MS_U32 *pu32PhyAddr)
 {
-
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
     if(bActiveSWPVR == TRUE)
     {
@@ -707,14 +701,14 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_GetRecordAddr(RecordResource *stResource,MS_
 #endif
     {
         MS_PHY PHYAddr = 0;
-        if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_WriteGet(stResource->ePVREng,&PHYAddr))
+        if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_WriteGet(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng),&PHYAddr))
         {
             PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Pvr_Eng_WriteGet()!\n",  __FILE__, __FUNCTION__,__LINE__));
             return E_PVRPL_RECORD_FAIL;
         }
-        PVRPL_UTOPIA64BIT_MASK(*pu32PhyAddr,PHYAddr);
+        PVRPL_64BITADDR_DETECT(PHYAddr);
+        *pu32PhyAddr = PHYAddr;
     }
-
     // for debug
     /*
     MS_U32 video_fifo1 = 0;
@@ -736,30 +730,8 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_GetRecordAddr(RecordResource *stResource,MS_
     return E_PVRPL_RECORD_SUCCESS;
 }
 
-
 EN_PVRPL_RECORD_STATUS PVRPL_Record_Exit(RecordResource *stResource)
 {
-
-#if (DEMO_PVR_SUPPORT_SWPVR_TEST)
-    if(bActiveSWPVR == TRUE)
-    {
-        if (DMX_FILTER_STATUS_OK != MApi_DMX_SWPVR_Eng_Stop((MS_U8)stResource->ePVREng))
-        {
-            PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Pvr_Eng_WriteGet()!\n",  __FILE__, __FUNCTION__,__LINE__));
-            return E_PVRPL_RECORD_FAIL;
-        }
-    }
-    else
-#endif
-    {
-        if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_Stop(stResource->ePVREng))
-        {
-            PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Pvr_Eng_WriteGet()!\n",  __FILE__, __FUNCTION__,__LINE__));
-            return E_PVRPL_RECORD_FAIL;
-        }
-    }
-
-
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
     if(bActiveSWPVR == TRUE)
     {
@@ -772,7 +744,7 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_Exit(RecordResource *stResource)
     else
 #endif
     {
-        if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_Close(stResource->ePVREng))
+        if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_Close(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(stResource->ePVREng)))
         {
             PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Pvr_Eng_WriteGet()!\n",  __FILE__, __FUNCTION__,__LINE__));
             return E_PVRPL_RECORD_FAIL;
@@ -785,6 +757,7 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_Exit(RecordResource *stResource)
         u8RecordSWEngNum--;
         if(u8RecordSWEngNum == 0)
         {
+            MApi_DMX_SWPVR_Exit();
             bActiveSWPVR = FALSE;
         }
     }
@@ -798,7 +771,6 @@ EN_PVRPL_RECORD_STATUS PVRPL_Record_Exit(RecordResource *stResource)
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST)
 MS_BOOL _PVRPL_Record_SWPVR_Init(MS_U32 u32PhyAdr, MS_U32 u32Size, MS_U32 u32SWEngNum)
 {
-
     SWPVR_ThreadInfo    sThreadInfo;
     SWPVR_EventInfo     sEventInfo;
     SWPVR_BufferInfo    sBufInfo;
@@ -811,28 +783,28 @@ MS_BOOL _PVRPL_Record_SWPVR_Init(MS_U32 u32PhyAdr, MS_U32 u32Size, MS_U32 u32SWE
 
     sBufInfo.pSWPVRBuf = u32PhyAdr;
     sBufInfo.u32SWPVRBufSize = u32Size;
-
     //@NOTE
     //Not supporting change SWPVR and HWPVR mode
+    if(DMX_FILTER_STATUS_OK == MApi_DMX_SWPVR_IsInit())
+    {
+        bActiveSWPVR = TRUE;
+        return TRUE;
+    }
+
     if(MApi_DMX_SWPVR_Init(&sThreadInfo,&sEventInfo,&sBufInfo,u32SWEngNum,NULL) == DMX_FILTER_STATUS_OK)
     {
         bActiveSWPVR = TRUE;
 
-    #if (DEMO_PVR_V4_TEST == 1)
         DMX_FLOW_INPUT eDmxInput;
-        eSWPVRTsif = Pool_GetSource(&eDmxInput);
+        DMX_TSIF eTsif = Pool_GetSource(&eDmxInput);
+        eSWPVRTsif = _PVRPL_Record_TSIF_To_PVR_TSIF_Mapping(Pool_GetSource(&eDmxInput));
         eSWPVREng = E_PVRPL_DMX_PVR_EGN0;
         //@NOTE Taking PVR Eng0 to run SWPVR
         //Flowset for SWPVR
-        //for TSP2
-        //@TODO There is a bug which SWPVR can't record data with calling MApi_DMX_FlowSet and MApi_DMX_PVR_FlowSet concurrently
-        //MDrv_DSCMB2_PVR_RecCtrl(0, FALSE);
-        //MApi_DMX_FlowSet(DMX_FLOW_PVR,eDmxInput,FALSE,FALSE,TRUE);
-
+        MDrv_DSCMB2_PVR_RecCtrl(0, TRUE);
         //for TSP4
         //@NOTE Only support same frequency recording
-        MApi_DMX_PVR_FlowSet(eSWPVREng,eSWPVRTsif,FALSE);
-    #endif
+        MApi_DMX_PVR_FlowSet(_PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(eSWPVREng),eTsif,FALSE);
 
         PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_TRACE,printf("[%s][%s][%d]Active SWPVR!!!\n",__FILE__,__FUNCTION__,__LINE__));
 
@@ -846,7 +818,127 @@ MS_BOOL _PVRPL_Record_SWPVR_Init(MS_U32 u32PhyAdr, MS_U32 u32Size, MS_U32 u32SWE
 }
 #endif
 
-MS_BOOL PVRPL_Record_SetFilters(MS_U8 FilterID, MS_U32 PID)
+static DMX_FILTER_TYPE _PVRPL_Record_SourceID_To_FilterType_Mapping(MS_U8 u8SourceID)
+{
+    switch(u8SourceID)
+    {
+        case 0:
+            return DMX_FILTER_SOURCEID_0;
+        case 1:
+            return DMX_FILTER_SOURCEID_1;
+        case 2:
+            return DMX_FILTER_SOURCEID_2;
+        case 3:
+            return DMX_FILTER_SOURCEID_3;
+        case 4:
+            return DMX_FILTER_SOURCEID_4;
+        default:
+            PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("Invalid Source ID for merge stream recording: %u\n", u8SourceID));
+            return DMX_FILTER_SOURCEID_0;
+    }
+}
+
+static DMX_FILTER_TYPE _PVRPL_Record_PVREng_To_FilterType_Mapping(EN_PVRPL_DMX_PVR_ENG eEng)
+{
+    switch(eEng)
+    {
+        case E_PVRPL_DMX_PVR_EGN0:
+            return DMX_FILTER_TYPE_PVR;
+        case E_PVRPL_DMX_PVR_EGN1:
+            return DMX_FILTER_TYPE_PVR1;
+        case E_PVRPL_DMX_PVR_EGN2:
+            return DMX_FILTER_TYPE_PVR2;
+        case E_PVRPL_DMX_PVR_EGN3:
+            return DMX_FILTER_TYPE_PVR3;
+        default:
+            PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("Invalid PVR Eng for merge stream recording: %d", eEng));
+            return DMX_FILTER_TYPE_PVR;
+    }
+}
+
+static DMX_FILTER_TYPE _PVRPL_Record_TSIF_To_FilterType_Mapping(EN_PVRPL_DMX_TSIF eTsif)
+{
+    switch(eTsif)
+    {
+        case E_PVRPL_DMX_TSIF_LIVE0:
+            return DMX_FILTER_SOURCE_TYPE_LIVE;
+        case E_PVRPL_DMX_TSIF_LIVE1:
+            return DMX_FILTER_SOURCE_TYPE_TS1;
+        case E_PVRPL_DMX_TSIF_LIVE2:
+            return DMX_FILTER_SOURCE_TYPE_TS2;
+        case E_PVRPL_DMX_TSIF_LIVE3:
+            return DMX_FILTER_SOURCE_TYPE_TS3;
+        default:
+            PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("Invalid TSIF : %d", eTsif));
+            return DMX_FILTER_SOURCE_TYPE_LIVE;
+    }
+}
+
+static EN_PVRPL_DMX_TSIF _PVRPL_Record_TSIF_To_PVR_TSIF_Mapping(DMX_TSIF eTsif)
+{
+    switch(eTsif)
+    {
+        case DMX_TSIF_LIVE0:
+            return E_PVRPL_DMX_TSIF_LIVE0;
+        case DMX_TSIF_LIVE1:
+            return E_PVRPL_DMX_TSIF_LIVE1;
+        case DMX_TSIF_LIVE2:
+            return E_PVRPL_DMX_TSIF_LIVE2;
+        case DMX_TSIF_LIVE3:
+            return E_PVRPL_DMX_TSIF_LIVE3;
+        default:
+            PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("Invalid TSIF : %d", eTsif));
+            return E_PVRPL_DMX_TSIF_LIVE0;
+    }
+
+}
+
+
+static DMX_PVR_ENG _PVRPL_Record_PVREng_To_DMX_PVR_ENG_Mapping(EN_PVRPL_DMX_PVR_ENG eEng)
+{
+    switch(eEng)
+    {
+        case E_PVRPL_DMX_PVR_EGN0:
+            return DMX_PVR_EGN0;
+        case E_PVRPL_DMX_PVR_EGN1:
+            return DMX_PVR_EGN1;
+        case E_PVRPL_DMX_PVR_EGN2:
+            return DMX_PVR_EGN2;
+        case E_PVRPL_DMX_PVR_EGN3:
+            return DMX_PVR_EGN3;
+        case E_PVRPL_DMX_PVR_EGN4:
+            return DMX_PVR_EGN4;
+        case E_PVRPL_DMX_PVR_EGN5:
+            return DMX_PVR_EGN5;
+        default:
+            PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("Invalid eEng : %d", eEng));
+            return DMX_PVR_EGN0;
+    }
+}
+static EN_PVRPL_DMX_PVR_ENG _PVRPL_Record_DMX_PVR_ENG_To_PVREng_Mapping(DMX_PVR_ENG eEng)
+{
+    switch(eEng)
+    {
+        case DMX_PVR_EGN0:
+            return E_PVRPL_DMX_PVR_EGN0;
+        case DMX_PVR_EGN1:
+            return E_PVRPL_DMX_PVR_EGN1;
+        case DMX_PVR_EGN2:
+            return E_PVRPL_DMX_PVR_EGN2;
+        case DMX_PVR_EGN3:
+            return E_PVRPL_DMX_PVR_EGN3;
+        case DMX_PVR_EGN4:
+            return E_PVRPL_DMX_PVR_EGN4;
+        case DMX_PVR_EGN5:
+            return E_PVRPL_DMX_PVR_EGN5;
+        default:
+            PVRPL_RECORD_DBGMSG(E_PVRPL_RECORD_DBG_ERR,printf("Invalid eEng : %d", eEng));
+            return E_PVRPL_DMX_PVR_EGN0;
+    }
+
+}
+
+MS_BOOL PVRPL_Record_SetFilters(MS_U8 FilterID, MS_U16 PID)
 {
     int i = 0;
     if (FilterID == INVALID_FILTER_ID || PID == INVALID_PID)
@@ -857,20 +949,20 @@ MS_BOOL PVRPL_Record_SetFilters(MS_U8 FilterID, MS_U32 PID)
 
     for (i = 0 ; i < 128 ; i++)
     {
-        if (_PVRRecFilters[i].u8FilterID == INVALID_FILTER_ID 
-            && _PVRRecFilters[i].u32PID == INVALID_PID)
+        if (_PVRRecFilters[i].u8FilterID == INVALID_FILTER_ID
+            && _PVRRecFilters[i].u16PID == INVALID_PID)
         {
             break;
         }
     }
-    
+
     if (i == 128)
     {
         printf("Filter sets buffer already full\n");
         return FALSE;
     }
     _PVRRecFilters[i].u8FilterID = FilterID;
-    _PVRRecFilters[i].u32PID = PID;
+    _PVRRecFilters[i].u16PID = PID;
     return TRUE;
 }
 
@@ -879,11 +971,12 @@ PVRPL_Rec_Filters *PVRPL_Record_GetFilters(void)
     int i = 0;
     for (i = 0 ; i < 128 ; i++)
     {
-        if (_PVRRecFilters[i].u8FilterID == INVALID_FILTER_ID 
-            && _PVRRecFilters[i].u32PID == INVALID_PID)
+        if (_PVRRecFilters[i].u8FilterID == INVALID_FILTER_ID
+            && _PVRRecFilters[i].u16PID == INVALID_PID)
         {
             break;
         }
     }
     return _PVRRecFilters;
 }
+

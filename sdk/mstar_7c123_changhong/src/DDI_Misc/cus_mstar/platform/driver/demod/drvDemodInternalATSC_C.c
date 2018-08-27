@@ -77,6 +77,7 @@
 //<MStar Software>
 #include "Board.h"
 
+#if IS_THIS_DEMOD_PICKED(DEMOD_MSATSC_C)
 #if defined(CHIP_KAISER)
 #include "MsCommon.h"
 #include "HbCommon.h"
@@ -367,6 +368,29 @@ MS_BOOL MDrv_Demod_MSATSC_51_GetPWR(MS_U8 u8DemodIndex, MS_S32 *ps32Signal)
     return ret;
 }
 
+MS_BOOL MDrv_Demod_MSATSC_51_GetSSI(MS_U8 u8DemodIndex, MS_U16 *pu16SSI)
+{
+    MS_BOOL ret;
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+        DBG_MSB(HB_printf("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    if(bInited[u8DemodIndex] == FALSE)
+    {
+        *pu16SSI = 0;
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+
+    ret = MDrv_DMD_ATSC_MD_GetSignalStrength(u8DemodIndex, pu16SSI);
+
+    HB_ReleaseMutex(_s32MutexId);
+    return ret;
+}
+
+
 MS_BOOL MDrv_Demod_MSATSC_51_GetSignalQuality(MS_U8 u8DemodIndex, MS_U16 *pu16quality)
 {
     if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
@@ -558,6 +582,7 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSATSC_C) DDI_DRV_TABLE_ENTRY(de
      .GetSNR                       = MDrv_Demod_MSATSC_51_GetSNR,
      .GetBER                       = MDrv_Demod_MSATSC_51_GetBER,
      .GetPWR                       = MDrv_Demod_MSATSC_51_GetPWR,
+     .GetSSI                       = MDrv_Demod_MSATSC_51_GetSSI,
      .GetQuality                   = MDrv_Demod_MSATSC_51_GetSignalQuality,
      .GetParam                     = MDrv_Demod_MSATSC_51_GetParam,
      .Restart                      = MDrv_Demod_MSATSC_51_Restart,
@@ -566,6 +591,7 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSATSC_C) DDI_DRV_TABLE_ENTRY(de
      .Extension_Function           = DEMOD_MSATSC_C_Extension_Function,
      .Extension_FunctionPreSetting = NULL,
      .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error,
+     .CheckExist                   = MDrv_Demod_null_CheckExist,
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
@@ -588,9 +614,13 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSATSC_C) DDI_DRV_TABLE_ENTRY(de
      .DiSEqCGetLNBOut              = MDrv_Demod_null_DiSEqC_GetLNBOut,
      .DiSEqCSet22kOnOff            = MDrv_Demod_null_DiSEqC_Set22kOnOff,
      .DiSEqCGet22kOnOff            = MDrv_Demod_null_DiSEqC_Get22kOnOff,
-     .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd
+     .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd,
+     .DiSEqC_GetReply              = MDrv_Demod_null_DiSEqC_GetReply,
+     .GetISIDInfo                  = MDrv_Demod_null_GetVCM_ISID_INFO,
+     .SetISID                      = MDrv_Demod_null_SetVCM_ISID
 #endif
 };
 
 #endif // (FRONTEND_DEMOD_TYPE == DEMOD_MSATSC_C)
+#endif
 

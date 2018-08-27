@@ -15,7 +15,7 @@ endif
 
 include $(SDK_ROOT)/tools.mak
 
-BUILD_FOLDER:=$(SDK_ROOT)/src/Kirin/DDI_Package/ddi_pkg_ecos/cus_mstar/project/mstar_demo/
+BUILD_FOLDER:=$(SDK_ROOT)/src/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/project/mstar_demo/
 
 all: build_sdk prepare_libs
 	
@@ -87,7 +87,9 @@ $(BUILD_FOLDER)/obj/device_demodulator_msb1233c.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/device_demodulator_msb124x.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/device_demodulator_msb1245.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/drvDishA8293.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvDishA8297.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/drvDishA8296.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/drvDishA8302.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/drvDishA8304.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/drvDishDemod.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/drvTuner_R840.$(OBJ_SUFFIX) \
@@ -134,7 +136,6 @@ $(BUILD_FOLDER)/obj/apiDigiTuner.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/PVRPL_FileIn.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/PVRPL_Audio.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/PVRPL_CA.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/PVRPL_FS.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/PVRPL_Record.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/PVRPL_ResourcePool.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/PVRPL_Sys.$(OBJ_SUFFIX) \
@@ -153,5 +154,5 @@ $(BUILD_FOLDER)/obj/porting_mmap.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/porting_os.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/porting_subtitle.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/porting_sysinfo.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/porting_thread.$(OBJ_SUFFIX) \
-$(SDK_ROOT)/src/libnocs3x_csd/emi.$(OBJ_SUFFIX)
+$(BUILD_FOLDER)/obj/porting_thread.$(OBJ_SUFFIX)
+#$(SDK_ROOT)/src/libnocs3x_csd/emi.$(OBJ_SUFFIX)

@@ -397,7 +397,7 @@ typedef struct
   UINT32 tunerId;
 
   UINT32 centerFrequencyInKHz; // Center Frequency in kHz within L-band.
-  UINT32 freqOffsetRangeInKHz; // Tuner will tune to a range of [Center Freq Â– freqOffsetRangeInKHz, Center Freq + freqOffsetRangeInKHz]
+  UINT32 freqOffsetRangeInKHz; // Tuner will tune to a range of [Center Freq – freqOffsetRangeInKHz, Center Freq + freqOffsetRangeInKHz]
 } MXL58x_TUNER_TUNE_T;
 
 // Demod enum
@@ -890,7 +890,7 @@ typedef struct
                     // Version is 16-bit stored in Bit 15~0 of ver16Bits.
                     // Bit 15~8 is a major revision (MSB), while Bit 7~0 is a minor
                     // revision (LSB).
-                    // If the two versions are the same, Host should display as Â“MSB.LSB.checkSumÂ”
+                    // If the two versions are the same, Host should display as “MSB.LSB.checkSum”
 } MXL58x_DEMOD_M68HC05_VER_T;
 
 // This struct is programmed by host to control delays for acq trace
@@ -1033,8 +1033,8 @@ typedef struct
   UINT32  demodId;
   SINT32  cosValue [MAX_NUM_NF_PER_DEMOD];
   SINT32  sinValue [MAX_NUM_NF_PER_DEMOD];
-  UINT8   nfStatus [MAX_NUM_NF_PER_DEMOD   + 1 ]; /*4th entry is donÂ’t care. Enable(1),disable (0)*/
-  UINT8   notchFilterGain [MAX_NUM_NF_PER_DEMOD   + 1 ]; /*4th entry is donÂ’t care.*/
+  UINT8   nfStatus [MAX_NUM_NF_PER_DEMOD   + 1 ]; /*4th entry is don’t care. Enable(1),disable (0)*/
+  UINT8   notchFilterGain [MAX_NUM_NF_PER_DEMOD   + 1 ]; /*4th entry is don’t care.*/
   UINT8   nfOverWriteStatus[MAX_NUM_NF_PER_DEMOD + 1] ; /* Overwrite or not, 1: Overwrite, 0: Don't overwrite */
   SINT32  notchLocInHz [MAX_NUM_NF_PER_DEMOD ];
 
@@ -1049,8 +1049,8 @@ typedef struct
 typedef struct
 {
   UINT32 demodIndex;
-  UINT8   nfStatus [MAX_NUM_NF_PER_DEMOD   + 1 ]; /*4th entry is donÂ’t care. Enable(1),disable (0)*/
-  UINT8   notchFilterGain [MAX_NUM_NF_PER_DEMOD   + 1 ]; /*4th entry is donÂ’t care.*/
+  UINT8   nfStatus [MAX_NUM_NF_PER_DEMOD   + 1 ]; /*4th entry is don’t care. Enable(1),disable (0)*/
+  UINT8   notchFilterGain [MAX_NUM_NF_PER_DEMOD   + 1 ]; /*4th entry is don’t care.*/
   UINT32  notchLocInHz [MAX_NUM_NF_PER_DEMOD ];
 } MXL58x_RSP_NF_MSG_T;
 

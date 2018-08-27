@@ -374,82 +374,185 @@ typedef enum
 typedef enum
 {
     /// Video codec type is unknow.
-    E_PLAYER_VIDEO_CODEC_UNKNOW = -1,
+    E_MM_VIDEO_CODEC_UNKNOW = -1,
+    /// Video codec type is MPEG 1.
+    E_MM_VIDEO_CODEC_MPEG1VIDEO,
+    /// Video codec type is MPEG 2.
+    E_MM_VIDEO_CODEC_MPEG2VIDEO,
     /// Video codec type is MPEG 4.
-    E_PLAYER_VIDEO_CODEC_MPEG4,
-    /// Video codec type is motion JPG.
-    E_PLAYER_VIDEO_CODEC_MJPEG,
+    E_MM_VIDEO_CODEC_MPEG4,
+    /// Video codec type is H263.
+    E_MM_VIDEO_CODEC_H263,
+    /// Video codec type is DIVX3.
+    E_MM_VIDEO_CODEC_DIVX3,
+    /// Video codec type is DIVX4.
+    E_MM_VIDEO_CODEC_DIVX4,
+    /// Video codec type is DIVX.
+    E_MM_VIDEO_CODEC_DIVX,
     /// Video codec type is H264.
-    E_PLAYER_VIDEO_CODEC_H264,
-    /// Video codec type is RealVideo.
-    E_PLAYER_VIDEO_CODEC_RM,
-    E_PLAYER_VIDEO_CODEC_TS,
-    /// Video codec type is MPEG 1/2.
-    E_PLAYER_VIDEO_CODEC_MPG,
+    E_MM_VIDEO_CODEC_H264,
+    /// Video codec type is Advance H264.
+    E_MM_VIDEO_CODEC_AVS,
+    /// Video codec type is RM V3.0.
+    E_MM_VIDEO_CODEC_RV30,
+    /// Video codec type is RM V4.0.
+    E_MM_VIDEO_CODEC_RV40,
+    /// Video codec type is motion JPG.
+    E_MM_VIDEO_CODEC_MJPEG,
     /// Video codec type is VC1.
-    E_PLAYER_VIDEO_CODEC_VC1,
-    /// Video codec type is Audio Video Standard.
-    E_PLAYER_VIDEO_CODEC_AVS,
+    E_MM_VIDEO_CODEC_VC1,
+    /// Video codec type is WMV 3.0.
+    E_MM_VIDEO_CODEC_WMV3,
     /// Video codec type is FLV.
-    E_PLAYER_VIDEO_CODEC_FLV,
-    /// Video codec type is MVC.
-    E_PLAYER_VIDEO_CODEC_MVC,
+    E_MM_VIDEO_CODEC_FLV,
+    /// Video codec type is FOURCC-EX.
+    E_MM_VIDEO_CODEC_FOURCCEX,
+    /// Video codec type is TS.
+    E_MM_VIDEO_CODEC_TS,
     /// Video codec type is VP6.
-    E_PLAYER_VIDEO_CODEC_VP6,
+    E_MM_VIDEO_CODEC_VP6,
     /// Video codec type is VP8.
-    E_PLAYER_VIDEO_CODEC_VP8,
-} EN_PLAYER_VIDEO_CODEC;
+    E_MM_VIDEO_CODEC_VP8,
+    /// Video codec type is MVC.
+    E_MM_VIDEO_CODEC_MVC,
+    /// Video codec type is HEVC.
+    E_MM_VIDEO_CODEC_HEVC,
+    /// Video codec type is VP9.
+    E_MM_VIDEO_CODEC_VP9,
+} EN_MM_VIDEO_CODEC;
 
 /// Define audio codec tyep
 typedef enum
 {
     /// Audio codec type is none.
-    E_PLAYER_AUDIO_CODEC_UNKNOW = -1,
+    E_MM_AUDIO_CODEC_UNKNOW = -1,
     /// Audio codec type is WMA.
-    E_PLAYER_AUDIO_CODEC_WMA,
+    E_MM_AUDIO_CODEC_WMA,
     /// Audio codec type is DTS.
-    E_PLAYER_AUDIO_CODEC_DTS,
+    E_MM_AUDIO_CODEC_DTS,
     /// Audio codec type is MP3.
-    E_PLAYER_AUDIO_CODEC_MP3,
+    E_MM_AUDIO_CODEC_MP3,
     /// Audio codec type is MPEG.
-    E_PLAYER_AUDIO_CODEC_MPEG,
+    E_MM_AUDIO_CODEC_MPEG,
     /// Audio codec type is AC3.
-    E_PLAYER_AUDIO_CODEC_AC3,
+    E_MM_AUDIO_CODEC_AC3,
     /// Audio codec type is AC3 plus.
-    E_PLAYER_AUDIO_CODEC_AC3_PLUS,
+    E_MM_AUDIO_CODEC_AC3_PLUS,
     /// Audio codec type is AAC.
-    E_PLAYER_AUDIO_CODEC_AAC,
-    /// Audio codec type is PCM.
-    E_PLAYER_AUDIO_CODEC_PCM,
-    /// Audio codec type is ADPCM
-    E_PLAYER_AUDIO_CODEC_ADPCM,
+    E_MM_AUDIO_CODEC_AAC,
+    /// Audio codec type is PCM_S16LE.
+    E_MM_AUDIO_CODEC_PCM,
+    /// Audio codec type is ADPCM.
+    E_MM_AUDIO_CODEC_ADPCM,
     /// Audio codec type is RAAC.
-    E_PLAYER_AUDIO_CODEC_RAAC,
+    E_MM_AUDIO_CODEC_RAAC,
     /// Audio codec type is COOK.
-    E_PLAYER_AUDIO_CODEC_COOK,
+    E_MM_AUDIO_CODEC_COOK,
     /// Audio codec type is FLAC.
-    E_PLAYER_AUDIO_CODEC_FLAC,
+    E_MM_AUDIO_CODEC_FLAC,
     /// Audio codec type is VORBIS.
-    E_PLAYER_AUDIO_CODEC_VORBIS,
+    E_MM_AUDIO_CODEC_VORBIS,
     /// Audio codec type is AMR NB.
-    E_PLAYER_AUDIO_CODEC_AMR_NB,
+    E_MM_AUDIO_CODEC_AMR_NB,
     /// Audio codec type is AMR WB.
-    E_PLAYER_AUDIO_CODEC_AMR_WB,
+    E_MM_AUDIO_CODEC_AMR_WB,
     /// Audio codec type is HEAAC.
-    E_PLAYER_AUDIO_CODEC_HEAAC,
+    E_MM_AUDIO_CODEC_HEAAC,
     /// Audio codec type is PCM MULAW.
-    E_PLAYER_AUDIO_CODEC_PCM_MULAW,
+    E_MM_AUDIO_CODEC_PCM_MULAW,
     /// Audio codec type is PCM ALAW.
-    E_PLAYER_AUDIO_CODEC_PCM_ALAW,
+    E_MM_AUDIO_CODEC_PCM_ALAW,
     /// Audio codec type is WMA2.
-    E_PLAYER_AUDIO_CODEC_WMA2,
+    E_MM_AUDIO_CODEC_WMA2,
     /// Audio codec type is WMA3.
-    E_PLAYER_AUDIO_CODEC_WMA3,
+    E_MM_AUDIO_CODEC_WMA3,
     /// Audio codec type is WAVEFORMATEX.
-    E_PLAYER_AUDIO_CODEC_WAVEFORMATEX,
+    E_MM_AUDIO_CODEC_WAVEFORMATEX,
     /// Audio codec type is DRA.
-    E_PLAYER_AUDIO_CODEC_DRA,
-} EN_PLAYER_AUDIO_CODEC;
+    E_MM_AUDIO_CODEC_DRA,
+    /// Audio codec type is PCM_S16BE.
+    E_MM_AUDIO_CODEC_PCM_S16BE,
+    /// Audio codec type is PCM_U16LE.
+    E_MM_AUDIO_CODEC_PCM_U16LE,
+    /// Audio codec type is PCM_U16BE.
+    E_MM_AUDIO_CODEC_PCM_U16BE,
+    /// Audio codec type is PCM_S8.
+    E_MM_AUDIO_CODEC_PCM_S8,
+    /// Audio codec type is PCM_U8.
+    E_MM_AUDIO_CODEC_PCM_U8,
+    /// Audio codec type is ADPCM_IMA_QT.
+    E_MM_AUDIO_CODEC_ADPCM_IMA_QT,
+    /// Audio codec type is ADPCM_IMA_WAV.
+    E_MM_AUDIO_CODEC_ADPCM_IMA_WAV,
+    /// Audio codec type is ADPCM_IMA_DK3.
+    E_MM_AUDIO_CODEC_ADPCM_IMA_DK3,
+    /// Audio codec type is ADPCM_IMA_DK4.
+    E_MM_AUDIO_CODEC_ADPCM_IMA_DK4,
+    /// Audio codec type is ADPCM_MS.
+    E_MM_AUDIO_CODEC_ADPCM_MS,
+    /// Audio codec type is MPEG4AAC.
+    E_MM_AUDIO_CODEC_MPEG4AAC,
+} EN_MM_AUDIO_CODEC;
+
+/// Define video codec info, include type, w, h, rate...
+typedef struct
+{
+    EN_MM_VIDEO_CODEC eVideoType;
+    MS_U32 u32VideoWidth;
+    MS_U32 u32VideoHeight;
+    MS_U32 u32FrameRate;
+    MS_BOOL bAvsyncDisable;
+    MS_BOOL bDropErrorFrame;
+    MS_BOOL bPTS_Mode;
+    MS_BOOL bLivePlayback;
+    MS_U8 u8NalLenSizeUnit;
+    MS_BOOL bEnableSeamless;
+} ST_MM_VIDEO_INFO;
+
+typedef struct
+{
+    /// Scale
+    MS_U32 u32Scale;               // AVI                      : MP2/ MP3
+    /// Rate
+    MS_U32 u32Rate;                // AVI                      : MP3
+    /// Length
+    MS_U32 u32Length;              // AVI                      : No use now.
+    /// SampleSize
+    MS_U32 u32SampleSize;          // AVI/ RM                  : MP2/ MP3
+    /// Channel
+    MS_U32 u32Channel;             // AVI/ MOV/ MKV/ RM/ MPG   : PCM/ ADPCM
+    /// SampleRate
+    MS_U32 u32SampleRate;          // AVI/ MOV/ MKV/ RM/ MPG   : AAC/ PCM/ ADPCM
+    /// BitRate
+    MS_U32 u32BitRate;             // AVI/ RM/ MPG             : MP2
+    /// BlockAlign
+    MS_U32 u32BlockAlign;          // AVI                      : ADPCM
+    /// BitsPerSample
+    MS_U32 u32BitsPerSample;       // AVI/ MOV/ MKV/ MPG       : PCM/ ADPCM
+    /// SamplesPerBlock
+    MS_U32 u32SamplesPerBlock;     // AVI/ MPG                 : ADPCM
+    /// ObjectTypeID
+    MS_U32 u32ObjectTypeID;        // AVI/ MOV/ MKV            : AAC
+    /// ChannelMask
+    MS_U32 u32ChannelMask;         // ASF/ WMV/ WMA            : WMA Pro
+    /// EncodeOpt
+    MS_U16 u16EncodeOpt;           // ASF/ WMV/ WMA            : WMA
+    /// FormatTag
+    MS_U16 u16FormatTag;           // MKV
+    /// Version
+    MS_U8 u8Version;               // ASF/ WMV/ WMA            : WMA
+    /// AdvanceEncodeOpt
+    MS_U16 u16AdvanceEncodeOpt;    // ASF/ WMV/ WMA            : WMA
+} ST_MM_AUDIO_INFO;
+
+/// Define audio structure
+typedef struct
+{
+    /// audio paramter
+    ST_MM_AUDIO_INFO stParam;
+    /// audio codec id
+    EN_MM_AUDIO_CODEC eCodecID;
+} ST_MM_AUDIO_PARAM;
 
 typedef enum
 {
@@ -583,7 +686,7 @@ typedef enum
     MPLAYER_OPTION_SET_SUBTITLE_ADVANCE,                                  // set subtitle show advanced steps, in unit 100ms
     MPLAYER_OPTION_CANCEL_SUBTITLE_DELAY_ADVANCE,                // cancel subtitle delay/advanced steps, in unit 100ms
 
-	MPLAYER_OPTION_SPECIFIC_TOTAL_TIME, // for ts stream, set specific total time, then codec needn't read file end
+    MPLAYER_OPTION_SPECIFIC_TOTAL_TIME, // for ts stream, set specific total time, then codec needn't read file end
     MPLAYER_OPTION_BACKLIGHT_ON_OFF = 0x80,     //on/off back light
     MPLAYER_OPTION_MEMC_ON_OFF,     //on/off memc
     MPLAYER_OPTION_TRANSMIT_KEY,     //true: Transmit KEY_EXIT to AP when MM playing. Default: false
@@ -593,6 +696,8 @@ typedef enum
     MPLAYER_OPTION_ENABLE_FASTEN_TS_PLAYING,
 
     MPLAYER_OPTION_ENABLE_NEW_AUDIO_MODE,
+
+    MPLAYER_OPTION_SET_AVP_ZORDER,
 
     MPLAYER_OPTIOND_INVALID,
 } EN_MPLAYER_OPTION_TYPE;
@@ -606,21 +711,55 @@ typedef enum
 
 typedef enum
 {
-    E_DIRECTION_UP,
-    E_DIRECTION_DOWN,
-    E_DIRECTION_LEFT,
-    E_DIRECTION_RIGHT,
+    E_MPLAYER_DIRECTION_UP,
+    E_MPLAYER_DIRECTION_DOWN,
+    E_MPLAYER_DIRECTION_LEFT,
+    E_MPLAYER_DIRECTION_RIGHT,
 
-    E_DIRECTION_MAX,
-} E_DIRECTION;
+    E_MPLAYER_DIRECTION_MAX,
+} EN_MPLAYER_DIRECTION;
 
 typedef enum
 {
-    MPLAYER_FILE_MODE,      //for local file
-    MPLAYER_SEEKABLE_STREAM_MODE,   //for seekable stream
-    MPLAYER_UNSEEKABLE_STREAM_MODE, //for unseekable stream
+    MPLAYER_FILE_MODE = 0,      //for local file                                MPLAYER_PLAY_FILEIN | MPLAYER_PLAY_VDP
+    MPLAYER_SEEKABLE_STREAM_MODE,   //for seekable stream       MPLAYER_PLAY_SEEKABLE_STREAM | MPLAYER_PLAY_VDP
+    MPLAYER_UNSEEKABLE_STREAM_MODE, //for unseekable stream   MPLAYER_PLAY_UNSEEKABLE_STREAM | MPLAYER_PLAY_VDP
+    MPLAYER_ES_MODE,
     MPLAYER_MODE_INVALID,
 } EN_MPLAYER_FILE_MODE;
+
+typedef enum
+{
+    E_MM_AUDIO_SWITCH_FIRST_PLAY,
+    E_MM_AUDIO_SWITCH_LAST_PLAY,
+    E_MM_AUDIO_SWITCH_VIDEO_ONLY,
+    E_MM_AUDIO_SWITCH_NONE,
+    E_MM_AUDIO_SWITCH_INVALUD,
+} EN_MM_AUDIO_SWITCH_MODE;
+
+
+typedef enum
+{
+    E_MM_PLAY_STATUS_OK,
+    E_MM_PLAY_STATUS_FAIL,
+    E_MM_PLAY_STATUS_CMD_DONE,
+    E_MM_PLAY_STATUS_INVALID,
+} EN_MM_PLAY_STATUS;
+
+typedef enum
+{
+    MPLAYER_PLAY_FLAG_FILEIN            = 0x00000001,
+    MPLAYER_PLAY_FLAG_SEEKABLE_STREAM   = 0x00000002,
+    MPLAYER_PLAY_FLAG_UNSEEKABLE_STREAM = 0x00000004,
+    MPLAYER_PLAY_FLAG_ES_STREAM          = 0x00000008,
+
+    MPLAYER_PLAY_FLAG_AVP               = 0x00000010,
+    MPLAYER_PLAY_FLAG_DIP               = 0x00000020,
+    MPLAYER_PLAY_FLAG_MULTI_DEC         = 0x00000040,
+
+    MPLAYER_PLAY_FLAG_FORCE_8bit        = 0x00000100,
+    MPLAYER_PLAY_FLAG_DISABLE_DYNSCALING= 0x00000200,
+}EN_MPLAYER_PLAY_FLAG;
 
 typedef enum
 {
@@ -653,7 +792,7 @@ typedef enum
 
 typedef struct
 {
-    E_DIRECTION eDirection;
+    EN_MPLAYER_DIRECTION eDirection;
     MS_U16 u16Offset;
 } MPLAYER_MOVEVIEW_PARAM;
 
@@ -753,6 +892,7 @@ typedef struct _MPLAYER_MEDIA
     unsigned char bInitOnly;
     unsigned char bPreviewEnable;
     ST_PREVIEW_SETTING stPreviewSetting;
+    MS_U32 u32PlayFlag;
 
 } MPLAYER_MEDIA;
 
@@ -780,6 +920,8 @@ typedef enum
 
     MPLAYER_FRAME_READY,
     MPLAYER_BLACKSCREEN_OFF,
+    MPLAYER_ES_FLUSH_DATA_READY,
+    MPLAYER_CMD_DONE, // Command from user is done
     MPLAYER_NOTIFY_NULL, //playback notify null
 } EN_MPLAYER_NOTIFY_TYPE;
 
@@ -798,22 +940,45 @@ MS_BOOL Demo_MM_GetOption(MS_U32 *pOption, MS_U32 *pMMInfo);
 MS_BOOL Demo_MM_Play(MS_U32 *pFileOption, MS_U8* U8FileName);
 MS_BOOL Demo_MM_FF(void);
 MS_BOOL Demo_MM_RW(void);
+MS_BOOL Demo_MM_Step(MS_U32 *u32Cnt);
+MS_BOOL Demo_MM_StepPlay(MS_U32 *pFileOption, MS_U8* U8FileName);
 MS_BOOL Demo_MM_Pause(void);
 MS_BOOL Demo_MM_Resume(void);
 MS_BOOL Demo_MM_Stop(void);
 MS_BOOL Demo_MM_Stop_MediaType(MS_U32 * pMediaType);
 MS_BOOL Demo_MM_Repeat(MS_U32 *pu32On);
+MS_BOOL Demo_MM_Repeat_EX(MS_U32 *pu32ItemId, MS_U32 *pu32On);
 MS_U32 Demo_MM_GetOutAdr(void);
+MS_BOOL Demo_MM_IsPlay(void);
 MS_BOOL Demo_MM_SetSubtitleTrack(MS_U32 *u32TrackId);
 MS_BOOL Demo_MM_SetAudioTrack(MS_U32 *u32TrackId);
 MS_BOOL Demo_MM_SetProgramTrack(MS_U32 *u32ProgramId);
 MS_BOOL Demo_MM_RW_Replay(MS_U32 *pu32On);
 MS_BOOL Demo_MM_Get_DrawPhotoInfo(MS_U16* u16width, MS_U16* u16height, MS_U16* u16pitch, MS_U16* u16format);
-MS_BOOL Demo_MM_Get_DrawPhotoInfo(MS_U16* u16width, MS_U16* u16height, MS_U16* u16pitch, MS_U16* u16format);
 MS_BOOL Demo_MM_Set_DrawPhotoPath(MS_U32* u32Path);
+MS_BOOL Demo_MM_Display_Rotate(MS_U32 *u32Direction);
+MS_BOOL Demo_MM_Display_Zoom(MS_U32 *u32ZoomMode);
+MS_BOOL Demo_MM_Display_Resume(void);
+MS_BOOL Demo_MM_Display_MoveView(MS_U32 *u32Direction, MS_U16 *moveOffset);
+MS_BOOL Demo_MM_Set_SlideShowEffect(MS_U32 *u32Effect);
 MS_BOOL Demo_MM_AllocAudDec(void);
 MS_BOOL Demo_MM_FreeAudDec(void);
 MS_BOOL Demo_MM_SetDebugLevel(MS_U32* u32DebugLevel);
+MS_BOOL Demo_MM_SetEnableMotionGif(MS_U32* bEnableMGIF);
+MS_BOOL Demo_MM_SetWindow(MS_U32* u32windowId, MS_U16* u16X, MS_U16* u16Y, MS_U16* u16Width, MS_U16* u16Height);
+MS_BOOL Demo_MM_SetKeepRatio(MS_U32* pu32EnableKeepRatio);
+
+
+#if (DEMO_MM_AVP_TEST == 1)
+MS_BOOL Demo_MM_SetOperableMediaItem(MS_U32* u32ItemId);
+MS_BOOL Demo_MM_SwitchMediaItemAudio(MS_U32* u32ItemId);
+MS_BOOL Demo_MM_SetAVPZOrder(MS_U32* u32windowId, MS_U32* u32Layer);
+MS_BOOL Demo_MM_ResetWindow(void);
+MS_BOOL Demo_MM_MuteMediaItem(MS_U32* u32ItemId, MS_U32* bMute);
+MS_BOOL Demo_MM_MuteMediaItem_All(void);
+MS_BOOL Demo_MM_SetAudioSwitchMode(MS_U32* u32Mode);
+MS_BOOL Demo_MM_PlayMultiStreams(MS_U8* u8SetIdx);
+#endif
 
 #if (DEMO_APM_TEST == 1)
 MS_BOOL Demo_MM_IPCINIT(void);
@@ -822,4 +987,3 @@ MS_BOOL Demo_MM_AUDIO(void);
 #endif
 
 #endif
-

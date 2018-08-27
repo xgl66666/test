@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -268,7 +268,7 @@ MS_BOOL Demo_BOOTLOGO_CheckEnv(void)
         db_print("=================ps8Id : %s ===========\n",stBLParamList[u32Idx].ps8Id);
         if((pu8EnvStr = Demo_ENV_GetEnv((MS_U8 *)stBLParamList[u32Idx].ps8Id)) == NULL)
         {
-            sprintf((char *)u8Val, "0x%08lx", stBLParamList[u32Idx].u32Val);
+            snprintf((char *)u8Val, 16, "0x%08lx", stBLParamList[u32Idx].u32Val);
             Demo_ENV_SetEnv((MS_U8 *)stBLParamList[u32Idx].ps8Id, (MS_U8 *)u8Val);
             bModify = TRUE;
         }
@@ -278,7 +278,7 @@ MS_BOOL Demo_BOOTLOGO_CheckEnv(void)
 
             if(u32Val != stBLParamList[u32Idx].u32Val)
             {
-                sprintf((char *)u8Val, "0x%08lx", stBLParamList[u32Idx].u32Val);
+                snprintf((char *)u8Val, 16, "0x%08lx", stBLParamList[u32Idx].u32Val);
                 Demo_ENV_SetEnv((MS_U8 *)stBLParamList[u32Idx].ps8Id, (MS_U8 *)u8Val);
                 bModify = TRUE;
             }

@@ -27,6 +27,76 @@
 #include "MxLWare_HYDRA_CommonApi.h"
 #include "MxLWare_HYDRA_PhyCtrl.h"
 #include "MxLWare_HYDRA_Commands.h"
+#include "MxLWare_HYDRA_Registers.h"
+
+UINT32 MxL_Get_DiseqcMappingBitMapReverse(MXL_HYDRA_CONTEXT_T * devHandlePtr, UINT32 bitMap)
+{
+  UINT32 diseqcBitMap = bitMap;
+
+  MXLENTERSTR;
+  if((devHandlePtr->deviceType == MXL_HYDRA_DEVICE_582) || (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_542) ||
+     (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_582C) || (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_542C) ||
+     (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_532C))
+  {
+    if (diseqcBitMap & MXL_HYDRA_INTR_DISEQC_2) 
+    {
+      diseqcBitMap &= ~(MXL_HYDRA_INTR_DISEQC_2);
+      diseqcBitMap |= (MXL_HYDRA_INTR_DISEQC_1);
+    }
+  }
+  MXLEXIT(MXL_HYDRA_PRINT("Status reg (0x%x) changed to 0x%x\n", bitMap, diseqcBitMap);); 
+  return diseqcBitMap; 
+}
+
+static MXL_HYDRA_DISEQC_ID_E MxL_Get_DiseqcMapping(MXL_HYDRA_CONTEXT_T * devHandlePtr, MXL_HYDRA_DISEQC_ID_E diseqcId)
+{
+  MXL_HYDRA_DISEQC_ID_E newDiseqcId = diseqcId;
+
+  if((devHandlePtr->deviceType == MXL_HYDRA_DEVICE_582) || (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_542) ||
+     (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_582C) || (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_542C) || 
+     (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_532C))
+  {
+    newDiseqcId = (newDiseqcId == MXL_HYDRA_DISEQC_ID_1)?MXL_HYDRA_DISEQC_ID_2:MXL_HYDRA_DISEQC_ID_0;
+    MXLEXIT(MXL_HYDRA_PRINT("DiseqId=%d changed to %d\n", diseqcId, newDiseqcId);); 
+  }
+
+  return newDiseqcId;
+}
+
+static MXL_STATUS_E MxL_Set_DiseqcMode(UINT8 devId, MXL58x_DSQ_OP_MODE_TXRX_T *diseqcMsgPtr)
+{
+  MXL_STATUS_E status = MXL_SUCCESS;
+  UINT8 cmdSize = sizeof(MXL58x_DSQ_OP_MODE_TXRX_T);
+  UINT8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
+
+  MXLENTERSTR;
+  MXLENTER(MXL_HYDRA_PRINT("diseqcId=%d, opModeTx=%s, invertTx=%d, opModeRx=%s, invertRx=%d, versionIndex=%d, diseqcCarrierFreqIndex=%d\n", 
+                            diseqcMsgPtr->diseqcId, diseqcMsgPtr->opModeTx?"tone":"envelope", diseqcMsgPtr->invertTx, diseqcMsgPtr->opModeRx?"tone":"envelope", 
+                            diseqcMsgPtr->invertRx, diseqcMsgPtr->version, diseqcMsgPtr->centerFreq););
+
+  BUILD_HYDRA_CMD(MXL_HYDRA_DISEQC_CFG_TXRX_MSG_CMD, MXL_CMD_WRITE, cmdSize, diseqcMsgPtr, cmdBuff);
+  status = MxLWare_HYDRA_SendCommand(devId, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
+  
+  MXLEXITSTR(status);
+  return status;
+}
+
+static MXL_STATUS_E MxL_Set_FskMode(UINT8 devId, MXL_HYDRA_FSK_OP_MODE_E fskType)
+{
+  MXL_STATUS_E status = MXL_SUCCESS;
+  UINT32 fskTypeCmd = (UINT32) fskType;
+  UINT8 cmdSize = sizeof(UINT32);
+  UINT8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
+
+  MXLENTERSTR;
+  MXLENTER(MXL_HYDRA_PRINT("fskTypeIndex=%d\n", fskType););
+
+  BUILD_HYDRA_CMD(MXL_HYDRA_FSK_SET_OP_MODE_CMD, MXL_CMD_WRITE, cmdSize, &fskTypeCmd, cmdBuff);
+  status = MxLWare_HYDRA_SendCommand(devId, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
+  
+  MXLEXITSTR(status);
+  return status;
+}
 
 /**
  ************************************************************************
@@ -76,6 +146,73 @@ MXL_STATUS_E MxLWare_HYDRA_API_ResetFsk(UINT8 devId)
 /**
  ************************************************************************
  *
+ * @brief MxLWare_HYDRA_API_CfgDiseqcMsgDelays
+ *
+ * @param[in]   devId           Device ID
+ * @param[in]   diseqcId        Diseqc ID
+ * @param[in]   msgDelaysPtr    Structure with message delays 
+ *
+ * @author Mariusz 
+ *
+ * @date 07/13/2016 Initial release
+ *
+ * The API is used to configure delays in DiSEqC messages
+ *
+ * @retval MXL_SUCCESS            - OK
+ * @retval MXL_FAILURE            - Failure
+ * @retval MXL_INVALID_PARAMETER  - Invalid parameter is passed
+ *
+ ************************************************************************/
+MXL_STATUS_E MxLWare_HYDRA_API_CfgDiseqcMsgDelays(UINT8 devId, 
+        MXL_HYDRA_DISEQC_ID_E diseqcId, 
+        MXL_HYDRA_DISEQC_MSG_DELAYS_T * msgDelaysPtr)
+{
+  MXL_HYDRA_CONTEXT_T *devHandlePtr;
+  MXL_STATUS_E status = MXL_SUCCESS;
+
+  MXLENTERAPISTR(devId);
+  MXLENTERAPI(
+    MXL_HYDRA_PRINT("diseqcId=%d, ", diseqcId);
+    if (msgDelaysPtr)
+    {
+      MXL_HYDRA_PRINT("newMsgDelayMs=%d, endMsgDelayMs=%d, replyDelayMs=%d, startMsgDelayMs=%d\n",
+        msgDelaysPtr->newMsgDelayMs, msgDelaysPtr->endMsgDelayMs, msgDelaysPtr->replyDelayMs,
+        msgDelaysPtr->startMsgDelayMs);
+    } else MXL_HYDRA_PRINT("msgDelaysPtr=NULL!\n");
+  )
+  status = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
+  if (status == MXL_SUCCESS)
+  {
+    if ((msgDelaysPtr != NULL) && (msgDelaysPtr->newMsgDelayMs <= MXL_HYDRA_NEWMSG_DELAY_MAX)
+        && (msgDelaysPtr->endMsgDelayMs <= MXL_HYDRA_ENDMSG_DELAY_MAX)
+        && (msgDelaysPtr->replyDelayMs <= MXL_HYDRA_REPLYMSG_DELAY_MAX)
+        && (msgDelaysPtr->startMsgDelayMs <= MXL_HYDRA_STARTMSG_DELAY_MAX))
+    {
+      UINT32 regData = 0;
+      UINT32 regAddr = 0;
+
+      diseqcId = MxL_Get_DiseqcMapping(devHandlePtr, diseqcId);
+      regAddr = (HYDRA_DSQ0_DELAY_REG) + ((UINT32) diseqcId * HYDRA_DSQ_ID_OFFSET);
+
+      regData = ((msgDelaysPtr->newMsgDelayMs & HYDRA_DSQ_NEWMSG_DELAY_MASK) << HYDRA_DSQ_NEWMSG_DELAY_LSBPOS) |
+                ((msgDelaysPtr->endMsgDelayMs & HYDRA_DSQ_ENDMSG_DELAY_MASK) << HYDRA_DSQ_ENDMSG_DELAY_LSBPOS) | 
+                ((msgDelaysPtr->replyDelayMs & HYDRA_DSQ_REPLY_DELAY_MASK) << HYDRA_DSQ_REPLY_DELAY_LSBPOS) |
+                ((msgDelaysPtr->startMsgDelayMs & HYDRA_DSQ_START_DELAY_MASK) << HYDRA_DSQ_START_DELAY_LSBPOS);
+
+      MXLDBG3(MXL_HYDRA_PRINT("Write 0x%08x to reg 0x%08x\n", regAddr, regData););
+      status = MxLWare_HYDRA_WriteRegister(devId, regAddr, regData);
+
+    } else status = MXL_INVALID_PARAMETER;
+  }
+
+  MXLEXITAPISTR(devId, status);
+  return status;
+}
+
+
+/**
+ ************************************************************************
+ *
  * @brief MxLWare_HYDRA_API_CfgDiseqcOpMode
  *
  * @param[in]   devId           Device ID
@@ -108,13 +245,15 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDiseqcOpMode(UINT8 devId,
 {
   MXL_HYDRA_CONTEXT_T * devHandlePtr;
   MXL_STATUS_E status = MXL_SUCCESS;
-
-  MXL58x_DSQ_OP_MODE_T diseqcMsg;
-  UINT8 cmdSize = sizeof(diseqcMsg);
-  UINT8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
+  MXL58x_DSQ_OP_MODE_TXRX_T diseqcMsg;
+  
+  MXL_HYDRA_DISEQC_OPMODE_E opModeTx = opMode;
+  MXL_BOOL_E invertTx = MXL_FALSE;
+  MXL_HYDRA_DISEQC_OPMODE_E opModeRx = MXL_HYDRA_DISEQC_TONE_MODE;  //Rx Path is always in Tone Mode under this API
+  MXL_BOOL_E invertRx = MXL_FALSE;
 
   MXLENTERAPISTR(devId);
-  MXLENTERAPI(MXL_HYDRA_PRINT("diseqcId=%d, opMode=%d, version=%d, carrierFreqInHz=%d\n", diseqcId, opMode, version, carrierFreqInHz););
+  MXLENTERAPI(MXL_HYDRA_PRINT("diseqcId=%d, opMode=%d, versionIndex=%d, diseqcCarrierFreqIndex=%d\n", diseqcId, opMode, version, carrierFreqInHz););
 
   status = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
   if (status == MXL_SUCCESS)
@@ -122,10 +261,77 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDiseqcOpMode(UINT8 devId,
     diseqcMsg.diseqcId = diseqcId;
     diseqcMsg.centerFreq = carrierFreqInHz;
     diseqcMsg.version = version;
-    diseqcMsg.opMode = opMode;
+    diseqcMsg.opModeTx = opModeTx;
+    diseqcMsg.invertTx = invertTx;
+    diseqcMsg.opModeRx = opModeRx;
+    diseqcMsg.invertRx = invertRx;
 
-    BUILD_HYDRA_CMD(MXL_HYDRA_DISEQC_CFG_MSG_CMD, MXL_CMD_WRITE, cmdSize, &diseqcMsg, cmdBuff);
-    status = MxLWare_HYDRA_SendCommand(devId, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
+    status = MxL_Set_DiseqcMode(devId, &diseqcMsg);
+  }
+  
+  MXLEXITAPISTR(devId, status);
+  return status;
+}
+
+/**
+ ************************************************************************
+ *
+ * @brief MxLWare_HYDRA_API_CfgDiseqcOpModeTxRx
+ *
+ * @param[in]   devId           Device ID
+ * @param[in]   diseqcId
+ * @param[in]   toneEnableTx
+ * @param[in]   invertTx
+ * @param[in]   toneEnableRx
+ * @param[in]   invertRx
+ * @param[in]   version
+ * @param[in]   carrierFreqInHz
+ *
+ * @author Cres R
+ *
+ * @date 06/12/2012 Initial release
+ *
+ * The API is used to configure DiSEqC interface in Hydra. There are 3 DiSEqC 1.x
+ * interfaces and 1 DiSEqC 2.x interface. In case of DiSEqC 2.x interface, host
+ * has to configure the appropriate DiSEqC ID based on device configuration.
+ * Hydra SOC supports three different frequencies of 22 KHz, 33 KHz & 44 KHz
+ * for communicating with DiSEqC slave.
+ *
+ * @retval MXL_SUCCESS            - OK
+ * @retval MXL_FAILURE            - Failure
+ * @retval MXL_INVALID_PARAMETER  - Invalid parameter is passed
+ *
+ ************************************************************************/
+
+MXL_STATUS_E MxLWare_HYDRA_API_CfgDiseqcOpModeTxRx(UINT8 devId,
+                                                   MXL_HYDRA_DISEQC_ID_E diseqcId,
+                                                   MXL_HYDRA_DISEQC_OPMODE_E opModeTx,
+                                                   MXL_BOOL_E invertTx,
+                                                   MXL_HYDRA_DISEQC_OPMODE_E opModeRx,
+                                                   MXL_BOOL_E invertRx,
+                                                   MXL_HYDRA_DISEQC_VER_E version,
+                                                   MXL_HYDRA_DISEQC_CARRIER_FREQ_E carrierFreqInHz)
+{
+  MXL_HYDRA_CONTEXT_T * devHandlePtr;
+  MXL_STATUS_E status = MXL_SUCCESS;
+  MXL58x_DSQ_OP_MODE_TXRX_T diseqcMsg;
+
+  MXLENTERAPISTR(devId);
+  MXLENTERAPI(MXL_HYDRA_PRINT("diseqcId=%d, opModeTx=%s, invertTx=%d, opModeRx=%s, invertRx=%d, versionIndex=%d, diseqcCarrierFreqIndex=%d\n", 
+                               diseqcId, opModeTx?"tone":"envelope", invertTx, opModeRx?"tone":"envelope", invertRx, version, carrierFreqInHz););
+
+  status = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
+  if (status == MXL_SUCCESS)
+  {
+    diseqcMsg.diseqcId = diseqcId;
+    diseqcMsg.centerFreq = carrierFreqInHz;
+    diseqcMsg.version = version;
+    diseqcMsg.opModeTx = opModeTx;
+    diseqcMsg.invertTx = invertTx;
+    diseqcMsg.opModeRx = opModeRx;
+    diseqcMsg.invertRx = invertRx;
+
+    status = MxL_Set_DiseqcMode(devId, &diseqcMsg);
   }
 
   MXLEXITAPISTR(devId, status);
@@ -197,7 +403,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDiseqcContinuousToneCtrl(UINT8 devId,
  *
  * @date 06/12/2012 Initial release
  *
- * This API shall be used to retrieves DiSEqC moduleÂ’s status.
+ * This API shall be used to retrieves DiSEqC module’s status.
  *
  * @retval MXL_SUCCESS            - OK
  * @retval MXL_FAILURE            - Failure
@@ -220,10 +426,12 @@ MXL_STATUS_E MxLWare_HYDRA_API_ReqDiseqcStatus(UINT8 devId, MXL_HYDRA_DISEQC_ID_
   {
     if (statusPtr)
     {
-      // read diseqc status
-      status = MxLWare_HYDRA_ReadRegister(devId,
-                                          (DISEQ0_STATUS_REG + (diseqcId * (sizeof(UINT32)))),
-                                          statusPtr);
+       diseqcId = MxL_Get_DiseqcMapping(devHandlePtr, diseqcId);
+       
+       // read diseqc status
+       status = MxLWare_HYDRA_ReadRegister(devId,
+                                           (DISEQ0_STATUS_REG + (diseqcId * (sizeof(UINT32)))),
+                                            statusPtr);
 
 	  // reset diseqc status if diseqc is set
       if ((status == MXL_SUCCESS) && (0 != *statusPtr))
@@ -281,7 +489,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_ReqDiseqcRead(UINT8 devId, MXL_HYDRA_DISEQC_ID_E 
   mxlStatus |= MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
   if (mxlStatus == MXL_SUCCESS)
   {
-    if (diseqcMsgPtr)
+    if ((diseqcMsgPtr) && (diseqcId == MXL_HYDRA_DISEQC_ID_0)) 
     {
       // set diseqc msg avil to 0
       mxlStatus |= MxLWare_HYDRA_WriteRegister(devId,
@@ -326,11 +534,11 @@ MXL_STATUS_E MxLWare_HYDRA_API_ReqDiseqcRead(UINT8 devId, MXL_HYDRA_DISEQC_ID_E 
 
         diseqcMsgPtr->nbyte = regData[0];
 
-        MXL_HYDRA_PRINT("DiSEqC Data : \n");
-        for (i = 0; i < 32; i++)
+        MXLDBG1(MXL_HYDRA_PRINT("DiSEqC Data : \n"););
+        for (i = 0; i < MXL_HYDRA_DISEQC_MAX_PKT_SIZE; i++)
         {
           diseqcMsgPtr->bufMsg[i] = regData[i+4];
-          MXL_HYDRA_PRINT("0x%0X ", diseqcMsgPtr->bufMsg[i]);
+          MXLDBG1(MXL_HYDRA_PRINT("0x%0X ", diseqcMsgPtr->bufMsg[i]););
         }
       }
       else
@@ -377,25 +585,56 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDiseqcWrite(UINT8 devId, MXL_HYDRA_DISEQC_TX_M
 {
   MXL_HYDRA_CONTEXT_T * devHandlePtr;
   MXL_STATUS_E mxlStatus = MXL_SUCCESS;
-  UINT8 cmdSize = sizeof(MXL_HYDRA_DISEQC_TX_MSG_T);
   UINT8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
-  UINT32 i  = 0;
+  UINT32 diseqcStatus;
 
   MXLENTERAPISTR(devId);
   mxlStatus = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
   if (mxlStatus == MXL_SUCCESS)
   {
-    if ((diseqcMsgPtr) && (diseqcMsgPtr->diseqcId <= MXL_HYDRA_DISEQC_ID_3))
+    if ((diseqcMsgPtr) && (diseqcMsgPtr->diseqcId <= MXL_HYDRA_DISEQC_ID_3) && (diseqcMsgPtr->nbyte < MXL_HYDRA_DISEQC_MAX_PKT_SIZE))
     {
-      MXL_HYDRA_PRINT("diseqcId=%d %d Bytes\n", diseqcMsgPtr->diseqcId, diseqcMsgPtr->nbyte);
+      UINT32 diseqcId = diseqcMsgPtr->diseqcId;
+      MXL_HYDRA_DISEQC_TX_MSG_CMD_T diseqcMsg;
+      UINT32 i  = 0;
+
+      MXLENTERAPI(MXL_HYDRA_PRINT("diseqcId=%d | %d bytes: ", diseqcMsgPtr->diseqcId, diseqcMsgPtr->nbyte););
       for (i = 0; i < diseqcMsgPtr->nbyte; i++)
       {
-        MXL_HYDRA_PRINT("0x%02X ", diseqcMsgPtr->bufMsg[i]);
+        MXLENTERAPI(MXL_HYDRA_PRINT("0x%X ", diseqcMsgPtr->bufMsg[i]););
+        diseqcMsg.bufMsg[i] = diseqcMsgPtr->bufMsg[i];
       }
+      MXLENTERAPI(MXL_HYDRA_PRINT("\n"););
 
-      MXL_HYDRA_PRINT("\n");
-      BUILD_HYDRA_CMD(MXL_HYDRA_DISEQC_MSG_CMD, MXL_CMD_WRITE, cmdSize, diseqcMsgPtr, cmdBuff);
-      mxlStatus = MxLWare_HYDRA_SendCommand(devId, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
+      diseqcId = MxL_Get_DiseqcMapping(devHandlePtr, diseqcId);
+	  
+      mxlStatus = MxLWare_HYDRA_ReadRegister(devId,
+                                           (DISEQ0_STATUS_REG + (diseqcId * (sizeof(UINT32)))),
+                                            &diseqcStatus);
+
+      if (mxlStatus == MXL_SUCCESS)
+      {
+        if(MXL_HYDRA_DISEQC_STATUS_XMITING != diseqcStatus)
+        {
+          diseqcMsg.diseqcId = diseqcMsgPtr->diseqcId;
+          diseqcMsg.nbyte = diseqcMsgPtr->nbyte;
+          diseqcMsg.toneBurst = (UINT32) diseqcMsgPtr->toneBurst;   // type-cast from enum
+
+          mxlStatus = MxLWare_HYDRA_WriteRegister(devId,
+                                             (DISEQ0_STATUS_REG + (diseqcId * (sizeof(UINT32)))),
+                                            0); // reset diseqc status if diseqc is set
+          if (mxlStatus == MXL_SUCCESS)
+          {
+            BUILD_HYDRA_CMD(MXL_HYDRA_DISEQC_MSG_CMD, MXL_CMD_WRITE, sizeof(diseqcMsg), &diseqcMsg, cmdBuff);
+            mxlStatus = MxLWare_HYDRA_SendCommand(devId, sizeof(diseqcMsg) + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
+          }
+        }
+        else
+        {
+          MXLDBG2(MXL_HYDRA_PRINT("Diseqc transmitter is in use\n"););
+          mxlStatus = MXL_NOT_READY; 
+        }
+      }
     }
     else
       mxlStatus = MXL_INVALID_PARAMETER;
@@ -429,18 +668,14 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgFskOpMode(UINT8 devId, MXL_HYDRA_FSK_OP_MODE_E
 {
   MXL_HYDRA_CONTEXT_T * devHandlePtr;
   MXL_STATUS_E mxlStatus = MXL_SUCCESS;
-  UINT8 cmdSize = sizeof(MXL_HYDRA_FSK_OP_MODE_E);
-  UINT8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
-  UINT32 cmdData = (UINT32)fskCfgType;
 
   MXLENTERAPISTR(devId);
-  MXLENTERAPI(MXL_HYDRA_PRINT("fskCfgType=%d", fskCfgType););
+  MXLENTERAPI(MXL_HYDRA_PRINT("fskCfgTypeIndex=%d\n", fskCfgType););
 
   mxlStatus = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
   if (mxlStatus == MXL_SUCCESS)
   {
-    BUILD_HYDRA_CMD(MXL_HYDRA_FSK_SET_OP_MODE_CMD, MXL_CMD_WRITE, cmdSize, &cmdData, cmdBuff);
-    mxlStatus = MxLWare_HYDRA_SendCommand(devId, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
+    mxlStatus = MxL_Set_FskMode(devId, fskCfgType);
   }
 
   MXLEXITAPISTR(devId, mxlStatus);
@@ -472,7 +707,6 @@ MXL_STATUS_E MxLWare_HYDRA_API_ReqFskMsgRead(UINT8 devId, MXL_HYDRA_FSK_MSG_T *m
   MXL_HYDRA_CONTEXT_T * devHandlePtr;
   MXL_STATUS_E mxlStatus = MXL_FAILURE;
   MXLENTERAPISTR(devId);
-  MXLENTERAPI(MXL_HYDRA_PRINT(" "););
 
   mxlStatus = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
   if (mxlStatus == MXL_SUCCESS)
@@ -495,11 +729,13 @@ MXL_STATUS_E MxLWare_HYDRA_API_ReqFskMsgRead(UINT8 devId, MXL_HYDRA_FSK_MSG_T *m
 #endif
           // convert data to componsate for I2C data swapping in FW layer
           MxL_CovertDataForEndianness(1, (sizeof (UINT8) * MXL_HYDRA_FSK_MESG_MAX_LENGTH), (UINT8 *)(&msgPtr->msgBuff[0]));
+          MXLDBG2(
           MXL_HYDRA_PRINT("\r\nResp Len %d", msgPtr->msgLength);
           MXL_HYDRA_PRINT("\r\n0x%02X 0x%02X 0x%02X 0x%02X", msgPtr->msgBuff[0],
                                                  msgPtr->msgBuff[1],
                                                  msgPtr->msgBuff[2],
                                                  msgPtr->msgBuff[3]);
+          );
         }
         else
         {
@@ -545,7 +781,6 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgFskMsgWrite(UINT8 devId, MXL_HYDRA_FSK_MSG_T *
   UINT32 reqType;
 
   MXLENTERAPISTR(devId);
-  MXLENTERAPI(MXL_HYDRA_PRINT("devId = %d\n", devId););
 
   mxlStatus = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
   if (mxlStatus == MXL_SUCCESS)
@@ -573,9 +808,10 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgFskMsgWrite(UINT8 devId, MXL_HYDRA_FSK_MSG_T *
 
       //Message length is only the LSB 7 bits.
       MXLWARE_OSAL_MEMCPY((void *)&cmdBuff[14], (const void *)&(msgPtr->msgBuff[0]), (msgPtr->msgLength & 0x7F));
+      MXLDBG2(
       MXL_HYDRA_PRINT("\r\n Wrt Len %d", cmdBuff[10]);
       MXL_HYDRA_PRINT("\r\n0x%02X 0x%02X 0x%02X 0x%02X", cmdBuff[14], cmdBuff[15], cmdBuff[16], cmdBuff[17]);
-
+      );
 	  // In order to increase the processing priority of the FSK Local reset msg, 
 	  // we send the reset msg (0x07) as the FSK Reset API and process it as TOP_PRI event
 	  if((cmdBuff[10] & 0x80) != 0 ) // Checking if the msg is a local msg
@@ -611,22 +847,22 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgFskMsgWrite(UINT8 devId, MXL_HYDRA_FSK_MSG_T *
  *
  * @param[in]   devId           Device ID
  * @param[in]   fskFreqMode     FSK Frequency Mode
- * @param[in]   freq            Frequency to be configured.
+ * @param[in]   freqHz          Frequency to be configured.
  *
  * @author Sateesh
  *
  * @date 12/12/2013 Initial release
  *
  * This function will allow the host to set the FSK frequency mode
- * into Â“normalÂ” (2.3MHz) mode or Â“manualÂ” where the output frequency
- * is specified by the Â“freqÂ” parameter.
+ * into “normal” (2.3MHz) mode or “manual” where the output frequency
+ * is specified by the “freq” parameter.
  *
  * @retval MXL_SUCCESS            - OK
  * @retval MXL_FAILURE            - Failure
  * @retval MXL_INVALID_PARAMETER  - Invalid parameter is passed
  *
  ************************************************************************/
-MXL_STATUS_E MxLWare_HYDRA_API_CfgFskFreq(UINT8 devId, MXL_HYDRA_FSK_CFG_FREQ_MODE_E fskFreqMode, UINT32 freq)
+MXL_STATUS_E MxLWare_HYDRA_API_CfgFskFreq(UINT8 devId, MXL_HYDRA_FSK_CFG_FREQ_MODE_E fskFreqMode, UINT32 freqHz)
 {
   MXL_HYDRA_CONTEXT_T * devHandlePtr;
   MXL_STATUS_E mxlStatus = MXL_FAILURE;
@@ -636,20 +872,20 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgFskFreq(UINT8 devId, MXL_HYDRA_FSK_CFG_FREQ_MO
 
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MXL_HYDRA_PRINT("fskFreqMode=%d\n", fskFreqMode););
-  MXLENTERAPI(MXL_HYDRA_PRINT("freq=%dHz\n", freq););
+  MXLENTERAPI(MXL_HYDRA_PRINT("freqHz=%dHz\n", freqHz););
 
   mxlStatus = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
   if (mxlStatus == MXL_SUCCESS)
   {
     if (((fskFreqMode == MXL_HYDRA_FSK_CFG_FREQ_MODE_NORMAL) || (fskFreqMode == MXL_HYDRA_FSK_CFG_FREQ_MODE_MANUAL)) && \
-        ((freq >= 600) && (freq <= 9700000)))
+        ((freqHz >= 600) && (freqHz <= 9700000)))
     {
-      mxlStatus = MxLWare_HYDRA_API_CfgFskOpMode(devId, MXL_HYDRA_FSK_CFG_TYPE_39KPBS);
-      if(mxlStatus == MXL_SUCCESS)
+        mxlStatus = MxL_Set_FskMode(devId, MXL_HYDRA_FSK_CFG_TYPE_39KPBS);
+        if(mxlStatus == MXL_SUCCESS)
       {
         // build Demod Frequency Offset Search command
-        fskFreqCmd.fskFreqMode = fskFreqMode;
-        fskFreqCmd.freq = freq;
+        fskFreqCmd.fskFreqMode = (UINT32) fskFreqMode;
+        fskFreqCmd.freq = freqHz;
         BUILD_HYDRA_CMD(MXL_HYDRA_FSK_CFG_FSK_FREQ_CMD, MXL_CMD_WRITE, cmdSize, &fskFreqCmd, cmdBuff);
 
         // send command to device

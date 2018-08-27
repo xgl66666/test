@@ -80,11 +80,12 @@
 #include <string.h>     /* memset */
 #include "porting_pipelinemanager.h"
 #include "porting_os.h"
+#include "porting_sysinfo.h"
 #include "pipelinemgr.h"
 #include "pipeline_engine.h"
 
-#define FLOW(fmt, arg...)        printf("\033[1;33m######[%s]######"fmt" \033[0m\n",__FUNCTION__,##arg)
-#define ERR(fmt, arg...)         printf("\033[1;31m######[%s][%d]######"fmt" \033[0m\n",__FUNCTION__,__LINE__,##arg)
+#define PT_PILELINEMGR_ERR(fmt, arg...)   PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_ERR, "\033[1;33m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
+#define PT_PILELINEMGR_DBG(fmt, arg...)   PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_DBG, "\033[1;31m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
 
 typedef struct
 {
@@ -96,21 +97,21 @@ typedef struct
 
 MMSDK_BOOL PT_PipeLineManager_CreatePipeLine(PT_PIPELINEITEM* pPipeItem, const ST_MMSDK_PIPE_INFO * pstPipeInfo)
 {
-    FLOW("");
+    PT_PILELINEMGR_DBG("");
     MMSDK_BOOL bRet = FALSE;
     MMSDK_U32 u32SvpPplID = 0;
 
     _ST_MMSDK_PIPELINE_INSTANCE* pPipeLineInstance = NULL;
     if ((pPipeItem == NULL) ||(pstPipeInfo == NULL))
     {
-        ERR("pPipeItem=%p\n",pPipeItem);
-        ERR("pstPipeInfo=%p\n",pstPipeInfo);
+        PT_PILELINEMGR_ERR("pPipeItem=%p\n",pPipeItem);
+        PT_PILELINEMGR_ERR("pstPipeInfo=%p\n",pstPipeInfo);
         return bRet;
     }
 
     if (pstPipeInfo->ePipeType != E_MMSDK_PIPE_ENGINE_TYPE_MASTER)
     {
-        ERR("Wrong pipe type, Pipe Type:0x%x\n",(MMSDK_U32)pstPipeInfo->ePipeType);
+        PT_PILELINEMGR_ERR("Wrong pipe type, Pipe Type:0x%x\n",(MMSDK_U32)pstPipeInfo->ePipeType);
         return bRet;
     }
 
@@ -121,7 +122,7 @@ MMSDK_BOOL PT_PipeLineManager_CreatePipeLine(PT_PIPELINEITEM* pPipeItem, const S
         // create pipe line
         if (SvpPplCreate(&u32SvpPplID) == E_PP_SUCCESS)
         {
-            FLOW("u32SvpPplID = %d", u32SvpPplID);
+            PT_PILELINEMGR_DBG("u32SvpPplID = %d", u32SvpPplID);
             pPipeLineInstance->u32SvpPplID = u32SvpPplID;
             pPipeLineInstance->bSvpPplEnable = TRUE;
             *pPipeItem = (void*)pPipeLineInstance;
@@ -132,7 +133,7 @@ MMSDK_BOOL PT_PipeLineManager_CreatePipeLine(PT_PIPELINEITEM* pPipeItem, const S
             PT_MsOS_FreeMemory(pPipeLineInstance);
             pPipeLineInstance = NULL;
             *pPipeItem = NULL;
-            ERR("Create PipeLine Master fail\n");
+            PT_PILELINEMGR_ERR("Create PipeLine Master fail\n");
         }
     }
 
@@ -141,26 +142,26 @@ MMSDK_BOOL PT_PipeLineManager_CreatePipeLine(PT_PIPELINEITEM* pPipeItem, const S
 
 MMSDK_BOOL PT_PipeLineManager_DeletePipeLine(PT_PIPELINEITEM* pPipeItem, const ST_MMSDK_PIPE_INFO * pstPipeInfo)
 {
-    FLOW("");
+    PT_PILELINEMGR_DBG("");
     MMSDK_BOOL bRet = FALSE;
     _ST_MMSDK_PIPELINE_INSTANCE* pPipeLineInstance = (_ST_MMSDK_PIPELINE_INSTANCE*)(*pPipeItem);
 
     if ((pPipeItem == NULL) || (pstPipeInfo == NULL))
     {
-        ERR("pPipeItem=%p\n",pPipeItem);
-        ERR("pstPipeInfo=%p\n",pstPipeInfo);
+        PT_PILELINEMGR_ERR("pPipeItem=%p\n",pPipeItem);
+        PT_PILELINEMGR_ERR("pstPipeInfo=%p\n",pstPipeInfo);
         return FALSE;
     }
 
     if (pstPipeInfo->ePipeType != E_MMSDK_PIPE_ENGINE_TYPE_MASTER)
     {
-        ERR("Wrong pipe type, Pipe Type:0x%x\n",(MMSDK_U32)pstPipeInfo->ePipeType);
+        PT_PILELINEMGR_ERR("Wrong pipe type, Pipe Type:0x%x\n",(MMSDK_U32)pstPipeInfo->ePipeType);
         return FALSE;
     }
 
     if ((pPipeLineInstance->u32SvpPplID !=pstPipeInfo->u32SvpPplID) || (pPipeLineInstance->bSvpPplEnable != pstPipeInfo->bPipeEnable))
     {
-        ERR("Pipe info of Master is Mis-match, Enable(0x%x, 0x%x), PipeID(0x%x, 0x%x)\n",
+        PT_PILELINEMGR_ERR("Pipe info of Master is Mis-match, Enable(0x%x, 0x%x), PipeID(0x%x, 0x%x)\n",
             pPipeLineInstance->bSvpPplEnable, pstPipeInfo->bPipeEnable,
             pPipeLineInstance->u32SvpPplID, pstPipeInfo->u32SvpPplID);
         return FALSE;
@@ -175,7 +176,7 @@ MMSDK_BOOL PT_PipeLineManager_DeletePipeLine(PT_PIPELINEITEM* pPipeItem, const S
     }
     else
     {
-        ERR("SvpPplDelete Fail\n");
+        PT_PILELINEMGR_ERR("SvpPplDelete Fail\n");
         bRet = FALSE;
     }
 
@@ -185,7 +186,7 @@ MMSDK_BOOL PT_PipeLineManager_DeletePipeLine(PT_PIPELINEITEM* pPipeItem, const S
 
 MMSDK_BOOL PT_PipeLineManager_RegisterPipe(PT_PIPELINEITEM PipeItem, ST_MMSDK_PIPE_INFO * pstPipeInfo)
 {
-    FLOW("");
+    PT_PILELINEMGR_DBG("");
 
     _ST_MMSDK_PIPELINE_INSTANCE* pPipeLineInstance = (_ST_MMSDK_PIPELINE_INSTANCE*)PipeItem;
     MMSDK_BOOL bRet = FALSE;
@@ -194,14 +195,14 @@ MMSDK_BOOL PT_PipeLineManager_RegisterPipe(PT_PIPELINEITEM PipeItem, ST_MMSDK_PI
 
     if ((PipeItem == NULL) || (pstPipeInfo == NULL))
     {
-        ERR("PipeItem=%p\n",PipeItem);
-        ERR("pstPipeInfo=%p\n",pstPipeInfo);
+        PT_PILELINEMGR_ERR("PipeItem=%p\n",PipeItem);
+        PT_PILELINEMGR_ERR("pstPipeInfo=%p\n",pstPipeInfo);
         return bRet;
     }
 
     if (!pPipeLineInstance->bSvpPplEnable)
     {
-        ERR("Can not register pipe id, please create PipeLine first.\n");
+        PT_PILELINEMGR_ERR("Can not register pipe id, please create PipeLine first.\n");
         return bRet;
     }
 
@@ -216,7 +217,7 @@ MMSDK_BOOL PT_PipeLineManager_RegisterPipe(PT_PIPELINEITEM PipeItem, ST_MMSDK_PI
             svpPplPipe.u64ID = pstPipeInfo->u32SvpPplID;
             break;
         default:
-            ERR("Pipe Type is 0x%x, not support register pipe!!!\n", svpPplPipe.u32Type);
+            PT_PILELINEMGR_ERR("Pipe Type is 0x%x, not support register pipe!!!\n", svpPplPipe.u32Type);
             return bRet;
             break;
     }
@@ -229,7 +230,7 @@ MMSDK_BOOL PT_PipeLineManager_RegisterPipe(PT_PIPELINEITEM PipeItem, ST_MMSDK_PI
         }
         else
         {
-            ERR("RegisterPipe Fail.\n");
+            PT_PILELINEMGR_ERR("RegisterPipe Fail.\n");
             bRet = FALSE;
         }
     }
@@ -239,7 +240,7 @@ MMSDK_BOOL PT_PipeLineManager_RegisterPipe(PT_PIPELINEITEM PipeItem, ST_MMSDK_PI
 
 MMSDK_BOOL PT_PipeLineManager_UnRegisterPipe(PT_PIPELINEITEM PipeItem, ST_MMSDK_PIPE_INFO * pstPipeInfo)
 {
-    FLOW("");
+    PT_PILELINEMGR_DBG("");
 
     _ST_MMSDK_PIPELINE_INSTANCE* pPipeLineInstance = (_ST_MMSDK_PIPELINE_INSTANCE*)PipeItem;
     MMSDK_BOOL bRet = FALSE;
@@ -248,14 +249,14 @@ MMSDK_BOOL PT_PipeLineManager_UnRegisterPipe(PT_PIPELINEITEM PipeItem, ST_MMSDK_
 
     if ((PipeItem == NULL) || (pstPipeInfo == NULL))
     {
-        ERR("PipeItem=%p\n",PipeItem);
-        ERR("pstPipeInfo=%p\n",pstPipeInfo);
+        PT_PILELINEMGR_ERR("PipeItem=%p\n",PipeItem);
+        PT_PILELINEMGR_ERR("pstPipeInfo=%p\n",pstPipeInfo);
         return bRet;
     }
 
     if (!pPipeLineInstance->bSvpPplEnable)
     {
-        ERR("No need  un-register pipe id, because PipeLine no create.\n");
+        PT_PILELINEMGR_ERR("No need  un-register pipe id, because PipeLine no create.\n");
         return bRet;
     }
 
@@ -270,7 +271,7 @@ MMSDK_BOOL PT_PipeLineManager_UnRegisterPipe(PT_PIPELINEITEM PipeItem, ST_MMSDK_
             svpPplPipe.u64ID = pstPipeInfo->u32SvpPplID;
             break;
         default:
-            ERR("Pipe Type is 0x%x, not support register pipe!!!\n", svpPplPipe.u32Type);
+            PT_PILELINEMGR_ERR("Pipe Type is 0x%x, not support register pipe!!!\n", svpPplPipe.u32Type);
             return bRet;
             break;
     }
@@ -283,7 +284,7 @@ MMSDK_BOOL PT_PipeLineManager_UnRegisterPipe(PT_PIPELINEITEM PipeItem, ST_MMSDK_
         }
         else
         {
-            ERR("UnRegisterPipe Fail.\n");
+            PT_PILELINEMGR_ERR("UnRegisterPipe Fail.\n");
             bRet = FALSE;
         }
     }

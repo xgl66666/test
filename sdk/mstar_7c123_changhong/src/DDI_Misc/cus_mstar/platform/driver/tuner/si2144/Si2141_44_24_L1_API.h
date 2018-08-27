@@ -10,10 +10,10 @@
    API functions prototypes used by commands and properties
    FILE: Si2141_44_24_L1_API.h
    Supported IC : Si2141-A10, Si2141-B10, Si2144-A20, Si2124-A20
-   Compiled for ROM 61 firmware 1_1_build_10
-   Revision: 0.1
-   Date: July 24 2015
-  (C) Copyright 2015, Silicon Laboratories, Inc. All rights reserved.
+   Compiled for ROM 61 firmware 1_1_build_12
+   Revision: 0.0
+   Date: March 04 2016
+  (C) Copyright 2016, Silicon Laboratories, Inc. All rights reserved.
 **************************************************************************************/
 #ifndef    _Si2141_44_24_L1_API_H_
 #define    _Si2141_44_24_L1_API_H_

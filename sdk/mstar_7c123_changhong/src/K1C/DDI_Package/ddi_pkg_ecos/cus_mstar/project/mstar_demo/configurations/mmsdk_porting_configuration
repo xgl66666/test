@@ -1,0 +1,44 @@
+# Select (enable / disable)
+ifeq ($(DDI_DEMO_HD),disable)
+DDI_MMSDK_CTRL_DYNAMIC_SCALING = disable
+else
+DDI_MMSDK_CTRL_DYNAMIC_SCALING = enable
+endif
+
+DDI_MMSDK_CTRL_MVC = disable
+DDI_MMSDK_CTRL_FRC = enable
+
+DDI_MMSDK_DISPLAY_DUALXC = disable
+
+DDI_MMSDK_AUDIO_MULTI = disable
+
+DDI_MMSDK_DIVX = enable
+
+DDI_MMSDK_AVP = disable
+
+DDI_MMSDK_OPTEE = disable
+
+ifeq ($(DDI_DEMO_HD),disable)
+DDI_MMSDK_3D = disable
+else
+DDI_MMSDK_3D = enable
+endif
+# Set
+
+# MM FRC mode select
+# 0 - use DDI_MMSDK_CTRL_FRC to MM FRC
+# 1 - Kano mode (P mode FRC by VDEC, I mode FRC by XC, HDR mode FRC by XC)
+DDI_MMSDK_FRC_MODE = 0
+
+# Start from 0
+DDI_MMSDK_SUBTITLE_GOP = 2
+
+
+# Set the middleware version of dvb subtitle MW for porting layer (just support V2 now)
+DDI_MMSDK_SUBTITLE_MW = V2
+
+# MM HDR mode select
+# 0 - Nont support HDR flow
+# 1 - use Kano HDR flow
+# 2 - use Others HDR flow
+DDI_MMSDK_HDR_MODE = 0

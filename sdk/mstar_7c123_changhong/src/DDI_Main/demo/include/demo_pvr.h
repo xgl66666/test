@@ -141,7 +141,6 @@ MS_BOOL Demo_PVR_Timeshift_PlaybackStart(void);
 MS_BOOL Demo_PVR_Timeshift_PlaybackStop(void);
 
 #if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
-MS_BOOL Demo_PVR_TimeshiftSeamless_PlaybackStart(char *fn); // Olivia_Remove
 MS_BOOL Demo_PVR_SeamlessBackRecordStart(void);
 MS_BOOL Demo_PVR_SeamlessBackRecordStop(void);
 #endif
@@ -157,6 +156,7 @@ MS_BOOL Demo_PVR_PlaybackResume(void);
 MS_BOOL Demo_PVR_PlaybackSlowForward(void);
 MS_BOOL Demo_PVR_PlaybackFastForward(void);
 MS_BOOL Demo_PVR_PlaybackFastBackward(void);
+MS_BOOL Demo_PVR_PlaybackSetSpeed(MS_U32 *u32Positive, MS_S32 *s32Speed);
 MS_BOOL Demo_PVR_PlaybackJumpToTime(MS_U32 *u32Hour,MS_U32 *u32Minute,MS_U32 *u32Second);
 MS_BOOL Demo_PVR_PlaybackChangeProgram(MS_U32* VideoPid, MS_U32* AudioPid, MS_U32* PCRPid,const  MS_U32* pu32VCodec,const  MS_U32* pu32ACodec,char *filename);
 MS_BOOL Demo_PVR_GetFileInfo(char *fulFileName);
@@ -179,8 +179,14 @@ MS_BOOL Demo_PVR_PlaybackJumpBackward(void);
 MS_BOOL Demo_PVR_RemoveFile(char *fileName);
 MS_BOOL Demo_PVR_RenameFile(char *fileName,char *newFileName);
 MS_BOOL Demo_PVR_SetTimeshiftRecScreenFrozen(const MS_BOOL *bFrozen);
+MS_BOOL Demo_PVR_SetRecordAppend(MS_U32 *u32Enable);
 MS_BOOL Demo_PVR_SetTimeshiftRecDuration(MS_U32 *u32PlanRecTimeInMin);
-
+MS_BOOL Demo_PVR_SetBoundedLinearRecord(const MS_BOOL *bBounded);
+MS_BOOL Demo_PVR_SetRecordFileSize(MS_U32 *u32FileSizeInMB);
+MS_BOOL Demo_PVR_SetRecordPrecision(MS_U32 *u32PrecisionInSec);
+MS_BOOL Demo_PVR_SetRecordDuration(MS_U32 *u32PlanRecTimeInMin);
+MS_BOOL Demo_PVR_SetRecordFileSlice(MS_U32 *u32FileSliceInMB);
+MS_BOOL Demo_PVR_SetConfigure(MS_U32 *pu32CfgCmd, MS_U32 *pu32Enable);
 MS_BOOL Demo_PVR_SetDBGLevel(PVR_DBG_LEVEL *dbglevel , MS_U32 *intervelTime);
 
 MS_BOOL Demo_PVR_GetRecFlowSet(EN_DEMO_DMX_FLOW_INPUT* peDmxInput,EN_DEMO_DMX_FLOW* pePlayback);
@@ -189,6 +195,14 @@ MS_BOOL Demo_PVR_GetRecEng(EN_DEMO_DMX_PVR_ENG *peDmxPvrEng);
 MS_BOOL Demo_PVR_ShowAudioTrackInfo(void);
 MS_BOOL Demo_PVR_SetAudioTrackByIndex(MS_U32 *u32AudIdx);
 
+MS_BOOL Demo_PVR_SetRecSrcID(MS_U32 *idx, EN_DEMO_DMX_FLT_SOURCEID *peDmxFltSourceID);
+MS_BOOL Demo_PVR_GetRecSrcID(MS_U32 *idx);
+
+MS_BOOL Demo_PVR_SetPerformanceTest(MS_U32 *u32Enable, MS_U32 *u32MeasurementTime);
+
+MS_BOOL Demo_PVR_SetSyncConfig(MS_U32 *u32Value, char *DirtyBackgroundRatio, char *DirtyRatio, char *DirtyExpireCentisecs, char *DirtyWritebackCentisecs);
+
+MS_BOOL Demo_PVR_Disable2ndEncryption(MS_U32 *u32Disable);
 
 #endif /* _DEMO_PVR_H_ */
 

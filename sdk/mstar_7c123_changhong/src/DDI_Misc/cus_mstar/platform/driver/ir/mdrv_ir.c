@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -970,7 +970,7 @@ static BOOL _MDrv_IR_GetKey(U8 *pu8Key, U8 *pu8System, U8 *pu8Flag)
     }
 
     u8KeyAddr = REG(REG_IR_RC_KEY_COMMAND_ADD)&0x3f;//RC5: {2'b0,toggle,address[4:0]} reg[7:0]
-    u8KeyCmd = (REG(REG_IR_RC_KEY_COMMAND_ADD)&0x3f00)>>8;//RC5: {repeat,1'b0,command[13:8]} reg[15:8]
+    u8KeyCmd = (REG(REG_IR_RC_KEY_COMMAND_ADD)&0x7f00)>>8;//RC5: {repeat,1'b0,command[13:8]} reg[15:8]
     *pu8Flag = (REG(REG_IR_RC_KEY_COMMAND_ADD)&0x8000)>>15;//repeat
     *pu8Key = u8KeyCmd;
 
@@ -1393,7 +1393,7 @@ void MDrv_IR_HK_Init(void)
     {
      REG(REG_IR_CTRL) = IR_INV;
 #if (defined(IR_TYPE_MSTAR_HWRC5) && IR_TYPE_SEL==IR_TYPE_MSTAR_HWRC5)
-     REG(REG_IR_RC_CTRL) = IR_RC_EN;
+     REG(REG_IR_RC_CTRL) = IR_RC_EN | IR_RC5EXT_EN;
 #endif
     }
     else
@@ -1484,14 +1484,6 @@ void MDrv_IR_HK_Init(void)
         memset(_eDetectList, 0, sizeof(_eDetectList));
         _eDetectList[0] = E_IR_PROTOCOL_NEC; //default used protocol
 #endif
-
-    #if (defined(CONFIG_MSTAR_TITANIA)||defined(CONFIG_MSTAR_TITANIA2))
-
-    #else
-    // unmask IR IRQ on PM
-    REG(REG_IRQ_MASK_IR) &= IRQ_UNMASK_IR;
-    #endif
-    //enable_irq(E_FIQ_IR);
 }
 
 //-------------------------------------------------------------------------------------------------

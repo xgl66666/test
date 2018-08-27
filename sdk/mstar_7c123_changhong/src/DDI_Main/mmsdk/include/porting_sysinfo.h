@@ -90,6 +90,12 @@ extern "C"
 #endif //__cplusplus
 
 
+typedef enum
+{
+    E_PT_SYS_STEP_DBG,
+    E_PT_SYS_STEP_NEXTFRAME,
+} EN_PT_SYS_OPTION;
+
 typedef struct
 {
     MMSDK_U32 u32SizeofStructure;
@@ -441,6 +447,24 @@ MMSDK_BOOL PT_SYS_SetAVPZOrder(MMSDK_U8 u8WinID, MMSDK_U8 u8Order);
 MMSDK_U8 PT_SYS_GetAVPZOrder(MMSDK_U8 u8WinID);
 
 //-------------------------------------------------------------------------------------------------
+/// Set a Flag of Resize Window By User.
+/// @param u8WinID      \b IN: The AVP window index.
+/// @param bFlag      \b IN: Whether is Resizing window by user.
+
+/// @return TRUE: Success.
+/// @return FALSE: Failure.
+//-------------------------------------------------------------------------------------------------
+MMSDK_BOOL PT_SYS_SetFlagResizeWindowByUser(MMSDK_U8 u8WinID, MMSDK_BOOL bFlag);
+
+//-------------------------------------------------------------------------------------------------
+/// Get a Flag of Resize Window By User.
+
+/// @return                          \b OUT: The flag of Whether is Resizing window by user.
+//-------------------------------------------------------------------------------------------------
+MMSDK_BOOL PT_SYS_GetFlagResizeWindowByUser(MMSDK_U8 u8WinID);
+
+
+//-------------------------------------------------------------------------------------------------
 /// Set draw photo output path
 /// @param u8Path      \b IN: 0 is draw photo by GOP path; 1 is draw photo by MVOP path
 
@@ -473,6 +497,38 @@ MMSDK_BOOL PT_SYS_SetCustomerizeFunPtr(PT_SYS_CUS_FunPtr *pstCusFunPtr);
 /// @return FALSE: Failure.
 //-------------------------------------------------------------------------------------------------
 MMSDK_BOOL PT_SYS_SetSubtitleRndFunPtr(PT_SYS_SubRnd_FunPtr *pstSubRndFunPtr);
+
+
+//-------------------------------------------------------------------------------------------------
+/// Print Porting Layer log
+/// @param eLogDebugLevel                       \b IN: Log debug level
+/// @param pu8Log                                        \b IN: The printed log
+
+/// @return TRUE: Success.
+/// @return FALSE: Failure.
+//-------------------------------------------------------------------------------------------------
+MMSDK_U32 PT_SYS_PrintLog(EN_MMSDK_DBG_LEVEL eLogDebugLevel, const char *pu8Log, ...);
+
+//-------------------------------------------------------------------------------------------------
+/// Get Porting Debug Level.
+
+/// @return                          \b OUT: Debug level.
+//-------------------------------------------------------------------------------------------------
+EN_MMSDK_DBG_LEVEL PT_SYS_GetDebugLevel(void);
+
+//-------------------------------------------------------------------------------------------------
+/// Set Porting Debug Level.
+/// @param eDBGLevel      \b IN: Debug level.
+
+/// @return TRUE: Success.
+/// @return FALSE: Failure.
+//-------------------------------------------------------------------------------------------------
+MMSDK_BOOL PT_SYS_SetDebugLevel(EN_MMSDK_DBG_LEVEL eDBGLevel);
+
+
+MMSDK_BOOL PT_SYS_SetOptions(MMSDK_U8 u8WinID, EN_PT_SYS_OPTION eSysOption, void* param);
+MMSDK_BOOL PT_SYS_GetOptions(MMSDK_U8 u8WinID, EN_PT_SYS_OPTION eSysOption, void* param);
+
 
 #ifdef __cplusplus
 }

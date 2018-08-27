@@ -134,7 +134,7 @@ typedef struct
 } oem_data_t;
 
 #define not_MXL_HYDRA_WAKE_ON_WAN_ENABLED_
-#define MxL524_MUTEX_TIMEOUT       (2000)
+#define MxL542_MUTEX_TIMEOUT       (2000)
 
 /*****************************************************************************************
     User-Defined Types (Typedefs)

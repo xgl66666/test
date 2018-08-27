@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (!Â¡Â±MStar Confidential Information!Â¡L) by the recipient.
+// (!¡±MStar Confidential Information!¡L) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -116,7 +116,7 @@
 #include "string.h"
 #include "drvGPIO.h"
 
-#if ((DEMO_SMC_ONCHIP_8024_TEST == 1) && (DEMO_SMC_PWR_CUT_DET_TEST == 1))
+#if ((DEMO_SMC1_ONCHIP_8024_TEST == 1) && (DEMO_SMC_PWR_CUT_DET_TEST == 1))
 #include "drvSAR.h"
 #endif
 
@@ -136,6 +136,12 @@
 #define GPIO_SMC1_EXT_8024_VOL_CTRL GPIO_EXT_8024_VOL_CTRL_UDEF
 #endif
 
+#if (DEMO_SMC_DUAL_TEST == 1)
+#define SMC_DEV_NUM 2
+#else
+#define SMC_DEV_NUM 1
+#endif
+
 //-------------------------------------------------------------------------------------------------
 // Local Defines
 //-------------------------------------------------------------------------------------------------
@@ -148,6 +154,14 @@
 #define APP_SMC_EVT_IN2             0x00000010
 #define APP_SMC_EVT_OUT2            0x00000020
 #define APP_SMC_EVT_STOP            0x00000100
+
+
+typedef enum
+{
+    E_SMC_BOARD_WITHOUT_8024,
+    E_SMC_BOARD_WITH_8024,
+    E_SMC_BOARD_MAX
+}EN_SMC_BOARD_TYPE;
 
 typedef enum
 {
@@ -195,11 +209,10 @@ static const char *gaSmcClkTypeStr[E_SMC_CLK_MAX] = {
     "13MHz"
 };
 
+
 typedef struct
 {
-#if (DEMO_SMC_ONCHIP_8024_TEST == 0)
     MS_U32 u32GpioExt8024VolCtrl;
-#endif
     MS_U8 u8Protocol;
     EN_SMC_CARD_CAT eCardCat;
     EN_SMC_VCC_VOLTAGE eVccVoltage;
@@ -216,6 +229,18 @@ typedef struct
     MS_U8 u8ClkType;
 }ST_SMC_INIT_PRO_SETTING;
 
+typedef struct
+{
+    ST_SMC_PROTOCOL_SETTING gstSmcProSetting;
+    MS_U8    *pu8TaskStack;
+    MS_S32   s32TaskId, s32EventId;
+    MS_U32   u32Events;
+    MS_BOOL  bRunning;
+    MS_U8  _u8AtrBuf[SC_ATR_LEN_MAX];
+    MS_U16 _u16AtrLen;
+    MS_BOOL  bUseInternal8024;
+}ST_SMC_CTX;
+
 //-------------------------------------------------------------------------------------------------
 // Macros
 //-------------------------------------------------------------------------------------------------
@@ -228,14 +253,33 @@ typedef struct
 //-------------------------------------------------------------------------------------------------
 // Local Variables
 //-------------------------------------------------------------------------------------------------
-static ST_SMC_PROTOCOL_SETTING gstSmcProSetting;
-static MS_U8    u8TaskStack[APPSMC_TASK_STACK_SIZE];
-static MS_S32   s32TaskId, s32EventId;
-static MS_U32   u32Events;
-static MS_U16   u16RetryTime = 0;
-static MS_BOOL  bRunning = FALSE;
-MS_U8  _u8AtrBuf[SC_ATR_LEN_MAX];
-MS_U16 _u16AtrLen = 0;
+static __attribute__((aligned(0x1000))) MS_U8 gau8TaskStack1[APPSMC_TASK_STACK_SIZE];
+#if (DEMO_SMC_DUAL_TEST == 1)
+static __attribute__((aligned(0x1000))) MS_U8 gau8TaskStack2[APPSMC_TASK_STACK_SIZE];
+#endif
+
+
+static ST_SMC_CTX agstSmcCtx[SMC_DEV_NUM] = {{.bRunning = FALSE,
+#if (DEMO_SMC1_ONCHIP_8024_TEST == 1)
+                                    .bUseInternal8024 = TRUE,
+#else
+                                    .bUseInternal8024 = FALSE,
+#endif
+                                    ._u16AtrLen = 0,
+                                    .pu8TaskStack = gau8TaskStack1},
+
+#if (DEMO_SMC_DUAL_TEST == 1)
+                                   {.bRunning = FALSE,
+
+#if (DEMO_SMC2_ONCHIP_8024_TEST == 1)
+                                    .bUseInternal8024 = TRUE,
+#else
+                                    .bUseInternal8024 = FALSE,
+#endif
+                                    ._u16AtrLen = 0,
+                                    .pu8TaskStack = gau8TaskStack2}
+#endif
+                                  };
 
 #if (DEMO_SMC_USE_51_TEST == 1)
 MS_U8 u8SCFirmware[] = {
@@ -330,7 +374,7 @@ static void _HealthInsurance_T1_CmdTest(MS_U32 u8SCID)
 
     _uCmdLen = sizeof(SelectAPDU);
     memset(pu8ReadData, 0, sizeof (pu8ReadData));
-    MApi_SC_T1_Parse_Atr(u8SCID, _u8AtrBuf, _u16AtrLen);
+    MApi_SC_T1_Parse_Atr(u8SCID, agstSmcCtx[u8SCID]._u8AtrBuf, agstSmcCtx[u8SCID]._u16AtrLen);
 
     if(MApi_SC_T1_Communication(u8SCID, SelectAPDU, &_uCmdLen, pu8ReadData, &u16ReadDataLen) != E_API_SC_OK)
     {
@@ -1101,41 +1145,43 @@ static MS_BOOL _Demo_SMC_InitProSetting(ST_SMC_PROTOCOL_SETTING *pstSetting, ST_
             break;
     }
 
-// Setup GPIO of external 8024 voltage ctrl
-#if (DEMO_SMC_ONCHIP_8024_TEST == 0)
-    switch(pstSmcInitProSetting->u8SCID)
+    // Setup GPIO of external 8024 voltage ctrl
+    if (agstSmcCtx[pstSmcInitProSetting->u8SCID].bUseInternal8024 == FALSE)
     {
-        case 0: //SMC0
-            if (GPIO_SMC0_EXT_8024_VOL_CTRL == GPIO_EXT_8024_VOL_CTRL_UDEF)
-            {
-                printf("ERROR!! GPIO_SMC0_EXT_8024_VOL_CTRL is not defined at board header\n");
-                bRetVal = FALSE;
-            }
-            pstSetting->u32GpioExt8024VolCtrl = GPIO_SMC0_EXT_8024_VOL_CTRL;
-            break;
+        switch(pstSmcInitProSetting->u8SCID)
+        {
+            case 0: //SMC0
+                if (GPIO_SMC0_EXT_8024_VOL_CTRL == GPIO_EXT_8024_VOL_CTRL_UDEF)
+                {
+                    printf("ERROR!! GPIO_SMC0_EXT_8024_VOL_CTRL is not defined at board header\n");
+                    bRetVal = FALSE;
+                }
+                pstSetting->u32GpioExt8024VolCtrl = GPIO_SMC0_EXT_8024_VOL_CTRL;
+                break;
 
-        case 1: //SMC1
-            if (GPIO_SMC1_EXT_8024_VOL_CTRL == GPIO_EXT_8024_VOL_CTRL_UDEF)
-            {
-                printf("ERROR!! GPIO_SMC1_EXT_8024_VOL_CTRL is not defined at board header\n");
-                bRetVal = FALSE;
-            }
-            pstSetting->u32GpioExt8024VolCtrl = GPIO_SMC1_EXT_8024_VOL_CTRL;
-            break;
+            case 1: //SMC1
+                if (GPIO_SMC1_EXT_8024_VOL_CTRL == GPIO_EXT_8024_VOL_CTRL_UDEF)
+                {
+                    printf("ERROR!! GPIO_SMC1_EXT_8024_VOL_CTRL is not defined at board header\n");
+                    bRetVal = FALSE;
+                }
+                pstSetting->u32GpioExt8024VolCtrl = GPIO_SMC1_EXT_8024_VOL_CTRL;
+                break;
 
-        default:
-            printf("ERROR!! Wrong SC ID value %d\n", pstSmcInitProSetting->u8SCID);
-            bRetVal = FALSE;
-            break;
+            default:
+                printf("ERROR!! Wrong SC ID value %d\n", pstSmcInitProSetting->u8SCID);
+                bRetVal = FALSE;
+                break;
+        }
     }
-#endif
+
 
     if (bRetVal)
     {
         printf("--------------------\n");
-        printf("Card_Cat  : %s\n", (char*)gaSmcCardCatStr[pstSetting->eCardCat]);
-        printf("Vcc_Class : %s\n", (char*)gaSmcVoltageStr[pstSetting->eVccVoltage]);
-        printf("Clk_type  : %s\n", (char*)gaSmcClkTypeStr[pstSetting->eClkType]);
+        printf("Card_Cat   : %s\n", (char*)gaSmcCardCatStr[pstSetting->eCardCat]);
+        printf("Vcc_Class  : %s\n", (char*)gaSmcVoltageStr[pstSetting->eVccVoltage]);
+        printf("Clk_Type   : %s\n", (char*)gaSmcClkTypeStr[pstSetting->eClkType]);
         printf("--------------------\n");
     }
 
@@ -1154,25 +1200,29 @@ static void _Demo_SMC_Notify(MS_U8 u8SCID, SC_Event eEvent)
 {
     MS_U32 u32Mask, u32Evt;
 
+    if (u8SCID > (SMC_DEV_NUM-1))
+    {
+        printf("[%s] ERROR!! Incorrect SMC id\n", __FUNCTION__);
+        return;
+    }
+
     switch (eEvent)
     {
         case E_SC_EVENT_IN:
             printf("SMC%d: Card In\n", u8SCID);
             u32Mask = (0 == u8SCID) ? APP_SMC_EVT_MASK1 : APP_SMC_EVT_MASK2;
             u32Evt = (0 == u8SCID) ? APP_SMC_EVT_IN1 : APP_SMC_EVT_IN2;
-            MsOS_ClearEvent(s32EventId, u32Mask);
-            u32Events &= ~u32Mask;
-            u16RetryTime = 0;
-            MsOS_SetEvent(s32EventId, u32Evt);
+            MsOS_ClearEvent(agstSmcCtx[u8SCID].s32EventId, u32Mask);
+            agstSmcCtx[u8SCID].u32Events &= ~u32Mask;
+            MsOS_SetEvent(agstSmcCtx[u8SCID].s32EventId, u32Evt);
             break;
         case E_SC_EVENT_OUT:
             printf("SMC%d: Card Out\n", u8SCID);
             u32Mask = (0 == u8SCID) ? APP_SMC_EVT_MASK1 : APP_SMC_EVT_MASK2;
             u32Evt = (0 == u8SCID) ? APP_SMC_EVT_OUT1 : APP_SMC_EVT_OUT2;
-            MsOS_ClearEvent(s32EventId, u32Mask);
-            u32Events &= ~u32Mask;
-            u16RetryTime = 0;
-            MsOS_SetEvent(s32EventId, u32Evt);
+            MsOS_ClearEvent(agstSmcCtx[u8SCID].s32EventId, u32Mask);
+            agstSmcCtx[u8SCID].u32Events &= ~u32Mask;
+            MsOS_SetEvent(agstSmcCtx[u8SCID].s32EventId, u32Evt);
             break;
         case E_SC_EVENT_DATA:
             printf("SMC%d: Incoming Data\n", u8SCID);
@@ -1197,7 +1247,7 @@ static MS_BOOL _Demo_SMC_Reset2(MS_U8 u8SCID,SC_Param *pParam)
     MS_U16              history_len = 200;
     MS_U8               u8Protocol = 0xff;
     SC_Result  _scresult = E_SC_FAIL;
-    ST_SMC_PROTOCOL_SETTING *pstSetting = &gstSmcProSetting;
+    ST_SMC_PROTOCOL_SETTING *pstSetting = &agstSmcCtx[u8SCID].gstSmcProSetting;
 
     // reset
     if (MDrv_SC_Reset(u8SCID, pParam) != E_SC_OK)
@@ -1209,15 +1259,19 @@ static MS_BOOL _Demo_SMC_Reset2(MS_U8 u8SCID,SC_Param *pParam)
     MDrv_SC_ClearState(u8SCID);
 
     // Timeout value can be tuned
-    _scresult = MDrv_SC_GetATR(u8SCID, 100*5, _u8AtrBuf, &_u16AtrLen, history, &history_len);
+    _scresult = MDrv_SC_GetATR(u8SCID, 100*5, agstSmcCtx[u8SCID]._u8AtrBuf, &agstSmcCtx[u8SCID]._u16AtrLen, history, &history_len);
     if (_scresult != E_SC_OK) // the timeout value should be tumed by user
     {
         printf("[%s][%d] _scresult %d \n",__FUNCTION__,__LINE__,_scresult);
+        if (u8SCID > 0)
+        {
+            printf("[%s][%d] Please check SMC pad mux is set or not!!\n",__FUNCTION__,__LINE__);
+        }
         return FALSE;
     }
 
     // Setup UART mode
-    if(_u8AtrBuf[0] == 0x3b)
+    if(agstSmcCtx[u8SCID]._u8AtrBuf[0] == 0x3b)
     {
         if(pstSetting->eCardCat == E_SMC_IRDETO_T14_CARD)
         {
@@ -1228,7 +1282,7 @@ static MS_BOOL _Demo_SMC_Reset2(MS_U8 u8SCID,SC_Param *pParam)
             pParam->u8UartMode = SC_UART_CHAR_8 | SC_UART_STOP_2 | SC_UART_PARITY_EVEN;
         }
     }
-    else if(_u8AtrBuf[0] == 0x3f)
+    else if(agstSmcCtx[u8SCID]._u8AtrBuf[0] == 0x3f)
     {
         if(pstSetting->eCardCat == E_SMC_IRDETO_T14_CARD)
         {
@@ -1254,9 +1308,9 @@ static MS_BOOL _Demo_SMC_Reset2(MS_U8 u8SCID,SC_Param *pParam)
     // Parsing the protocol from ATR
     int i;
 
-    if (_u8AtrBuf[1] & 0x80)
+    if (agstSmcCtx[u8SCID]._u8AtrBuf[1] & 0x80)
     {
-        MS_U8 u8T0 = _u8AtrBuf[1] >> 4;
+        MS_U8 u8T0 = agstSmcCtx[u8SCID]._u8AtrBuf[1] >> 4;
         i = 1;
         while (u8T0)
         {
@@ -1264,7 +1318,7 @@ static MS_BOOL _Demo_SMC_Reset2(MS_U8 u8SCID,SC_Param *pParam)
                 i++;
             u8T0 >>= 1;
         }
-        u8Protocol = _u8AtrBuf[i] & 0xF;
+        u8Protocol = agstSmcCtx[u8SCID]._u8AtrBuf[i] & 0xF;
     }
     else
     {
@@ -1286,9 +1340,9 @@ static MS_BOOL _Demo_SMC_Reset2(MS_U8 u8SCID,SC_Param *pParam)
     {
         printf("SMC%d: ATR Message :     \n", u8SCID);
         printf("Rx :\n         ");
-        for (i = 0; i < _u16AtrLen; i++)
+        for (i = 0; i < agstSmcCtx[u8SCID]._u16AtrLen; i++)
         {
-            printf("%02x ", _u8AtrBuf[i]);
+            printf("%02x ", agstSmcCtx[u8SCID]._u8AtrBuf[i]);
             if ((i+1) % 16 == 0)
             {
                 printf("\n         ");
@@ -1313,7 +1367,7 @@ static void _Demo_SMC_Task(MS_U8 u8SCID)
 
     printf("##########    START TO TEST SMARTCARD[%d]   ##########\n", u8SCID);
 
-#if ((DEMO_SMC_ONCHIP_8024_TEST == 1) && (DEMO_SMC_PWR_CUT_DET_TEST == 1))
+#if ((DEMO_SMC1_ONCHIP_8024_TEST == 1) && (DEMO_SMC_PWR_CUT_DET_TEST == 1))
     MS_U8 u8SarSmcIntChID = 3; //SAR3 (CH4)
     SAR_SmcIntLevel eSmcIntLevel = E_SAR_SMC_INT_HIGH_ACT; //High active
     MS_U32 u32BndVal = 0xF800; //0.8V
@@ -1329,40 +1383,43 @@ static void _Demo_SMC_Task(MS_U8 u8SCID)
     }
 
     // UART setting
-    gstSmcProSetting.pfInitParam(&sInitParams);
-    _Demo_SMC_SetCardClk(&sInitParams, gstSmcProSetting.eClkType);
-#if (DEMO_SMC_ONCHIP_8024_TEST == 1)
-    if (gstSmcProSetting.eVccVoltage == E_SMC_VCC_3P3V)
-        sInitParams.eVoltage = E_SC_VOLTAGE_3_POINT_3V;
+    agstSmcCtx[u8SCID].gstSmcProSetting.pfInitParam(&sInitParams);
+    _Demo_SMC_SetCardClk(&sInitParams, agstSmcCtx[u8SCID].gstSmcProSetting.eClkType);
+    if (agstSmcCtx[u8SCID].bUseInternal8024)
+    {
+        if (agstSmcCtx[u8SCID].gstSmcProSetting.eVccVoltage == E_SMC_VCC_3P3V)
+            sInitParams.eVoltage = E_SC_VOLTAGE_3_POINT_3V;
+        else
+            sInitParams.eVoltage = E_SC_VOLTAGE_5V;
+        sInitParams.eVccCtrl     = E_SC_VCC_VCC_ONCHIP_8024;
+    }
     else
-        sInitParams.eVoltage = E_SC_VOLTAGE_5V;
-    sInitParams.eVccCtrl     = E_SC_VCC_VCC_ONCHIP_8024;
-#else
-    if (gstSmcProSetting.eVccVoltage == E_SC_VOLTAGE_5V)
-        mdrv_gpio_set_high(gstSmcProSetting.u32GpioExt8024VolCtrl);
-    else
-        mdrv_gpio_set_low(gstSmcProSetting.u32GpioExt8024VolCtrl);
-    sInitParams.eVccCtrl     = E_SC_VCC_CTRL_8024_ON;
-#endif
+    {
+        if (agstSmcCtx[u8SCID].gstSmcProSetting.eVccVoltage == E_SMC_VCC_5V)
+            mdrv_gpio_set_high(agstSmcCtx[u8SCID].gstSmcProSetting.u32GpioExt8024VolCtrl);
+        else
+            mdrv_gpio_set_low(agstSmcCtx[u8SCID].gstSmcProSetting.u32GpioExt8024VolCtrl);
+        sInitParams.eVccCtrl     = E_SC_VCC_CTRL_8024_ON;
+    }
     sInitParams.pfOCPControl = NULL;
-    if ((errCode = MDrv_SC_Open(u8SCID, gstSmcProSetting.u8Protocol, &sInitParams, _Demo_SMC_Notify)) != E_SC_OK)
+    if ((errCode = MDrv_SC_Open(u8SCID, agstSmcCtx[u8SCID].gstSmcProSetting.u8Protocol, &sInitParams, _Demo_SMC_Notify)) != E_SC_OK)
     {
         printf("[%s] MDrv_SC_Open failed with error code = %d!!!!\n", __FUNCTION__, errCode);
         goto EXIT;
     }
 
     // Test smart card
-    while (bRunning)
+    while (agstSmcCtx[u8SCID].bRunning)
     {
         SC_Status status;
         printf("to wait event\n");
         // Wait for the smart card in/out event or task stop event
-        MsOS_WaitEvent(s32EventId, APP_SMC_EVT_IN1 | APP_SMC_EVT_OUT1 |
+        MsOS_WaitEvent(agstSmcCtx[u8SCID].s32EventId, APP_SMC_EVT_IN1 | APP_SMC_EVT_OUT1 |
                 APP_SMC_EVT_IN2 | APP_SMC_EVT_OUT2 | APP_SMC_EVT_STOP,
-                &u32Events, E_OR_CLEAR, MSOS_WAIT_FOREVER);
+                &agstSmcCtx[u8SCID].u32Events, E_OR_CLEAR, MSOS_WAIT_FOREVER);
 
         // Check smc stop event
-        if (u32Events & APP_SMC_EVT_STOP)
+        if (agstSmcCtx[u8SCID].u32Events & APP_SMC_EVT_STOP)
         {
             printf(" ######## Stop _Demo_SMC_Task sm[%d] ########\n", u8SCID);
             break;
@@ -1377,10 +1434,9 @@ static void _Demo_SMC_Task(MS_U8 u8SCID)
 
             // Test the smart card reset
             if (_Demo_SMC_Reset2(u8SCID,&sInitParams))
-            //if (_appDemo_SMC_Reset(u8SCID))
             {
                 // Test the smart card command
-                gstSmcProSetting.pfCmdTest(u8SCID);
+                agstSmcCtx[u8SCID].gstSmcProSetting.pfCmdTest(u8SCID);
             }
             printf(" ########  CMD Test sm[%d] End  ######## ==> [REMOVE]\n", u8SCID);
         }
@@ -1388,6 +1444,12 @@ static void _Demo_SMC_Task(MS_U8 u8SCID)
         {
             printf(" ######## Remove Test sm[%d] OK ######## ==> [INSERT]\n", u8SCID);
         }
+    }
+
+    // Deactive the smart card
+    if ((errCode = MDrv_SC_Deactivate(u8SCID)) != E_SC_OK)
+    {
+        printf("[%s] MDrv_SC_Deactivate failed with error code =%d\n", __FUNCTION__, errCode);
     }
 
     // Close the smart card
@@ -1444,6 +1506,31 @@ MS_BOOL _Demo_SMC_Load_Fw(MS_U32 u32FwSCAddr)
         return TRUE;
     }
 }
+
+MS_BOOL _Demo_SMC_Disable_Fw(void)
+{
+    MBX_Result eMbxResult;
+
+    // disable PM51
+    MDrv_PM_Disable51();
+
+    // mbx
+    eMbxResult = MDrv_MBX_UnRegisterMSG(E_MBX_CLASS_PM_WAIT,0);
+    if (eMbxResult != E_MBX_SUCCESS)
+    {
+        printf("MDrv_MBX_UnRegisterMSG(E_MBX_CLASS_PM_NOWAIT,0) FAIL %x\n", eMbxResult);
+        return FALSE;
+    }
+
+    eMbxResult = MDrv_MBX_DeInit(TRUE);
+    if (eMbxResult != E_MBX_SUCCESS)
+    {
+        printf("MDrv_MBX_DeInit FAIL %x\n", eMbxResult);
+        return FALSE;
+    }
+
+    return TRUE;
+}
 #endif
 //------------------------------------------------------------------------------
 /// @brief The demo code to start the smart test task
@@ -1461,8 +1548,15 @@ MS_BOOL Demo_SMC_Start(MS_U8 *pu8SC_Id, MS_U8 *pu8CardCat, MS_U8 *pu8VccClass, M
 
     printf("appDemo_SMC_Start\n");
 
+    // Check dev num
+    if (*pu8SC_Id > (SMC_DEV_NUM-1))
+    {
+        printf("ERROR!! Incorrect SMC id, SMC dev is only %d\n", SMC_DEV_NUM);
+        return FALSE;
+    }
+
     // Check APP status
-    if(bRunning)
+    if(agstSmcCtx[*pu8SC_Id].bRunning)
     {
         printf("appDemo_SMC has been started!!\n");
         return FALSE;
@@ -1473,26 +1567,26 @@ MS_BOOL Demo_SMC_Start(MS_U8 *pu8SC_Id, MS_U8 *pu8CardCat, MS_U8 *pu8VccClass, M
     stSmcInitProSetting.u8CardCat = *pu8CardCat;
     stSmcInitProSetting.u8VccClass = *pu8VccClass;
     stSmcInitProSetting.u8ClkType = *pu8ClkType;
-    if (_Demo_SMC_InitProSetting(&gstSmcProSetting, &stSmcInitProSetting) == FALSE)
+    if (_Demo_SMC_InitProSetting(&agstSmcCtx[*pu8SC_Id].gstSmcProSetting, &stSmcInitProSetting) == FALSE)
     {
         return FALSE;
     }
 
     // Change status flag    
-    bRunning = TRUE;
+    agstSmcCtx[*pu8SC_Id].bRunning = TRUE;
 
 #if (DEMO_SMC_USE_51_TEST == 1)
     _Demo_SMC_Load_Fw(PM51_LITE_ADR);
 #endif
 
     // Create SMC event group
-    s32EventId = MsOS_CreateEventGroup("appSMC_Event");
+    agstSmcCtx[*pu8SC_Id].s32EventId = MsOS_CreateEventGroup("appSMC_Event");
     // Create SMC demo task
-    s32TaskId = MsOS_CreateTask( (TaskEntry) _Demo_SMC_Task,
+    agstSmcCtx[*pu8SC_Id].s32TaskId = MsOS_CreateTask( (TaskEntry) _Demo_SMC_Task,
                                   (MS_U32)*pu8SC_Id,
                                   E_TASK_PRI_HIGH,
                                   TRUE,
-                                  u8TaskStack,
+                                  agstSmcCtx[*pu8SC_Id].pu8TaskStack,
                                   APPSMC_TASK_STACK_SIZE,
                                   "appSMC_Task" );
 
@@ -1513,30 +1607,80 @@ MS_BOOL Demo_SMC_Stop(MS_U8 *pu8SC_Id)
 {
     printf("appDemo_SMC_Stop\n");
 
+    // Check dev num
+    if (*pu8SC_Id > (SMC_DEV_NUM-1))
+    {
+        printf("ERROR!! Incorrect SMC id, SMC dev is only %d\n", SMC_DEV_NUM);
+        return FALSE;
+    }
+
     // Check APP status
-    if(!bRunning)
+    if(!agstSmcCtx[*pu8SC_Id].bRunning)
     {
         printf("appDemo_SMC has been stopped!!\n");
         return FALSE;
     }
     
     // To stop the while loop of the test task
-    bRunning = FALSE;
-    MsOS_SetEvent(s32EventId, APP_SMC_EVT_STOP);
+    agstSmcCtx[*pu8SC_Id].bRunning = FALSE;
+    MsOS_SetEvent(agstSmcCtx[*pu8SC_Id].s32EventId, APP_SMC_EVT_STOP);
 
     // Wait for test task to stop
     MsOS_DelayTask(500);
 
     // Delete SMC demo task
-    MsOS_DeleteEventGroup(s32EventId);
-    s32EventId = -1;
+    MsOS_DeleteEventGroup(agstSmcCtx[*pu8SC_Id].s32EventId);
+    agstSmcCtx[*pu8SC_Id].s32EventId = -1;
 
     // Delete SMC event group
-    MsOS_DeleteTask(s32TaskId);
-    s32TaskId = -1;
+    MsOS_DeleteTask(agstSmcCtx[*pu8SC_Id].s32TaskId);
+    agstSmcCtx[*pu8SC_Id].s32TaskId = -1;
+
+#if (DEMO_SMC_USE_51_TEST == 1)
+    _Demo_SMC_Disable_Fw();
+#endif
 
     return TRUE;
 }
+
+//------------------------------------------------------------------------------
+/// @brief The demo code to set debug level
+/// @param[in] pu8DbgLevel \b debug level
+/// @return TRUE - Success
+/// @return FALSE - fail
+/// @sa
+/// @note
+/// Command: \b SMC_Help \n
+///
+//------------------------------------------------------------------------------
+MS_BOOL Demo_SMC_SetDbgLevel(MS_U8 *pu8DbgLevel)
+{
+    SC_DbgLv eLevel;
+
+    switch(*pu8DbgLevel)
+    {
+        default:
+        case 0:
+            eLevel = E_SC_DBGLV_ERR_ONLY;
+            break;
+
+        case 1:
+            eLevel = E_SC_DBGLV_INFO;
+            break;
+
+        case 2:
+            eLevel = E_SC_DBGLV_ALL;
+            break;
+
+        case 3:
+            eLevel = E_SC_DBGLV_NONE;
+            break;
+    }
+
+    MDrv_SC_SetDbgLevel(eLevel);
+    return TRUE;
+}
+
 
 //------------------------------------------------------------------------------
 /// @brief The demo code to show usage of the smart card command
@@ -1552,17 +1696,21 @@ MS_BOOL Demo_SMC_Help(void)
 {
     printf("---------------------------------- Smart Card Help ------------------------------------\n");
     printf("1. Start the task to test the smart card\n");
-    printf("   Command: SMC_Start [sc_id] [card_cat] [vcc_class]\n");
+    printf("   Command: SMC_Start [sc_id] [card_cat] [vcc_class] [clk_type]\n");
     printf("            sc_id     : 0[smc_id 0]\n");
     printf("            card_cat  : 0[Health Insurance card], 1[CONAX T=0], 2[IRDETO T=0], 3[IRDETO T=14]\n");
     printf("            vcc_class : 0[3.3V], 1[5V]\n");
-    printf("            clk_type  : 0[Defined by card_cat], 1[3MHz], 2[4.5MHz], 3[6MHz], 4[13MHz],\n");
-    printf("\n");
+    printf("            clk_type  : 0[Defined by card_cat], 1[3MHz], 2[4.5MHz], 3[6MHz], 4[13MHz]\n");
+    printf(" \n");
     printf("2. Stop the smart card test task\n");
     printf("   Command: SMC_Stop [sc_id]\n");
     printf("            sc_id     : 0[smc_id 0]\n");
-    printf("\n");
-    printf("3. List all command usage\n");
+    printf(" \n");
+    printf("3. Set debug level of message\n");
+    printf("   Command: SMC_SetDBGLevel [dbg_level]\n");
+    printf("            dbg_level : 0[ERR_ONLY], 1[INFO], 2[ALL], 3[NONE]\n");
+    printf(" \n");
+    printf("4. List all command usage\n");
     printf("   Command  : SMC_Help\n");
     printf("\n");
     printf("------------------------------- End of Smart Card Help --------------------------------\n");

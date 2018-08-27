@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -251,6 +251,51 @@ MS_BOOL Demo_NAND_Compare(MS_U32 *pu32_buf0, MS_U32 *pu32_buf1, MS_U32 *u32_byte
             return FALSE;
         }
     }
+
+    return TRUE;
+}
+
+MS_BOOL Demo_NAND_Verify(MS_U32 *pu32_buf0, MS_U32 *pu32_buf1)
+{
+    MS_U32 u32_Ret;
+    MS_U32 *R_PHY0 = (MS_U32*)*pu32_buf0;
+    MS_U32 *R_PHY1 = (MS_U32*)*pu32_buf1;
+    MS_U32 *u32_StartSector = (MS_U32*)0x0;
+    MS_U32 *u32_SectorCnt1  = (MS_U32*)0x1;
+    MS_U32 *u32_SectorCnt2  = (MS_U32*)0x2;
+    MS_U32 *u32_byteCnt     = (MS_U32*)0x80;
+
+    Demo_NAND_Init();
+
+    u32_Ret = Demo_NAND_ReadFAT((MS_U32*)&R_PHY0, (MS_U32*)&u32_StartSector, (MS_U32*)&u32_SectorCnt1);
+    if (TRUE != u32_Ret)
+    {
+        printf("Demo_NAND_ReadFAT: %X \n", u32_Ret);
+        return FALSE;
+    }
+
+    u32_Ret = Demo_NAND_WriteFAT((MS_U32*)&R_PHY0, (MS_U32*)&u32_StartSector, (MS_U32*)&u32_SectorCnt2);
+    if (TRUE != u32_Ret)
+    {
+        printf("Demo_NAND_WriteFAT: %X \n", u32_Ret);
+        return FALSE;
+    }
+
+    u32_Ret = Demo_NAND_ReadFAT((MS_U32*)&R_PHY1, (MS_U32*)&u32_StartSector, (MS_U32*)&u32_SectorCnt2);
+    if (TRUE != u32_Ret)
+    {
+        printf("Demo_NAND_ReadFAT: %X \n", u32_Ret);
+        return FALSE;
+    }
+
+    u32_Ret = Demo_NAND_Compare((MS_U32*)&R_PHY0, (MS_U32*)&R_PHY1, (MS_U32*)&u32_byteCnt);
+    if (TRUE != u32_Ret)
+    {
+        printf("Demo_NAND_Compare: %X \n", u32_Ret);
+        return FALSE;
+    }
+
+    printf("\nVerify UNFD_NAND Compare: ok\n");
 
     return TRUE;
 }

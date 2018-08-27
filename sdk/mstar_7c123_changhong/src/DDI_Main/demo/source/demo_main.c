@@ -1,7 +1,7 @@
 //<MStar Software>
 //******************************************************************************
 // MStar Software
-// Copyright (c) 2010 - 2012 MStar Semiconductor, Inc. All rights reserved.
+// Copyright (c) 2010 - 2012, 2016 MStar Semiconductor, Inc. All rights reserved.
 // All software, firmware and related documentation herein ("MStar Software") are
 // intellectual property of MStar Semiconductor, Inc. ("MStar") and protected by
 // law, including, but not limited to, copyright law and international treaties.
@@ -83,7 +83,6 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (!¡±MStar Confidential Information!¡L) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -158,10 +157,6 @@
 #include "apiAUDIO.h"
 #include "demo_audio.h"
 #endif
-#if (DEMO_AUDIO_MULTI_TEST == 1)
-#include "apiAUDIO.h"
-#include "demo_audio_multi.h"
-#endif
 #if (DEMO_AUDIO_KTV_TEST == 1)
 #include "demo_audio_ktv.h"
 #endif
@@ -182,6 +177,9 @@
 #endif
 #if (DEMO_BENCH_DHRYSTON_ECOS_TEST == 1)
 #include "demo_bench_dhryston.h"
+#endif
+#if (DEMO_BENCH_LIMITDHRYSTONE_LINUX_TEST == 1)
+#include "demo_bench_limitdhryston_linux.h"
 #endif
 #if (DEMO_BENCH_MEM_TEST == 1)
 #include "demo_bench_mem.h"
@@ -204,9 +202,20 @@
 #if (DEMO_OS_TEST == 1)
 #include "demo_os.h"
 #endif
+#if (DEMO_USB_ECOS_TEST == 1)
+#include "demo_usb.h"
+#endif
 #if (DEMO_WDT_TEST == 1)
 #include "demo_wdt.h"
 #endif
+#if (DEMO_FUART_TEST == 1)
+#include "demo_fuart.h"
+#endif
+
+#if (DEMO_URDMA_TEST == 1)
+#include "demo_urdma.h"
+#endif
+
 #if (DEMO_SMC_TEST == 1)
 #include "demo_smc.h"
 #endif
@@ -245,6 +254,7 @@
 #endif
 #if (DEMO_SPI_TEST == 1)
 #include "demo_spi.h"
+#include "demo_mspi.h"
 #endif
 #if (DEMO_PVR_TEST == 1)
 #include "demo_pvr.h"
@@ -264,9 +274,9 @@
 #if (DEMO_DRM_TEST == 1)
 #include "demo_drm.h"
 #include "demo_oemcrypto.h"
-#ifdef DDI_PLAYREADY_DEMO
-#include "demo_playready.h"
 #endif
+#if (DEMO_PLAYREADY_TEST == 1)
+#include "demo_playready.h"
 #endif
 #if (DEMO_HBBTV_TEST == 1)
 #include "demo_hbbtv.h"
@@ -276,6 +286,9 @@
 #endif
 #if (DEMO_DFB_TEST == 1)
 #include "demo_dfb.h"
+#endif
+#if (DEMO_GST_TEST == 1)
+#include "demo_gst.h"
 #endif
 #if (DEMO_QT_TEST == 1)
 #include "demo_qt.h"
@@ -298,6 +311,9 @@
 #if (DEMO_BOOTLOGO_TEST == 1)
 #include "demo_bootlogo.h"
 #endif
+#if (DEMO_BOOTVIDEO_TEST == 1)
+#include "demo_bootvideo.h"
+#endif
 #if (DEMO_EMMC_ECOS_TEST == 1)
 #include "demo_emmc_ecos.h"
 #endif
@@ -306,10 +322,6 @@
 #endif
 #if (DEMO_DTE_TEST == 1)
 #include "demo_dimension.h"
-#endif
-#if (DEMO_HDMI_CTS_CERTIFICATION_TEST == 1)
-#include "demo_eeprom.h"
-#include "demo_certification.h"
 #endif
 
 #include "apiDigiTuner.h"
@@ -325,7 +337,46 @@
 #include "demo_cec.h"
 #endif
 
+#if (DEMO_CI_TEST == 1)
+#include "demo_ci.h"
+#endif
+
+#if (FE_AUTO_TEST == 1)
+#include "demo_FEAutoTest.h"
+#endif
+
+#if(DEMO_ZUI_TEST == 1 || DEMO_AUTOIN_ZUI_TEST == 1 )
+#include "demo_ui.h"
+#endif
 #include "demo_utility.h"
+
+#if (DEMO_ECOS_BOOT_LINUX == 1)
+#include "demo_bootlinux.h"
+#endif
+
+#if (DEMO_IR_TX_TEST == 1)
+#include "demo_ir_tx.h"
+#endif
+
+#if (DEMO_GPU_BENCHMARK_TEST == 1)
+#include "demo_gpu_benchmark.h"
+#endif
+
+#if (DEMO_SYS_INFO_TEST == 1)
+#include "demo_SysInfo.h"
+#endif
+
+#if (DEMO_FASTCALL_ECOS_TEST == 1)
+#include "demo_fastcall_ecos.h"
+#endif
+
+#if (DEMO_DOLBYHDR_PREIDK_TEST ==1)
+#include "demo_dolbyhdr_preidk.h"
+#endif
+
+#if (DEMO_PROCFS_TEST == 1)
+#include "demo_procfs.h"
+#endif
 
 #include "SysInit.h"
 //-------------------------------------------------------------------------------------------------
@@ -341,18 +392,13 @@
 
 #define DEMO_CMD_ALL   (DEMO_CMD_READY | DEMO_CMD_END | DEMO_CMD_RECV_EXIT | DEMO_CMD_PROC_EXIT)
 
-#if (DEMO_PVR_TEST == 1)
+
 #define MAX_CMD_PARAMETER 14
-#else
-#define MAX_CMD_PARAMETER 8
-#endif /*DEMO_PVR_TEST*/
 #define EN_ESC
 #define CMD_DELIM       "\n"
 
 #define DEMO_EVENT_WAIT_TIME 100
 #define DEMO_EVENT_WAIT_FOREVER 0xffffffff
-
-#if (DEMO_PVR_TEST == 1)
 
 typedef MS_BOOL (*func_ptr)(void* u32Input0, void* u32Input1, void* u32Input2, void* u32Input3, void* u32Input4, void* u32Input5, void* u32Input6, void* u32Input7, void* u32Input8, void* u32Input9, void* u32Input10);
 
@@ -364,34 +410,15 @@ typedef struct _DemoFun
     MS_BOOL (*func_ptr)(void* u32Input0, void* u32Input1, void* u32Input2, void* u32Input3, void* u32Input4, void* u32Input5, void* u32Input6, void* u32Input7, void* u32Input8, void* u32Input9, void* u32Input10);
 } DemoFun,*pDemoFun;
 
-#else  /*!DEMO_PVR_TEST*/
-
-typedef MS_BOOL (*func_ptr)(void* u32Input0, void* u32Input1, void* u32Input2, void* u32Input3, void* u32Input4, void* u32Input5);
-
-typedef struct _DemoFun
-{
-    MS_U8 u8CMDName[32];
-    MS_U8 u8InputMask; //1: input string(MS_U8*), 0: input (MS_U16*);
-                    //example: u8InputMask = 0x03, u32Input0,u32Input1  = (char*), u32Input2,u32Input3,u32Input4 = (MS_U16*)
-    MS_BOOL (*func_ptr)(void* u32Input0, void* u32Input1, void* u32Input2, void* u32Input3, void* u32Input4, void* u32Input5);
-} DemoFun,*pDemoFun;
-#endif /*DEMO_PVR_TEST*/
 //-------------------------------------------------------------------------------------------------
 // Macros
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 // Global Variables
 //-------------------------------------------------------------------------------------------------
-#if (DEMO_PVR_TEST == 1)
 MS_U32 gu32Input0, gu32Input1, gu32Input2, gu32Input3, gu32Input4, gu32Input5, gu32Input6, gu32Input7, gu32Input8, gu32Input9, gu32Input10;
 
 void *gInput0, *gInput1, *gInput2, *gInput3, *gInput4, *gInput5, *gInput6, *gInput7, *gInput8, *gInput9, *gInput10;
-
-#else /*!DEMO_PVR_TEST*/
-MS_U32 gu32Input0, gu32Input1, gu32Input2, gu32Input3, gu32Input4, gu32Input5;
-
-void *gInput0, *gInput1, *gInput2, *gInput3, *gInput4, *gInput5;
-#endif /* DEMO_PVR_TEST */
 
 MS_U8   g_u8CMDArray[MAX_CMD_SIZE];
 MS_U8   *g_argv[MAX_CMD_PARAMETER+1];
@@ -409,11 +436,20 @@ static MS_S32  _s32DemoEventId = 0;
 static MS_S32  _s32DemoMonEventId = 0;
 static MS_U8   _argc;
 static MS_BOOL _Demo_Exit = FALSE;
-static void _Demo_Main_Exit(MS_U32 argc, VOID *argv);
+//static void _Demo_Main_Exit(MS_U32 argc, VOID *argv);
 extern MS_BOOL appDemo_UART_Uart2Test(void);
 
 static DemoFun _DemoFun[]=
 {
+#if (DEMO_FUART_TEST == 1)
+    {"uart",                    0x00,  (func_ptr)&demo_fast_uart_test},
+#endif
+
+#if (DEMO_URDMA_TEST == 1)
+    {"urdma",                    0x00,  (func_ptr)&demo_urdma_test},
+    {"urdma_stop",               0x00,  (func_ptr)&demo_urdma_test_stop},
+#endif
+
 #if (DEMO_AUTO_GEN_TEST == 1)
     {"CL_INFO",                 0x01,   (func_ptr)&ChangeList_InfoQuery},
 #endif
@@ -429,6 +465,7 @@ static DemoFun _DemoFun[]=
     {"PM_Init",                 0x00,   (func_ptr)&Demo_PM_Init},
     {"PM_PowerDown",            0x00,   (func_ptr)&Demo_PM_PowerDown},
     {"PM_FastStandby",          0x00,   (func_ptr)&Demo_PM_FastStandby},
+    {"PM_Dram_Disable",         0x00,   (func_ptr)&Demo_PM_DRAM_Disable},
 #if (DEMO_PM_STR_LINUX_TEST == 1) || (DEMO_PM_STR_eCos_TEST == 1)
     {"PM_STR",                  0x00,   (func_ptr)&Demo_PM_STR},
 #endif
@@ -454,11 +491,16 @@ static DemoFun _DemoFun[]=
     {"DMX_MMFI",                0x00,   (func_ptr)&Demo_DMX_MMFI_CMD},
     {"DMX_FileIn_Start",        0x0D,   (func_ptr)&Demo_DMX_FileIn_Start},
     {"DMX_FileIn_Stop",         0x01,   (func_ptr)&Demo_DMX_FileIn_Stop},
+    {"DMX_SetSrcID",            0x00,   (func_ptr)&Demo_DMX_SetSrcID_CMD},
+    {"DMX_GetSrcID",            0x00,   (func_ptr)&Demo_DMX_GetSrcID_CMD},
+    {"DMX_SetPktMode",          0x00,   (func_ptr)&Demo_DMX_SetPktMode},
+    {"DMX_FIFO_RST",            0x00,   (func_ptr)&Demo_DMX_AVFifo_Reset_CMD},
 
 #if (DEMO_DMX_TSO_10_TEST == 1) && (DEMO_DMX_TSO_20_TEST == 1)
     #error "TSO 1.0 / 2.0 could not enable concurrently";
 #elif (DEMO_DMX_TSO_10_TEST == 1) || (DEMO_DMX_TSO_20_TEST == 1)
     {"DMX_TSO",                 0x00,   (func_ptr)&Demo_DMX_TSO},
+    {"DMX_TSO_FileIn",          0x00,   (func_ptr)&Demo_DMX_TSO_FileIn},
 #endif
 
 #endif
@@ -489,15 +531,17 @@ static DemoFun _DemoFun[]=
     {"Zapping_SavePid",         0x00,   (func_ptr)&Demo_Zapping_SavePid},
     {"Zapping_SaveFreq",        0x00,   (func_ptr)&Demo_Zapping_SaveFreq},
     {"Zapping_SaveTunerConfig", 0x00,   (func_ptr)&Demo_Zapping_SaveTunerConfig},
+    {"Zapping_SaveDeviceInfo",  0x00,   (func_ptr)&Demo_Zapping_SaveDeviceInfo},
     {"Zapping_ZappingType",     0x00,   (func_ptr)&Demo_Zapping_ZappingType},
+    {"Zapping_ZappingType_EX",  0x00,   (func_ptr)&Demo_Zapping_ZappingType_EX},
     {"Zapping_Channel",         0x00,   (func_ptr)&Demo_Zapping_Channel},
 #if (DEMO_ZAPPING_FQ_TEST == 1)
     {"Zapping_FQ_Init",         0x00,   (func_ptr)&Demo_FQ_Init},           //FQ Init
     {"Zapping_FQ_Exit",         0x00,   (func_ptr)&Demo_FQ_Exit},           //FQ Exit
-    {"Zapping_FQ",              0x00,   (func_ptr)&Demo_FQ_Zapping},        // Demo FQ Zapping
+    {"Zapping_FQ",              0x00,   (func_ptr)&Demo_FQ_Zapping},        //Demo FQ Zapping
     {"Zapping_FQ_Eng_Init",     0x00,   (func_ptr)&Demo_FQ_Eng_Init},       //FQ Eng Init
     {"Zapping_FQ_Eng_Exit",     0x00,   (func_ptr)&Demo_FQ_Eng_Exit},       //FQ Eng Exit
-    {"Zapping_FQ_Eng",          0x00,   (func_ptr)&Demo_FQ_Eng_Zapping},    // Demo FQ Eng Zapping
+    {"Zapping_FQ_Eng",          0x00,   (func_ptr)&Demo_FQ_Eng_Zapping},    //Demo FQ Eng Zapping
 #endif
 #endif
 
@@ -513,20 +557,61 @@ static DemoFun _DemoFun[]=
     {"MM_ProgramTrack",         0x00,   (func_ptr)&Demo_MM_SetProgramTrack},
     {"MM_FF",                   0x00,   (func_ptr)&Demo_MM_FF},
     {"MM_RW",                   0x00,   (func_ptr)&Demo_MM_RW},
+    {"MM_STEP",                 0x00,   (func_ptr)&Demo_MM_Step},
+    {"MM_STEPPLAY",             0x02,   (func_ptr)&Demo_MM_StepPlay},
     {"MM_PAUSE",                0x00,   (func_ptr)&Demo_MM_Pause},
     {"MM_RESUME",               0x00,   (func_ptr)&Demo_MM_Resume},
     {"MM_STOP_TYPE",            0x00,   (func_ptr)&Demo_MM_Stop_MediaType},
     {"MM_STOP",                 0x00,   (func_ptr)&Demo_MM_Stop},
     {"MM_Repeat",               0x00,   (func_ptr)&Demo_MM_Repeat},
+    {"MM_Repeat_EX",            0x00,   (func_ptr)&Demo_MM_Repeat_EX},
     {"MM_RW_Replay",            0x00,   (func_ptr)&Demo_MM_RW_Replay},
     {"MM_SEEK",                 0x00,   (func_ptr)&Demo_MM_Seek},
     {"MM_GETOPTION",            0x00,   (func_ptr)&Demo_MM_GetOption},
     {"MM_SetDrawPhotoPath",     0x00,   (func_ptr)&Demo_MM_Set_DrawPhotoPath},
+    {"MM_Rotate",               0x00,   (func_ptr)&Demo_MM_Display_Rotate},
+    {"MM_Zoom",                 0x00,   (func_ptr)&Demo_MM_Display_Zoom},
+    {"MM_DisplayResume",        0x00,   (func_ptr)&Demo_MM_Display_Resume},
+    {"MM_MoveView",             0x00,   (func_ptr)&Demo_MM_Display_MoveView},
+    {"MM_ShowEffect",           0x00,   (func_ptr)&Demo_MM_Set_SlideShowEffect},
     {"MM_SetDebugLevel",        0x00,   (func_ptr)&Demo_MM_SetDebugLevel},
+    {"MM_SetMotionGif",         0x00,   (func_ptr)&Demo_MM_SetEnableMotionGif},
+    {"MM_SetWindow",            0x00,   (func_ptr)&Demo_MM_SetWindow},
+    {"MM_SetKeepRatio",         0x00,   (func_ptr)&Demo_MM_SetKeepRatio},
     {"MM_PlayVideo_UsingDefaultSetting",        0x00,   (func_ptr)&Demo_XC_PlayVideo},
     {"MM_DEINIT",               0x00,   (func_ptr)&Demo_MM_DeInit},
+#if (DEMO_MM_AVP_TEST == 1)
+    {"MM_SwitchMediaItemAudio", 0x00,   (func_ptr)&Demo_MM_SwitchMediaItemAudio},
+    {"MM_SetOperableStreamID",  0x00,   (func_ptr)&Demo_MM_SetOperableMediaItem},
+    {"MM_SetDipWindow",         0x00,   (func_ptr)&Demo_MM_SetWindow},
+    {"MM_MuteMediaItem",        0x00,   (func_ptr)&Demo_MM_MuteMediaItem},
+    {"MM_SetAudioSwitchMode",   0x00,   (func_ptr)&Demo_MM_SetAudioSwitchMode},
+    {"MM_SetZOrder",            0x00,   (func_ptr)&Demo_MM_SetAVPZOrder},
+    {"MM_ResetWindow",          0x00,   (func_ptr)&Demo_MM_ResetWindow},
+    {"MM_PlayMulti",            0x01,   (func_ptr)&Demo_MM_PlayMultiStreams},
+#endif
+
 
 #endif //#if (DEMO_MM_TEST ==1)
+
+#if (DEMO_DOLBYHDR_PREIDK_TEST ==1)
+    {"IDK_LOADFRM",             0x03,   (func_ptr)&Demo_DolbyHDR_PreIDK_LoadFrame},
+    {"IDK_LOADPIC",             0x01,   (func_ptr)&Demo_DolbyHDR_PreIDK_LoadPicture},
+    {"IDK_AUTO",                0x01,   (func_ptr)&Demo_DolbyHDR_PreIDK_AutoVerify},
+    {"IDK_FRM",                 0x01,   (func_ptr)&Demo_DolbyHDR_PreIDK_VerifyFrame},
+    {"IDK_SCP",                 0x01,   (func_ptr)&Demo_DolbyHDR_PreIDK_RunRiuScripts},
+    {"IDK_DUMP",                0x01,   (func_ptr)&Demo_DolbyHDR_PreIDK_SaveDram2Bin},
+    {"IDK_ADC",                 0x01,   (func_ptr)&Demo_DolbyHDR_PreIDK_ADC_Dump},
+    {"IDK_CAPTURE",             0x01,   (func_ptr)&Demo_DolbyHDR_PreIDK_Capture2File},
+    {"IDK_DUMPMM",              0x01,   (func_ptr)&Demo_DolbyHDR_PreIDK_DumpMM},
+    {"IDK_OSD",                 0x01,   (func_ptr)&Demo_DolbyHDR_PreIDK_OSDBlending},
+    {"IDK_MODE",                0x00,   (func_ptr)&Demo_DolbyHDR_PreIDK_IDKMode},
+    {"IDK_SET_OUTTYPE",         0x00,   (func_ptr)&Demo_DolbyHDR_PreIDK_Set_OutputType},
+    {"IDK_SET_VSVDB",           0x00,   (func_ptr)&Demo_DolbyHDR_PreIDK_Set_VSVDB},
+    {"IDK_SET_GPRIORITY",       0x00,   (func_ptr)&Demo_DolbyHDR_PreIDK_Set_GraphicPriority},
+    {"IDK_SET_LOWLATENCY",      0x00,   (func_ptr)&Demo_DolbyHDR_PreIDK_Set_LowLatencyMode},
+    {"IDK_SET_DOVIMAPHDR10",    0x00,   (func_ptr)&Demo_DolbyHDR_PreIDK_Set_DolbyMappingHDR10},
+#endif
 
 #if (DEMO_7SEGMENTS_TEST == 1)
     {"7SegmentSet",             0x00,   (func_ptr)&Demo_DisplayDigiNum},
@@ -538,28 +623,69 @@ static DemoFun _DemoFun[]=
     {"BDMA_Help",               0x00,   (func_ptr)&Demo_BDMA_Help},
     {"BDMA_Demo",               0x00,   (func_ptr)&Demo_BDMA_Demo},
     {"BDMA_Init",               0x00,   (func_ptr)&Demo_BDMA_Init},
-    {"BDMA_Cmp",               0x00,   (func_ptr)&Demo_BDMA_CmpMem},
+    {"BDMA_Cmp",                0x00,   (func_ptr)&Demo_BDMA_CmpMem},
     {"BDMA_Dump",               0x00,   (func_ptr)&Demo_BDMA_DumpMem},
     {"BDMA_Fill",               0x00,   (func_ptr)&Demo_BDMA_FillMem},
-    {"BDMA_HKFill",               0x00,   (func_ptr)&Demo_BDMA_HKFillMem},
+    {"BDMA_HKFill",             0x00,   (func_ptr)&Demo_BDMA_HKFillMem},
     {"BDMA_Copy",               0x00,   (func_ptr)&Demo_BDMA_Copy},
-    {"BDMA_Allocate",               0x00,   (func_ptr)&Demo_BDMA_AllocateMemTest},
+    {"BDMA_Allocate",           0x00,   (func_ptr)&Demo_BDMA_AllocateMemTest},
     {"BDMA_Free",               0x00,   (func_ptr)&Demo_BDMA_FreeMemTest},
 #endif
 
-#if (DEMO_AUDIO_TEST == 1 || DEMO_AUDIO_MULTI_TEST == 1)
+#if (DEMO_AUDIO_TEST == 1)
     {"HelpAudio",               0x00,   (func_ptr)&Demo_Audio_Help},
     {"Audio_Init",              0x00,   (func_ptr)&Demo_Audio_Init},
+    {"Audio_Exit",              0x00,   (func_ptr)&Demo_Audio_Exit},
+    {"Audio_Open",              0x00,   (func_ptr)&Demo_Audio_Open},
+    {"Audio_Release",           0x00,   (func_ptr)&Demo_Audio_Release},
     {"Audio_demo",              0x00,   (func_ptr)&Demo_Audio_Out_Init},
     {"Audio_SetOutputMode",     0x00,   (func_ptr)&Demo_Audio_SetOutputMode},
+    {"Audio_SetDecOutputMode",  0x00,   (func_ptr)&Demo_Audio_SetDecOutputMode},
     {"Audio_volume",            0x00,   (func_ptr)&Demo_Audio_SetAbsoluteVolume},
     {"Audio_demoStop",          0x00,   (func_ptr)&Demo_Audio_Stop_Demo},
     {"Audio_mute",              0x00,   (func_ptr)&Demo_Audio_SetMute},
+    {"Audio_dec_mute",          0x00,   (func_ptr)&Demo_Audio_SetDecMute},
     {"Audio_Monitor",           0x00,   (func_ptr)&Demo_Audio_SetMonitor},
     {"Audio_Debug",             0x00,   (func_ptr)&Demo_Audio_Debug},
     {"Audio_DRC",               0x00,   (func_ptr)&Demo_Audio_Set_DRC_Mode},
     {"Audio_DRC_Scale",         0x00,   (func_ptr)&Demo_Audio_Set_DRC_Scale},
     {"Audio_Downmix",           0x00,   (func_ptr)&Demo_Audio_Set_DownMix_Mode},
+    {"Audio_DRC_EX",            0x00,   (func_ptr)&Demo_Audio_Set_DRC_Mode_EX},
+    {"Audio_DRC_Scale_EX",      0x00,   (func_ptr)&Demo_Audio_Set_DRC_Scale_EX},
+    {"Audio_Downmix_EX",        0x00,   (func_ptr)&Demo_Audio_Set_DownMix_Mode_EX},
+    {"Audio_TB11",              0x00,   (func_ptr)&Demo_Audio_Set_TB11},
+    {"Audio_Dynamic_Alloc",     0x00,   (func_ptr)&Demo_Audio_Set_Dynamic_Allocate_Resource},
+    {"Audio_Codec_Delay",       0x00,   (func_ptr)&Demo_Audio_Codec_Delay},
+    {"Audio_Codec_Delay_EX",    0x00,   (func_ptr)&Demo_Audio_Codec_Delay_EX},
+    {"Audio_Delay",             0x00,   (func_ptr)&Demo_Audio_Delay},
+    {"Audio_DTSHD",             0x00,   (func_ptr)&Demo_Audio_Set_DTSHD},
+    {"Audio_OutSource_Config",  0x00,   (func_ptr)&Demo_Audio_Set_Output_Source_Config},
+    {"Audio_WReg",              0x00,   (func_ptr)&Demo_Audio_Debug_WriteReg},
+    {"Audio_IR",                0x00,   (func_ptr)&Demo_Audio_IR_Debug},
+    {"Audio_Debug_R2",          0x00,   (func_ptr)&Demo_Audio_Debug_R2},
+    {"Audio_PUSI",              0x00,   (func_ptr)&Demo_Audio_PUSI},
+    {"Audio_Test_Monitor_Start", 0x00,   (func_ptr)&Demo_Audio_Test_Monitor_Start},
+    {"Audio_Test_Monitor_Stop" , 0x00,   (func_ptr)&Demo_Audio_Test_Monitor_Stop},
+
+#if (DEMO_AUDIO_PCM_CAPTURE_TEST == 1)
+    {"Audio_PCM_Capture_Start", 0x20,   (func_ptr)&Demo_Audio_PCM_Capture_Start},
+    {"Audio_PCM_Capture_Stop",  0x00,   (func_ptr)&Demo_Audio_PCM_Capture_Stop},
+#endif
+
+#if (DEMO_AUDIO_FRAME_DECODE_TEST == 1)
+    {"Audio_Transcode_Start",   0x08,   (func_ptr)&Demo_Audio_Transcode_Start},
+    {"Audio_Transcode_Stop",    0x00,   (func_ptr)&Demo_Audio_Transcode_Stop},
+    {"Audio_Transcode_Pause",   0x00,   (func_ptr)&Demo_Audio_Transcode_Pause},
+#endif
+
+#if (DEMO_XC_HDMIRX_TEST == 1)
+    {"Audio_EDID_Output",       0x00,   (func_ptr)&Demo_Audio_EDID_Output},
+    {"Audio_EDID_Output_EX",    0x00,   (func_ptr)&Demo_Audio_EDID_Output_EX},
+#endif
+
+#if(DEMO_AUDIO_AD_FADER_CONTROL_TEST == 1)
+    {"Audio_AD_Fader",          0x00,   (func_ptr)&Demo_Audio_Set_AD_Fader},
+#endif
 
 #if(DEMO_AUDIO_SE_DV258_TEST == 1)
     {"Audio_DV258",             0x00,   (func_ptr)&Demo_Audio_Set_DV258},
@@ -568,9 +694,8 @@ static DemoFun _DemoFun[]=
 #if (DEMO_AUDIO_DMA_READER_TEST == 1)
     {"Audio_DMA_Test",          0x01,   (func_ptr)&Demo_Audio_DMA_Reader_Test},
 #endif
-
-#if (DEMO_AUDIO_MULTI_TEST == 1)
-    {"Audio_OutSource_Config",  0x00,   (func_ptr)&Demo_Audio_Set_Output_Source_Config},
+#if ((DEMO_AUDIO_DMA_READER_TEST == 1) && (DEMO_AUDIO_R2_MEM_ARCHI_TEST == 1))
+    {"Audio_DMA_EX_Test",       0x02,   (func_ptr)&Demo_Audio_DMA_Reader_EX_Test},
 #endif
 
 #if (DEMO_AUDIO_FMTX_TEST == 1)
@@ -586,10 +711,13 @@ static DemoFun _DemoFun[]=
 #if (DEMO_AUDIO_HDMI_TEST == 1)
     {"Audio_HDMITx_Mode",       0x00,   (func_ptr)&Demo_Audio_Set_HDMITx_Mode},
     {"Audio_DDP",               0x00,   (func_ptr)&Demo_Audio_DDP},
+    {"Audio_EDID",              0x00,   (func_ptr)&Demo_Audio_Show_HDMITx_EDID},
+    {"Audio_HDMI_Delay",        0x00,   (func_ptr)&Demo_Audio_HDMI_Delay},
 #endif
 
 #if(DEMO_AUDIO_SPDIF_TEST == 1)
     {"Audio_SPDIF_Mode",        0x00,   (func_ptr)&Demo_Audio_Set_SPDIF_Mode},
+    {"Audio_SPDIF_Delay",       0x00,   (func_ptr)&Demo_Audio_SPDIF_Delay},
 #endif
 
 #if(DEMO_AUDIO_KTV_TEST == 1)
@@ -609,6 +737,8 @@ static DemoFun _DemoFun[]=
     {"Audio_GEQ_Param",         0x00,   (func_ptr)&Demo_Audio_SetGEQ_Param},
     {"Audio_GEQ_Enable",        0x00,   (func_ptr)&Demo_Audio_SetGEQ_Enable},
     {"Audio_HPF_Enable",        0x00,   (func_ptr)&Demo_Audio_SetHPF_Enable},
+    {"Audio_Balance_Enable",    0x00,   (func_ptr)&Demo_Audio_SetBalance_Enable},
+    {"Audio_Balance_Param",     0x00,   (func_ptr)&Demo_Audio_SetBalance_Param},
 #endif
 
 #if(DEMO_AUDIO_SOUND_EFFECT_ADV_TEST == 1)
@@ -620,10 +750,26 @@ static DemoFun _DemoFun[]=
     {"Audio_Mute_AD",           0x00,   (func_ptr)&Demo_Audio_ADSetMute},
 #endif
 
+#if (DEMO_AUDIO_ENCODER_TEST == 1)
+    {"Audio_Enc_Open",          0x02,   (func_ptr)&Demo_Audio_Enc_Open},
+    {"Audio_Enc_Close",         0x00,   (func_ptr)&Demo_Audio_Enc_Close},
+    {"Audio_Enc_Dump",          0x02,   (func_ptr)&Demo_Audio_Enc_Dump},
+    {"Audio_Enc_Ioctl",         0x02,   (func_ptr)&Demo_Audio_Enc_Ioctl},
+    {"Audio_Enc_Flush",         0x00,   (func_ptr)&Demo_Audio_Enc_Flush},
+#endif
+
+#if defined (DEMO_AUDIO_SUPPORT_MS12_B_TEST) && (DEMO_AUDIO_SUPPORT_MS12_B_TEST == 1)
+    {"Audio_DAP",               0x00,   (func_ptr)&Demo_Audio_SetDAP_Enable},
+    {"Audio_DAP_Param",         0x01,   (func_ptr)&Demo_Audio_SetDAP_Param},
+#endif
+
 #endif
 #if (DEMO_CH34_TEST == 1)
     //Demo CH34 func
     {"CH34_Init",               0x00,   (func_ptr)&Demo_CH34_Init},
+    {"CH34_SelectSpec",            0x00,   (func_ptr)&Demo_CH34_SelectSpec},
+    {"CH34_SetDACSwingLevel",            0x00,   (func_ptr)&Demo_CH34_SetDACSwingLevel},
+    {"CH34_SetSigmaDeltaGainLevel",            0x00,   (func_ptr)&Demo_CH34_SetSigmaDeltaGainLevel},
     {"CH34_SetMode",            0x00,   (func_ptr)&Demo_CH34_SetMode},
     {"CH34_Help",               0x00,   (func_ptr)&Demo_CH34_Help},
 #endif
@@ -646,6 +792,14 @@ static DemoFun _DemoFun[]=
     {"MFE_Init",                0x00,   (func_ptr)&Demo_MFE_Init},
     {"MFE_Encode_File",         0x03,   (func_ptr)&Demo_MFE_Encode_File},
     {"MFE_Encode_DIP",          0x01,   (func_ptr)&Demo_MFE_Encode_From_DIP},
+    {"MFE_Encode_FMT_EX",       0x00,   (func_ptr)&Demo_MFE_Encode_FMT_EX},
+    {"MFE_Init_EX",             0x00,   (func_ptr)&Demo_MFE_Init_EX},
+    {"MFE_Encode_File_EX",      0x06,   (func_ptr)&Demo_MFE_Encode_File_EX},
+    {"MFE_Encode_DIP_EX",       0x02,   (func_ptr)&Demo_MFE_Encode_From_DIP_EX},
+#if (DEMO_DMS_TEST == 1)
+    {"MFE_Encode_Cap_EX",       0x02,   (func_ptr)&Demo_MFE_Encode_From_Capture_EX},
+    {"MFE_Set_CaptureInfo",     0x00,   (func_ptr)&Demo_MFE_Set_CaptureInfo},
+#endif
 #endif
 
 #if (DEMO_NET_TEST == 1)
@@ -669,6 +823,12 @@ static DemoFun _DemoFun[]=
 //Benchmarks
 #if (DEMO_BENCH_DHRYSTON_ECOS_TEST == 1)
     {"Bench_Dhryston",          0x00,   (func_ptr)&Demo_Bench_Dhryston_Run},
+    {"cpu_load",                0x00,   (func_ptr)&execute_cpu_load},
+    {"cpu_unload",              0x00,   (func_ptr)&execute_cpu_unload},
+    {"set_delay",               0x00,   (func_ptr)&bench_set_delay},
+#endif
+#if (DEMO_BENCH_LIMITDHRYSTONE_LINUX_TEST == 1)
+    {"Demo_LimitDhrystone",     0x00,   (func_ptr)&Demo_Bench_LimitDhrystone},
 #endif
 #if (DEMO_BENCH_MEM_TEST == 1)
     {"Bench_Memory",            0x00,   (func_ptr)&Demo_Bench_Memory},
@@ -677,7 +837,7 @@ static DemoFun _DemoFun[]=
 #if (DEMO_AV_TEST == 1)
     {"DTV_Tuner_Config",        0x00,   (func_ptr)&Demo_AV_Tuner_Config},
     {"DTV_TSP_SetPid",          0x00,   (func_ptr)&Demo_AV_TSP_SetPid},
-    {"DTV_TSP_FileIn_SetPid",   0x1A,   (func_ptr)&Demo_AV_TSP_FileIn_SetPid},
+    {"DTV_TSP_FileIn_SetPid",   0x7A,   (func_ptr)&Demo_AV_TSP_FileIn_SetPid},
     {"DTV_PlayAV",              0x00,   (func_ptr)&Demo_AV_PlayAV},
     {"DTV_PauseAV",             0x00,   (func_ptr)&Demo_AV_PauseAV},
     {"DTV_StopAV",              0x00,   (func_ptr)&Demo_AV_StopAV},
@@ -686,11 +846,18 @@ static DemoFun _DemoFun[]=
     {"DTV_StopRadio",           0x00,   (func_ptr)&Demo_AV_StopRadio},
     {"DTV_SetAVSyncMode",       0x00,   (func_ptr)&Demo_AV_SetAVSYNCMode},
     {"DTV_SetShowFrameMode",    0x00,   (func_ptr)&Demo_AV_SetShowFrameMode},
+    {"DTV_ChangeDispWindow",    0x00,   (func_ptr)&Demo_AV_ChangeDispWindow},
     {"DTV_Lang",                0x00,   (func_ptr)&Demo_AV_SetLanguage},
     {"DTV_LangList",            0x00,   (func_ptr)&Demo_AV_LanguageList},
+    {"DTV_Audio_Switch",        0x00,   (func_ptr)&Demo_AV_Audio_Switch},
+    {"DTV_ExChangeWindow",      0x00,   (func_ptr)&Demo_AV_ExChangeWindow},
 #if (DEMO_AUDIO_AD_TEST == 1)
     {"DTV_PlayAD",              0x00,   (func_ptr)&Demo_AV_PlayAD},
     {"DTV_StopAD",              0x00,   (func_ptr)&Demo_AV_StopAD},
+#endif
+#if(DEMO_AUDIO_AD_1PID_TEST == 1)
+    {"DTV_PlayAD_1PID",         0x00,   (func_ptr)&Demo_AV_PlayAD_1PID},
+    {"DTV_StopAD_1PID",         0x00,   (func_ptr)&Demo_AV_StopAD_1PID},
 #endif
     {"DTV_DecIFrame",           0x04,   (func_ptr)&Demo_AV_DecodeIFrame},
     {"DTV_PlayFromMemory",      0x08,   (func_ptr)&Demo_AV_PlayFromMemory},
@@ -707,6 +874,8 @@ static DemoFun _DemoFun[]=
     {"DTV_SetVideoDebugLevel",  0x00 ,  (func_ptr)&Demo_VDEC_SetVDECDebugLevel},
     {"VDEC_SetVDECDebugLevel",  0x00,   (func_ptr)&Demo_VDEC_SetVDECDebugLevel},
     {"VDEC_OpenDBGMSG",         0x00,   (func_ptr)&Demo_VDEC_OpenDBGMSG},
+    {"VDEC_PreSetControl",      0x00,   (func_ptr)&Demo_VDEC_CmdPreSetControl},
+    {"VDEC_DIPSyncOn",          0x00,   (func_ptr)&Demo_VDEC_FrameSyncOn},
 #endif
 
 #if (DEMO_PVR_TEST == 1)
@@ -716,6 +885,8 @@ static DemoFun _DemoFun[]=
     {"PVR_SetRecordType",    0x00, (func_ptr)&Demo_PVR_SetRecordType},
     {"PVR_SetRecIdx",    0x00, (func_ptr)&Demo_PVR_SetRecIdx},
     {"PVR_GetRecIdx",    0x00, (func_ptr)&Demo_PVR_GetRecIdx},
+    {"PVR_SetRecSrcID",    0x00, (func_ptr)&Demo_PVR_SetRecSrcID},
+    {"PVR_GetRecSrcID",    0x00, (func_ptr)&Demo_PVR_GetRecSrcID},
     {"PVR_RecFlowSet",    0x00, (func_ptr)&Demo_PVR_RecFlowSet},
     {"PVR_SetPlaybackPath",    0x00, (func_ptr)&Demo_PVR_SetPlaybackPath},
     {"PVR_GetPlaybackPath",    0x00, (func_ptr)&Demo_PVR_GetPlaybackPath},
@@ -723,6 +894,9 @@ static DemoFun _DemoFun[]=
     {"PVR_RecordPause",      0x00, (func_ptr)&Demo_PVR_Record_Pause},
     {"PVR_RecordResume",      0x00, (func_ptr)&Demo_PVR_Record_Resume},
     {"PVR_RecordStop",      0x00, (func_ptr)&Demo_PVR_Record_Stop},
+    {"PVR_SetPerformanceTest",    0x00, (func_ptr)&Demo_PVR_SetPerformanceTest},
+    {"PVR_SetSyncConfig",    0x1E, (func_ptr)&Demo_PVR_SetSyncConfig},
+    {"PVR_Disable2ndEncryption",    0x00, (func_ptr)&Demo_PVR_Disable2ndEncryption},
 
 #if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
 #if (DEMO_DSCMB_ADVANCED_TEST == 1)
@@ -744,10 +918,9 @@ static DemoFun _DemoFun[]=
     {"PVR_PlaybackSF",      0x00, (func_ptr)&Demo_PVR_PlaybackSlowForward},
     {"PVR_PlaybackFF",      0x00, (func_ptr)&Demo_PVR_PlaybackFastForward},
     {"PVR_PlaybackFB",      0x00, (func_ptr)&Demo_PVR_PlaybackFastBackward},
+    {"PVR_PlaybackSetSpeed",      0x00, (func_ptr)&Demo_PVR_PlaybackSetSpeed},
     {"PVR_PlaybackJumpToTime",      0x00, (func_ptr)&Demo_PVR_PlaybackJumpToTime},
-    #if (DEMO_PVR_V4_TEST != 1)
-    {"PVR_PlaybackChangeProgram",      0x20, (func_ptr)&Demo_PVR_PlaybackChangeProgram},
-    #endif
+    {"PVR_PlaybackChangeProgram",   0x20, (func_ptr)&Demo_PVR_PlaybackChangeProgram},
     {"PVR_TimeshiftRecordStart",    0x20, (func_ptr)&Demo_PVR_Timeshift_RecordStart},
     {"PVR_TimeshiftRecordStop",     0x00, (func_ptr)&Demo_PVR_Timeshift_RecordStop},
     {"PVR_TimeshiftPlaybackStart",  0x00, (func_ptr)&Demo_PVR_Timeshift_PlaybackStart},
@@ -779,9 +952,17 @@ static DemoFun _DemoFun[]=
 #if (DEMO_PVR_SUPPORT_CHANGE_DISPLAYWIN_TEST == 1)
     {"PVR_ChangeDisplayWindowSize",    0x00, (func_ptr)&Demo_PVR_ChangeDisplayWindowSize},
 #endif
+    {"PVR_SetConfigure", 0x00, (func_ptr)&Demo_PVR_SetConfigure},
     {"PVR_SetDBGLevel",    0x00, (func_ptr)&Demo_PVR_SetDBGLevel},
     {"PVR_ShowAudioTrack",  0x00, (func_ptr)&Demo_PVR_ShowAudioTrackInfo},
     {"PVR_SetAudioTrack",   0x00, (func_ptr)&Demo_PVR_SetAudioTrackByIndex},
+    {"PVR_SetRecPrecision", 0x00, (func_ptr)&Demo_PVR_SetRecordPrecision},
+    {"PVR_SetBoundedLinearRecord", 0x00, (func_ptr)&Demo_PVR_SetBoundedLinearRecord},
+    {"PVR_SetTimeshiftRecFileSize", 0x00, (func_ptr)&Demo_PVR_SetRecordFileSize},
+    {"PVR_SetRecordAppend", 0x00, (func_ptr)&Demo_PVR_SetRecordAppend},
+    {"PVR_SetRecFileSize", 0x00, (func_ptr)&Demo_PVR_SetRecordFileSize},
+    {"PVR_SetRecDuration", 0x00, (func_ptr)&Demo_PVR_SetRecordDuration},
+    {"PVR_SetRecFileSlice", 0x00, (func_ptr)&Demo_PVR_SetRecordFileSlice},
 #endif
 
 
@@ -798,6 +979,14 @@ static DemoFun _DemoFun[]=
     {"OS_Test",                 0x00,   (func_ptr)&Demo_OS_Test},
     {"USB_Test",                 0x01,   (func_ptr)&Demo_USB_Test},
 #endif
+
+#if (DEMO_USB_ECOS_TEST == 1)
+    {"USB_BurnIn",               0x01,   (func_ptr)&Demo_USB_BurnIn},
+    {"USB_BurnIn_2W",            0x01,   (func_ptr)&Demo_USB_BurnIn_2W},
+    {"USB_API_perf",             0x00,   (func_ptr)&Demo_USB_API_perf},
+    {"USB_driver_load_test",     0x00,   (func_ptr)&Demo_USB_driver_load_test},
+#endif
+
 #if (DEMO_WDT_TEST == 1)
     {"WDT_Test",                0x00,   (func_ptr)&Demo_WDT_Test},
 #endif
@@ -805,8 +994,13 @@ static DemoFun _DemoFun[]=
     {"SMC_Start",               0x00,   (func_ptr)&Demo_SMC_Start},
     {"SMC_Stop",                0x00,   (func_ptr)&Demo_SMC_Stop},
     {"SMC_Help",                0x00,   (func_ptr)&Demo_SMC_Help},
+    {"SMC_SetDBGLevel",         0x00,   (func_ptr)&Demo_SMC_SetDbgLevel},
 #endif
 #if (DEMO_OSD_TEST == 1)
+    #if (DEMO_GOP_ZORDER_TEST == 1)
+    {"ZOrder_Init",             0x00,   (func_ptr)&Demo_ZOrder_Init},
+    {"ZOrder_SetZOrder",        0x00,   (func_ptr)&Demo_ZOrder_SetZOrder},
+    #endif
     //GOP Demo Funs
     {"OSD_Help",                0x00,   (func_ptr)&Demo_OSD_Help},
     {"OSD_Init",                0x00,   (func_ptr)&Demo_OSD_Init},
@@ -865,7 +1059,6 @@ static DemoFun _DemoFun[]=
     {"XC_SetOutputTiming",      0x00,   (func_ptr)&Demo_XC_SetOutputTiming},
     {"XC_SetOutputDest",        0x00,   (func_ptr)&Demo_XC_SetOutputDest},
     {"XC_DACDetect",            0x00,   (func_ptr)&Demo_Video_DACDetect},
-    {"XC_PlayWindow",           0x00,   (func_ptr)&Demo_XC_PlayWindow},
     {"XC_PlayVideo",            0x00,   (func_ptr)&Demo_XC_PlayVideo},
     {"XC_PlayCusVideo",         0x00,   (func_ptr)&Demo_XC_PlayCusVideo},
     {"XC_StopVideo",            0x00,   (func_ptr)&Demo_XC_StopVideo},
@@ -876,6 +1069,8 @@ static DemoFun _DemoFun[]=
     {"XC_SetMainWindowFirst",   0x00,   (func_ptr)&Demo_XC_SetMainWindowFirst},
     {"XC_EnableWindow",         0x00,   (func_ptr)&Demo_XC_EnableWindow},
     {"XC_RegressionTest_ScalingDown",       0x00,   (func_ptr)&Demo_XC_RegressionTest_ScalingDown},
+    {"XC_DisplayWindowTest",    0x00,   (func_ptr)&Demo_XC_DisplayWindowTest},
+    {"XC_SetFrameBufferSize",   0x00,   (func_ptr)&Demo_XC_SetFrameBufferSize},
     {"VE_Init",                 0x00,   (func_ptr)&Demo_VE_Init},
     {"VE_SetOutputTiming",      0x00,   (func_ptr)&Demo_VE_SetOutputTiming},
     {"VE_PlayVideo",            0x00,   (func_ptr)&Demo_VE_PlayVideo},
@@ -917,11 +1112,14 @@ static DemoFun _DemoFun[]=
     #if (DEMO_XC_HDMIRX_TEST == 1)
     {"XC_SetHDMIByPass",        0x00,   (func_ptr)&Demo_HDMI_SetRxBypass},
     {"XC_SetHDMIColorThroughMode",  0x00,   (func_ptr)&Demo_HDMI_SetColorThroughMode},
+    {"XC_GetHDMIRXPacketInfo",  0x00,   (func_ptr)&Demo_HDMI_GetRXPacketInfo},
+    {"HDMI_SetRXEDID",          0x00,   (func_ptr)&Demo_HDMI_SetRxEDID},
     #endif
     {"XC_EnableDrvDmsg",        0x00,   (func_ptr)&Demo_XC_EnableDmesg},
     {"XC_Exit",                 0x00,   (func_ptr)&Demo_XC_Exit},
+    {"XC_SetHDREnable",                 0x00,   (func_ptr)&Demo_XC_SetHDREnable},
+    {"XC_SetHDRSeamlessEnable", 0x00,   (func_ptr)&Demo_XC_SetHDRSeamlessFlag},
     {"VE_Exit",                 0x00,   (func_ptr)&Demo_VE_Exit},
-    {"XC_GenerateBlackVideo",   0x00,   (func_ptr)&Demo_XC_GenerateBlackVideo},
     {"VE_VbiTtxDemo",           0x00,   (func_ptr)&Demo_VE_VbiTtxDemo},
     {"VE_CCIROut",              0x00,   (func_ptr)&Demo_VE_CCIROut},
     {"VE_SetWSS",               0x00,   (func_ptr)&Demo_VE_SetWSS},
@@ -935,8 +1133,40 @@ static DemoFun _DemoFun[]=
     #if (DEMO_ACP_DCS_TEST == 1)
     {"ACP_SetDCS",              0x00,   (func_ptr)&Demo_ACP_SetDCS},
     #endif
-    {"HDMI_SetTxOutputMode",    0x00, (func_ptr)&Demo_HDMI_SetTxOutputMode},
+#if (DEMO_XC_DOVI_TEST == 1)
+    {"XC_SetDoViGraphicPriority",0x00,  (func_ptr)&Demo_XC_SetDolbyVisionGraphicPriority},
+    {"XC_EnableDoViGraphicLum",  0x00,  (func_ptr)&Demo_XC_SetDolbyVisionGraphicLuminanceEnable},
+    {"XC_SetDoViGraphicLum",     0x00,  (func_ptr)&Demo_XC_SetDolbyVisionGraphicLuminance},
+    {"HDMI_ShowDoViHDRInfo",     0x00,  (func_ptr)&Demo_HDMI_ShowDoViHDRInfo},
+    {"HDMI_SetDoViOutputFormat",0x00,  (func_ptr)&Demo_HDMI_SetDolbyVisionOutputFormat},
+    {"HDMI_SetDoViLowLatencyMode",0x00,  (func_ptr)&Demo_HDMI_SetDolbyVisionLowLatencyMode},
+#endif
+#if (DEMO_DAC_SD_ONLY_TEST == 0)
+    {"HDMI_SetTxOutputMode",    0x00,   (func_ptr)&Demo_HDMI_SetTxOutputMode},
+#if (DEMO_HDMI8bits_ONLY_TEST == 0)
     {"HDMI_SetOutputColorDepth",0x00,   (func_ptr)&Demo_HDMI_SetOutputColorDepth},
+#endif
+    {"HDMI_SetOutputColorRange", 0x00,  (func_ptr)&Demo_HDMI_SetOutputColorRange},
+    {"HDMI_ShowHDCPInfo",        0x00,  (func_ptr)&Demo_HDMI_ShowHDCPInfo},
+    {"HDMI_SetOutputColorFormat",0x00,  (func_ptr)&Demo_HDMI_SetOutputColorFormat},
+#if (DEMO_XC_3D_TEST == 1)
+    {"HDMI_Set3DStructure",     0x00,   (func_ptr)&Demo_HDMI_Set3DStructure},
+#endif
+    {"HDMI_SetAspectRatio",     0x00,   (func_ptr)&Demo_HDMI_SetAspectRatio},
+    {"HDMI_SetAVMute",          0x00,   (func_ptr)&Demo_HDMI_SetAVMute},
+    {"HDMI_SetColorimetry",     0x00,   (func_ptr)&Demo_HDMI_SetColorimetry},
+#if (DEMO_AUDIO_HDMI_TEST == 1)
+    {"HDMI_SetAudio",           0x00,   (func_ptr)&Demo_HDMI_SetAudio},
+#endif
+    {"HDMI_ShowHDMITxOutputInfo",0x00,  (func_ptr)&Demo_HDMI_ShowHDMITxOutputInfo},
+#if (DEMO_HDMI_CTS_CERTIFICATION_TEST == 1)
+    {"HDMI_EnableCertification",0x00,   (func_ptr)&Demo_HDMI_EnableCertification},
+#endif
+    {"HDMI_GetEDIDInfo",        0x00,   (func_ptr)&Demo_HDMI_GetEDIDInfo},
+#endif //#if (DEMO_DAC_SD_ONLY_TEST == 0)
+    #if (DEMO_SCART_OUTPUT_SWITCH_TEST == 1)
+    {"SCART_OutputSwitch",      0x00,   (func_ptr)&Demo_SCART_OutputSwitch},
+    #endif
 #endif
 
 #if (DEMO_CEC_TEST == 1)
@@ -944,6 +1174,12 @@ static DemoFun _DemoFun[]=
     {"CEC_Exit",                0x00,   (func_ptr)&Demo_CEC_Exit},
     {"CEC_SetOnOff",            0x00,   (func_ptr)&Demo_CEC_SetOnOff},
     {"CEC_SendMessage",         0x00,   (func_ptr)&Demo_CEC_SendMessage},
+    {"CEC_Show_Device_List",    0x00,   (func_ptr)&Demo_CEC_Show_Device_List},
+    {"CEC_OneTouchPlay",        0x00,   (func_ptr)&Demo_CEC_OneTouchPlay},
+    {"CEC_Standby",             0x00,   (func_ptr)&Demo_CEC_Standby},
+    {"CEC_GiveDevicePowerStatus", 0x00, (func_ptr)&Demo_CEC_GiveDevicePowerStatus},
+    {"CEC_SystemAudioModeRequest",0x00, (func_ptr)&Demo_CEC_SystemAudioModeRequest},
+    {"CEC_ShowMessageBuffer",   0x00,   (func_ptr)&Demo_CEC_ShowMessageBuffer},
 #endif
 
 #if (DEMO_LINUX_MOUNT_NOTIFIER_TEST == 1)
@@ -955,12 +1191,23 @@ static DemoFun _DemoFun[]=
 #endif
 
 #if (DEMO_DVFS_TEST == 1)
-    {"DVFS_SetLevel",           0x00,   (func_ptr)&Demo_DVFS_SetLevel},
+    {"DVFS_LockCPUFreq",        0x00,   (func_ptr)&Demo_DVFS_Lock_CPU_Frequency     },
+    {"DVFS_UnLockFreq",         0x00,   (func_ptr)&Demo_DVFS_UnLock_CPU_Frequency   },
+    {"DVFS_GetCPUFreq",         0x00,   (func_ptr)&Demo_DVFS_Get_CPU_Frequency      },
+    {"DVFS_GetCPUTemp",         0x00,   (func_ptr)&Demo_DVFS_Get_CPU_Temperature    },
+    {"DVFS_GetCPUVolt",         0x00,   (func_ptr)&Demo_DVFS_Get_CPU_Voltage        },
 #endif
 
 #if (DEMO_TSENSOR_TEST == 1)
+#if (DEMO_SAR_TSENSOR_SUPPORT == 1)
+    {"TSensor_GetTemp",             0x00,   (func_ptr)&Demo_TSensor_GetTemp},
+    {"TSensor_SetTempRange",             0x00,   (func_ptr)&Demo_TSensor_SetTempMonitorRange},
+    {"TSensor_GetTempRange",             0x00,   (func_ptr)&Demo_TSensor_GetTempMonitorRange},
+    {"TSensor_ClearIRQ",             0x00,   (func_ptr)&Demo_TSensor_ClearIRQ},
+#else
     {"TSensor_DemoISR",         0x00,   (func_ptr)&Demo_TSensor_demo},
     {"TSensor_PRI",             0x00,   (func_ptr)&Demo_TSensor_PriTemp},
+#endif
 #endif
 
 #if (DEMO_DTM_TEST == 1)
@@ -976,6 +1223,8 @@ static DemoFun _DemoFun[]=
     {"FrontPnl_DotEnable",      0x00,   (func_ptr)&Demo_FrontPnl_Dot_Enable},
     {"FrontPnl_DigitalSet",     0x00,   (func_ptr)&Demo_FrontPnl_Digital_Set},
     #endif
+
+    {"FrontPnl_KeyEnable",     0x00,   (func_ptr)&Demo_FrontPnl_KeyEnable},
 #endif
 
 #if (DEMO_KEYPAD_TEST == 1)
@@ -987,6 +1236,12 @@ static DemoFun _DemoFun[]=
     {"IR_Init",                 0x00,   (func_ptr)&Demo_Input_Init_ecos},
     {"IR_Exit_ecos",            0x00,   (func_ptr)&Demo_Input_Exit_ecos},
 #endif
+
+#if (DEMO_IR_TX_TEST == 1)
+    {"IR_TX_SetIRType",         0x00,   (func_ptr)&Demo_IR_TX_SetIRType},
+    {"IR_TX_SendKeyCode",       0x00,   (func_ptr)&Demo_IR_TX_SendKeyCode},
+#endif
+
 
 #if (DEMO_IR_LINUX_TEST == 1)
     {"IR_Init",                 0x00,   (func_ptr)&Demo_Input_Init_linux},
@@ -1002,6 +1257,7 @@ static DemoFun _DemoFun[]=
     {"SerialFlash_ReadID",      0x00,   (func_ptr)&Demo_SerFlash_ReadID},
     {"SerialFlash_GetInfo",     0x00,   (func_ptr)&Demo_SerFlash_GetInfo},
     {"SerialFlash_RWTest",      0x00,   (func_ptr)&Demo_SerFlash_RWTest},
+    {"Mspi_MutiUser_Test",      0x00,   (func_ptr)&Demo_MSPI_LoopBack_Test},
 #endif
 
 #if (DEMO_GPIO_TEST ==1)
@@ -1025,14 +1281,12 @@ static DemoFun _DemoFun[]=
 #endif
 
 #if (DEMO_OPENGLES2_TEST == 1)
-    {"Demo_OpenGL",      0x00,   (func_ptr)&demo_opengl},
+    {"Demo_OpenGL",      	0x00,   (func_ptr)&demo_opengl},
+    {"Demo_OpenGLBenchmark",	0x1f,   (func_ptr)&demo_OpenglBenchmark},
 #endif
 
 #if (DEMO_DRM_TEST == 1)
     {"DRM_RE_ENCRYPT",                  0x00,  (func_ptr)&Demo_DRM_PlayReady_Re_encrypt},
-#ifdef DDI_PLAYREADY_DEMO
-    {"playready_test",                  0x00,  (func_ptr)&appDemo_PlayReadyTest},
-#endif
 #ifndef DDI_TEE
     //{"DRM_SECURE_AUTO_TEST",            0x00,  (func_ptr)&Demo_DRM_Secure_Autotest},
     {"DRM_SECURE_STORAGE_AUTO_TEST",    0x00,  (func_ptr)&Demo_DRM_Secure_Storage_Autotest},
@@ -1041,6 +1295,9 @@ static DemoFun _DemoFun[]=
 #if (DEMO_WIDEVINE_TEST == 1)
     {"DRM_OEMCrypto_Test",              0x00,  (func_ptr)&Demo_DRM_OEMCryptoTest},
 #endif
+#endif
+#if (DEMO_PLAYREADY_TEST == 1)
+    {"playready_test",                  0x00,  (func_ptr)&appDemo_PlayReadyTest},
 #endif
 
 #if (DEMO_HBBTV_TEST == 1)
@@ -1059,7 +1316,6 @@ static DemoFun _DemoFun[]=
     {"hbbtv_ait",                   0x00,  (func_ptr)&Demo_hbbtv_NotifyAIT_Command},
     {"hbbtv_ligada",                0x00,  (func_ptr)&Demo_hbbtv_Ligada},
 #endif
-
 
     {"DigiTuner_SetIndex",      0x00,   (func_ptr)&appDemo_DigiTuner_SetIndex},
     {"DigiTuner_SetFreq",       0x00,   (func_ptr)&appDemo_DigiTuner_SetFreq},
@@ -1081,6 +1337,16 @@ static DemoFun _DemoFun[]=
     {"DigiTuner_Set22K",        0x00,   (func_ptr)&appDemo_DigiTuner_Satellite_Set22K},
     {"DigiTuner_Set22KTone",    0x00,   (func_ptr)&appDemo_DigiTuner_Satellite_Set22KTone},
     {"FE_DiseqcCmd",            0x00,   (func_ptr)&appDemo_FE_DiseqcCmd},
+    {"FE_GetISIDInfo",          0x00,   (func_ptr)&appDemo_DigiTuner_GetVCM_ISID_Info},
+    {"FE_SetISID",              0x00,   (func_ptr)&appDemo_DigiTuner_SetVCM_ISID},
+    {"FE_SetLNB_LO",             0x00,   (func_ptr)&appDemo_DigiTuner_SetLNBLOF},
+    #endif
+    {"FE_GetParam",             0x00,   (func_ptr)&appDemo_DigiTuner_GetParam},
+    {"FE_RFStatusPolling",      0x00,   (func_ptr)&appDemo_DigiTuner_GetSignalStatus},
+
+
+#if (FE_AUTO_TEST == 1)
+    {"FE_AutoTest",             0x00,   (func_ptr)&appDemo_FEAutoTest_Start},
     #endif
 #if (ECOS_WIFI_SUPPORT == 1)
     {"Wlan_Init",               0x00,   (func_ptr)&appDemo_Wlan_Init},
@@ -1101,6 +1367,19 @@ static DemoFun _DemoFun[]=
     {"DFB",         0x00, (func_ptr)&Demo_DFB},
     {"DFB_res",          0x00,   (func_ptr)&Demo_DFB_ChangeResolution},
 
+#endif
+
+#if (DEMO_GST_TEST == 1)
+    {"gst_init",         0x00, (func_ptr)&Demo_GST_PLAYER_Init},
+    {"gst_play",         0x01, (func_ptr)&Demo_GST_PLAYER_Play},
+    {"gst_stop",         0x00, (func_ptr)&Demo_GST_PLAYER_Stop},
+    {"gst_seek",         0x00, (func_ptr)&Demo_GST_PLAYER_Seek},
+    {"gst_ff",           0x00, (func_ptr)&Demo_GST_PLAYER_FF},
+    {"gst_fb",           0x02, (func_ptr)&Demo_GST_PLAYER_FB},
+    {"gst_pause",        0x02, (func_ptr)&Demo_GST_PLAYER_Pause},
+    {"gst_resume",       0x02, (func_ptr)&Demo_GST_PLAYER_Resume},
+    {"gst_show",         0x01, (func_ptr)&Demo_GST_PLAYER_PosShow},
+    {"gst_deinit",       0x00, (func_ptr)&Demo_GST_PLAYER_DeInit},
 #endif
 
 #if (DEMO_QT_TEST == 1)
@@ -1138,6 +1417,7 @@ static DemoFun _DemoFun[]=
 
 #if (DEMO_eCos_API_TEST == 1)
     {"CPU_usage",         0x00, (func_ptr)&Demo_eCos_CPUUsage},
+    {"cpu_show",          0x00, (func_ptr)&Demo_eCos_show_cpu_average_load},
 #endif
 
 #if (DEMO_BOOTLOGO_TEST == 1)
@@ -1145,11 +1425,19 @@ static DemoFun _DemoFun[]=
     {"Bootlogo_checkenv",      0x00, (func_ptr)&Demo_BOOTLOGO_CheckEnv},
 #endif
 
+#if (DEMO_BOOTVIDEO_TEST == 1)
+    {"BOOTVIDEO_DwinCapture",     0x00,   (func_ptr)&Demo_BOOTVIDEO_DwinCapture},
+    {"BOOTVIDEO_Stop",            0x00,   (func_ptr)&Demo_BOOTVIDEO_Stop},
+    {"BOOTVIDEO_DestroyGwin",     0x00,   (func_ptr)&Demo_BOOTVIDEO_DesrtoyGwin},
+#endif
+
 #if (DEMO_EMMC_ECOS_TEST == 1)
     {"emmc_init",   0x00,   (func_ptr)&Demo_EMMC_Init},
     {"emmc_write",  0x00,   (func_ptr)&Demo_EMMC_WriteData},
     {"emmc_read",   0x00,   (func_ptr)&Demo_EMMC_ReadData},
     {"emmc_dump",   0x00,   (func_ptr)&Demo_EMMC_DumpData},
+    {"emmc_compare",0x00,   (func_ptr)&Demo_EMMC_Compare},
+    {"emmc_verify",   0x00, (func_ptr)&Demo_EMMC_Verify},
 #endif
 
 #if (DEMO_NAND_ECOS_TEST == 1)
@@ -1160,12 +1448,49 @@ static DemoFun _DemoFun[]=
     {"NAND_GetFATCapacity", 0x00,   (func_ptr)&Demo_NAND_GetFATCapacity},
     {"NAND_WriteFAT",       0x00,   (func_ptr)&Demo_NAND_WriteFAT},
     {"NAND_ReadFAT",        0x00,   (func_ptr)&Demo_NAND_ReadFAT},
+    {"NAND_Verify",         0x00,   (func_ptr)&Demo_NAND_Verify},
 #endif
 
 #if (DEMO_CH_SCAN_TEST == 1)
-    {"ChScan_Auto",        0x00,   (func_ptr)&Demo_ChScan_Auto},
+    {"ChScan_Auto",         0x00,   (func_ptr)&Demo_ChScan_Auto},
 #endif
-    {"demo_exit",        0x00,   (func_ptr)&_Demo_Main_Exit},
+
+#if(DEMO_ZUI_TEST == 1)
+    {"UI_Init",             0x00,   (func_ptr)&Demo_UI_Create},
+    {"UI_Exit",             0x00,   (func_ptr)&Demo_UI_Exit},
+    {"UI_GEGOPInit",        0x00,   (func_ptr)&Demo_UI_GEGOPInit},
+#endif
+#if(DEMO_AUTOIN_ZUI_TEST == 1)
+    {"UI_AutoIn",           0x00,   (func_ptr)&Demo_UI_AutoIn},
+#endif
+#if (DEMO_ECOS_BOOT_LINUX == 1)
+    {"demo_bootlinux32",      0x00,   (func_ptr)&Demo_Boot_Linux32},
+    {"demo_bootlinux64",      0x00,   (func_ptr)&Demo_Boot_Linux64},
+    {"demo_bootlinux64_optee",      0x00,   (func_ptr)&Demo_Boot_Linux64_OPTEE},
+#endif
+#if(DEMO_GPU_BENCHMARK_TEST == 1)
+    {"demo_open_off_scr_gpu_benchmark",     0x00,   (func_ptr)&Demo_Open_off_screen_gpu_benchmark},
+    {"demo_get_off_scr_gpu_utilization",    0x00,   (func_ptr)&Demo_Get_off_screen_gpu_utilization},
+#endif
+#if (DEMO_SYS_INFO_TEST == 1)
+    {"demo_cpu",            0x00,   (func_ptr)&Demo_cpu_information     },
+    {"demo_mem",            0x00,   (func_ptr)&Demo_memory_information  },
+    {"demo_bw",             0x00,   (func_ptr)&Demo_miu_bandwidth       },
+    {"demo_printk_level",   0x00,   (func_ptr)&Demo_printk_level        },
+#endif
+#if (DEMO_FASTCALL_ECOS_TEST == 1)
+    {"demo_fastcall",       0x00,   (func_ptr)&Demo_FASTCALL_DoFASTCALLDemo},
+#endif
+#if (DEMO_CI_TEST == 1)
+    //Demo CI Func
+    {"CI_Start",      0x00,  (func_ptr)&Demo_CI_Start},
+    {"CI_Setpath",    0x00,  (func_ptr)&Demo_CI_SetPath},
+#endif
+#if (DEMO_PROCFS_TEST == 1)
+    {"cat",           0x01,   (func_ptr)&Demo_PROCFS_Cat},
+    {"echo",          0x01,   (func_ptr)&Demo_PROCFS_Echo},
+#endif
+    {"demo_exit",           0x00,   (func_ptr)&Demo_Main_Exit},
 };
 
 static MS_U16 NumOfDemoFun = sizeof(_DemoFun) / sizeof(DemoFun);
@@ -1306,7 +1631,16 @@ void GetCmdArgv(MS_U8 *_lineBuf, MS_U8 *_argc, MS_U8 **argv)
     sptr = _lineBuf;
     sptr = GetNextNonWhiteChar(sptr);
     argv[argc] = sptr;
-
+#if (DEMO_PROCFS_TEST == 1)
+    if((0 == strncasecmp((char*)sptr,"cat ",4)) || (0 == strncasecmp((char*)sptr,"echo ",5)))
+    {
+        sptr = GetNextWhiteChar(sptr);
+        sptr = GetNextNonWhiteChar(sptr);
+        argc ++;
+        argv[argc] = sptr;
+        return;
+    }
+#endif
     while(1)
     {
         if(*sptr == 0) // end of line
@@ -1354,7 +1688,7 @@ void GetCmdArgv(MS_U8 *_lineBuf, MS_U8 *_argc, MS_U8 **argv)
     }
 }
 
-static void _Demo_Main_Exit(MS_U32 argc, VOID *argv)
+void Demo_Main_Exit(MS_U32 argc, VOID *argv)
 {
      /* Set Flag to exit demo task */
      _Demo_Exit = TRUE;
@@ -1443,9 +1777,16 @@ static void _Demo_Main_task(MS_U32 argc, VOID *argv)
                             gu32Input5 = Demo_Util_DHConvert((char *)g_argv[6],1);
                             gInput5 = &gu32Input5;
                         }
-#if (DEMO_PVR_TEST == 1)
-                        gu32Input6 = Demo_Util_DHConvert((char *)g_argv[7],1);
-                        gInput6 = &gu32Input6;
+
+                        if (_DemoFun[u16I].u8InputMask & 0x40)
+                        {
+                            gInput6 = (g_argv[7]!=0) ? g_argv[7] : g_NullStr;
+                        }
+                        else
+                        {
+                            gu32Input6 = Demo_Util_DHConvert((char *)g_argv[7],1);
+                            gInput6 = &gu32Input6;
+                        }
 
                         gu32Input7 = Demo_Util_DHConvert((char *)g_argv[8],1);
                         gInput7 = &gu32Input7;
@@ -1460,9 +1801,6 @@ static void _Demo_Main_task(MS_U32 argc, VOID *argv)
                         gInput10 = &gu32Input10;
 
                         bCmdRet = _DemoFun[u16I].func_ptr(gInput0,gInput1,gInput2,gInput3,gInput4, gInput5, gInput6,gInput7,gInput8,gInput9,gInput10);
-#else
-                        bCmdRet = _DemoFun[u16I].func_ptr(gInput0,gInput1,gInput2,gInput3,gInput4, gInput5);
-#endif /*DEMO_PVR_TEST*/
 
                         printf("\n");
                         if (bCmdRet)
@@ -1538,13 +1876,10 @@ MS_BOOL run_Cmd (const char *cmd)
     MS_U16 u16I;
     MS_BOOL bknownCmd = FALSE;
     MS_U32 u32Input0, u32Input1, u32Input2, u32Input3, u32Input4, u32Input5;
-#if (DEMO_PVR_TEST == 1)
     MS_U32 u32Input6, u32Input7, u32Input8, u32Input9, u32Input10;
-#endif
+
     void *Input0, *Input1, *Input2, *Input3, *Input4, *Input5;
-#if (DEMO_PVR_TEST == 1)
     void *Input6, *Input7, *Input8, *Input9, *Input10;
-#endif
 
     MS_U8   *argv[MAX_CMD_PARAMETER+1];
     MS_U8 argc=0;
@@ -1554,6 +1889,7 @@ MS_BOOL run_Cmd (const char *cmd)
     GetCmdArgv((MS_U8 *)cmd, &argc, argv);
     for (u16I = 0; u16I < NumOfDemoFun; u16I++)
     {
+        // coverity[uninit_use_in_call]
         if(Demo_Util_strcmp((char *)_DemoFun[u16I].u8CMDName, (char *)argv[0])==0)    // matching the function name
         {
 
@@ -1617,7 +1953,6 @@ MS_BOOL run_Cmd (const char *cmd)
                 u32Input5 = Demo_Util_DHConvert((char *)argv[6],1);
                 Input5 = &u32Input5;
             }
-#if (DEMO_PVR_TEST == 1)
 
             u32Input6 = Demo_Util_DHConvert((char *)argv[7],1);
             Input6 = &u32Input6;
@@ -1636,10 +1971,7 @@ MS_BOOL run_Cmd (const char *cmd)
 
 
             bCmdRet = _DemoFun[u16I].func_ptr(Input0,Input1,Input2,Input3,Input4, Input5, Input6,Input7,Input8,Input9,Input10);
-#else
 
-            bCmdRet = _DemoFun[u16I].func_ptr(Input0,Input1,Input2,Input3,Input4,Input5);
-#endif /*DEMO_PVR_TEST*/
             printf("\n");
             if (bCmdRet)
             {
@@ -1674,13 +2006,6 @@ static void _Demo_Main_Mon_task(MS_U32 argc, VOID *argv)
     printf("\n");
     Prompt();
 
-    #if(DEMO_HDMI_CTS_CERTIFICATION_TEST == 1)
-    {
-        Demo_Certification_SysInit();
-        Demo_Certification_Init();
-        Demo_Certification_CmdProcess();
-    }
-    #else
     {
         MS_U32 u32Event;
         while (1)
@@ -1702,7 +2027,6 @@ static void _Demo_Main_Mon_task(MS_U32 argc, VOID *argv)
             }
         }
     }
-    #endif
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1880,6 +2204,32 @@ MS_BOOL Demo_Main(void)
     (printf("-------Welcome to Demo AP------\n"));
     (printf(">> "));
 
+#if (DEMO_DMX_TEST == 1)
+
+    #if (DEMO_BOOTVIDEO_TEST == 0)
+        Demo_DMX_Init();
+    #endif
+
+#endif
+
+#if (DEMO_PM_STR_AUTO_DC_OFF == 1)
+    while(1)
+    {
+        Demo_PM_STR();
+        MsOS_DelayTask(3000);
+    }
+#elif (DEMO_PM_STR_AUTO_IR_DC_OFF == 1)
+    #if(DEMO_IR_ECOS_TEST == 1)
+    {
+        Demo_Input_Init_ecos();
+        execute_cpu_load();
+    }
+     #elif(DEMO_IR_LINUX_TEST == 1)
+    {
+	 Demo_Input_Init_linux();
+    }
+    #endif
+#endif
+
     return TRUE;
 }
-

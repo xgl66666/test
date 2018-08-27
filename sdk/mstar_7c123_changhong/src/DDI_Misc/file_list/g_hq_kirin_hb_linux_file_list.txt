@@ -1,0 +1,99 @@
+// There are three method to retrieve version from a CI (configuration items)
+// 1. Txt : Captre version from the first line of a txt file
+// 2. Elf : Embedded version by using binutility:
+//    Insert : arm-none-linux-gnueabi-objcopy --add-section .mmodule_version=version_info libXXXXX.so
+//    Readelf: readelf --string-dump=.mmodule_version libXXXXX.so
+// 3. MSIF: Embedded a binary string into a binary. And this string has a pre-defined format.
+//           'M','S','I','F',                /* Version ID Header */\
+//           '0','3',                          /* Info Class Code */\
+//           0x0000,                               /* Customer ID */\
+//           0x0000,                                 /* Module ID */\
+//           0x0000,                                   /* Chip ID */\
+//           '0',                                          /* CPU */\
+//           'S','N','_','_'                     /* Library Code */\
+//           '0','0',                              /* Library Ver */\
+//           '0','1',                             /* Build Number */\
+//           '0','0','1','2','3','4','5','5', /* P4 Change Number */\
+//           '2'                                            /* OS */\
+
+#MM for Linux(Elf)
+./lib/mips-linux-gnu/4.8.3/core/kirin/multimedia/libmmsdk.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/multimedia/libvdplayer_hf.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/multimedia/vdplayer.a
+
+#Utopia for Linux(Elf)
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libAMAZON.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libMsFS.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiACE.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiACP.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiAUDIO.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiAUDIO_gst.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiCEC.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiDAC.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiDLC.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiDMX.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiGFX.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiGOP.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiGPD.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiHDMITX.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiJPEG.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiPNL.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiSWI2C.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiVDEC.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libapiXC.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libcashmere.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvCH34.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvCIPHER.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvCPU.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvDDC2BI.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvDEMOD.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvDSCMB2.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvGPIO.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvHWI2C.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvIPAUTH.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvIR.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvMPIF.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvMSPI.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvMVOP.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvPCMCIA.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvPM.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvPWM.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvPWS.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvRTC.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvSAR.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvSC.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvSERFLASH.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvURDMA.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvVBI.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvVE.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvWBLE.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvWDT.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libdrvdvbt2_extdemod.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libgalileo.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/liblinux.a
+
+#msAPI for Linux(Elf)
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libmsAPI_DTE.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libmsAPI_GEGOP.a
+./lib/mips-linux-gnu/4.8.3/core/kirin/utopia/libmsAPI_XC.a
+
+#Linux Kernel(MSIF)
+os/mips-linux-gnu/4.8.3/kirin/linux_kernel/3.10.23/ubifs/uImage
+
+#DTV MW for Linux(Elf)
+./lib/mips-linux-gnu/4.8.3/mw/dtv/v1/dtvmw/libmwDTV.a
+
+#UI MW for Linux(Elf)
+./lib/mips-linux-gnu/4.8.3/mw/dtv/v1/font/libmwBMPFONT.a
+./lib/mips-linux-gnu/4.8.3/mw/dtv/v1/font/libmwFONTUTL.a
+./lib/mips-linux-gnu/4.8.3/mw/dtv/v1/font/ZUI/libmwZUI.a
+./lib/mips-linux-gnu/4.8.3/mw/dtv/v1/font/ZUI_UISplit/libmwZUI.a
+./lib/mips-linux-gnu/4.8.3/mw/dtv/v1/font/libmwMVF.a
+./lib/mips-linux-gnu/4.8.3/mw/dtv/v1/font/libmwOSD.a
+
+#MM MW for Linux(Elf)
+./lib/mips-linux-gnu/4.8.3/mw/mm/libmwMM_linux.a
+
+#PVR for Linux(Elf)
+./lib/mips-linux-gnu/4.8.3/mw/pvr/libmwPVR_v3.a
+./lib/mips-linux-gnu/4.8.3/mw/pvr/libmwswpvr.a

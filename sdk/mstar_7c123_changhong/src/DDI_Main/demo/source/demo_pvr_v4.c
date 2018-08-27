@@ -154,17 +154,13 @@
 #include "demo_utility.h"
 #if(DEMO_AUDIO_TEST == 1)
 #include "demo_audio.h"
-#elif(DEMO_AUDIO_MULTI_TEST == 1)
-#include "demo_audio_multi.h"
 #endif
 
 #include "apiGFX.h"
 #include "apiGOP.h"
 #include "apiPNL.h"
 
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
 #include "drvDSCMB.h"
-#endif
 
 #if (DEMO_DSCMB_ADVANCED_TEST == 1)
 #include "demo_keyladder.h"
@@ -181,6 +177,13 @@
 #include "PVRPL_CA.h" // for DEMO_PVR_SUPPORT_DYNAMICKEY_TEST
 #endif
 
+#if((DEMO_XC_DIPMultiWin_TEST == 1) && (DEMO_VDEC_NDECODE_TEST == 1))
+#define DEMO_PVR_VSYNC_MODULE_ENABLE 1
+#else
+#define DEMO_PVR_VSYNC_MODULE_ENABLE 0
+#endif
+
+#include "demo_zapping.h"
 #include "drvDTC.h"
 
 #define PVR_DBG 0
@@ -205,8 +208,6 @@
 #define DemoPvr_Errorprint(fmt, args...)
 #endif
 
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-
 #if (DEMO_DMX_NEW_ARCHI_TEST == 1)
 //Support DSCMB connect/dis-connect by DSCMB callback function , that is, DscmbConnect and DscmbDisConnect.
 //Why use DSCMB callback function,
@@ -222,10 +223,12 @@
 #define DEMO_PVR_DSCMB_SUPPORT_KL
 #endif
 
-#endif
-
 /* PVR_DOWNLOAD   */
+#if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
+#define PVR_DOWNLOAD_LEN                                       0x0000500040  /* 5.0 M*/
+#else
 #define PVR_DOWNLOAD_LEN                                       0x0000360000  /* 3.375 M*/
+#endif
 /* PVR_UPLOAD   */
 #define PVR_UPLOAD_LEN                                         0x0000120000 /* 1.125 M*/
 
@@ -246,12 +249,13 @@
 #define MIN_TIME_SHIFT_DISK_SPACE_IN_KB (512*1024)  /* 512MB */
 #define INVALID_PID_ID 0x1FFF
 #define INVALID_FILTER_ID                       0xFF
+#define INVALID_RECORD_INDEX                       0xFF
 #define PVR_IS_VALID_HANDLER(x) (x!=APIPVR_INVALID_HANDLER)
 
-#define INVALID_TASK_ID -1
-#define PVR_DBG_TASK_STACK_SIZE 0x2000
 
-#define JumpToTimeMaxRange 381768  // 106Hr 2Min 48Sec
+
+#define JumpToTimeMaxRange 429496  // 106Hr 2Min 48Sec
+#define PVR_DSCMB_INFO_CW_SIZE 32
 
 //Dwin buffer size set to panel width and height to capture the whole frame
 #define PVR_THUMBNAIL_CAPTURE_WIDTH     (g_IPanel.Width()) /* 1920 */
@@ -263,9 +267,6 @@
 #define PVR_THUMBNAIL_DISPLAY_HEIGHT (PVR_THUMBNAIL_CAPTURE_HEIGHT>>1)
 #define PVR_THUMBNAIL_FRAME_BUFFER_FORMAT E_MS_FMT_ARGB4444
 
-#if (DEMO_PVR_LINUX_MOUNT_NOTIFIER_TEST == 1)
-#define DEMO_PVR_MOUNTNOTIFIER_TASK_STACK         (4096)
-#endif
 
 #define DEMO_PVR_CHECK_INIT()\
     if(!_bPvrInit)\
@@ -310,9 +311,23 @@
         printf("[%s][%d]Error AVPATH(%d)!\n", __FUNCTION__, __LINE__, peDevice); \
         return FALSE; \
     }
+#define DEMO_PVR_CHECK_MountPath(mountPath, ret)\
+    mountPath = (char *)MApi_PVR_GetMouthPath();\
+    if(mountPath == NULL)\
+    {\
+        printf("[%s][%d] mountPath == NULL\n",__FUNCTION__,__LINE__);\
+        return ret;\
+    }\
 
-
-
+typedef enum
+{
+    EN_DEMO_PVR_PLAYBACK_PAUSE,
+    EN_DEMO_PVR_PLAYBACK_RESUME,
+    EN_DEMO_PVR_PLAYBACK_SLOWFORWARD,
+    EN_DEMO_PVR_PLAYBACK_FASTFORWARD,
+    EN_DEMO_PVR_PLAYBACK_FASTBACKWARD,
+    EN_DEMO_PVR_PLAYBACK_SETSPEED,
+} DEMO_PVR_PLAYBACK_STATE;
 
 
 typedef enum
@@ -374,12 +389,12 @@ typedef struct
 typedef struct
 {
     MS_BOOL bInited;
-    MS_U8   u8VideoFilter;
-    MS_U8   u8AudioFilter;
-    MS_U8   u8PCREngID;
-    MS_U16  u16VideoPID;
-    MS_U16  u16AudioPID;
-    MS_U16  u16PCRPID;
+    MS_U8       u8VideoFilter;
+    MS_U8       u8AudioFilter;
+    EN_PCR_ENG  ePCREngID;
+    MS_U16      u16VideoPID;
+    MS_U16      u16AudioPID;
+    MS_U16      u16PCRPID;
     VDEC_StreamId stVDECSteamID;
     EN_VDEC_DDI_CodecType eVideoCodec;
     EN_AUDIO_CODEC_TYPE   eAudioCodec;
@@ -395,15 +410,14 @@ typedef enum
     E_DEMO_PVR_DMX_OPEN_CONNECT_DSCMB,
 }DEMO_PVR_DMX_OPEN_STATE;
 
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
 typedef struct
 {
     MS_BOOL bDSCMBInfoSet;
     MS_BOOL bConnectStatus;
     MS_U32 u32DscmbId;
-    MS_U8 u8Type[32];
-    MS_U8 u8StrOddCW[32];
-    MS_U8 u8StrEvenCW[32];
+    MS_U8 u8Type[PVR_DSCMB_INFO_CW_SIZE];
+    MS_U8 u8StrOddCW[PVR_DSCMB_INFO_CW_SIZE];
+    MS_U8 u8StrEvenCW[PVR_DSCMB_INFO_CW_SIZE];
 } PVR_DSCMB_INFO;
 
 typedef enum
@@ -412,17 +426,18 @@ typedef enum
     E_DEMO_PVR_DMAEncrypt_KSRC_KL,
     E_DEMO_PVR_DMAEncrypt_KSRC_INVALID,
 }DEMO_PVR_DMAEncrypt_KSRC;
-#endif
 
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
+static MS_BOOL b2ndEncryptionEnabled = TRUE;
+
 static PVR_DSCMB_INFO stPVRRecordDSCMBInfo[PVR_MAX_RECORDING_FILE];
 static PVR_DSCMB_INFO stPVRLiveDSCMBInfo[MAX_PLAYBACK_NUM];
 #if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
+#if defined(DEMO_PVR_DSCMB_CALLBACK_MODE)
 static PVR_DSCMB_INFO stPVRBackRecordDSCMBInfo[PVR_MAX_RECORDING_FILE];
+#endif
 #endif
 #if (DEMO_DSCMB_ADVANCED_TEST == 1)
 static MS_U32 u32PVRDSCMBCAVid = 0xF;
-#endif
 #endif
 
 /* PVR_DOWNLOAD   */
@@ -436,15 +451,121 @@ static void *            _pSWRec = NULL;
 static APIPVR_RECORD_TYPE _enRecordType= EN_APIPVR_RECORD_TYPE_SINGLE;
 static MS_U8 _u8TotalRecorder = 1;
 
+#define INVALID_TASK_ID -1
+
+//For Debug Task
+#if defined(MSOS_TYPE_ECOS)
+#define PVR_DBG_TASK_STACK_SIZE 0x2000
+#elif defined(MSOS_TYPE_LINUX)
+#define PVR_DBG_TASK_STACK_SIZE 0 //use pthread default stack
+#endif
+
+static Task_Info _pvrDBGTask = {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, PVR_DBG_TASK_STACK_SIZE, "PVR_DBG_Task"};
+
+
+#if defined(MSOS_TYPE_ECOS)
 #define PVR_EVENT_TASK_STACK_SIZE 0x00004000
+#elif defined(MSOS_TYPE_LINUX)
+#define PVR_EVENT_TASK_STACK_SIZE 0 //use pthread default stack
+#endif
+
+// For performance test
+static MS_BOOL bPVRPerformanceTest = FALSE;
+static void _Demo_PVR_PerformanceTest(MS_U32 u32Time);
+extern MS_BOOL MApi_PVR_GetReadWritePerformanceReport(MS_BOOL bIsPlayback, MS_U8 u8PathIdx, MS_U8 u8ReportType);
+#define CPU_USAGE_START_MEASURE 30  // 30sec
+
+static MS_BOOL bEnabled = FALSE;
+static MS_U32 u32MeasurementPeriod = 30; //// default 30 minutes
+#if defined(MSOS_TYPE_LINUX)
+#define STAT_FILE_BUFFER_LEN 257
+static FILE *fpStatFile = NULL;
+static char stringBuffer[STAT_FILE_BUFFER_LEN];
+typedef struct
+{
+    MS_U64 u64User;
+    MS_U64 u64Nice;
+    MS_U64 u64System;
+    MS_U64 u64Idle;
+    MS_U64 u64IOWait;
+    MS_U64 u64Irq;
+    MS_U64 u64SoftIrq;
+    MS_U64 u64StealStolen;
+    MS_U64 u64Guest;
+} PVR_CPU_INFO;
+static PVR_CPU_INFO StartCPUTime = {};
+static PVR_CPU_INFO EndCPUTime = {};
+#elif defined(MSOS_TYPE_ECOS)
+#include <cyg/kernel/kapi.h>
+#include <cyg/hal/hal_private_misc.h>
+extern bool GetUsageActive;
+extern Task_Usage_Info TaskUsageInfo[CYGDBG_STACK_CHECK_TASK_TOTAL_NUM];
+static cyg_alarm alarm_s;
+// The count in Task_Usage_Info is size of U32, and the count is from CPU clock count.
+// If there is only one thread running on 1GHz CPU,
+// the count would overflow in 4G / 1G = 4sec
+#define CPU_USAGE_MEASURE_INTERVAL 1000  // 1sec
+#define CPU_USAGE_MEASURE_DURATION 20 * 60  // 20min
+static MS_U64 TaskUsageSum[CYGDBG_STACK_CHECK_TASK_TOTAL_NUM];
+static char *TaskNameArray[CYGDBG_STACK_CHECK_TASK_TOTAL_NUM];
+static MS_U64 u64TotalSum = 0;
+#endif
+
+// For Sync Config
+MS_BOOL bSyncConfigHasBeenSet = FALSE;
+#if defined(MSOS_TYPE_LINUX)
+static void _ExecuteCommand(char *cmd, char *buffer, MS_U32 u32Length)
+{
+    FILE *pipe = popen(cmd, "r");
+    if(!pipe)
+    {
+        printf("popen failed!\n");
+    }
+    else
+    {
+        if(buffer)
+        {
+            fgets(buffer, u32Length, pipe);
+            buffer[strcspn(buffer, "\n")] = 0;
+        }
+        pclose(pipe);
+    }
+
+}
+
+#define MAX_PROC_BUFFER_SIZE 32
+#define MAX_CMD_BUFFER_SIZE 64
+char origDirtyBackgroundRatio[MAX_PROC_BUFFER_SIZE];
+char origDirtyRatio[MAX_PROC_BUFFER_SIZE];
+char origDirtyExpireCentisecs[MAX_PROC_BUFFER_SIZE];
+char origDirtyWritebackCentisecs[MAX_PROC_BUFFER_SIZE];
+#endif
+
+#define PVR_EVENT_DESTROY_PROC_EXIT 0x00000001
+#define PVR_DYNAMIC_KEY_DESTROY_PROC_EXIT 0x00000002
+#define PVR_MOUNT_DESTROY_PROC_EXIT 0x00000003
+
+static MS_BOOL _gbPvrEventExit = FALSE;
 static MS_U8 u8PvrEventTaskStack[PVR_EVENT_TASK_STACK_SIZE];
-static Task_Info _pvrEventTask = {-1, E_TASK_PRI_MEDIUM, u8PvrEventTaskStack, PVR_EVENT_TASK_STACK_SIZE, "PVR MSG Task"};
+static MS_S32 _gs32PvrEvtGrp = -1;
+static Task_Info _pvrEventTask = {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, u8PvrEventTaskStack, PVR_EVENT_TASK_STACK_SIZE, "PVR_EVT_Task"};
+
+#if (DEMO_PVR_LINUX_MOUNT_NOTIFIER_TEST == 1)
+#define PVR_MOUNTNOTIFIER_TASK_STACK         0
+#define DIR_PATH_SIZE 50
+#define PVR_MOUNT_BUFFER_SIZE 1024*2
+static MS_BOOL _gbPvrMntExit = FALSE;
+static Task_Info _pvrMNTTask = {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, PVR_MOUNTNOTIFIER_TASK_STACK, "PVR_MNT_Task"};
+static MS_S32 _gs32PvrMntGrp = -1;
+#endif
+
 //For Unplugging USB
 static MS_BOOL _bUplugMsg=FALSE;
 static char _moutPath[FILE_PATH_SIZE]={0};
 // time
 static MS_BOOL _bShowPlayTime=FALSE;
 static MS_BOOL _bShowRecordTime=FALSE;
+static MS_BOOL _bShowRecordStartTime=FALSE;
 //For PVR loop
 #define INVALID_EVENT_ID    -1
 #define PVR_DBG_LOOP_EVENT               0x00000001
@@ -452,24 +573,66 @@ static MS_S32 s32_PVRLoopEvent_id = INVALID_EVENT_ID;
 //For PVR
 static MS_BOOL _bPvrInit= FALSE;
 static MS_S32 _s32QueueID = -1;
-static MS_S32 _s32ThreadID = INVALID_TASK_ID;
-static MS_S32 _s32DbgPVRTaskID = INVALID_TASK_ID;
-static void *_pPVRDbgTaskStack = NULL;
+// For merge stream
+static EN_DEMO_DMX_FLT_SOURCEID _eCurDMXFltSourceID[PVR_MAX_RECORDING_FILE]={E_DMX_FLT_SOURCEID_0};
+// For Slice
+#define PVR_FILE_SIZE_MAX 0xFFFFFFFF
+static MS_U64 _u64FileSliceSize = 0;
+static MS_U64 _u64FileSizeInKB = PVR_FILE_SIZE_MAX;
+static MS_U32 _u32Duration = 0;
+static MS_BOOL _bBoundedLinearRecord = FALSE;
+static MS_BOOL _bAppend = FALSE;
+
 //For DynamicKey auto set key
 #if (DEMO_PVR_SUPPORT_DYNAMICKEY_TEST == 1)
 static MS_U32 _u8RecordIndex = 0;
-static MS_S32 _s32DynamicKeyTaskID[PVR_MAX_RECORDING_FILE] = {INVALID_TASK_ID,INVALID_TASK_ID,INVALID_TASK_ID,INVALID_TASK_ID};
+#define PVR_DYNAMIC_KEY_MAX_INTERVAL 10000
 static MS_U32 _u32DynamicKeyIntervel[PVR_MAX_RECORDING_FILE] = {1000,1000,1000,1000};
 static MS_U8 _u8DynamicKeyLevel[PVR_MAX_RECORDING_FILE] = {0,0,0,0};
-static void *_pPVRDynamicKeyTaskStack[PVR_MAX_RECORDING_FILE] = {NULL,NULL,NULL,NULL};
+
+static MS_S32 _gs32PvrDynamicKeyGrp = -1;
+#if defined(MSOS_TYPE_ECOS)
+#define PVR_DYNAMIC_KEY_TASK_STACK_SIZE 0x2000
+#elif defined(MSOS_TYPE_LINUX)
+#define PVR_DYNAMIC_KEY_TASK_STACK_SIZE 0
+//use pthread default stack
+#endif
+static MS_BOOL _gbPvrDynamicKeyExit[PVR_MAX_RECORDING_FILE] = {FALSE, FALSE, FALSE,FALSE};
+static Task_Info _gThreadDynamicKeyProcess[PVR_MAX_RECORDING_FILE] =
+{
+    {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, PVR_DYNAMIC_KEY_TASK_STACK_SIZE, "dynamicKey1"},
+    {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, PVR_DYNAMIC_KEY_TASK_STACK_SIZE, "dynamicKey2"},
+    {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, PVR_DYNAMIC_KEY_TASK_STACK_SIZE, "dynamicKey3"},
+    {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, PVR_DYNAMIC_KEY_TASK_STACK_SIZE, "dynamicKey4"},
+};
+#endif
+#if defined(MSOS_TYPE_ECOS)
+static void _Demo_PollingThreadStatus(Task_Info stTaskInfo)
+{
+
+    TaskStatus eTaskStatus;
+    while(1)    {
+        if(!MsOS_GetTaskStatus(&stTaskInfo,&eTaskStatus))
+        {
+            printf("Error!! MsOS_GetTaskStatus() fail!! \n");
+            break;
+        }
+        if(eTaskStatus == E_TASK_NOT_EXIST)
+            break;
+        else
+        {
+            printf("\33[32m[FUNC %s] [LINE %d] Wait for Task#%x %s termination \33[m \n",__FUNCTION__,__LINE__,stTaskInfo.iId,stTaskInfo.szName);
+            MsOS_DelayTask(1);
+        }
+    }
+
+}
 #endif
 
-#if (DEMO_PVR_LINUX_MOUNT_NOTIFIER_TEST == 1)
-static void *_pPVR_MNT_TaskStack = NULL;
-static MS_S32 _s32PVR_MNT_TaskId = -1;
-#endif
 
-static MS_U8 _u8TotalProgramNum=0;
+
+
+
 static MS_U8 _u8CurRecProgramIdx=0;
 static EN_DEMO_DMX_FLOW_INPUT _eCurDMXInputSrc=E_DMX_FLOW_INPUT_DEMOD0;
 static EN_DEMO_DMX_FLOW _eCurDMXFlowSet[PVR_MAX_RECORDING_FILE]={E_DMX_FLOW_LIVE0};
@@ -491,9 +654,10 @@ static MS_U8 _u8DVBSubtDmxId[PVR_MAX_RECORDING_FILE][APIPVR_MAX_SUBTITLEINFO_NUM
 static Ex_PVRPlaybackPath _eCurPlaybackProgramPath = PVR_PATH_MAIN;
 static MS_U8 _u8TotalPlaybackProgram=0;
 
-static MS_U8 _u8TimeshiftIdx[MAX_PLAYBACK_NUM];
-static MS_U8 _u8hRecord[PVR_MAX_RECORDING_FILE];
-static MS_U8 _u8hPVRPlayback[MAX_PLAYBACK_NUM];
+static MS_U8 _u8TimeshiftRecordIdx[MAX_PLAYBACK_NUM]={INVALID_RECORD_INDEX};
+static MS_U8 _u8TimeshiftPlaybackIdx[MAX_PLAYBACK_NUM]={PVR_PATH_INVALID};
+static MS_U8 _u8hRecord[PVR_MAX_RECORDING_FILE]={APIPVR_INVALID_HANDLER};
+static MS_U8 _u8hPlayback[MAX_PLAYBACK_NUM]={APIPVR_INVALID_HANDLER};
 static PVRProgramInfo_t _recprogramInfo[PVR_MAX_RECORDING_FILE];
 static PVRProgramInfo_t _plyprogramInfo[MAX_PLAYBACK_NUM];
 static PVRProgramInfo_t _livePromInfo[MAX_PLAYBACK_NUM];
@@ -507,6 +671,7 @@ static MS_BOOL bGOP_init = FALSE;
 static PVR_AV_ID_t _AVStreamID[MAX_PLAYBACK_NUM];
 
 static PVR_AV_INFO stFileAVInfo[MAX_PLAYBACK_NUM];
+static ST_AV_INFO _stLiveInfo[MAX_PLAYBACK_NUM];
 
 static MS_U8 _u8DBGLevel=0;
 static MS_U32 _u32DBGIntervel=1000;
@@ -523,6 +688,13 @@ static MS_U8 _u8BackCcDmxId[PVR_MAX_RECORDING_FILE]={INVALID_FILTER_ID};
 static MS_U8 _u8BackEBUSubtDmxId[PVR_MAX_RECORDING_FILE][APIPVR_MAX_SUBTITLEINFO_NUM]={{INVALID_FILTER_ID},{INVALID_FILTER_ID}};
 static MS_U8 _u8BackDVBSubtDmxId[PVR_MAX_RECORDING_FILE][APIPVR_MAX_SUBTITLEINFO_NUM]={{INVALID_FILTER_ID},{INVALID_FILTER_ID}};
 #endif
+
+static MS_BOOL _bAutoScriptDbg = FALSE;
+static MS_BOOL _bAutoScriptJumpToTime = FALSE;
+static MS_U32 _u32PlaybackTime[MAX_PLAYBACK_NUM] = {0};
+#define PVR_PLAYBACKTIME_INTERVAL 7200 // 2 hours is an arbitrary number that we use to judge if play time changes too fast
+#define PVR_AUTO_SCRIPT_CMD 0x87
+
 
 //--------------------------------------------------------------------------------------------------
 // API prototype
@@ -551,23 +723,24 @@ static MS_U8 _Demo_PVR_PlayHandler2Idx(MS_U8 u8hPlayback);
 static void* _Demo_PVR_GetVidStreamID(Ex_PVRPlaybackPath *peAVPATH);
 static void* _Demo_PVR_GetAudStreamID(Ex_PVRPlaybackPath *peAVPATH);
 
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-    #if defined(DEMO_PVR_DSCMB_CALLBACK_MODE)
-        static MS_BOOL _Demo_PVR_Record_DSCMB_Create(PVR_DSCMB_INFO *stDSCMBInfo);
-        static MS_BOOL _Demo_PVR_Record_DSCMB_Destroy(PVR_DSCMB_INFO *stDSCMBInfo);
-        static MS_BOOL _Demo_PVR_Record_DSCMB_SetInfo(PVR_DSCMB_INFO *stDSCMBInfo);
-        static MS_BOOL _Demo_PVR_Record_DSCMB_Connect(PVR_DSCMB_INFO *stDSCMBInfo, MS_U16 u16PID, MS_U8 *pu8DmxFltId);
-        static MS_BOOL _Demo_PVR_Record_DSCMB_Disconnect(PVR_DSCMB_INFO *stDSCMBInfo, MS_U8 *pu8DmxFltId);
-    #endif
+#if defined(DEMO_PVR_DSCMB_CALLBACK_MODE)
+static MS_BOOL _Demo_PVR_Record_DSCMB_Create(PVR_DSCMB_INFO *stDSCMBInfo);
+static MS_BOOL _Demo_PVR_Record_DSCMB_Destroy(PVR_DSCMB_INFO *stDSCMBInfo);
+static MS_BOOL _Demo_PVR_Record_DSCMB_SetInfo(PVR_DSCMB_INFO *stDSCMBInfo);
+static MS_BOOL _Demo_PVR_Record_DSCMB_Connect(PVR_DSCMB_INFO *stDSCMBInfo, MS_U16 u16PID, MS_U8 *pu8DmxFltId);
+static MS_BOOL _Demo_PVR_Record_DSCMB_Disconnect(PVR_DSCMB_INFO *stDSCMBInfo, MS_U8 *pu8DmxFltId);
+#endif
 static MS_BOOL _Demo_PVR_DSCMB_GetLiveInfo(MS_U32 u32DeviceID, PVR_DSCMB_INFO *stDSCMBInfo);
 static MS_BOOL _Demo_PVR_DSCMB_Live_Connect(MS_U32 *u32DeviceID, PVR_DSCMB_INFO *stDSCMBInfo);
 static MS_BOOL _Demo_PVR_DSCMB_Live_Disconnect(MS_U32 *u32DeviceID, PVR_DSCMB_INFO *stDSCMBInfo);
-#endif
 static MS_BOOL _Demo_Dmx_GetLiveProgram(MS_U8 u8LivePath, MS_U32 *u32PCRPid,MS_U32 *u32VideoPid,MS_U32 *u32AudioPid,MS_U32 *u32VCodec,MS_U32 *u32ACodec,MS_U16 *pu16PtmPid,MS_U16 *pu16LCN);
+static MS_BOOL _Demo_PVR_SetSyncConfig(MS_U32 *u32Value, char *DirtyBackgroundRatio, char *DirtyRatio, char *DirtyExpireCentisecs, char *DirtyWritebackCentisecs);
 
 static void _Demo_PVRDBG_Task(void);
+static EN_AV_Device _PVRPlaybackPath_Mapping_AV_Device(Ex_PVRPlaybackPath enPVRPlaybackPath);
 
 const static PVR_DualAV_LIVE_TYPE_t _DualAVFunc = {Demo_AV_Tuner_Config,Demo_AV_TSP_SetPid,_Demo_PVR_LIVE_PlayAV,_Demo_PVR_LIVE_StopAV, Demo_AV_StopAVFIFO, _Demo_PVR_LIVE_PlayRadio, _Demo_PVR_LIVE_StopRadio};
+// _DualFileFunc is only used by _Demo_PVR_ChangePMTEvent non-auto mode.
 const static PVR_DualAV_FILE_TYPE_t _DualFileFunc = {_Demo_PVR_FileIn_FlowSet,_Demo_PVR_FileIn_SetPid,_Demo_PVR_FileIn_PlayAV,_Demo_PVR_FileIn_StopAV};
 //-------------------------------------------------------------------------------------------------
 //  Local Functions
@@ -577,23 +750,42 @@ static void _Demo_PVR_DynamicKey_Task(void)
 {
     MS_U32 u32Idx = _u8RecordIndex;
     MS_U32 u32Key = 0;
+    MS_U32 u32Count = 0, u32IntervalSecond = 0;
 
-    while(1)
+
+
+
+    u32IntervalSecond = u32Count = _u32DynamicKeyIntervel[u32Idx]/1000;
+
+
+    while(_gbPvrDynamicKeyExit[u32Idx] != TRUE )
     {
-        if(_u8DynamicKeyLevel[u32Idx] != 0)
+        if(_u8DynamicKeyLevel[u32Idx] != 0 )
         {
-            if(TRUE == MApi_PVR_IsRecording(u32Idx))
+            if(TRUE == MApi_PVR_IsRecording(u32Idx) && u32Count  == u32IntervalSecond)
             {
                 MApi_PVR_EX_SetEncryptKeyIdx(u32Idx, u32Key);
                 u32Key = (u32Key + 1) % DYNAMIC_KEY_MAX;
+
             }
         }
         else
         {
             break;
         }
-        MsOS_DelayTask(_u32DynamicKeyIntervel[u32Idx]);
+
+        MsOS_DelayTask(1000); // We check every second in case of blocking
+        u32Count--;
+
+        if(u32Count == 0)
+        {
+
+            u32Count = u32IntervalSecond;
+        }
+
     }
+    MsOS_SetEvent(_gs32PvrDynamicKeyGrp, PVR_DYNAMIC_KEY_DESTROY_PROC_EXIT);
+    printf("_Demo_PVR_DynamicKey_Task terminated\n");
 }
 
 static MS_BOOL _Demo_PVR_DynamicKeyCreateTask(MS_U32 RecIdx)
@@ -602,85 +794,91 @@ static MS_BOOL _Demo_PVR_DynamicKeyCreateTask(MS_U32 RecIdx)
     Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&s32NonCachedPoolID);
 
     /* Create task for PVR Dynamic Key */
-    if (_pPVRDynamicKeyTaskStack[RecIdx] == NULL)
-    {
-       _pPVRDynamicKeyTaskStack[RecIdx] = MsOS_AllocateMemory(PVR_DBG_TASK_STACK_SIZE,s32NonCachedPoolID);
-    }
-
-    if (_pPVRDynamicKeyTaskStack[RecIdx] == NULL)
-    {
-       return FALSE;
-    }
-
-    if (_s32DynamicKeyTaskID[RecIdx] == INVALID_TASK_ID)
-    {
-       _s32DynamicKeyTaskID[RecIdx] = MsOS_CreateTask((TaskEntry)_Demo_PVR_DynamicKey_Task,
-                                 0,
-                                 E_TASK_PRI_MEDIUM, // E_TASK_PRI_MEDIUM,
-                                 TRUE,
-                                 _pPVRDynamicKeyTaskStack[RecIdx],
-                                 PVR_DBG_TASK_STACK_SIZE,
-                                 "_PVR_DBG");
-
-        if (INVALID_TASK_ID == _s32DynamicKeyTaskID[RecIdx])
+    if(PVR_DYNAMIC_KEY_TASK_STACK_SIZE){
+        if (_gThreadDynamicKeyProcess[RecIdx].pStack == NULL)
         {
-           DemoPvr_Errorprint("[%s][%d] Create PVR DBG Task Failed  INVALID_TASK_ID \n",__FUNCTION__,__LINE__);
+            _gThreadDynamicKeyProcess[RecIdx].pStack = MsOS_AllocateMemory(PVR_DYNAMIC_KEY_TASK_STACK_SIZE,s32NonCachedPoolID);
+        }
+
+        if (_gThreadDynamicKeyProcess[RecIdx].pStack == NULL)
+        {
+           DemoPvr_Errorprint("[%s][%d] Allocate Memory for PVR Dynamic Key Task Failed  \n",__FUNCTION__,__LINE__);
+           return FALSE;
+        }
+    }
+    _gbPvrDynamicKeyExit[RecIdx] = FALSE;
+    if (_gThreadDynamicKeyProcess[RecIdx].iId == INVALID_TASK_ID)
+    {
+       _gThreadDynamicKeyProcess[RecIdx].iId  = MsOS_CreateTask((TaskEntry)_Demo_PVR_DynamicKey_Task,
+                                 0,
+                                 _gThreadDynamicKeyProcess[RecIdx].ePriority, // E_TASK_PRI_MEDIUM,
+                                 TRUE,
+                                 _gThreadDynamicKeyProcess[RecIdx].pStack,
+                                 _gThreadDynamicKeyProcess[RecIdx].u32StackSize,
+                                 _gThreadDynamicKeyProcess[RecIdx].szName);
+
+        if (INVALID_TASK_ID ==_gThreadDynamicKeyProcess[RecIdx].iId)
+        {
+           DemoPvr_Errorprint("[%s][%d] Create PVR Dynamic Key Task Failed  INVALID_TASK_ID \n",__FUNCTION__,__LINE__);
            return FALSE;
         }
         else
         {
-           DemoPvr_print("[%s][%d] s32DynamicKeyPVRTaskID %"DTC_MS_U32_d" \n",__FUNCTION__,__LINE__,_s32DynamicKeyTaskID[RecIdx]);
+           DemoPvr_print("[%s][%d] s32DynamicKeyPVRTaskID %"DTC_MS_U32_d" \n",__FUNCTION__,__LINE__,_gThreadDynamicKeyProcess[RecIdx].iId);
         }
     }
     return TRUE;
 }
 
-static MS_BOOL _Demo_PVR_SetDynamicKey(MS_U32 *idx, MS_U8 *cmd , MS_U32 *intervelTime)
+static MS_BOOL _Demo_PVR_SetDynamicKey(MS_U8 *idx, MS_U8 *cmd , MS_U32 *intervelTime)
 {
     printf("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
     printf("0:No DynamicKey\n");
     printf("1:DynamicKey\n");
     printf("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
-    printf("(RecIdx:CMD:Time)  (%"DTC_MS_U32_u":%d:%"DTC_MS_U32_u")\n",*idx,*cmd,*intervelTime);
+    printf("(RecIdx:CMD:Time)  (%d:%d:%"DTC_MS_U32_u")\n",*idx,*cmd,*intervelTime);
     DEMO_PVR_CHECK_INIT();
 
-    MS_U32 _u32RecIdx = *idx;
-    DEMO_PVR_CHECK_REC_IDX(_u32RecIdx, FALSE);
+    MS_U8 _u8RecIdx = *idx;
+    DEMO_PVR_CHECK_REC_IDX(_u8RecIdx, FALSE);
 
-    _u8RecordIndex = _u32RecIdx;
-    _u8DynamicKeyLevel[_u32RecIdx] = *cmd;
+    _u8RecordIndex = _u8RecIdx;
+    _u8DynamicKeyLevel[_u8RecIdx] = *cmd;
     if(*intervelTime == 0)
     {
-       _u32DynamicKeyIntervel[_u32RecIdx] = 1000;
+       _u32DynamicKeyIntervel[_u8RecIdx] = 1000;
     }
     else
     {
-       _u32DynamicKeyIntervel[_u32RecIdx] = *intervelTime;
+       _u32DynamicKeyIntervel[_u8RecIdx] = *intervelTime;
     }
 
-    if(_u8DynamicKeyLevel[_u32RecIdx] > 0 && _s32DynamicKeyTaskID[_u32RecIdx] == INVALID_TASK_ID)
+    if(_u8DynamicKeyLevel[_u8RecIdx] > 0 &&_gThreadDynamicKeyProcess[_u8RecIdx].iId == INVALID_TASK_ID)
     {
 
-        DemoPvr_print("_u8DynamicKeyLevel  : %d\n",_u8DynamicKeyLevel[_u32RecIdx]);
-        if(!_Demo_PVR_DynamicKeyCreateTask(_u32RecIdx))
+        DemoPvr_print("_u8DynamicKeyLevel  : %d\n",_u8DynamicKeyLevel[_u8RecIdx]);
+        if(!_Demo_PVR_DynamicKeyCreateTask(_u8RecIdx))
         {
             DemoPvr_Errorprint("create PVR DBG task fail!!!!!!!!!!! OH NO \n");
         }
     }
-    else if(_u8DynamicKeyLevel[_u32RecIdx] == 0 && _s32DynamicKeyTaskID[_u32RecIdx] != INVALID_TASK_ID)
+    else if(_u8DynamicKeyLevel[_u8RecIdx] == 0 && _gThreadDynamicKeyProcess[_u8RecIdx].iId  != INVALID_TASK_ID)
     {
-        DemoPvr_print("close the pvr debug task\n");
+        DemoPvr_print("Close the PVR set dynamic key task\n");
+        MS_U32  pu32RetrievedEventFlag;
 
         MS_S32 s32NonCachedPoolID;
         Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&s32NonCachedPoolID);
-        if(MsOS_DeleteTask(_s32DynamicKeyTaskID[_u32RecIdx]))
+        _gbPvrDynamicKeyExit[_u8RecIdx] = TRUE;
+        MsOS_WaitEvent(_gs32PvrDynamicKeyGrp, PVR_DYNAMIC_KEY_DESTROY_PROC_EXIT, &pu32RetrievedEventFlag, E_OR_CLEAR, MSOS_WAIT_FOREVER);
+#if defined(MSOS_TYPE_ECOS)
+        _Demo_PollingThreadStatus(_gThreadDynamicKeyProcess[_u8RecIdx]);
+#endif
+        _gThreadDynamicKeyProcess[_u8RecIdx].iId = INVALID_TASK_ID;
+        if (_gThreadDynamicKeyProcess[_u8RecIdx].pStack != NULL)
         {
-            _s32DynamicKeyTaskID[_u32RecIdx]= INVALID_TASK_ID;
-            if (_pPVRDynamicKeyTaskStack[_u32RecIdx] != NULL)
-            {
-                MsOS_FreeMemory(_pPVRDynamicKeyTaskStack[_u32RecIdx],s32NonCachedPoolID);
-                _pPVRDynamicKeyTaskStack[_u32RecIdx] = NULL;
-            }
+            MsOS_FreeMemory(_gThreadDynamicKeyProcess[_u8RecIdx].pStack,s32NonCachedPoolID);
+            _gThreadDynamicKeyProcess[_u8RecIdx].pStack = NULL;
         }
     }
     else
@@ -703,35 +901,34 @@ static MS_BOOL _Demo_PVR_DBGCreateTask(void)
         s32_PVRLoopEvent_id = MsOS_CreateEventGroup("PVRloop_Event");
     }
 
-    /* Create task for PVR DBG */
-    if (_pPVRDbgTaskStack == NULL)
+    if (INVALID_TASK_ID == _pvrDBGTask.iId)
     {
-       _pPVRDbgTaskStack = MsOS_AllocateMemory(PVR_DBG_TASK_STACK_SIZE,s32NonCachedPoolID);
-    }
+        if(PVR_DBG_TASK_STACK_SIZE)
+        {
+            _pvrDBGTask.pStack = MsOS_AllocateMemory(PVR_DBG_TASK_STACK_SIZE,s32NonCachedPoolID);
+            if (_pvrDBGTask.pStack == NULL)
+            {
+                printf("_Demo_PVR_DBGCreateTask stack malloc failed......\n");
+                return FALSE;
+            }
+        }
 
-    if (_pPVRDbgTaskStack == NULL)
-    {
-       return FALSE;
-    }
-
-    if (_s32DbgPVRTaskID == INVALID_TASK_ID)
-    {
-       _s32DbgPVRTaskID = MsOS_CreateTask((TaskEntry)_Demo_PVRDBG_Task,
+        _pvrDBGTask.iId = MsOS_CreateTask((TaskEntry)_Demo_PVRDBG_Task,
                                  0,
-                                 E_TASK_PRI_MEDIUM, // E_TASK_PRI_MEDIUM,
+                                 _pvrDBGTask.ePriority, // E_TASK_PRI_MEDIUM,
                                  TRUE,
-                                 _pPVRDbgTaskStack,
-                                 PVR_DBG_TASK_STACK_SIZE,
-                                 "_PVR_DBG");
+                                 _pvrDBGTask.pStack,
+                                 _pvrDBGTask.u32StackSize,
+                                 _pvrDBGTask.szName);
 
-        if (INVALID_TASK_ID == _s32DbgPVRTaskID)
+        if (INVALID_TASK_ID == _pvrDBGTask.iId)
         {
            DemoPvr_Errorprint("[%s][%d] Create PVR DBG Task Failed  INVALID_TASK_ID \n",__FUNCTION__,__LINE__);
            return FALSE;
         }
         else
         {
-           DemoPvr_print("[%s][%d] s32DbgPVRTaskID %"DTC_MS_U32_d" \n",__FUNCTION__,__LINE__,_s32DbgPVRTaskID);
+           DemoPvr_print("[%s][%d] _pvrDBGTask.iId %"DTC_MS_U32_d" \n",__FUNCTION__,__LINE__,_pvrDBGTask.iId);
         }
     }
     return TRUE;
@@ -744,14 +941,140 @@ void* _Demo_PVR_MEMALLOC_FUNC(MS_U32 u32Size)
     return MsOS_AllocateMemory (u32Size, s32NonCachedPoolID);
 }
 
-MS_BOOL _Demo_PVR_MEMFREE_FUNC(void *pBuf)
+static MS_BOOL _Demo_PVR_MEMFREE_FUNC(void **pBuf)
 {
-    MS_S32 s32NonCachedPoolID = 0;
-    Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&s32NonCachedPoolID);
-    return MsOS_FreeMemory(pBuf, s32NonCachedPoolID);
+    if( *pBuf )
+    {
+        MS_S32 s32NonCachedPoolID = 0;
+        Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&s32NonCachedPoolID);
+        MS_BOOL bFreeMem = MsOS_FreeMemory(*pBuf, s32NonCachedPoolID);
+        if( bFreeMem == TRUE)
+        {
+            *pBuf = NULL;
+        }
+        return bFreeMem;
+    }
+    return FALSE;
 }
 
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
+static int wcslen(const MS_U16 *pStr)
+{
+    int i = 0;
+
+    while(pStr[i])
+    {
+        i++;
+    }
+
+    return i;
+}
+
+static MS_U16* wcscpy(MS_U16 *strDst, const MS_U16 *strSrc)
+{
+    int i;
+
+    for(i = 0; strSrc[i]; i++)
+    {
+        strDst[i] = strSrc[i];
+    }
+    strDst[i] = '\0';
+    return strDst;
+}
+
+static int wcscmp(const MS_U16 *pu16Str1, const MS_U16 *pu16Str2)
+{
+    int idx = 0;
+
+    while(pu16Str1[idx] == pu16Str2[idx])
+    {
+        if(pu16Str1[idx] == 0)
+            return 0;
+        idx++;
+    }
+
+    return (int)(pu16Str1[idx] - pu16Str2[idx]);
+}
+
+static void wcscat(MS_U16 *pu16Dest, MS_U16 *pu16Src)
+{
+    memcpy(pu16Dest + wcslen(pu16Dest), pu16Src, (wcslen(pu16Src)+1) * 2);
+}
+
+static void wprintf(const MS_U16* pu16string, MS_BOOL bPrint, MS_BOOL bPrintNL)
+{
+    MS_U32  i = 0;
+    MS_U8   *u8string = NULL;
+
+    u8string = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U8)*FILE_PATH_SIZE*2);
+    if (u8string == NULL)
+    {
+        printf("Memory Allocate Failed !!! \n");
+        return ;
+    }
+
+    if (pu16string != NULL)
+    {
+        for (i = 0; i < wcslen(pu16string) && i < (FILE_PATH_SIZE*2); i++)  // U16 => U8
+        {
+            if (((pu16string[i] & 0xff00) == 0) && ((pu16string[i] & 0x00ff) >= 0x20) && ((pu16string[i] & 0x00ff) <= 0x80))
+            {
+                u8string[i] = pu16string[i] & 0x00ff;
+            }
+            else
+            {
+                u8string[i] = '?';
+            }
+        }
+
+        u8string[i] = 0;
+
+        if(bPrint)
+        {
+            printf("%s", u8string);
+            if(bPrintNL)
+            {
+                printf("\n");
+            }
+        }
+    }
+
+    if (_Demo_PVR_MEMFREE_FUNC((void**)&u8string) == FALSE)
+    {
+        printf("Memory Free Failed !!! \n");
+    }
+}
+
+static void _U8StringToU16String(MS_U8 *pu8Str, MS_U16 *pu16Str, MS_U8 u8Strlen)
+{
+    MS_U8 u8Index;
+
+    if((pu8Str==NULL) || (pu16Str==NULL))
+    {
+        return;
+    }
+
+    for (u8Index=0; u8Index<u8Strlen; u8Index++)
+    {
+        pu16Str[u8Index] = pu8Str[u8Index];
+    }
+    pu16Str[u8Index] = 0;
+}
+
+static void _U16StringToU8String(MS_U16 *pu16Str, MS_U8 *pu8Str, MS_U8 u8Strlen)
+{
+    MS_U8 u8Index;
+
+    if((pu16Str==NULL) || (pu8Str==NULL))
+    {
+        return;
+    }
+
+    for (u8Index=0; u8Index<u8Strlen; u8Index++)
+    {
+        pu8Str[u8Index] = pu16Str[u8Index];
+    }
+    pu8Str[u8Index] = 0;
+}
 
 #if defined(DEMO_PVR_DSCMB_CALLBACK_MODE)
 MS_BOOL _Demo_PVR_RECORD_DSCMB_CONNECT_FUNC(MS_U8 u8DmxFltId, MS_U32 u32PID)
@@ -779,8 +1102,6 @@ MS_BOOL _Demo_PVR_RECORD_DSCMB_DISCONNECT_FUNC(MS_U8 u8DmxFltId, MS_U32 u32PID)
 }
 #endif
 
-#endif
-
 static void _Demo_PVR_FreezeScreen(MS_BOOL bFrezon)
 {
     void *PVRVDECStreamID = _Demo_PVR_GetVidStreamID(&_eCurPlaybackProgramPath);
@@ -801,7 +1122,7 @@ static MS_BOOL _Demo_PVR_FreeMem(int pvrId)
             if(_pRec != NULL)
             {
                 DemoPvr_print("[%s][%d] --> try to free _pRec\n",__FUNCTION__,__LINE__);
-                if(!_Demo_PVR_MEMFREE_FUNC(_pRec))
+                if(!_Demo_PVR_MEMFREE_FUNC(&_pRec))
                 {
                     printf("_pRec Free Fail\n");
                     return FALSE;
@@ -814,7 +1135,7 @@ static MS_BOOL _Demo_PVR_FreeMem(int pvrId)
             if(_pPlay != NULL)
             {
                 DemoPvr_print("[%s][%d] --> try to free _pPlay\n",__FUNCTION__,__LINE__);
-                if(!_Demo_PVR_MEMFREE_FUNC(_pPlay))
+                if(!_Demo_PVR_MEMFREE_FUNC(&_pPlay))
                 {
                     printf("_pPlay Free Fail\n");
                     return FALSE;
@@ -828,7 +1149,7 @@ static MS_BOOL _Demo_PVR_FreeMem(int pvrId)
             if(_pSWRec != NULL)
             {
                 DemoPvr_print("[%s][%d] --> try to free _pSWRec\n",__FUNCTION__,__LINE__);
-                if(!_Demo_PVR_MEMFREE_FUNC(_pSWRec))
+                if(!_Demo_PVR_MEMFREE_FUNC(&_pSWRec))
                 {
                     printf("_pSWRec Free Fail\n");
                     return FALSE;
@@ -852,11 +1173,7 @@ static MS_BOOL _Demo_PVR_AllocateMem(int pvrId)
     switch(pvrId)
     {
         case PVR_ID_DOWNLOAD:
-#if ((DEMO_PVR_SUPPORT_SWPVR_TEST == 1) || (DEMO_PVR_SUPPORT_RECORD_DUALTYPE_TEST == 1))
-            u32Size = PVR_DOWNLOAD_LEN;
-#else
             u32Size = PVR_DOWNLOAD_LEN*_u8TotalRecorder;
-#endif
             if(_pRec == NULL)
             {
                 _pRec = _Demo_PVR_MEMALLOC_FUNC(u32Size);
@@ -915,10 +1232,11 @@ static MS_BOOL _Demo_PVR_AllocateMem(int pvrId)
     return TRUE;
 }
 
-static  MS_BOOL  _Demo_PVR_CheckUSB(char *mountPath)
+static  MS_BOOL  _Demo_PVR_CheckUSB(char *mountPath) // mount path: MS_U16 string
 {
     int ret;
     DIR *dp;
+
     if((dp = MsFS_OpenDir((const char*)mountPath)) == NULL)
     {
         ret = MsFS_MkDir((const char*)mountPath, 0755);
@@ -926,12 +1244,14 @@ static  MS_BOOL  _Demo_PVR_CheckUSB(char *mountPath)
         {
             if(errno != EEXIST)
             {
-                printf("[PVR ERROR] : fail to mkdir %s.\n", mountPath);
+                printf("[PVR ERROR] : fail to mkdir.\n");
+                wprintf((MS_U16*)mountPath, TRUE, TRUE);
                 return FALSE;
             }
             else
             {
-                printf("[PVR] : %s exists\n", mountPath);
+                printf("[PVR] : mount path exists.\n");
+                wprintf((MS_U16*)mountPath, TRUE, TRUE);
             }
         }
     }
@@ -951,9 +1271,13 @@ static MS_BOOL  _Demo_PVR_GetDiskSpace(char *mountPath,MS_U64* u64FreeSpaceInKB,
         printf("[%s][%d] mountPath==NULL\n",__FUNCTION__,__LINE__);
         return FALSE;
     }
-    _Demo_PVR_CheckUSB(mountPath);
-    DemoPvr_print("[%s][%d] mountPath=%s\n",__FUNCTION__,__LINE__,mountPath);
-    if(MApi_FS_Info((char *)mountPath, FALSE, &fsInfo)==TRUE)
+    if(_Demo_PVR_CheckUSB(mountPath) == FALSE)
+    {
+        return FALSE;
+    }
+    DemoPvr_print("[%s][%d] mountPath=",__FUNCTION__,__LINE__);
+    wprintf((MS_U16*)mountPath, PVR_DBG, TRUE);
+    if(MApi_FS_Info((char *)mountPath, TRUE, &fsInfo)==TRUE)
     {
         *u64TotalSpaceInKB = (((MS_U64)fsInfo.u32ClusTotal* (MS_U64)fsInfo.u32ClusSize) / 1024);
         *u64FreeSpaceInKB = (((MS_U64)fsInfo.u32ClusFree* (MS_U64)fsInfo.u32ClusSize) / 1024);
@@ -963,7 +1287,7 @@ static MS_BOOL  _Demo_PVR_GetDiskSpace(char *mountPath,MS_U64* u64FreeSpaceInKB,
     return FALSE;
 }
 
-static  MS_BOOL  _Demo_PVR_IsFileExist(char *m_mount_path,char *filename)
+static  MS_BOOL _Demo_PVR_IsFileExist(char *m_mount_path, char *fileName)
 {
     struct stat buf;
     char path[FILE_PATH_SIZE] = {0};
@@ -971,21 +1295,27 @@ static  MS_BOOL  _Demo_PVR_IsFileExist(char *m_mount_path,char *filename)
     //sprintf(path,"%s/%s",m_mount_path,filename);
     int size = sizeof(path);
     //sprintf(path,"%s/%s",m_mount_path,filename);
-    int c = snprintf(path,size,"%s/%s",m_mount_path,filename);
+    int c = snprintf(path,size,"%s/%s.meta",m_mount_path,fileName);
     if( c > size || c < 0 )
-        path[size-1] = ' ';
-    //
+     path[size-1] = '\0';
+
     char *bar = path;
     DemoPvr_print("path = %s length = %d\n",(char*)bar,strlen(bar));
-    if( MsFS_Stat((const char*)bar,&buf)<0)
+
+    MS_U16 *pu16Path = NULL;
+
+    pu16Path = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U16)*FILE_PATH_SIZE);
+    _U8StringToU16String((MS_U8 *)bar, pu16Path, strlen(bar));
+    if( MsFS_Stat((const char*)pu16Path,&buf)<0)
     {
         DemoPvr_print("errno = %d\n",errno);
+        _Demo_PVR_MEMFREE_FUNC((void**)&pu16Path);
         return FALSE;
     }
 
+    _Demo_PVR_MEMFREE_FUNC((void**)&pu16Path);
     return TRUE;
 }
-
 static  void _Demo_PVR_Remove_Capture_Video(void)
 {
     if((_gWinInfo.GeWinId==0xff)&&(_gWinInfo.u8FBId==0xff))
@@ -1062,40 +1392,106 @@ static MS_BOOL _Demo_PVR_Show_Capture_Video(MS_U32 u32PhysicalAddr)
     return TRUE;
 }
 
+static void _Demo_PVR_XC_Mute(Ex_PVRPlaybackPath* peAVPATH)
+{
+    MS_U32 u32XCDevice = 0;
+    MS_U32 u32XCWindow = 0;
+    MS_U32 u32DisplayMute = ENABLE;
+    EN_ZAPPING_TYPE eZappingType = E_ZAPPING_NORMAL;
+
+    if(*peAVPATH == PVR_PATH_MAIN)
+    {
+        u32XCWindow = 0;
+    }
+#if (DEMO_PVR_SUPPORT_DUALPLAYBACK_TEST == 1)
+    else if(*peAVPATH == PVR_PATH_SUB)
+    {
+        MS_BOOL bWindowEnable = FALSE;
+        MS_U32 u32X = 0;
+        MS_U32 u32Y = 0;
+        MS_U32 u32Width = 0;
+        MS_U32 u32Height = 0;
+        u32XCWindow = 1;
+
+        Demo_XC_EnableWindow(&u32XCDevice, &u32XCWindow, (MS_U32*)&bWindowEnable,
+                             &u32X, &u32Y, &u32Width, &u32Height);
+        printf("[%s][%d]Demo_XC_EnableWindow:%"DTC_MS_U32_d" %"DTC_MS_U32_d" %d\n",__FUNCTION__, __LINE__,u32XCDevice,u32XCWindow,FALSE);
+    }
+#endif
+    else
+    {
+        printf("[%s][%d]Error AVPATH(%d)!\n", __FUNCTION__, __LINE__, *peAVPATH);
+        return;
+    }
+
+    EN_AV_Device eDevice = _PVRPlaybackPath_Mapping_AV_Device(*peAVPATH);
+    Demo_Zapping_GetZappingType(&eDevice,&eZappingType);
+#if (DEMO_XC_SEAMLESS_ZAPPING_TEST == 1)
+    if (((eZappingType == E_ZAPPING_XC_SEAMLESS) && (Demo_XC_SeamlessZapping_IsFreeze(&u32XCDevice, &u32XCWindow) == FALSE)) ||
+        (eZappingType == E_ZAPPING_NORMAL))
+#endif
+    {
+        Demo_XC_SetVideoMute(&u32XCDevice, &u32XCWindow, &u32DisplayMute); // Mute HDMI Main/Sub Window
+        printf("[%s][%d]Demo_XC_SetVideoMute:%"DTC_MS_U32_d" %"DTC_MS_U32_d" %"DTC_MS_U32_d"\n",__FUNCTION__, __LINE__,u32XCDevice,u32XCWindow,u32DisplayMute);
+
+        if(*peAVPATH == PVR_PATH_MAIN)
+        {
+            u32XCDevice = 1;
+            Demo_XC_SetVideoMute(&u32XCDevice, &u32XCWindow, &u32DisplayMute); // Mute CVBS Main Window
+            printf("[%s][%d]Demo_XC_SetVideoMute:%"DTC_MS_U32_d" %"DTC_MS_U32_d" %"DTC_MS_U32_d"\n",__FUNCTION__, __LINE__,u32XCDevice,u32XCWindow,u32DisplayMute);
+            Demo_VE_SetVideoMute(&u32DisplayMute);                        // Mute CVBS
+            printf("[%s][%d]Demo_VE_SetVideoMute:%"DTC_MS_U32_d"\n",__FUNCTION__, __LINE__,u32DisplayMute);
+        }
+    }
+}
+
 static void _Demo_PVR_XC_Play(void)
 {
-    static MS_U32 u32XC_Device = 0;
-    static MS_U32 u32XC_Window = 0;
-    static MS_U32 u32XC_Inpusrc = 0;
+    MS_U32 u32XCDevice = 0;
+    MS_U32 u32XCWindow = E_MSAPI_XC_MAX_WINDOW;
+    MS_U32 u32XCInputSrc = E_DDI_XC_INPUT_SOURCE_DTV;
     if (_eCurPlaybackProgramPath == PVR_PATH_MAIN)
     {
-        u32XC_Device = 0; //HD PATH
-        u32XC_Window = 0; // Main Window
-        u32XC_Inpusrc = E_DDI_XC_INPUT_SOURCE_DTV;
-        printf("PVR Main for HD path(Main window) => Demo_XC_PlayVideo from source DTV\n");
-
-        Demo_XC_PlayVideo(&u32XC_Device, &u32XC_Window, &u32XC_Inpusrc);
-        printf("PVR Main for SD path(Main window) => Demo_XC_PlayVideo from source DTV\n");
-#if (DEMO_XC_DUALXC_TEST == 1)
-        u32XC_Device = 1; //SD PATH
-        u32XC_Window = 0; // Main Window
-    #ifndef temp_Kano
-        u32XC_Inpusrc = E_DDI_XC_INPUT_SOURCE_DTV;
-    #else
-        u32XC_Inpusrc = E_DDI_XC_INPUT_SOURCE_SCALER0_OP;
-    #endif
-        Demo_XC_PlayVideo(&u32XC_Device, &u32XC_Window, &u32XC_Inpusrc);
-#endif
-        Demo_VE_PlayVideo();
+        printf("Main window of HD path (SC0) => Demo_XC_PlayVideo(...,E_DDI_XC_INPUT_SOURCE_DTV)\n");
+        u32XCDevice = 0; //HD PATH: SC0
+        u32XCWindow = E_MSAPI_XC_MAIN_WINDOW; // Main Window
+        u32XCInputSrc = E_DDI_XC_INPUT_SOURCE_DTV;
     }
     else if(_eCurPlaybackProgramPath == PVR_PATH_SUB)
     {
-        u32XC_Device = 0; //HD PATH
-        u32XC_Window = 1; // Sub Window
-        u32XC_Inpusrc = E_DDI_XC_INPUT_SOURCE_DTV2;
-        printf("PVR Sub for HD path(Sub window) => Demo_XC_PlayVideo from source DTV2 \n");
-        Demo_XC_PlayVideo(&u32XC_Device, &u32XC_Window, &u32XC_Inpusrc);
+        printf("Sub window of HD path (SC0) => Demo_XC_PlayVideo(...,E_DDI_XC_INPUT_SOURCE_DTV2) \n");
+        u32XCDevice = 0; //HD PATH: SC0
+        u32XCWindow = E_MSAPI_XC_SUB_WINDOW; // Sub Window
+        u32XCInputSrc = E_DDI_XC_INPUT_SOURCE_DTV2;
     }
+
+    Demo_XC_PlayVideo(&u32XCDevice, &u32XCWindow, &u32XCInputSrc);
+
+#if (DEMO_XC_DUALXC_TEST == 1)
+    u32XCDevice = 1; //SD PATH: SC1
+    u32XCWindow = E_MSAPI_XC_MAIN_WINDOW; // Main Window
+    #if (DEMO_XC_DUALXC_IDENTICAL_DISPLAY_TEST == 1)
+    u32XCInputSrc = E_DDI_XC_INPUT_SOURCE_SCALER0_OP;
+    extern MSAPI_XC_DEVICE_ID g_stXC_DeviceId[2];
+    if(msAPI_XC_IsBlackVideoEnable_EX(&g_stXC_DeviceId[u32XCDevice], (E_MSAPI_XC_WINDOW)u32XCWindow) == TRUE)
+    {//Always keep SC1 main window un-mute
+        printf("Main window of SD path (SC1) => Demo_XC_PlayVideo(...,E_DDI_XC_INPUT_SOURCE_SCALER0_OP)\n");
+        Demo_XC_PlayVideo(&u32XCDevice, &u32XCWindow, &u32XCInputSrc);
+    }
+    #else
+    if (_eCurPlaybackProgramPath == PVR_PATH_MAIN)
+    {//SC1 main window follows SC0 main window. The look's the same.
+        u32XCInputSrc = E_DDI_XC_INPUT_SOURCE_DTV;
+        printf("Main window of SD path (SC1) => Demo_XC_PlayVideo(...,E_DDI_XC_INPUT_SOURCE_DTV)\n");
+        Demo_XC_PlayVideo(&u32XCDevice, &u32XCWindow, &u32XCInputSrc);
+    }
+    #endif
+#endif
+
+    //Always keep VE un-mute
+    if(MDrv_VE_IsBlackScreenEnabled() == TRUE)
+        Demo_VE_PlayVideo();
+
     DemoPvr_print("########## XC Bluescreen DISABLE!!\n");
 }
 
@@ -1170,7 +1566,164 @@ static MS_BOOL _Demo_PVR_FileIn_FlowSet(Ex_PVRPlaybackPath* peAVPATH, int* pClkI
 //------------------------------------------------------------------------------
 static MS_BOOL _Demo_PVR_FileIn_SetPid(Ex_PVRPlaybackPath* peAVPATH, MS_U32* pu32VideoPid, MS_U32* pu32AudioPid, MS_U32* pu32PCRPid, MS_U32* pu32VCodec, MS_U32* pu32ACodec)
 {
+    EN_DEMO_DMX_FLOW eDMX_FLOW  = E_DMX_FLOW_FILE0;
+    EN_VDEC_Device eVDEC_Source = E_VDEC_DEVICE_MAIN;
+    MS_U32 u32ADECDevIdx = 0;
+    MS_BOOL bRet = TRUE;
+
+    Demo_PVR_Check_AVPath(stFileAVInfo[*peAVPATH].eVideoFIFO_ID,*peAVPATH,PVR_PATH_MAIN,E_DMX_FLT_TYPE_VID0,PVR_PATH_SUB,E_DMX_FLT_TYPE_VID1);
+    Demo_PVR_Check_AVPath(eVDEC_Source,*peAVPATH,PVR_PATH_MAIN,E_VDEC_DEVICE_MAIN,PVR_PATH_SUB,E_VDEC_DEVICE_SUB);
+    Demo_PVR_Check_AVPath(u32ADECDevIdx,*peAVPATH,PVR_PATH_MAIN,0,PVR_PATH_SUB,1);
+
+    if (MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
+    {
+        stFileAVInfo[*peAVPATH].eAudioFIFO_ID = Demo_AV_GetAudioFIFO((EN_AV_Device *)peAVPATH);
+    }
+    else
+    {
+    if (*peAVPATH == PVR_PATH_SUB)
+    {
+        printf("[%s][%d]Error AVPATH(%d), not support multi audio path!\n", __FUNCTION__, __LINE__, *peAVPATH);
+        return FALSE;
+    }
+        stFileAVInfo[*peAVPATH].eAudioFIFO_ID = E_DMX_FLT_TYPE_AUD0;
+    }
+
+    stFileAVInfo[*peAVPATH].u16VideoPID = (*pu32VideoPid) & 0x1FFF;
+    stFileAVInfo[*peAVPATH].u16AudioPID = (*pu32AudioPid) & 0x1FFF;
+    stFileAVInfo[*peAVPATH].u16PCRPID = (*pu32PCRPid) & 0x1FFF;
+    stFileAVInfo[*peAVPATH].eVideoCodec = (*pu32VCodec) & 0xFF;
+    stFileAVInfo[*peAVPATH].eAudioCodec = (*pu32ACodec) & 0xFF;
+
+    printf("[%s][%d] AVPATH[%d] VideoPid[%u] AudioPid[%u] PCRPid[%u] VideoCodec[%u] AudioCodec[%u]\n", __FUNCTION__, __LINE__,*peAVPATH, stFileAVInfo[*peAVPATH].u16VideoPID, stFileAVInfo[*peAVPATH].u16AudioPID, stFileAVInfo[*peAVPATH].u16PCRPID, stFileAVInfo[*peAVPATH].eVideoCodec, stFileAVInfo[*peAVPATH].eAudioCodec);
+    if (stFileAVInfo[*peAVPATH].eFlow == E_DMX_FLOW_FILE0)
+    {
+        eDMX_FLOW = E_DMX_FLOW_FILE0;
+    }
+#if (DEMO_PVR_SUPPORT_DUALPLAYBACK_TEST == 1)
+    else if(stFileAVInfo[*peAVPATH].eFlow == E_DMX_FLOW_FILE1)
+    {
+        eDMX_FLOW = E_DMX_FLOW_FILE1;
+    }
+#endif
+    else
+    {
+        printf("[%s][%d] Not support dmx file-in flowset(%d) \n",__FUNCTION__,__LINE__, stFileAVInfo[*peAVPATH].eFlow);
+        return FALSE;
+    }
+
+#if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
+    if(_bTimeshiftSeamless[*peAVPATH] == FALSE)
+#endif
+    {
+        printf("[%s][%d] Enable XC Mute\n",__FUNCTION__,__LINE__);
+        _Demo_PVR_XC_Mute(peAVPATH);
+    }
+
+    //AVFIFO Reset
+    if (TRUE != Demo_DMX_AVFifo_Reset(stFileAVInfo[*peAVPATH].eVideoFIFO_ID,TRUE))
+    {
+        printf("[%s][%d] Demo_DMX_AVFifo_Reset fail\n", __FUNCTION__, __LINE__);
+        goto _Demo_PVR_FileIn_SetPid_fail;
+    }
+    if (TRUE != Demo_DMX_AVFifo_Reset(stFileAVInfo[*peAVPATH].eAudioFIFO_ID,TRUE))
+    {
+        printf("[%s][%d]Demo_DMX_AVFifo_Reset fail\n", __FUNCTION__, __LINE__);
+        goto _Demo_PVR_FileIn_SetPid_fail;
+    }
+
+    if (stFileAVInfo[*peAVPATH].u8VideoFilter != INVALID_FILTER_ID)
+    {
+        MApi_DMX_Stop(stFileAVInfo[*peAVPATH].u8VideoFilter);
+        MApi_DMX_Close(stFileAVInfo[*peAVPATH].u8VideoFilter);
+        stFileAVInfo[*peAVPATH].u8VideoFilter = INVALID_FILTER_ID;
+
+        printf("[%s][%d] MApi_DMX_Stop :%d\n", __FUNCTION__, __LINE__,stFileAVInfo[*peAVPATH].u8VideoFilter);
+    }
+    if (stFileAVInfo[*peAVPATH].u8AudioFilter != INVALID_FILTER_ID)
+    {
+        MApi_DMX_Stop(stFileAVInfo[*peAVPATH].u8AudioFilter);
+        MApi_DMX_Close(stFileAVInfo[*peAVPATH].u8AudioFilter);
+        stFileAVInfo[*peAVPATH].u8AudioFilter = INVALID_FILTER_ID;
+
+        printf("[%s][%d] MApi_DMX_Stop :%d\n", __FUNCTION__, __LINE__,stFileAVInfo[*peAVPATH].u8AudioFilter);
+    }
+    if (stFileAVInfo[*peAVPATH].ePCREngID != E_PCR_ENG_INVALID)
+    {
+        Demo_DMX_PCR_FltStop(stFileAVInfo[*peAVPATH].ePCREngID);
+        Demo_DMX_PCR_FltClose(stFileAVInfo[*peAVPATH].ePCREngID);
+        stFileAVInfo[*peAVPATH].ePCREngID = E_PCR_ENG_INVALID;
+
+        printf("[%s][%d] Demo_DMX_PCR_FltStop :%d\n", __FUNCTION__, __LINE__,stFileAVInfo[*peAVPATH].ePCREngID);
+    }
+
+    ///[[ For Timeshift Seamless
+#if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
+    if(_bTimeshiftSeamless[*peAVPATH] == FALSE)
+#endif
+    {
+        printf("[%s][%d] Stop AVdec\n",__FUNCTION__,__LINE__);
+
+        void *pVideoStreamId = _Demo_PVR_GetVidStreamID(peAVPATH);
+        if (pVideoStreamId == NULL)
+        {
+            printf("[%s][%d]Error vdec streamid!!\n",__FUNCTION__, __LINE__);
+            return FALSE;
+        }
+        stFileAVInfo[*peAVPATH].stVDECSteamID = *((VDEC_StreamId*)pVideoStreamId);
+        Demo_VDEC_Stop(&eVDEC_Source,&(stFileAVInfo[*peAVPATH].stVDECSteamID));
+        Demo_Audio_Stop(u32ADECDevIdx, AUDIO_APP_DTV);
+    }
+
+    DemoPvr_print("[%s][%d]DmxFlow: %8u VideoFltType: %8u VideoPid: %8u AudioFltType: %8u AudioPid: %8u PCRPid: %8u\n",__FUNCTION__, __LINE__, eDMX_FLOW, stFileAVInfo[*peAVPATH].eVideoFIFO_ID, stFileAVInfo[*peAVPATH].u16VideoPID, stFileAVInfo[*peAVPATH].eAudioFIFO_ID,stFileAVInfo[*peAVPATH].u16AudioPID, stFileAVInfo[*peAVPATH].u16PCRPID);
+    //DMX Flt Open
+    bRet  = Demo_DMX_FltOpen( eDMX_FLOW, stFileAVInfo[*peAVPATH].eVideoFIFO_ID, &stFileAVInfo[*peAVPATH].u8VideoFilter, stFileAVInfo[*peAVPATH].u16VideoPID);
+    bRet &= Demo_DMX_FltOpen( eDMX_FLOW, stFileAVInfo[*peAVPATH].eAudioFIFO_ID, &stFileAVInfo[*peAVPATH].u8AudioFilter, stFileAVInfo[*peAVPATH].u16AudioPID);
+    bRet &= Demo_DMX_PCR_FltOpen(eDMX_FLOW, stFileAVInfo[*peAVPATH].u16PCRPID, &stFileAVInfo[*peAVPATH].ePCREngID);
+
+    if(!bRet)
+    {
+        printf("[%s][%d]Demo_DMX_Flt Open fail \n", __FUNCTION__, __LINE__);
+        goto _Demo_PVR_FileIn_SetPid_fail;
+    }
+
+    //DMX Flt Start
+    bRet  = (DMX_FILTER_STATUS_OK == MApi_DMX_Start(stFileAVInfo[*peAVPATH].u8VideoFilter));
+    bRet &= (DMX_FILTER_STATUS_OK == MApi_DMX_Start(stFileAVInfo[*peAVPATH].u8AudioFilter));
+    bRet &= Demo_DMX_PCR_FltStart(stFileAVInfo[*peAVPATH].ePCREngID);
+
+    if(!bRet)
+    {
+        printf("[%s][%d]Demo_DMX_Flt Start fail \n", __FUNCTION__, __LINE__);
+        goto _Demo_PVR_FileIn_SetPid_fail;
+    }
+
+    printf("[%s][%d] Device(%d) filters are ready\n", __FUNCTION__, __LINE__,*peAVPATH);
     return TRUE;
+
+_Demo_PVR_FileIn_SetPid_fail:
+    printf("[%s][%d] fail\n", __FUNCTION__, __LINE__);
+    if (stFileAVInfo[*peAVPATH].u8VideoFilter!= INVALID_FILTER_ID)
+    {
+        MApi_DMX_Stop(stFileAVInfo[*peAVPATH].u8VideoFilter);
+        MApi_DMX_Close(stFileAVInfo[*peAVPATH].u8VideoFilter);
+        stFileAVInfo[*peAVPATH].u8VideoFilter = INVALID_FILTER_ID;
+    }
+    if (stFileAVInfo[*peAVPATH].u8AudioFilter != INVALID_FILTER_ID)
+    {
+        MApi_DMX_Stop(stFileAVInfo[*peAVPATH].u8AudioFilter);
+        MApi_DMX_Close(stFileAVInfo[*peAVPATH].u8AudioFilter);
+        stFileAVInfo[*peAVPATH].u8AudioFilter = INVALID_FILTER_ID;
+    }
+
+    if (stFileAVInfo[*peAVPATH].ePCREngID != E_PCR_ENG_INVALID)
+    {
+        Demo_DMX_PCR_FltStop(stFileAVInfo[*peAVPATH].ePCREngID);
+        Demo_DMX_PCR_FltClose(stFileAVInfo[*peAVPATH].ePCREngID);
+        stFileAVInfo[*peAVPATH].ePCREngID = E_PCR_ENG_INVALID;
+    }
+
+    return FALSE;
 }
 
 //------------------------------------------------------------------------------
@@ -1185,14 +1738,14 @@ static MS_BOOL _Demo_PVR_FileIn_Set_STC(Ex_PVRPlaybackPath peAVPATH,AUDIO_STC_SO
 {
     DEMO_PVR_CHECK_PB(peAVPATH, FALSE);
 
-    if (stFileAVInfo[peAVPATH].u8PCREngID == E_PCR_ENG0)
+    if (stFileAVInfo[peAVPATH].ePCREngID == E_PCR_ENG0)
     {
-        printf("[%s][%d]========= eAVPATH=%d, u8PCREngID = E_TSP_0\n", __FUNCTION__, __LINE__, peAVPATH);
+        printf("[%s][%d]========= eAVPATH=%d, ePCREngID = E_TSP_0\n", __FUNCTION__, __LINE__, peAVPATH);
         *eSetSTC = E_TSP_0;
     }
-    else if (stFileAVInfo[peAVPATH].u8PCREngID == E_PCR_ENG1)
+    else if (stFileAVInfo[peAVPATH].ePCREngID == E_PCR_ENG1)
     {
-        printf("[%s][%d]========= eAVPATH=%d, u8PCREngID = E_TSP_1\n", __FUNCTION__, __LINE__, peAVPATH);
+        printf("[%s][%d]========= eAVPATH=%d, ePCREngID = E_TSP_1\n", __FUNCTION__, __LINE__, peAVPATH);
         *eSetSTC = E_TSP_1;
     }
 
@@ -1209,6 +1762,99 @@ static MS_BOOL _Demo_PVR_FileIn_Set_STC(Ex_PVRPlaybackPath peAVPATH,AUDIO_STC_SO
 /// Command: \b none \n
 static MS_BOOL _Demo_PVR_FileIn_PlayAV(Ex_PVRPlaybackPath* peAVPATH)
 {
+    MS_U8 u8Volume = DEFAULT_VOLUME;
+    AUDIO_STC_SOURCE eSetSTC = E_TSP_0;
+    EN_VDEC_Device eVDECDeviceIdx = E_VDEC_DEVICE_MAIN;
+    MS_U32 u32ADECDevIdx = 0;
+
+    printf("========[%s]========\n",__FUNCTION__);
+    printf("[%s][%d] eAVPATH : %d ,VDEC Stream ID Before Init 0x%"DTC_MS_U32_x"\n",__FUNCTION__,__LINE__,*peAVPATH,stFileAVInfo[*peAVPATH].stVDECSteamID.u32Id);
+
+    Demo_PVR_Check_AVPath(eVDECDeviceIdx,*peAVPATH,PVR_PATH_MAIN,E_VDEC_DEVICE_MAIN,PVR_PATH_SUB,E_VDEC_DEVICE_SUB);
+    Demo_PVR_Check_AVPath(u32ADECDevIdx,*peAVPATH,PVR_PATH_MAIN,0,PVR_PATH_SUB,1);
+
+#if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
+    ST_AV_INFO stAVInfo;
+    if(_bTimeshiftSeamless[*peAVPATH] == TRUE)
+    {
+        if (Demo_AV_GetAVInfo((EN_AV_Device *)&eVDECDeviceIdx,E_AV_GetCmd_LiveInfo,&stAVInfo)  == FALSE)
+        {
+            printf("[%s][%d] Error!!!, Get Live info by Demo_AV_GetAVInfo failed\n",__FUNCTION__,__LINE__);
+            return FALSE;
+        }
+    }
+#endif
+
+    if (TRUE != _Demo_PVR_FileIn_Set_STC(*peAVPATH, &eSetSTC))
+    {
+        printf("[%s][%d]_Demo_PVR_FileIn_Set_STC fail\n",__FUNCTION__, __LINE__);
+        return FALSE;
+    }
+    printf("[%s][%d] Demo_AV_Set_STC : %d  \n",__FUNCTION__,__LINE__,eSetSTC);
+
+
+#if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
+    if(_bTimeshiftSeamless[*peAVPATH] == TRUE)
+    {
+        printf("[%s][%d] Diable XC Mute/MVOP and Restore Live Info.\n",__FUNCTION__,__LINE__);
+        stFileAVInfo[*peAVPATH].stVDECSteamID = stAVInfo.stVideoParams.stVDECSteamID;
+        stFileAVInfo[*peAVPATH].bInited = stAVInfo.bInited;
+        DemoPvr_print("[%s][%d] eAVPATH : %d ,VDEC Stream ID Before Init 0x%"DTC_MS_U32_x"\n",__FUNCTION__,__LINE__,*peAVPATH,stFileAVInfo[*peAVPATH].stVDECSteamID.u32Id);
+    }
+    else
+#endif
+    {
+        _Demo_PVR_XC_Mute(peAVPATH);
+
+        if (TRUE != Demo_VDEC_Init(&eVDECDeviceIdx,&(stFileAVInfo[*peAVPATH].stVDECSteamID),stFileAVInfo[*peAVPATH].eVideoCodec,E_VDEC_DDI_SRC_MODE_TS_FILE,eSetSTC)) // default mepg2
+        {
+            printf("[%s][%d]Demo_VDEC_Init fail\n",__FUNCTION__, __LINE__);
+            return FALSE;
+        }
+        else
+        {
+            stFileAVInfo[*peAVPATH].bInited = TRUE;
+            printf("[%s][%d] eAVPATH : %d ,Stream ID After Init  0x%"DTC_MS_U32_x"\n",__FUNCTION__, __LINE__,*peAVPATH,stFileAVInfo[*peAVPATH].stVDECSteamID.u32Id);
+        }
+
+        if (TRUE != Demo_VDEC_Play(&eVDECDeviceIdx,&(stFileAVInfo[*peAVPATH].stVDECSteamID),E_VDEC_SYNC_PCR_MODE))
+        {
+            printf("[%s][%d] Demo_VDEC_Play fail\n", __FUNCTION__, __LINE__);
+            return FALSE;
+        }
+        else
+        {
+            printf("[%s][%d] Demo_VDEC_Play OK\n", __FUNCTION__, __LINE__);
+        }
+    }
+
+    if (TRUE != Demo_DMX_AVFifo_Reset(stFileAVInfo[*peAVPATH].eVideoFIFO_ID,FALSE))
+    {
+        printf("[%s][%d]Demo DMX VideoFIFO reset fail\n", __FUNCTION__, __LINE__);
+    }
+
+    if(stFileAVInfo[*peAVPATH].u16AudioPID != INVALID_PID_ID)
+    {
+        if (Demo_Audio_Play(u32ADECDevIdx,AUDIO_APP_DTV,stFileAVInfo[*peAVPATH].eAudioCodec,&eSetSTC) == FALSE) // default mepg2
+        {
+            printf("[%s][%d] Demo_Audio_Play fail\n", __FUNCTION__, __LINE__);
+            return FALSE;
+        }
+        else
+        {
+            printf("[%s][%d] Demo_Audio_Play ok\n", __FUNCTION__, __LINE__);
+        }
+        if (TRUE != Demo_DMX_AVFifo_Reset(stFileAVInfo[*peAVPATH].eAudioFIFO_ID,FALSE))
+        {
+            printf("[%s][%d]Demo DMX AudioFIFO reset fail\n", __FUNCTION__, __LINE__);
+        }
+        Demo_Audio_SetAbsoluteVolume(&u8Volume);
+    }
+    else
+    {
+        printf("[%s][%d] Invalid Audio PID\n", __FUNCTION__, __LINE__);
+    }
+
     return TRUE;
 }
 
@@ -1223,22 +1869,70 @@ static MS_BOOL _Demo_PVR_FileIn_PlayAV(Ex_PVRPlaybackPath* peAVPATH)
 //------------------------------------------------------------------------------
 static MS_BOOL _Demo_PVR_FileIn_StopAV(Ex_PVRPlaybackPath* peAVPATH)
 {
+    EN_VDEC_Device eVDECDeviceIdx = E_VDEC_DEVICE_MAIN;
+    MS_U32 u32ADECDevIdx = 0;
+
+    printf("=====[%s]=====\n",__FUNCTION__);
+
+    Demo_PVR_Check_AVPath(eVDECDeviceIdx,*peAVPATH,PVR_PATH_MAIN,E_VDEC_DEVICE_MAIN,PVR_PATH_SUB,E_VDEC_DEVICE_SUB);
+    Demo_PVR_Check_AVPath(u32ADECDevIdx,*peAVPATH,PVR_PATH_MAIN,0,PVR_PATH_SUB,1);
+
+    _Demo_PVR_XC_Mute(peAVPATH);
+
+    //AVFIFO Reset
+    if (TRUE != Demo_DMX_AVFifo_Reset(stFileAVInfo[*peAVPATH].eVideoFIFO_ID,TRUE))
+    {
+        printf("[%s][%d]Demo DMX VideoFIFO reset fail\n", __FUNCTION__, __LINE__);
+    }
+    if (TRUE != Demo_DMX_AVFifo_Reset(stFileAVInfo[*peAVPATH].eAudioFIFO_ID,TRUE))
+    {
+        printf("[%s][%d]Demo DMX AudioFIFO reset fail\n", __FUNCTION__, __LINE__);
+    }
+
+    if (stFileAVInfo[*peAVPATH].u8VideoFilter != INVALID_FILTER_ID)
+    {
+        MApi_DMX_Stop(stFileAVInfo[*peAVPATH].u8VideoFilter);
+        MApi_DMX_Close(stFileAVInfo[*peAVPATH].u8VideoFilter);
+        stFileAVInfo[*peAVPATH].u8VideoFilter = INVALID_FILTER_ID;
+    }
+    if (stFileAVInfo[*peAVPATH].u8AudioFilter != INVALID_FILTER_ID)
+    {
+        MApi_DMX_Stop(stFileAVInfo[*peAVPATH].u8AudioFilter);
+        MApi_DMX_Close(stFileAVInfo[*peAVPATH].u8AudioFilter);
+        stFileAVInfo[*peAVPATH].u8AudioFilter = INVALID_FILTER_ID;
+    }
+    if (stFileAVInfo[*peAVPATH].ePCREngID != E_PCR_ENG_INVALID)
+    {
+        Demo_DMX_PCR_FltStop(stFileAVInfo[*peAVPATH].ePCREngID);
+        Demo_DMX_PCR_FltClose(stFileAVInfo[*peAVPATH].ePCREngID);
+        stFileAVInfo[*peAVPATH].ePCREngID = E_PCR_ENG_INVALID;
+    }
+
+    Demo_VDEC_Stop(&eVDECDeviceIdx,&(stFileAVInfo[*peAVPATH].stVDECSteamID));
+    Demo_Audio_Stop(u32ADECDevIdx, AUDIO_APP_DTV);
+    stFileAVInfo[*peAVPATH].bInited = FALSE;
+
     return TRUE;
 }
 
-
 static MS_BOOL _Demo_PVR_LIVE_PlayAV(EN_AV_Device* peDevice)
 {
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-    MS_U32 u32DeviceID;
-    Demo_PVR_Check_AVPath(u32DeviceID,*peDevice,E_AV_DEVICE_MAIN,PVR_PATH_MAIN,E_AV_DEVICE_SUB,PVR_PATH_SUB);
-
-    //LIVE DSCMB Connect
-    if (_Demo_PVR_DSCMB_Live_Connect(&u32DeviceID, &stPVRLiveDSCMBInfo[*peDevice]) == TRUE)
+    if(b2ndEncryptionEnabled)
     {
-        DemoPvr_print("LIVE DSCMB Connect Success=> Device:(%"DTC_MS_U32_u") Type:(%s)  CW: Odd(%s) Even(%s)\n",u32DeviceID, stPVRLiveDSCMBInfo[u32DeviceID].u8Type,stPVRLiveDSCMBInfo[u32DeviceID].u8StrOddCW,stPVRLiveDSCMBInfo[u32DeviceID].u8StrEvenCW);
+        MS_U32 u32DeviceID;
+        Demo_PVR_Check_AVPath(u32DeviceID,*peDevice,E_AV_DEVICE_MAIN,PVR_PATH_MAIN,E_AV_DEVICE_SUB,PVR_PATH_SUB);
+
+        //LIVE DSCMB Connect
+        if (_Demo_PVR_DSCMB_Live_Connect(&u32DeviceID, &stPVRLiveDSCMBInfo[*peDevice]) == TRUE)
+        {
+            DemoPvr_print("LIVE DSCMB Connect Success=> Device:(%"DTC_MS_U32_u") Type:(%s)  CW: Odd(%s) Even(%s)\n",u32DeviceID, stPVRLiveDSCMBInfo[u32DeviceID].u8Type,stPVRLiveDSCMBInfo[u32DeviceID].u8StrOddCW,stPVRLiveDSCMBInfo[u32DeviceID].u8StrEvenCW);
+        }
     }
-#endif
+
+    #if(DEMO_PVR_VSYNC_MODULE_ENABLE == 1)
+    // Just like DTV_PlayAV 0x20 (for the 1st path)
+    *peDevice &= E_VDEC_EX_N_STREAM << 4;
+    #endif
 
     return Demo_AV_PlayAV(peDevice);
 }
@@ -1246,22 +1940,23 @@ static MS_BOOL _Demo_PVR_LIVE_PlayAV(EN_AV_Device* peDevice)
 static MS_BOOL _Demo_PVR_LIVE_StopAV(EN_AV_Device *peDevice)
 {
     MS_BOOL bRet;
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-    MS_U32 u32DeviceID;
-
-    Demo_PVR_Check_AVPath(u32DeviceID,*peDevice,E_AV_DEVICE_MAIN,PVR_PATH_MAIN,E_AV_DEVICE_SUB,PVR_PATH_SUB);
-
-
-    //SAVE LIVE DSCMB INFO and stop LIVE DSCMB
-    if (_Demo_PVR_DSCMB_GetLiveInfo(u32DeviceID, &stPVRLiveDSCMBInfo[u32DeviceID]) == TRUE)
+    if(b2ndEncryptionEnabled)
     {
-        stPVRLiveDSCMBInfo[u32DeviceID].bConnectStatus = TRUE;
-        if (_Demo_PVR_DSCMB_Live_Disconnect(&u32DeviceID, &stPVRLiveDSCMBInfo[u32DeviceID]) == TRUE)
+        MS_U32 u32DeviceID;
+
+        Demo_PVR_Check_AVPath(u32DeviceID,*peDevice,E_AV_DEVICE_MAIN,PVR_PATH_MAIN,E_AV_DEVICE_SUB,PVR_PATH_SUB);
+
+        //SAVE LIVE DSCMB INFO and stop LIVE DSCMB
+        if (_Demo_PVR_DSCMB_GetLiveInfo(u32DeviceID, &stPVRLiveDSCMBInfo[u32DeviceID]) == TRUE)
         {
-            DemoPvr_print("[%s][%d]Stop LIVE DSCMB Success=> Device:(%d) Type:(%s)  CW: Odd(%s) Even(%s)\n",__FUNCTION__,__LINE__,u32DeviceID, stPVRLiveDSCMBInfo[u32DeviceID].u8Type,stPVRLiveDSCMBInfo[u32DeviceID].u8StrOddCW,stPVRLiveDSCMBInfo[u32DeviceID].u8StrEvenCW);
+            stPVRLiveDSCMBInfo[u32DeviceID].bConnectStatus = TRUE;
+            if (_Demo_PVR_DSCMB_Live_Disconnect(&u32DeviceID, &stPVRLiveDSCMBInfo[u32DeviceID]) == TRUE)
+            {
+                DemoPvr_print("[%s][%d]Stop LIVE DSCMB Success=> Device:(%d) Type:(%s)  CW: Odd(%s) Even(%s)\n",__FUNCTION__,__LINE__,u32DeviceID, stPVRLiveDSCMBInfo[u32DeviceID].u8Type,stPVRLiveDSCMBInfo[u32DeviceID].u8StrOddCW,stPVRLiveDSCMBInfo[u32DeviceID].u8StrEvenCW);
+            }
         }
     }
-#endif
+
     bRet = Demo_AV_StopAV(peDevice);
 
     return bRet;
@@ -1269,47 +1964,46 @@ static MS_BOOL _Demo_PVR_LIVE_StopAV(EN_AV_Device *peDevice)
 
 static MS_BOOL _Demo_PVR_LIVE_PlayRadio(EN_AV_Device* peDevice)
 {
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-    MS_U32 u32DeviceID;
-
-    Demo_PVR_Check_AVPath(u32DeviceID,*peDevice,E_AV_DEVICE_MAIN,PVR_PATH_MAIN,E_AV_DEVICE_SUB,PVR_PATH_SUB);
-
-
-
-    //LIVE DSCMB Connect
-    if (_Demo_PVR_DSCMB_Live_Connect(&u32DeviceID, &stPVRLiveDSCMBInfo[*peDevice]) == TRUE)
+    if(b2ndEncryptionEnabled)
     {
-        DemoPvr_print("LIVE DSCMB Connect Success=> Device:(%"DTC_MS_U32_u") Type:(%s)  CW: Odd(%s) Even(%s)\n",u32DeviceID, stPVRLiveDSCMBInfo[u32DeviceID].u8Type,stPVRLiveDSCMBInfo[u32DeviceID].u8StrOddCW,stPVRLiveDSCMBInfo[u32DeviceID].u8StrEvenCW);
+        MS_U32 u32DeviceID;
+
+        Demo_PVR_Check_AVPath(u32DeviceID,*peDevice,E_AV_DEVICE_MAIN,PVR_PATH_MAIN,E_AV_DEVICE_SUB,PVR_PATH_SUB);
+
+        //LIVE DSCMB Connect
+        if (_Demo_PVR_DSCMB_Live_Connect(&u32DeviceID, &stPVRLiveDSCMBInfo[*peDevice]) == TRUE)
+        {
+            DemoPvr_print("LIVE DSCMB Connect Success=> Device:(%"DTC_MS_U32_u") Type:(%s)  CW: Odd(%s) Even(%s)\n",u32DeviceID, stPVRLiveDSCMBInfo[u32DeviceID].u8Type,stPVRLiveDSCMBInfo[u32DeviceID].u8StrOddCW,stPVRLiveDSCMBInfo[u32DeviceID].u8StrEvenCW);
+        }
     }
-#endif
 
     return Demo_AV_PlayRadio(peDevice);
 }
 static MS_BOOL _Demo_PVR_LIVE_StopRadio(EN_AV_Device *peDevice)
 {
     MS_BOOL bRet;
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-    MS_U32 u32DeviceID;
-
-    Demo_PVR_Check_AVPath(u32DeviceID,*peDevice,E_AV_DEVICE_MAIN,PVR_PATH_MAIN,E_AV_DEVICE_SUB,PVR_PATH_SUB);
-
-
-    //SAVE LIVE DSCMB INFO and stop LIVE DSCMB
-    if (_Demo_PVR_DSCMB_GetLiveInfo(u32DeviceID, &stPVRLiveDSCMBInfo[u32DeviceID]) == TRUE)
+    if(b2ndEncryptionEnabled)
     {
-        stPVRLiveDSCMBInfo[u32DeviceID].bConnectStatus = TRUE;
-        if (_Demo_PVR_DSCMB_Live_Disconnect(&u32DeviceID, &stPVRLiveDSCMBInfo[u32DeviceID]) == TRUE)
+        MS_U32 u32DeviceID;
+        Demo_PVR_Check_AVPath(u32DeviceID,*peDevice,E_AV_DEVICE_MAIN,PVR_PATH_MAIN,E_AV_DEVICE_SUB,PVR_PATH_SUB);
+
+        //SAVE LIVE DSCMB INFO and stop LIVE DSCMB
+        if (_Demo_PVR_DSCMB_GetLiveInfo(u32DeviceID, &stPVRLiveDSCMBInfo[u32DeviceID]) == TRUE)
         {
-            DemoPvr_print("[%s][%d]Stop LIVE DSCMB Success=> Device:(%d) Type:(%s)  CW: Odd(%s) Even(%s)\n",__FUNCTION__,__LINE__,u32DeviceID, stPVRLiveDSCMBInfo[u32DeviceID].u8Type,stPVRLiveDSCMBInfo[u32DeviceID].u8StrOddCW,stPVRLiveDSCMBInfo[u32DeviceID].u8StrEvenCW);
+            stPVRLiveDSCMBInfo[u32DeviceID].bConnectStatus = TRUE;
+            if (_Demo_PVR_DSCMB_Live_Disconnect(&u32DeviceID, &stPVRLiveDSCMBInfo[u32DeviceID]) == TRUE)
+            {
+                DemoPvr_print("[%s][%d]Stop LIVE DSCMB Success=> Device:(%d) Type:(%s)  CW: Odd(%s) Even(%s)\n",__FUNCTION__,__LINE__,u32DeviceID, stPVRLiveDSCMBInfo[u32DeviceID].u8Type,stPVRLiveDSCMBInfo[u32DeviceID].u8StrOddCW,stPVRLiveDSCMBInfo[u32DeviceID].u8StrEvenCW);
+            }
         }
     }
-#endif
+
     bRet = Demo_AV_StopRadio(peDevice);
 
     return bRet;
 }
 
-static MS_BOOL _Demo_PVR_AV_Start(PVRProgramInfo_t *programInfo)
+static MS_BOOL _Demo_PVR_AV_Start(MS_BOOL bIsLiveStream, PVRProgramInfo_t *programInfo)
 {
     MS_BOOL bRet=TRUE;
     MS_U32 u32VideoPid=_Demo_PVR_FindPidinFilter(programInfo->Filters, DMX_FILTER_TYPE_VIDEO);
@@ -1317,10 +2011,12 @@ static MS_BOOL _Demo_PVR_AV_Start(PVRProgramInfo_t *programInfo)
     MS_U32 u32PCRPid=_Demo_PVR_FindPidinFilter(programInfo->Filters, DMX_FILTER_TYPE_PCR);
     MS_U32 u32VCodec=0;
     MS_U32 u32ACodec=0;
+    int clkInv = 0;
+    int extSync = 1;
+    int parallel = 1;
     EN_AV_Device eDevice = E_AV_DEVICE_MAIN;
-    ST_AV_INFO stAVInfo;
 
-
+    DemoPvr_print("[%s][%d]  bIsLiveStream=%d\n",__FUNCTION__,__LINE__,bIsLiveStream);
     DemoPvr_print("[%s][%d] u32VideoPid=%"DTC_MS_U32_u" u32AudioPid=%"DTC_MS_U32_u" u32PCRPid=%"DTC_MS_U32_u" \n", __FUNCTION__, __LINE__,u32VideoPid,u32AudioPid,u32PCRPid);
     Demo_PVR_Check_AVPath(eDevice,_eCurPlaybackProgramPath,PVR_PATH_MAIN,E_AV_DEVICE_MAIN,PVR_PATH_SUB,E_AV_DEVICE_SUB);
 
@@ -1328,18 +2024,46 @@ static MS_BOOL _Demo_PVR_AV_Start(PVRProgramInfo_t *programInfo)
     u32ACodec = _Demo_PVR_Get_ADECDDI_ADEC_Fmt_FromPromInfo((APIPVR_AUD_CODEC_TYPE)(programInfo->u32ACodec));
 
     do{
-
-        if (Demo_AV_GetAVInfo(eDevice,&stAVInfo)  == FALSE)
+        if(bIsLiveStream)
         {
-            printf("[%s]Error!!!, Get Live info by Demo_AV_GetAVInfo failed\n",__FUNCTION__);
-            return FALSE;
-        }
-        if (FALSE == (bRet = _DualAVFunc.DualAV_Tuner_Config(&eDevice, &stAVInfo.stDMXflowParams.eFlow, &stAVInfo.stDMXflowParams.eDmxInput, &stAVInfo.stDMXflowParams.DmxClkInv, &stAVInfo.stDMXflowParams.DmxExtSync, &stAVInfo.stDMXflowParams.DmxParallal)))
-        {
-            break;
-        }
-        bRet = _DualAVFunc.DualAV_TSP_SetPid(&eDevice, &u32VideoPid, &u32AudioPid, &u32PCRPid, &u32VCodec, &u32ACodec);
+            if (FALSE == (bRet = _DualAVFunc.DualAV_Tuner_Config(&eDevice, &_stLiveInfo[_eCurPlaybackProgramPath].stDMXflowParams.eFlow, &_stLiveInfo[_eCurPlaybackProgramPath].stDMXflowParams.eDmxInput, &_stLiveInfo[_eCurPlaybackProgramPath].stDMXflowParams.DmxClkInv, &_stLiveInfo[_eCurPlaybackProgramPath].stDMXflowParams.DmxExtSync, &_stLiveInfo[_eCurPlaybackProgramPath].stDMXflowParams.DmxParallal)))
+            {
+                break;
+            }
 
+            #if(DEMO_PVR_VSYNC_MODULE_ENABLE == 1)
+            // Always use PureMCU mode in PVR
+            EN_AV_ShowFrame_Mode eMode = E_AV_PureMCU_MODE;
+            MSAPI_XC_WINDOW_TYPE stDispWinInfo = {0};
+
+            stDispWinInfo.x = _stLiveInfo[_eCurPlaybackProgramPath].stShowFrameInfo.u16X;
+            stDispWinInfo.y = _stLiveInfo[_eCurPlaybackProgramPath].stShowFrameInfo.u16Y;
+            stDispWinInfo.width = _stLiveInfo[_eCurPlaybackProgramPath].stShowFrameInfo.u16Width;
+            stDispWinInfo.height = _stLiveInfo[_eCurPlaybackProgramPath].stShowFrameInfo.u16Height;
+
+            printf("[%s][%d] using window size at path %u: width = %"DTC_MS_U32_u", height = %"DTC_MS_U32_u"\n",__FUNCTION__, __LINE__, eDevice, (MS_U32)stDispWinInfo.width, (MS_U32)stDispWinInfo.height);
+            Demo_AV_SetShowFrameMode(&eDevice, (EN_AV_ShowFrame_Mode *)&eMode, (MS_U32 *)&eDevice, (MS_U16 *)&stDispWinInfo.x, (MS_U16 *)&stDispWinInfo.y, (MS_U16 *)&stDispWinInfo.width, (MS_U16 *)&stDispWinInfo.height, (MS_U16 *)&eDevice);
+            #endif
+
+            // For merge stream, when playback stop and return to live, modify source id to the original source id of live before playback start,
+            // so that we can return to live successfully according to the stored program info before playback start.
+            EN_DEMO_DMX_FLT_SOURCEID eDTVSrcID = _stLiveInfo[_eCurPlaybackProgramPath].stDMXflowParams.eDmxFltSourceID;
+            EN_DEMO_DMX_FLT_SOURCEID eSrcID = Demo_DMX_GetSrcID(_stLiveInfo[_eCurPlaybackProgramPath].stDMXflowParams.eFlow);
+            Demo_DMX_SetSrcID(_stLiveInfo[_eCurPlaybackProgramPath].stDMXflowParams.eFlow, eDTVSrcID);
+
+            bRet = _DualAVFunc.DualAV_TSP_SetPid(&eDevice, &u32VideoPid, &u32AudioPid, &u32PCRPid, &u32VCodec, &u32ACodec);
+
+            // For merge stream, after return to live, recover source id
+            Demo_DMX_SetSrcID(_stLiveInfo[_eCurPlaybackProgramPath].stDMXflowParams.eFlow, eSrcID);
+        }
+        else
+        {
+            if (FALSE == (bRet = _DualFileFunc.FileIn_FlowSet(&_eCurPlaybackProgramPath, &clkInv, &extSync, &parallel)))
+            {
+                break;
+            }
+            bRet = _DualFileFunc.FileIn_SetPid(&_eCurPlaybackProgramPath,&u32VideoPid, &u32AudioPid, &u32PCRPid, &u32VCodec, &u32ACodec);
+        }
     }while(0);
 
     if (!bRet)
@@ -1358,24 +2082,39 @@ static MS_BOOL _Demo_PVR_AV_Start(PVRProgramInfo_t *programInfo)
     }
 
     printf("[%s][%d]  try to play av\n",__FUNCTION__,__LINE__);
-
-        if(u32VideoPid == INVALID_PID_ID){
-	      bRet = _DualAVFunc.DualAV_PlayRadio(&eDevice);
+    if(bIsLiveStream)
+    {
+        if(u32VideoPid == INVALID_PID_ID)
+        {
+            bRet = _DualAVFunc.DualAV_PlayRadio(&eDevice);
         }
-        else{
+        else
+        {
             bRet = _DualAVFunc.DualAV_PlayAV(&eDevice);
         }
+    }
+    else
+    {
+        bRet = _DualFileFunc.FileIn_PlayAV(&_eCurPlaybackProgramPath);
+    }
 
     if (!bRet)
     {
-
-        if(u32VideoPid == INVALID_PID_ID){
-	      _DualAVFunc.DualAV_StopRadio(&eDevice);
+        if(bIsLiveStream)
+        {
+            if(u32VideoPid == INVALID_PID_ID)
+            {
+                _DualAVFunc.DualAV_StopRadio(&eDevice);
+            }
+            else
+            {
+                _DualAVFunc.DualAV_StopAV(&eDevice);
+            }
         }
-	  else{
-            _DualAVFunc.DualAV_StopAV(&eDevice);
+        else
+        {
+            _DualFileFunc.FileIn_StopAV(&_eCurPlaybackProgramPath);
         }
-
         printf("[%s][%d] play av failed\n",__FUNCTION__,__LINE__);
         return bRet;
     }
@@ -1420,35 +2159,34 @@ static MS_BOOL _Demo_PVR_AV_Play(void)
 #endif
     {
         printf("\n\n[%s][%d]Do XC/VE flow\n",__FUNCTION__,__LINE__);
-        Demo_VDEC_IsAVSyncDone(eVDECDeviceIdx);
+        Demo_VDEC_IsAVSyncDone(&eVDECDeviceIdx);
         _Demo_PVR_XC_Play();
     }
 
     return TRUE;
 }
-static void _Demo_PVR_StopEvent(MS_BOOL bRecord,MS_U8 pvrIdx)
+static void _Demo_PVR_StopEvent(MS_BOOL bRecord,MS_U8 u8PVRIdx)
 {
-    DemoPvr_print("[%s][%d]bRecord=%d,pvrRecIdx=%d,_u8TimeshiftIdx=%d\n",__FUNCTION__,__LINE__,bRecord,pvrIdx,_u8TimeshiftIdx[_eCurPlaybackProgramPath]);
+    DemoPvr_print("[%s][%d]bRecord=%d,pvrRecIdx=%d,_u8TimeshiftRecordIdx=%d\n",__FUNCTION__,__LINE__,bRecord,u8PVRIdx,_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]);
     Ex_PVRPlaybackPath ePlaybackidx = PVR_PATH_INVALID;
     Ex_PVRPlaybackPath ePlayIdxSaved = PVR_PATH_INVALID;
     MS_U8 u8RecIdxSaved = 0xFF;
-    MS_U8  u8hpvrIdx = 0;   //handler
+
 
     if(bRecord)
     {
-        DEMO_PVR_CHECK_REC_IDX(pvrIdx,);
+        DEMO_PVR_CHECK_REC_IDX(u8PVRIdx,);
 
-        u8hpvrIdx = _u8hRecord[pvrIdx];
-        if(!MApi_PVR_IsRecording(u8hpvrIdx))
+        if(!MApi_PVR_IsRecording(_u8hRecord[u8PVRIdx]))
         {
             return ;
         }
 
-        ePlaybackidx = (Ex_PVRPlaybackPath)_Demo_PVR_Timeshift_GetPlaybackIdx(pvrIdx);
+        ePlaybackidx = (Ex_PVRPlaybackPath)_Demo_PVR_Timeshift_GetPlaybackIdx(u8PVRIdx);
         if (ePlaybackidx == PVR_PATH_INVALID)
         {
             u8RecIdxSaved = _u8CurRecProgramIdx;
-            _u8CurRecProgramIdx = pvrIdx;
+            _u8CurRecProgramIdx = u8PVRIdx;
             Demo_PVR_Record_Stop();
             _u8CurRecProgramIdx = u8RecIdxSaved;
             printf("\nRecord Stop\n\n>>");
@@ -1464,45 +2202,39 @@ static void _Demo_PVR_StopEvent(MS_BOOL bRecord,MS_U8 pvrIdx)
     }
     else
     {
-        DEMO_PVR_CHECK_PB(pvrIdx,);
+        DEMO_PVR_CHECK_PB(u8PVRIdx,);
 
-        u8hpvrIdx = _u8hPVRPlayback[pvrIdx];
-        if(!MApi_PVR_EX_IsPlaybacking(u8hpvrIdx))
+        if(!MApi_PVR_EX_IsPlaybacking(_u8hPlayback[u8PVRIdx]))
         {
             printf("[%s][%d] not playing\n",__FUNCTION__,__LINE__);
             return ;
         }
 
         ePlayIdxSaved = _eCurPlaybackProgramPath;
-        _eCurPlaybackProgramPath = (Ex_PVRPlaybackPath)pvrIdx;
+        _eCurPlaybackProgramPath = (Ex_PVRPlaybackPath)u8PVRIdx;
 
-        if(!MApi_PVR_EX_IsTimeShift(pvrIdx))
-        {
-            if(MApi_PVR_PlaybackStop(&_u8hPVRPlayback[pvrIdx])==TRUE)
-            {
-                _DualFileFunc.FileIn_StopAV(&_eCurPlaybackProgramPath);
-
-                if(_livePromInfo[pvrIdx].bLive)   /* play live stream */
-                {
-                    if (_Demo_PVR_AV_Start(&_livePromInfo[pvrIdx]))
-                    {
-                        printf("switch to live stream!\n");
-                        _Demo_PVR_AV_Play();
-                    }
-                    else
-                    {
-                        printf("\n[_Demo_PVR_StopEvent] Return to Live[%u] failed!!!\n\n",_eCurPlaybackProgramPath);
-                    }
-                }
-            }
-            printf("\nPlayback Stop\n\n>>");
-        }
-        else
+        if(_u8TimeshiftPlaybackIdx[u8PVRIdx] != PVR_PATH_INVALID)
         {
             Demo_PVR_Timeshift_PlaybackStop();
             printf("\nTimeshift Playback Stop\n\n>>");
+
+        }
+        else
+        {
+            // FileIn_StopAV will do:
+            // (1) xc mute: done by Video_Module::Exit
+            // (2) ve mute: no need to do, always keep ve unmute
+            // (3) reset av fifo: done by FileIn_Module::Exit, Video_Module::Exit, Audio_Module::Exit
+            // (4) close all pid filters: done by PVR_Playback_Handler::Exit
+            // (5) vdec exit: done by Video_Module::Exit
+            // (6) audio stop decode: done by Audio_Module::Exit
+            //
+            // No need to call FileIn_StopAV here.
+            Demo_PVR_PlaybackStop();
+            printf("\nPlayback Stop\n\n>>");
         }
         _eCurPlaybackProgramPath = ePlayIdxSaved;
+        _u32PlaybackTime[u8PVRIdx] = 0;
    }
 }
 
@@ -1514,25 +2246,23 @@ static void _Demo_PVR_StopEvent(MS_BOOL bRecord,MS_U8 pvrIdx)
 /// c. audio mute/demute control by previous speed state
 /// d. XC/VE initial for start playback
 //------------------------------------------------------------------------------
-static void _Demo_PVR_ChangePMTEvent(Ex_PVRPlaybackPath eAVPATH, MS_BOOL bSuspend)
+static void _Demo_PVR_ChangePMTEvent(Ex_PVRPlaybackPath eAVPATH, MS_BOOL bAutoMode)
 {
-    MS_U8 u8curPlayIdx = 0;
-    PVRDataInfo_t dummy;
+    PVRDataInfo_t dummy = {0, 0, 0, 0};
 
     DemoPvr_print("[%s][%d]\n",__FUNCTION__,__LINE__);
     DEMO_PVR_CHECK_PB(eAVPATH,);
 
-    u8curPlayIdx = _u8hPVRPlayback[eAVPATH];
-    if(!MApi_PVR_EX_IsPlaybacking(u8curPlayIdx))
+    if(!MApi_PVR_EX_IsPlaybacking(_u8hPlayback[eAVPATH]))
     {
         DemoPvr_print("[%s][%d] not playing\n",__FUNCTION__,__LINE__);
         return;
     }
 
-    if(bSuspend)
+    if(bAutoMode)
     {
-        printf("[%s][%d]: Suspend !!!\n", __FUNCTION__, __LINE__);
-        if(MApi_PVR_PlaybackProgramChangeOpen(u8curPlayIdx) == FALSE)
+        DemoPvr_print("[%s][%d]: Suspend !!!\n", __FUNCTION__, __LINE__);
+        if(MApi_PVR_PlaybackProgramChangeOpen(_u8hPlayback[eAVPATH]) == FALSE)
         {
             DemoPvr_print("MApi_PVR_PlaybackProgramChangeOpen Failed!\n");
             return;
@@ -1540,86 +2270,80 @@ static void _Demo_PVR_ChangePMTEvent(Ex_PVRPlaybackPath eAVPATH, MS_BOOL bSuspen
     }
     else
     {
-        printf("[%s][%d]: Resume !!!\n", __FUNCTION__, __LINE__);
-        if(MApi_PVR_PlaybackProgramChangeStart(u8curPlayIdx, dummy) == FALSE)
+        MS_BOOL bRet = FALSE;
+        Ex_PVRPlaybackPath ePlayIdxSaved = _eCurPlaybackProgramPath;
+
+        _eCurPlaybackProgramPath = eAVPATH;
+
+        bRet = _Demo_PVR_AV_Start(FALSE,&_plyprogramInfo[_eCurPlaybackProgramPath]);
+        if(!bRet)
         {
-            DemoPvr_print("MApi_PVR_PlaybackProgramChangeStart Failed!\n");
-            return;
+            DemoPvr_print("Fail to Change Program. Swith to Live mode.\n");
+            if(FALSE == _Demo_PVR_AV_Start(TRUE,&_livePromInfo[_eCurPlaybackProgramPath]))
+            {
+                DemoPvr_print("Switch to Live failed!\n");
+            }
         }
+        else
+        {
+            MApi_PVR_PlaybackProgramChangeStart(_u8hPlayback[eAVPATH], dummy);
+            DemoPvr_print("Change Program success.\n");
+        }
+        _Demo_PVR_AV_Play();
+        _eCurPlaybackProgramPath = ePlayIdxSaved;
     }
 }
 
-static void _Demo_PVR_Callback(PVREventInfo_t *event)
+static void _Demo_PVR_Callback(PVREventInfo_t *pstEventInfo)
 {
     MS_U64 u64FreeSpaceInKB, u64TotalSpaceInKB;
-    MS_U32 u32PlaybackTime[MAX_PLAYBACK_NUM];
-    MS_U32 u32RecordTime[PVR_MAX_RECORDING_FILE];
-    MS_U8  u8heventIdx = 0;
-    MS_U8  u8eventIdx = 0;
 
-    switch(event->pvrEvent)
+    MS_U32 u32LastPlaybackTime[MAX_PLAYBACK_NUM] = {0};
+    MS_U32 u32RecordTime[PVR_MAX_RECORDING_FILE] ={0};
+    MS_U8  u8PVRHandle = 0;
+    MS_U8  u8PVRIdx = 0;
+    MS_U32 u32RecordStartTime = 0;
+    MS_U32 u32RecordDurationTime = 0;
+    switch(pstEventInfo->pvrEvent)
     {
 #if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
         case EN_APIPVR_PATH_EVENT_NOTIFY_TIMESHIFT_SEAMLEASS_TIMEOUT:
-            u8heventIdx = (MS_U8)event->u32Data[0];
-            u8eventIdx = _Demo_PVR_PlayHandler2Idx(u8heventIdx);
-            DemoPvrEvent_print("EEN_APIPVR_PATH_EVENT_NOTIFY_TIMESHIFT_SEAMLEASS_TIMEOUT,_u8TimeshiftIdx=%d u8eventIdx=%d u8heventIdx=%d\n",_u8TimeshiftIdx[u8eventIdx],u8eventIdx,u8heventIdx);
+            u8PVRHandle = (MS_U8)pstEventInfo->u32Data[0];
+            u8PVRIdx = _Demo_PVR_PlayHandler2Idx(u8PVRHandle);
+            DemoPvrEvent_print("EN_APIPVR_PATH_EVENT_NOTIFY_TIMESHIFT_SEAMLEASS_TIMEOUT,_u8TimeshiftRecordIdx=%d u8PVRIdx=%d u8PVRHandle=%d\n",_u8TimeshiftRecordIdx[u8PVRIdx],u8PVRIdx,u8PVRHandle);
 
-            DEMO_PVR_CHECK_PB(u8eventIdx,);
+            DEMO_PVR_CHECK_PB(u8PVRIdx,);
 
-            printf("[_Demo_PVR_Callback]NOTIFY_TIMESHIFT_SEAMLEASS_TIMEOUT curidx = %d\n",u8heventIdx);
+            printf("[_Demo_PVR_Callback]NOTIFY_TIMESHIFT_SEAMLEASS_TIMEOUT curidx = %d\n",u8PVRHandle);
             break;
 #endif
         case EN_APIPVR_EVENT_NOTIFY_FILE_END:
-            u8heventIdx = (MS_U8)event->u32Data[0];
-            u8eventIdx = _Demo_PVR_PlayHandler2Idx(u8heventIdx);
-            DemoPvrEvent_print("EN_APIPVR_EVENT_NOTIFY_FILE_END,_u8TimeshiftIdx=%d u8eventIdx=%d u8heventIdx=%d\n",_u8TimeshiftIdx[u8eventIdx],u8eventIdx,u8heventIdx);
+            u8PVRHandle = (MS_U8)pstEventInfo->u32Data[0];
+            u8PVRIdx = _Demo_PVR_PlayHandler2Idx(u8PVRHandle);
+            DemoPvrEvent_print("EN_APIPVR_EVENT_NOTIFY_FILE_END,_u8TimeshiftRecordIdx=%d u8PVRIdx=%d u8PVRHandle=%d\n",_u8TimeshiftRecordIdx[u8PVRIdx],u8PVRIdx,u8PVRHandle);
 
-            DEMO_PVR_CHECK_PB(u8eventIdx,);
+            DEMO_PVR_CHECK_PB(u8PVRIdx,);
 
-            if((MApi_PVR_EX_IsPlaybacking(u8heventIdx))&&(MApi_PVR_PlaybackGetSpeed(u8heventIdx)<=EN_APIPVR_PLAYBACK_SPEED_1XFB) )
+            if((MApi_PVR_EX_IsPlaybacking(u8PVRHandle))&&(MApi_PVR_PlaybackGetSpeed(u8PVRHandle)<=EN_APIPVR_PLAYBACK_SPEED_1XFB) )
             {
-                Ex_PVRPlaybackPath  eAVPATH = (Ex_PVRPlaybackPath)u8eventIdx;
-
-                _AVStreamID[u8eventIdx].vstreamID = _Demo_PVR_GetVidStreamID((Ex_PVRPlaybackPath*)&eAVPATH);
-                _AVStreamID[u8eventIdx].astreamID = _Demo_PVR_GetAudStreamID((Ex_PVRPlaybackPath*)&eAVPATH);
-                if (_AVStreamID[u8eventIdx].vstreamID != NULL)
-                {
-                    if((MApi_PVR_EX_IsTimeShift(u8eventIdx))&&(_u8TimeshiftIdx[u8eventIdx]!=0xFF))
-                    {
-                        MApi_PVR_EX_TimeshiftPlaybackStop(&_u8hPVRPlayback[u8eventIdx] ,_u8hRecord[_u8TimeshiftIdx[u8eventIdx]],u8eventIdx);
-                        printf("[_Demo_PVR_Callback]NOTIFY_FILE_END curidx = %d\n",_u8hPVRPlayback[u8eventIdx]);
-                        MApi_PVR_EX_TimeshiftPlaybackStart(u8eventIdx,&_u8hPVRPlayback[u8eventIdx] ,u8eventIdx,(void *)&_AVStreamID[u8eventIdx],_plyprogramInfo[u8eventIdx].FileName,0,0);
-                        printf("[_Demo_PVR_Callback]NOTIFY_FILE_END timeshift curidx = %d\n",_u8hPVRPlayback[u8eventIdx]);
-                    }
-                    else
-                    {
-                        MApi_PVR_PlaybackStop(&_u8hPVRPlayback[u8eventIdx]);
-                        printf("[_Demo_PVR_Callback]NOTIFY_FILE_END normal-play curidx = %d\n",_u8hPVRPlayback[u8eventIdx]);
-                        MApi_PVR_EX_PlaybackStart(u8eventIdx,&_u8hPVRPlayback[u8eventIdx],(void *)&_AVStreamID[u8eventIdx],_plyprogramInfo[u8eventIdx].FileName,0,0);
-                        printf("[_Demo_PVR_Callback]NOTIFY_FILE_END normal-play curidx = %d\n",_u8hPVRPlayback[u8eventIdx]);
-                    }
-                }
-                else
-                {
-                    printf("[%s][%d]Error vdec streamid, Restart playback fail!!\n",__FUNCTION__, __LINE__);
-                }
+                printf("NOTIFY_FILE_END curidx = %d when speed is EN_APIPVR_PLAYBACK_SPEED_FB\n",_u8hPlayback[u8PVRIdx]);
+                // When we hit file end in playback fastbackward case, we will not stop or start anymore.
+                // Instead, we just let users to decide the next state by themselves.
             }
             else
             {
-                _Demo_PVR_StopEvent(FALSE,u8eventIdx);
+                _Demo_PVR_StopEvent(FALSE,u8PVRIdx);
             }
             break;
         case EN_APIPVR_EVENT_ERROR_NO_DISK_SPACE:
             DemoPvrEvent_print("EN_APIPVR_EVENT_ERROR_NO_DISK_SPACE\n");
-            //DemoPvrEvent_print("_u8TimeshiftIdx=%d\n",_u8TimeshiftIdx[_eCurPlaybackProgramPath]);
-            for(u8eventIdx = 0;u8eventIdx < PVR_MAX_RECORDING_FILE;u8eventIdx++)
+            for(u8PVRIdx = 0;u8PVRIdx < PVR_MAX_RECORDING_FILE;u8PVRIdx++)
             {
-                _Demo_PVR_StopEvent(TRUE,u8eventIdx);
+                _Demo_PVR_StopEvent(TRUE,u8PVRIdx);
             }
-            for(u8eventIdx = 0;u8eventIdx < MAX_PLAYBACK_NUM;u8eventIdx++)
+            for(u8PVRIdx = 0;u8PVRIdx < MAX_PLAYBACK_NUM;u8PVRIdx++)
             {
-                _Demo_PVR_StopEvent(FALSE,u8eventIdx);
+                _Demo_PVR_StopEvent(FALSE,u8PVRIdx);
             }
             if(_bUplugMsg)
             {
@@ -1627,113 +2351,153 @@ static void _Demo_PVR_Callback(PVREventInfo_t *event)
                 {
                     printf("Umount \"%s\" successfully!\n",_moutPath);
                 }
+                else
+                {
+                    printf("Umount \"%s\" failed!\n",_moutPath);
+                }
+
 
                 _bUplugMsg=FALSE;
             }
             break;
         case EN_APIPVR_EVENT_ERROR_READ_FILE_FAIL:
-            u8heventIdx = (MS_U8)event->u32Data[0];
-            u8eventIdx = _Demo_PVR_PlayHandler2Idx(u8heventIdx);
-            DemoPvrEvent_print("[%s][%d]EN_APIPVR_EVENT_ERROR_READ_FILE_FAIL,%"DTC_MS_U32_u"\n",__FUNCTION__,__LINE__,event->u32Data[0]);
+            u8PVRHandle = (MS_U8)pstEventInfo->u32Data[0];
+            u8PVRIdx = _Demo_PVR_PlayHandler2Idx(u8PVRHandle);
+            DemoPvrEvent_print("[%s][%d]EN_APIPVR_EVENT_ERROR_READ_FILE_FAIL,%"DTC_MS_U32_u"\n",__FUNCTION__,__LINE__,pstEventInfo->u32Data[0]);
 
-            DEMO_PVR_CHECK_PB(u8eventIdx,);
+            DEMO_PVR_CHECK_PB(u8PVRIdx,);
 
-            _Demo_PVR_StopEvent(FALSE,u8eventIdx);
-            if(_Demo_PVR_GetDiskSpace((char *)MApi_PVR_GetMouthPath(),&u64FreeSpaceInKB, &u64TotalSpaceInKB))
+            _Demo_PVR_StopEvent(FALSE,u8PVRIdx);
+            char *mountPath;
+            DEMO_PVR_CHECK_MountPath(mountPath, )
+            if(_Demo_PVR_GetDiskSpace(mountPath,&u64FreeSpaceInKB, &u64TotalSpaceInKB))
             {
-                printf("Free Disk Space:%llu KB\n",u64FreeSpaceInKB);
+                printf("Free Disk Space:0x%"DTC_MS_U64_x" KB\n",u64FreeSpaceInKB);
             }
             break;
 
         case EN_APIPVR_EVENT_ERROR_INVALID_ADDR:
         case EN_APIPVR_EVENT_ERROR_WRITE_FILE_FAIL:
-            u8heventIdx = (MS_U8)event->u32Data[0];
-            u8eventIdx = _Demo_PVR_RecHandler2Idx(u8heventIdx);
-            DemoPvrEvent_print("[%s][%d]EN_APIPVR_EVENT_ERROR_WRITE_FILE_FAIL,%"DTC_MS_U32_u"\n",__FUNCTION__,__LINE__,event->u32Data[0]);
+            u8PVRHandle = (MS_U8)pstEventInfo->u32Data[0];
+            u8PVRIdx = _Demo_PVR_RecHandler2Idx(u8PVRHandle);
+            DemoPvrEvent_print("[%s][%d]EN_APIPVR_EVENT_ERROR_WRITE_FILE_FAIL,%"DTC_MS_U32_u"\n",__FUNCTION__,__LINE__,pstEventInfo->u32Data[0]);
 
-            DEMO_PVR_CHECK_REC_IDX(u8eventIdx,);
+            DEMO_PVR_CHECK_REC_IDX(u8PVRIdx,);
 
-            _Demo_PVR_StopEvent(TRUE,u8eventIdx);
+            _Demo_PVR_StopEvent(TRUE,u8PVRIdx);
             if(_Demo_PVR_GetDiskSpace((char *)MApi_PVR_GetMouthPath(),&u64FreeSpaceInKB, &u64TotalSpaceInKB))
             {
-                printf("Free Disk Space:%llu KB\n",u64FreeSpaceInKB);
+                printf("Free Disk Space:0x%"DTC_MS_U64_x" KB\n",u64FreeSpaceInKB);
             }
             break;
 
         case EN_APIPVR_EVENT_NOTIFY_RECORDED_TIME: //Second
-            u8heventIdx = (MS_U8)event->u32Data[0];
-            u8eventIdx = _Demo_PVR_RecHandler2Idx(u8heventIdx);
-            DEMO_PVR_CHECK_REC_IDX(u8eventIdx,);
+            u8PVRHandle = (MS_U8)pstEventInfo->u32Data[0];
+            u8PVRIdx = _Demo_PVR_RecHandler2Idx(u8PVRHandle);
+            DEMO_PVR_CHECK_REC_IDX(u8PVRIdx,);
 
-            u32RecordTime[u8eventIdx] =event->u32Data[1];
-            if(_bShowRecordTime)
+            u32RecordTime[u8PVRIdx] =pstEventInfo->u32Data[1];
+
+            // Let record idx 0 trigger performance measure.
+            if(bPVRPerformanceTest && (u8PVRIdx == 0))
             {
-                printf("Record Time [%u][%02d:%02d:%02d] \n",u8eventIdx,(int)(u32RecordTime[u8eventIdx]/3600),(int)((u32RecordTime[u8eventIdx]%3600)/60),(int)((u32RecordTime[u8eventIdx]%3600)%60));
+                _Demo_PVR_PerformanceTest(u32RecordTime[u8PVRIdx]);
+            }
+
+            if(_bShowRecordStartTime)
+            {
+                MApi_PVR_GetRecordStartTime(_u8hRecord[u8PVRIdx], &u32RecordStartTime);
+                printf("RecordStartTime [%u][%02d:%02d:%02d] ",u8PVRIdx,(int)(u32RecordStartTime/3600),(int)((u32RecordStartTime%3600)/60),(int)((u32RecordStartTime%3600)%60));
+                printf("Record Time [%u][%02d:%02d:%02d] ",u8PVRIdx,(int)(u32RecordTime[u8PVRIdx]/3600),(int)((u32RecordTime[u8PVRIdx]%3600)/60),(int)((u32RecordTime[u8PVRIdx]%3600)%60));
+                u32RecordDurationTime = u32RecordTime[u8PVRIdx] - u32RecordStartTime;
+                printf("Record Duration [%u][%02d:%02d:%02d]\n",u8PVRIdx,(int)(u32RecordDurationTime/3600),(int)((u32RecordDurationTime%3600)/60),(int)((u32RecordDurationTime%3600)%60));
+            }
+            else if(_bShowRecordTime)
+            {
+                printf("Record Time [%u][%02d:%02d:%02d] \n",u8PVRIdx,(int)(u32RecordTime[u8PVRIdx]/3600),(int)((u32RecordTime[u8PVRIdx]%3600)/60),(int)((u32RecordTime[u8PVRIdx]%3600)%60));
             }
             break;
 
         case EN_APIPVR_EVENT_NOTIFY_RECORDED_SIZE:  //KByte
-            u8heventIdx = (MS_U8)event->u32Data[0];
-            u8eventIdx = _Demo_PVR_RecHandler2Idx(u8heventIdx);
-            DEMO_PVR_CHECK_REC_IDX(u8eventIdx,);
+            u8PVRHandle = (MS_U8)pstEventInfo->u32Data[0];
+            u8PVRIdx = _Demo_PVR_RecHandler2Idx(u8PVRHandle);
+            DEMO_PVR_CHECK_REC_IDX(u8PVRIdx,);
 
-            DemoPvrEvent_print("[%s][%d]record idx = %d record size=%"DTC_MS_U32_u" KByte\n",__FUNCTION__,__LINE__,u8eventIdx,event->u32Data[1]);
+            DemoPvrEvent_print("[%s][%d]record idx = %d record size=%"DTC_MS_U32_u" KByte\n",__FUNCTION__,__LINE__,u8PVRIdx,pstEventInfo->u32Data[1]);
             break;
 
         case EN_APIPVR_EVENT_NOTIFY_RECORDED_NODATA:
-            u8heventIdx = (MS_U8)event->u32Data[0];
-            u8eventIdx = _Demo_PVR_RecHandler2Idx(u8heventIdx);
-            DEMO_PVR_CHECK_REC_IDX(u8eventIdx,);
+            u8PVRHandle = (MS_U8)pstEventInfo->u32Data[0];
+            u8PVRIdx = _Demo_PVR_RecHandler2Idx(u8PVRHandle);
+            DEMO_PVR_CHECK_REC_IDX(u8PVRIdx,);
 
-            printf("[%s][%d]record idx = %d   record size=%"DTC_MS_U32_u" KByte, Record NOOOOOOOOOOO Data\n",__FUNCTION__,__LINE__,u8eventIdx,event->u32Data[1]);
+            printf("[%s][%d]record idx = %d   record size=%"DTC_MS_U32_u" KByte, Record NOOOOOOOOOOO Data\n",__FUNCTION__,__LINE__,u8PVRIdx,pstEventInfo->u32Data[1]);
             break;
 
         case EN_APIPVR_EVENT_NOTIFY_PLAYBACK_TIME:
-            DemoPvrEvent_print("[%s][%d]EN_APIPVR_EVENT_NOTIFY_PLAYBACK_TIME,%"DTC_MS_U32_u" sec\n",__FUNCTION__,__LINE__,event->u32Data[1]);
-            u8heventIdx = (MS_U8)event->u32Data[0];
-            u8eventIdx = _Demo_PVR_PlayHandler2Idx(u8heventIdx);
+            DemoPvrEvent_print("[%s][%d]EN_APIPVR_EVENT_NOTIFY_PLAYBACK_TIME,%"DTC_MS_U32_u" sec\n",__FUNCTION__,__LINE__,pstEventInfo->u32Data[1]);
+            u8PVRHandle = (MS_U8)pstEventInfo->u32Data[0];
+            u8PVRIdx = _Demo_PVR_PlayHandler2Idx(u8PVRHandle);
             //printf("frame count: main:%d sub:%d",MApi_VDEC_EX_GetFrameCnt(_Demo_PVR_GetVidStreamID(0)),MApi_VDEC_EX_GetFrameCnt(_Demo_PVR_GetVidStreamID(1)));
 
-            DEMO_PVR_CHECK_PB(u8eventIdx,);
+            DEMO_PVR_CHECK_PB(u8PVRIdx,);
 
-            u32PlaybackTime[u8eventIdx] = event->u32Data[1];
+            u32LastPlaybackTime[u8PVRIdx] = _u32PlaybackTime[u8PVRIdx];
+            _u32PlaybackTime[u8PVRIdx] = pstEventInfo->u32Data[1];
+
 
             if(_bShowPlayTime)
             {
-                printf("Play Time [%u][%02d:%02d:%02d] \n",u8eventIdx,(int)(u32PlaybackTime[u8eventIdx]/3600),(int)((u32PlaybackTime[u8eventIdx]%3600)/60),(int)((u32PlaybackTime[u8eventIdx]%3600)%60));
+                printf("Play Time [%u][%02d:%02d:%02d] \n",u8PVRIdx,(int)(_u32PlaybackTime[u8PVRIdx]/3600),(int)((_u32PlaybackTime[u8PVRIdx]%3600)/60),(int)((_u32PlaybackTime[u8PVRIdx]%3600)%60));
+            }
+            if(_bAutoScriptJumpToTime == FALSE && _bAutoScriptDbg == TRUE && u32LastPlaybackTime[u8PVRIdx] > 0)
+            {
+                if(u32LastPlaybackTime[u8PVRIdx] > _u32PlaybackTime[u8PVRIdx] && (u32LastPlaybackTime[u8PVRIdx] - _u32PlaybackTime[u8PVRIdx]) > PVR_PLAYBACKTIME_INTERVAL)
+                {
+                    printf("\33[31mTimestamp incorrect!!!!, u32LastPlaybackTime = %"DTC_MS_U32_u" u32PlaybackTime = %"DTC_MS_U32_u", u8PVRIdx = %u\33[m\n" ,u32LastPlaybackTime[u8PVRIdx], _u32PlaybackTime[u8PVRIdx], u8PVRIdx);
+                }
+                else if(u32LastPlaybackTime[u8PVRIdx] < _u32PlaybackTime[u8PVRIdx] && (_u32PlaybackTime[u8PVRIdx] - u32LastPlaybackTime[u8PVRIdx]) > PVR_PLAYBACKTIME_INTERVAL)
+                {
+                    printf("\33[31mTimestamp incorrect!!!!, u32LastPlaybackTime = %"DTC_MS_U32_u" u32PlaybackTime = %"DTC_MS_U32_u", u8PVRIdx = %u\33[m\n" ,u32LastPlaybackTime[u8PVRIdx], _u32PlaybackTime[u8PVRIdx], u8PVRIdx);
+                }
+
+            }
+            else if(_bAutoScriptJumpToTime == TRUE && _bAutoScriptDbg == TRUE)
+            {
+                _bAutoScriptJumpToTime = FALSE;
             }
             break;
 
         case EN_APIPVR_EVENT_NOTIFY_PLAYBACK_SIZE:
-            u8heventIdx = (MS_U8)event->u32Data[0];
-            u8eventIdx = _Demo_PVR_PlayHandler2Idx(u8heventIdx);
-            DemoPvrEvent_print("[%s][%d]Playback idx = %d  Playback size=%"DTC_MS_U32_u" KByte\n",__FUNCTION__,__LINE__,u8eventIdx,event->u32Data[1]);
+            u8PVRHandle = (MS_U8)pstEventInfo->u32Data[0];
+            u8PVRIdx = _Demo_PVR_PlayHandler2Idx(u8PVRHandle);
+            DemoPvrEvent_print("[%s][%d]Playback idx = %d  Playback size=%"DTC_MS_U32_u" KByte\n",__FUNCTION__,__LINE__,u8PVRIdx,pstEventInfo->u32Data[1]);
 
-            DEMO_PVR_CHECK_PB(u8eventIdx,);
+            DEMO_PVR_CHECK_PB(u8PVRIdx,);
             break;
 
         case EN_APIPVR_EVENT_NOTIFY_FILE_BEGIN:
-            u8heventIdx = (MS_U8)event->u32Data[0];
-            u8eventIdx = _Demo_PVR_PlayHandler2Idx(u8heventIdx);
+            u8PVRHandle = (MS_U8)pstEventInfo->u32Data[0];
+            u8PVRIdx = _Demo_PVR_PlayHandler2Idx(u8PVRHandle);
             DemoPvrEvent_print("EN_PVR_EVENT_NOTIFY_FILE_BEGIN \n");
-            MApi_PVR_PlaybackSetSpeed(u8heventIdx,APIPVR_PLAYBACK_SPEED_1X);
+            MApi_PVR_PlaybackSetSpeed(u8PVRHandle,APIPVR_PLAYBACK_SPEED_1X);
             DemoPvrEvent_print("SetSpeed APIPVR_PLAYBACK_SPEED_1X\n");
             break;
 
         //need implement pvr playback resume flow in event "EN_APIPVR_EVENT_NOTIFY_FILE_END_RESUME"
         //if MApi_PVR_PlaybackSetFileEndAutoResume(TRUE) is set
         case EN_APIPVR_EVENT_NOTIFY_FILE_END_RESUME:
-            u8heventIdx = (MS_U8)event->u32Data[0];
-            u8eventIdx = _Demo_PVR_PlayHandler2Idx(u8heventIdx);
-            MApi_PVR_PlaybackSetSpeed(u8heventIdx,APIPVR_PLAYBACK_SPEED_1X);
+            u8PVRHandle = (MS_U8)pstEventInfo->u32Data[0];
+            u8PVRIdx = _Demo_PVR_PlayHandler2Idx(u8PVRHandle);
+            MApi_PVR_PlaybackSetSpeed(u8PVRHandle,APIPVR_PLAYBACK_SPEED_1X);
             printf("EN_APIPVR_EVENT_NOTIFY_FILE_END_RESUME\n");
             break;
 
         case EN_APIPVR_EVENT_NOTIFY_PLAYBACK_SUSPEND:
             //Dynamic PMT change flow for DMX / AV / XC Initialization and PVR resume playback
-            u8heventIdx = (MS_U8)event->u32Data[0];
-            u8eventIdx = _Demo_PVR_PlayHandler2Idx(u8heventIdx);
-            _Demo_PVR_ChangePMTEvent((Ex_PVRPlaybackPath)u8eventIdx, event->u32Data[1]);
+            u8PVRHandle = (MS_U8)pstEventInfo->u32Data[0];
+            u8PVRIdx = _Demo_PVR_PlayHandler2Idx(u8PVRHandle);
+            _Demo_PVR_ChangePMTEvent((Ex_PVRPlaybackPath)u8PVRIdx, pstEventInfo->u32Data[1]);
             printf("EN_APIPVR_EVENT_NOTIFY_PLAYBACK_SUSPEND\n");
             break;
 
@@ -1741,22 +2505,22 @@ static void _Demo_PVR_Callback(PVREventInfo_t *event)
         //three event for data waiting scheme , that is,  data buffering start, data buffering done, data buffering timeout
         //playback maybe abort in waiting data flow if data buffering timeout happended!
         case EN_APIPVR_EVENT_NOTIFY_PLAYBACK_DATABUFFERING_STATUS:
-            DemoPvrEvent_print("[%s][%d]EN_APIPVR_EVENT_NOTIFY_PLAYBACK_DATABUFFERING_STATUS(%"DTC_MS_U32_u") ",__FUNCTION__,__LINE__,event->u32Data[1]);
-            u8heventIdx = (MS_U8)event->u32Data[0];
-            u8eventIdx = _Demo_PVR_PlayHandler2Idx(u8heventIdx);
+            DemoPvrEvent_print("[%s][%d]EN_APIPVR_EVENT_NOTIFY_PLAYBACK_DATABUFFERING_STATUS(%"DTC_MS_U32_u") ",__FUNCTION__,__LINE__,pstEventInfo->u32Data[1]);
+            u8PVRHandle = (MS_U8)pstEventInfo->u32Data[0];
+            u8PVRIdx = _Demo_PVR_PlayHandler2Idx(u8PVRHandle);
             //printf("frame count: main:%d sub:%d",MApi_VDEC_EX_GetFrameCnt(_Demo_PVR_GetVidStreamID(0)),MApi_VDEC_EX_GetFrameCnt(_Demo_PVR_GetVidStreamID(1)));
 
-            DEMO_PVR_CHECK_PB(u8eventIdx,);
+            DEMO_PVR_CHECK_PB(u8PVRIdx,);
 
-            if (event->u32Data[1] == EN_APIPVR_PLAYBACK_DATABUFFERING_START)
+            if (pstEventInfo->u32Data[1] == EN_APIPVR_PLAYBACK_DATABUFFERING_START)
             {
                 printf("Data Buffering Start\n");
             }
-            else if (event->u32Data[1] == EN_APIPVR_PLAYBACK_DATABUFFERING_DONE)
+            else if (pstEventInfo->u32Data[1] == EN_APIPVR_PLAYBACK_DATABUFFERING_DONE)
             {
                 printf("Data Buffering Done\n");
             }
-            else if (event->u32Data[1] == EN_APIPVR_PLAYBACK_DATABUFFERING_TIMEOUT)
+            else if (pstEventInfo->u32Data[1] == EN_APIPVR_PLAYBACK_DATABUFFERING_TIMEOUT)
             {
                 printf("Data Buffering Timeout\n");
             }
@@ -1767,26 +2531,29 @@ static void _Demo_PVR_Callback(PVREventInfo_t *event)
         case EN_APIPVR_EVENT_NOTIFY_THUMBNAIL_AUTO_CAPTURE:
             break;
         default :
-            DemoPvrEvent_print("default  enEvent=%d\n",event->pvrEvent);
+            DemoPvrEvent_print("default  enEvent=%d\n",pstEventInfo->pvrEvent);
             break;
     }
 }
 
 static void _Demo_PVR_Task(MS_U32 argc, void *argv)
 {
-    PVREventInfo_t pvrEvent;
+    PVREventInfo_t stEventInfo;
     MS_U32 u32MessageSize ;
 
-    memset((void *)&pvrEvent,0,sizeof(PVREventInfo_t));
+    memset((void *)&stEventInfo,0,sizeof(PVREventInfo_t));
 
-    while(_s32QueueID != -1)
+    while(_gbPvrEventExit != TRUE)
     {
-        if(TRUE==MsOS_RecvFromQueue(_s32QueueID, (MS_U8 *)&pvrEvent, sizeof(PVREventInfo_t), &u32MessageSize, MSOS_WAIT_FOREVER))
+        if(TRUE==MsOS_RecvFromQueue(_s32QueueID, (MS_U8 *)&stEventInfo, sizeof(PVREventInfo_t), &u32MessageSize, MSOS_WAIT_FOREVER))
         {
-            //printf("Recv pvrEvent %d,%d,%d\n",pvrEvent.pvrMode,pvrEvent.pvrEvent,pvrEvent.u32Data);
-            _Demo_PVR_Callback(&pvrEvent);
+            //printf("Recv stEventInfo %d,%d,%d\n",stEventInfo.pvrMode,stEventInfo.pvrEvent,stEventInfo.u32Data);
+            _Demo_PVR_Callback(&stEventInfo);
         }
+
     }
+    printf("_Demo_PVR_Task terminated successfully\n");
+    MsOS_SetEvent(_gs32PvrEvtGrp, PVR_EVENT_DESTROY_PROC_EXIT);
 }
 
 static MS_BOOL _Demo_PVR_InsertFilter(PVRFilterInfo_t *pFilter, MS_U16 u16PID, MS_U32 u32DmxFltType,MS_U32 *pu32Idx)
@@ -1833,8 +2600,6 @@ static MS_U16 _Demo_PVR_FindPidinFilter(PVRFilterInfo_t *pFilter,MS_U32 u32DmxFl
     }
     return INVALID_PID_ID;
 }
-
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
 
 #if defined(DEMO_PVR_DSCMB_CALLBACK_MODE)
 static MS_BOOL _Demo_PVR_Record_DSCMB_Create(PVR_DSCMB_INFO *stDSCMBInfo)
@@ -1955,7 +2720,12 @@ static MS_BOOL _Demo_PVR_DSCMB_GetLiveInfo(MS_U32 u32DeviceID, PVR_DSCMB_INFO *s
     {
         if (stLiveDSCMBInfo.bConnectStatus == TRUE)
         {
-            memset(stDSCMBInfo, 0, sizeof(stDEMODSCMBINFO));
+            memset(stDSCMBInfo, 0, sizeof(PVR_DSCMB_INFO));
+            if( (strlen((char *)stLiveDSCMBInfo.u8Type) > PVR_DSCMB_INFO_CW_SIZE) || (strlen((char *)stLiveDSCMBInfo.u8StrOddCW) > PVR_DSCMB_INFO_CW_SIZE) || (strlen((char *)stLiveDSCMBInfo.u8StrEvenCW) > PVR_DSCMB_INFO_CW_SIZE) )
+            {
+                printf("[%s][%d] DSCM CW Size is over %d\n",__FUNCTION__,__LINE__, PVR_DSCMB_INFO_CW_SIZE);
+                return FALSE;
+            }
             memcpy(stDSCMBInfo->u8Type, stLiveDSCMBInfo.u8Type, strlen((char *)stLiveDSCMBInfo.u8Type));
             memcpy(stDSCMBInfo->u8StrOddCW, stLiveDSCMBInfo.u8StrOddCW, strlen((char *)stLiveDSCMBInfo.u8StrOddCW));
             memcpy(stDSCMBInfo->u8StrEvenCW, stLiveDSCMBInfo.u8StrEvenCW, strlen((char *)stLiveDSCMBInfo.u8StrEvenCW));
@@ -1994,17 +2764,13 @@ static MS_BOOL _Demo_PVR_DSCMB_Live_Disconnect(MS_U32 *u32DeviceID, PVR_DSCMB_IN
     }
     return FALSE;
 }
-#endif
 
 static MS_BOOL _Demo_PVR_ResetProgramInfo(PVRProgramInfo_t *pPromInfo, MS_BOOL bOnlyResetPIDs)
 {
     int i=0;
     DemoPvr_print("%s@%d :: %p\n",__FUNCTION__,__LINE__,pPromInfo);
 
-    if(pPromInfo->Filters!=NULL)
-    {
-        DemoPvr_print("%s@%d:: %p\n",__FUNCTION__,__LINE__,pPromInfo->Filters);
-    }
+
 
     if (!bOnlyResetPIDs)
     {
@@ -2060,13 +2826,13 @@ static APIPVR_AUD_CODEC_TYPE _Demo_PVR_Get_PromInfo_ADEC_Fmt_FromADECDDI(MS_U32 
 {
     switch (u32ACodec)
     {
-        case AUDIO_CODEC_MPEG:
+        case DEMO_AUDIO_CODEC_MPEG:
             return EN_APIPVR_AUD_DVB_MPEG;
-        case AUDIO_CODEC_AC3:
+        case DEMO_AUDIO_CODEC_AC3:
             return EN_APIPVR_AUD_DVB_AC3;
-        case AUDIO_CODEC_AC3P:
+        case DEMO_AUDIO_CODEC_AC3P:
             return EN_APIPVR_AUD_DVB_AC3P;
-        case AUDIO_CODEC_AAC:
+        case DEMO_AUDIO_CODEC_AAC:
             return EN_APIPVR_AUD_DVB_AAC;
         default:
             break;
@@ -2079,17 +2845,17 @@ static MS_U32 _Demo_PVR_Get_ADECDDI_ADEC_Fmt_FromPromInfo(APIPVR_AUD_CODEC_TYPE 
     switch (u32ACodecPromInfo)
     {
         case EN_APIPVR_AUD_DVB_MPEG:
-            return AUDIO_CODEC_MPEG;
+            return DEMO_AUDIO_CODEC_MPEG;
         case EN_APIPVR_AUD_DVB_AC3:
-            return AUDIO_CODEC_AC3;
+            return DEMO_AUDIO_CODEC_AC3;
         case EN_APIPVR_AUD_DVB_AC3P:
-            return AUDIO_CODEC_AC3P;
+            return DEMO_AUDIO_CODEC_AC3P;
         case EN_APIPVR_AUD_DVB_AAC:
-            return AUDIO_CODEC_AAC;
+            return DEMO_AUDIO_CODEC_AAC;
         default:
             break;
     }
-    return AUDIO_CODEC_NONE;
+    return DEMO_AUDIO_CODEC_NONE;
 }
 
 static APIPVR_CODEC_TYPE _Demo_PVR_Get_PromInfo_VDEC_Fmt_FromPVRDDI(MS_U32 u32VCodec)
@@ -2146,6 +2912,72 @@ static MS_U32 _Demo_PVR_Get_VDECDDI_VDEC_Fmt_FromPromInfo(APIPVR_CODEC_TYPE u32V
     return E_VDEC_DDI_CODEC_TYPE_MPEG2;
 }
 
+static MS_BOOL _Demo_PVR_SetAudioStreamInfo(PVRProgramInfo_t *pPromInfo, MS_U32 u32PCRPid, MS_U32 u32VideoPid, MS_U32 u32AudioPid, MS_U32 u32ACodec)
+{
+    st_Audio_PG stAudioStreamInfo;
+    st_PG *pstPG = NULL;
+    MS_U32 u32PgNum = 0;
+    MS_U32 u32ProgIdx = 0;
+    MS_U32 i = 0;
+
+    //First ACodec
+    pPromInfo->u8AudioInfoNum = 1;
+    pPromInfo->AudioInfo[0].u16AudPID = (MS_U16)u32AudioPid;
+    pPromInfo->AudioInfo[0].u8AudType = (MS_U8)u32ACodec;
+
+    Demo_DMX_GetProgramInfo(&pstPG, &u32PgNum);
+    for (i = 0; i < u32PgNum; i++)
+    {
+        if(((u32PCRPid == INVALID_PID_ID) || (u32PCRPid == (pstPG+i)->u32PidPcr)) && ((u32VideoPid == INVALID_PID_ID) || (u32VideoPid == (pstPG+i)->u32PidVideo)) && ((u32AudioPid == INVALID_PID_ID) || Demo_DMX_CheckAudioPgExist(pstPG+i, u32AudioPid)))
+        {
+            u32ProgIdx = i;
+            break;
+        }
+    }
+
+    if(u32ProgIdx > MAX_PG_IN_PAT_DDI)
+    {
+        printf("Program index(%"DTC_MS_U32_u") > maximum program number(%d) !\n", u32ProgIdx, MAX_PG_IN_PAT_DDI);
+        return FALSE;
+    }
+
+    //Insert the other audio information to program information.
+    for(i = 0; i < APIPVR_MAX_AUDIOINFO_NUM; i++)
+    {
+        if(FALSE == Demo_DMX_GetAudioStreamInfo(u32ProgIdx, i, &stAudioStreamInfo))
+        {
+            printf("[%s][%d] Get Audio Stream(%"DTC_MS_U32_u") info failed!!\n", __FUNCTION__, __LINE__, i);
+            return FALSE;
+        }
+
+        if(stAudioStreamInfo.u32PidAudio == INVALID_PID_ID)
+        {
+            continue;
+        }
+
+        if(pPromInfo->AudioInfo[0].u16AudPID == stAudioStreamInfo.u32PidAudio)
+        {
+            pPromInfo->AudioInfo[0].u8ISOAudType = stAudioStreamInfo.u8Lang_audio_type;
+            memcpy((void *)pPromInfo->AudioInfo[0].u8ISOLangInfo, (void *)stAudioStreamInfo.u8Lang, sizeof(pPromInfo->AudioInfo[0].u8ISOLangInfo));
+        }
+        else if(stAudioStreamInfo.u32PidAudio != 0)
+        {
+            pPromInfo->AudioInfo[pPromInfo->u8AudioInfoNum].u16AudPID = (MS_U16)stAudioStreamInfo.u32PidAudio;
+            pPromInfo->AudioInfo[pPromInfo->u8AudioInfoNum].u8AudType = (MS_U8)stAudioStreamInfo.eAudioFmt;
+            pPromInfo->AudioInfo[pPromInfo->u8AudioInfoNum].u8ISOAudType = stAudioStreamInfo.u8Lang_audio_type;
+            memcpy((void *)pPromInfo->AudioInfo[pPromInfo->u8AudioInfoNum].u8ISOLangInfo, (void *)stAudioStreamInfo.u8Lang, sizeof(pPromInfo->AudioInfo[pPromInfo->u8AudioInfoNum].u8ISOLangInfo));
+            DemoPvr_print("pPromInfo->AudioInfo[i].u16AudPID = %u\n",pPromInfo->AudioInfo[pPromInfo->u8AudioInfoNum].u16AudPID);
+            (pPromInfo->u8AudioInfoNum)++;
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return TRUE;
+}
+
 static MS_BOOL _Demo_PVR_SetProgramInfo(PVRProgramInfo_t *pPromInfo,MS_U32 u32PCRPid, MS_U32 u32VideoPid, MS_U32 u32AudioPid, MS_U32 u32VCodec, MS_U32 u32ACodec,MS_U32 u32PmtPid, MS_U32 u32LCN, MS_BOOL bOnlyChangeProgramPIDs)
 {
     MS_U32 u32Idx=0;
@@ -2176,10 +3008,14 @@ static MS_BOOL _Demo_PVR_SetProgramInfo(PVRProgramInfo_t *pPromInfo,MS_U32 u32PC
 
     pPromInfo->u32LCN       = u32LCN;
 
+#if 0
     //First ACodec
     pPromInfo->u8AudioInfoNum = 1;
     pPromInfo->AudioInfo[0].u16AudPID = (MS_U16)u32AudioPid;
     pPromInfo->AudioInfo[0].u8AudType = (MS_U16)u32ACodec;
+#else
+    _Demo_PVR_SetAudioStreamInfo(pPromInfo, u32PCRPid, u32VideoPid, u32AudioPid, u32ACodec);
+#endif
 
 #ifdef PVR_DBG
     DemoPvr_print("========= Start =========  %d\n",_u8CurRecProgramIdx);
@@ -2191,34 +3027,34 @@ static MS_BOOL _Demo_PVR_SetProgramInfo(PVRProgramInfo_t *pPromInfo,MS_U32 u32PC
     DemoPvr_print("========= End ========= %d\n",_u8CurRecProgramIdx);
 #endif
 
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-    pPromInfo->bIsEncrypted = TRUE;
-    #if (DEMO_PVR_SUPPORT_DYNAMICKEY_TEST == 1)
-    pPromInfo->enEncryptionType     = EN_APIPVR_ENCRYPTION_DYNAMICKEY;
-    #else
-        #if defined(DEMO_PVR_DSCMB_SUPPORT_KL)
-    pPromInfo->enEncryptionType     = EN_APIPVR_ENCRYPTION_SMARTCARD;
+    if(b2ndEncryptionEnabled)
+    {
+        pPromInfo->bIsEncrypted = TRUE;
+        #if (DEMO_PVR_SUPPORT_DYNAMICKEY_TEST == 1)
+            pPromInfo->enEncryptionType     = EN_APIPVR_ENCRYPTION_DYNAMICKEY;
         #else
-    pPromInfo->enEncryptionType     = EN_APIPVR_ENCRYPTION_USER;
-
-        #endif // DEMO_PVR_DSCMB_SUPPORT_KL
-    #endif // DEMO_PVR_SUPPORT_DYNAMICKEY_TEST
-#else
-    pPromInfo->bIsEncrypted = FALSE;
-    pPromInfo->enEncryptionType     = EN_APIPVR_ENCRYPTION_NONE;
-#endif
+            #if defined(DEMO_PVR_DSCMB_SUPPORT_KL)
+            pPromInfo->enEncryptionType     = EN_APIPVR_ENCRYPTION_SMARTCARD;
+            #else
+            pPromInfo->enEncryptionType     = EN_APIPVR_ENCRYPTION_USER;
+            #endif // DEMO_PVR_DSCMB_SUPPORT_KL
+        #endif // DEMO_PVR_SUPPORT_DYNAMICKEY_TEST
+    }
+    else
+    {
+        pPromInfo->bIsEncrypted = FALSE;
+        pPromInfo->enEncryptionType     = EN_APIPVR_ENCRYPTION_NONE;
+    }
 
     //Insert as last item;
     _Demo_PVR_InsertFilter(&pPromInfo->Filters[0], (MS_U16)0x00, (MS_U32)DMX_FILTER_TYPE_SECTION,&u32Idx);
 
+    pPromInfo->u64FileSliceSize = _u64FileSliceSize;
     return TRUE;
 }
 
 static MS_BOOL _Demo_PVR_RecStart(MS_BOOL bTimeshift, MS_U32 u32FreeSizeInMB)
 {
-    MS_BOOL bRet=FALSE;
-    MS_BOOL bRecordOpen = FALSE;
-    MS_BOOL bRecordStart = FALSE;
     MS_BOOL bRecordAll=FALSE;
     PVR_AV_ID_t AVStreamID;
 
@@ -2232,7 +3068,7 @@ static MS_BOOL _Demo_PVR_RecStart(MS_BOOL bTimeshift, MS_U32 u32FreeSizeInMB)
         }
 #else
         printf("Already record!\n");
-        return bRet;
+        return FALSE;
 #endif
     }
 
@@ -2246,8 +3082,8 @@ static MS_BOOL _Demo_PVR_RecStart(MS_BOOL bTimeshift, MS_U32 u32FreeSizeInMB)
 
     if(bTimeshift)
     {
-        MS_U64 u64FreeSpaceInKB=u32FreeSizeInMB<<10;
-
+        MS_U64 u64FreeSpaceInKB=((MS_U64)u32FreeSizeInMB)<<10;
+        MS_U64 u64FileSizeInKB = (_u64FileSizeInKB == PVR_FILE_SIZE_MAX)? u64FreeSpaceInKB : _u64FileSizeInKB;
         _AVStreamID[_eCurPlaybackProgramPath].vstreamID = _Demo_PVR_GetVidStreamID(&_eCurPlaybackProgramPath);
         _AVStreamID[_eCurPlaybackProgramPath].astreamID = _Demo_PVR_GetAudStreamID(&_eCurPlaybackProgramPath);
         if (_AVStreamID[_eCurPlaybackProgramPath].vstreamID == NULL)
@@ -2256,7 +3092,8 @@ static MS_BOOL _Demo_PVR_RecStart(MS_BOOL bTimeshift, MS_U32 u32FreeSizeInMB)
             goto _Demo_PVR_RecStart_fail;
         }
         MApi_PVR_EX_FreezeScreenInTimeshiftRecord(_eCurPlaybackProgramPath,EN_APIPVR_ACTION_TYPE_SET, &_bScreenFrozen[_eCurPlaybackProgramPath]);
-        MApi_PVR_SetTimeshiftFileSize(u64FreeSpaceInKB);//limited to 4G
+        MApi_PVR_SetRecordFileSize(_u8CurRecProgramIdx, u64FileSizeInKB);//limited to 4G
+        _u64FileSizeInKB = PVR_FILE_SIZE_MAX;
 #if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
         if(_bBackgroundRecord[_u8CurRecProgramIdx] == TRUE)
         {
@@ -2275,7 +3112,11 @@ static MS_BOOL _Demo_PVR_RecStart(MS_BOOL bTimeshift, MS_U32 u32FreeSizeInMB)
             }
         }
 
-        bRecordOpen = MApi_PVR_EX_TimeshiftRecordEngSet(&_u8hRecord[_u8CurRecProgramIdx],(void *)(&_AVStreamID[_eCurPlaybackProgramPath]),_u8CurRecProgramIdx,_eCurPlaybackProgramPath);
+        if(FALSE == MApi_PVR_EX_TimeshiftRecordEngSet(&_u8hRecord[_u8CurRecProgramIdx],(void *)(&_AVStreamID[_eCurPlaybackProgramPath]),_u8CurRecProgramIdx,_eCurPlaybackProgramPath))
+        {
+            printf("Record eng set fail!\n");
+            goto _Demo_PVR_RecStart_fail;
+        }
 
 #if defined(DEMO_PVR_DSCMB_CALLBACK_MODE)
         if (_Demo_PVR_Record_DSCMB_SetInfo(&stPVRRecordDSCMBInfo[_u8CurRecProgramIdx]) != TRUE)
@@ -2284,20 +3125,20 @@ static MS_BOOL _Demo_PVR_RecStart(MS_BOOL bTimeshift, MS_U32 u32FreeSizeInMB)
             goto _Demo_PVR_RecStart_fail;
         }
 #endif
-        bRecordStart = MApi_PVR_EX_TimeshiftRecordEngEnable(&_u8hRecord[_u8CurRecProgramIdx]);
-
-        DemoPvr_print("[%s][%d] timeshift record start [%d]=%d bRet=%d\n",__FUNCTION__,__LINE__,_u8CurRecProgramIdx,_u8hRecord[_u8CurRecProgramIdx],bRet);
-#if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
-        printf("[%s][%d]_u8BackProgramIdx:%u\n\n",__FUNCTION__,__LINE__,_u8BackProgramIdx);
-        if(_bBackgroundRecord[_u8CurRecProgramIdx] == TRUE)
+        if( FALSE == MApi_PVR_EX_TimeshiftRecordEngEnable(&_u8hRecord[_u8CurRecProgramIdx]))
         {
-            if((bRecordOpen == FALSE) || (bRecordStart == FALSE))
+        #if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
+            printf("[%s][%d]_u8BackProgramIdx:%u\n\n",__FUNCTION__,__LINE__,_u8BackProgramIdx);
+            if(_bBackgroundRecord[_u8CurRecProgramIdx] == TRUE)
             {
                 printf("\033[45;37m ### TimeshiftSeamless Start Failed ### \033[0m\n");
-                Demo_PVR_Timeshift_RecordStop();
             }
+        #endif
+            Demo_PVR_Timeshift_RecordStop();
+            goto _Demo_PVR_RecStart_fail;
         }
-#endif
+
+        DemoPvr_print("[%s][%d] timeshift record start [%d]=%d bRet=%d\n",__FUNCTION__,__LINE__,_u8CurRecProgramIdx,_u8hRecord[_u8CurRecProgramIdx],bRet);
     }
     else
     {
@@ -2309,7 +3150,19 @@ static MS_BOOL _Demo_PVR_RecStart(MS_BOOL bTimeshift, MS_U32 u32FreeSizeInMB)
         AVStreamID.vstreamID = (void *)(&_NullVidStreamID);
         AVStreamID.astreamID = (void *)(&_NullAudStreamID);
 
-        bRecordOpen = MApi_PVR_EX_RecordEngSet(&_u8hRecord[_u8CurRecProgramIdx],(void *)(&AVStreamID),_u8CurRecProgramIdx, APIPVR_FILE_LINEAR, u32FreeSizeInMB,0);
+        MS_U64 u64FileSizeInMB = (_u64FileSizeInKB == PVR_FILE_SIZE_MAX)? u32FreeSizeInMB : _u64FileSizeInKB/1024;
+
+        if(_bBoundedLinearRecord)
+            MApi_PVR_SetRecordFileSize(_u8CurRecProgramIdx, _u64FileSizeInKB);
+
+        if(FALSE == MApi_PVR_EX_RecordEngSet(&_u8hRecord[_u8CurRecProgramIdx],(void *)(&AVStreamID),_u8CurRecProgramIdx, APIPVR_FILE_LINEAR, u64FileSizeInMB,_u32Duration))
+        {
+            printf("Record eng set fail!\n");
+            goto _Demo_PVR_RecStart_fail;
+        }
+
+        _u64FileSizeInKB = PVR_FILE_SIZE_MAX;
+        _u32Duration = 0;
 
 #if defined(DEMO_PVR_DSCMB_CALLBACK_MODE)
         if (_Demo_PVR_Record_DSCMB_SetInfo(&stPVRRecordDSCMBInfo[_u8CurRecProgramIdx]) != TRUE)
@@ -2318,7 +3171,11 @@ static MS_BOOL _Demo_PVR_RecStart(MS_BOOL bTimeshift, MS_U32 u32FreeSizeInMB)
             goto _Demo_PVR_RecStart_fail;
         }
 #endif
-        bRecordStart = MApi_PVR_EX_RecordEngEnable(&_u8hRecord[_u8CurRecProgramIdx],bRecordAll);
+        if( FALSE == MApi_PVR_EX_RecordEngEnable(&_u8hRecord[_u8CurRecProgramIdx],bRecordAll))
+        {
+            Demo_PVR_Record_Stop();
+            goto _Demo_PVR_RecStart_fail;
+        }
         DemoPvr_print("[%s][%d] record start %d\n",__FUNCTION__,__LINE__,_u8hRecord[_u8CurRecProgramIdx]);
     }
 
@@ -2327,8 +3184,7 @@ static MS_BOOL _Demo_PVR_RecStart(MS_BOOL bTimeshift, MS_U32 u32FreeSizeInMB)
     MS_U32 intervelTime = 10000;
     _Demo_PVR_SetDynamicKey(&_u8CurRecProgramIdx, &cmd, &intervelTime);
 #endif
-    bRet = bRecordOpen || bRecordStart;
-    return bRet;
+    return TRUE;
 
 _Demo_PVR_RecStart_fail:
 #if defined(DEMO_PVR_DSCMB_CALLBACK_MODE)
@@ -2340,7 +3196,6 @@ _Demo_PVR_RecStart_fail:
 #if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
 static MS_BOOL _Demo_PVR_Background_RecStart(void)
 {
-    MS_BOOL bRet=FALSE;
     MS_BOOL bRecordAll=FALSE;
     PVR_AV_ID_t AVStreamID;
 
@@ -2351,7 +3206,11 @@ static MS_BOOL _Demo_PVR_Background_RecStart(void)
         DemoPvr_print("[%s][%d] record start %d\n",__FUNCTION__,__LINE__,_u8hRecord[_u8CurRecProgramIdx]);
         //Dscmb Flow
 
-        bRet = MApi_PVR_EX_BackRecordEngSet(&_u8hRecord[_u8CurRecProgramIdx],(void *)(&AVStreamID),_u8CurRecProgramIdx, APIPVR_FILE_CIRCULAR, 0,0);
+        if(FALSE == MApi_PVR_EX_BackRecordEngSet(&_u8hRecord[_u8CurRecProgramIdx],(void *)(&AVStreamID),_u8CurRecProgramIdx, APIPVR_FILE_CIRCULAR, 0,0))
+        {
+            printf("Back record eng set fail!\n");
+            return FALSE;
+        }
 
 #if defined(DEMO_PVR_DSCMB_CALLBACK_MODE)
         if (_Demo_PVR_Record_DSCMB_SetInfo(&stPVRBackRecordDSCMBInfo[_u8CurRecProgramIdx]) != TRUE)
@@ -2360,17 +3219,22 @@ static MS_BOOL _Demo_PVR_Background_RecStart(void)
             goto _Demo_PVR_Background_RecStart_fail;
         }
 #endif
-        MApi_PVR_EX_RecordEngEnable(&_u8hRecord[_u8CurRecProgramIdx],bRecordAll);
+        if(FALSE == MApi_PVR_EX_RecordEngEnable(&_u8hRecord[_u8CurRecProgramIdx],bRecordAll))
+        {
+            printf("Back record eng enable fail!\n");
+            Demo_PVR_SeamlessBackRecordStop();
+            goto _Demo_PVR_Background_RecStart_fail;
+        }
     }
     else
     {
         printf("Already record in idx:%d \n",_u8hRecord[_u8CurRecProgramIdx]);
     }
 
-    return bRet;
+    return TRUE;
 
-#if defined(DEMO_PVR_DSCMB_CALLBACK_MODE)
 _Demo_PVR_Background_RecStart_fail:
+#if defined(DEMO_PVR_DSCMB_CALLBACK_MODE)
    _Demo_PVR_Record_DSCMB_Destroy(&stPVRRecordDSCMBInfo[_u8CurRecProgramIdx]);
 #endif
     return FALSE;
@@ -2391,32 +3255,44 @@ static MS_BOOL _Demo_PVR_BackgroundRecordStart(MS_U32 u32VideoPid, MS_U32 u32Aud
         return FALSE;
     }
 
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-    #if (DEMO_PVR_SUPPORT_DYNAMICKEY_TEST == 1)
+    if(b2ndEncryptionEnabled)
+    {
+        #if (DEMO_PVR_SUPPORT_DYNAMICKEY_TEST == 1)
         _backrecprogramInfo[_u8CurRecProgramIdx].enEncryptionType = EN_APIPVR_ENCRYPTION_DYNAMICKEY;
         printf("Apply PVR CA mode(EN_APIPVR_ENCRYPTION_DYNAMICKEY)!\n");
-    #else
-        #if defined(DEMO_PVR_DSCMB_SUPPORT_KL)
-        _backrecprogramInfo[_u8CurRecProgramIdx].enEncryptionType = EN_APIPVR_ENCRYPTION_SMARTCARD;
-        printf("Apply PVR CA mode(EN_APIPVR_ENCRYPTION_SMARTCARD)!\n");
-        #else // defined(DEMO_PVR_DSCMB_SUPPORT_KL)
-        _backrecprogramInfo[_u8CurRecProgramIdx].enEncryptionType = EN_APIPVR_ENCRYPTION_USER;
-        printf("Apply PVR CA mode(EN_APIPVR_ENCRYPTION_USER)!\n");
-        //!!!Notice: Before release record clear stream lib or source code to customer, need follow formal release rule!!!//
-        //!!!for details, please contact the HQ PVR module owner about the release flow!!!//
-        //_recprogramInfo[_u8CurRecProgramIdx].enEncryptionType     = EN_APIPVR_ENCRYPTION_CLEAR;//record to clear from scrambled, no encryption anymore
-        #endif // defined(DEMO_PVR_DSCMB_SUPPORT_KL)
-    #endif // DEMO_PVR_SUPPORT_DYNAMICKEY_TEST
-#else //(DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
+        #else
+            #if defined(DEMO_PVR_DSCMB_SUPPORT_KL)
+            _backrecprogramInfo[_u8CurRecProgramIdx].enEncryptionType = EN_APIPVR_ENCRYPTION_SMARTCARD;
+            printf("Apply PVR CA mode(EN_APIPVR_ENCRYPTION_SMARTCARD)!\n");
+            #else // defined(DEMO_PVR_DSCMB_SUPPORT_KL)
+            _backrecprogramInfo[_u8CurRecProgramIdx].enEncryptionType = EN_APIPVR_ENCRYPTION_USER;
+            printf("Apply PVR CA mode(EN_APIPVR_ENCRYPTION_USER)!\n");
+            //!!!Notice: Before release record clear stream lib or source code to customer, need follow formal release rule!!!//
+            //!!!for details, please contact the HQ PVR module owner about the release flow!!!//
+            //_recprogramInfo[_u8CurRecProgramIdx].enEncryptionType     = EN_APIPVR_ENCRYPTION_CLEAR;//record to clear from scrambled, no encryption anymore
+            #endif // defined(DEMO_PVR_DSCMB_SUPPORT_KL)
+        #endif // DEMO_PVR_SUPPORT_DYNAMICKEY_TEST
+    }
+    else
+    {
         _backrecprogramInfo[_u8CurRecProgramIdx].enEncryptionType = EN_APIPVR_ENCRYPTION_NONE;
         printf("Not Apply PVR CA mode(EN_APIPVR_ENCRYPTION_NONE)!\n");
-#endif
+    }
+
     // [01] =============== Store meta data =========================================//
     if(!MApi_PVR_SetBackRecordMetaData(&_backrecprogramInfo[_u8CurRecProgramIdx],_u8CurRecProgramIdx,0,0,0,0))
     {
         printf("[%s][%d]Set MetaData Fail!!\n",__FUNCTION__,__LINE__);
         return FALSE;
     }
+
+    // For merge stream, pass source id to MW
+    if(!MApi_PVR_SetRecordSourceID(_u8CurRecProgramIdx, (MS_U8)_eCurDMXFltSourceID[_u8CurRecProgramIdx]))
+    {
+        printf("[ERROR] Can't set source id!\n");
+        return FALSE;
+    }
+
     // [02] ======== DMX Flowset and PID open =====================================//
     if(_u8CurRecProgramIdx < _u8TotalRecorder)
     {
@@ -2443,11 +3319,6 @@ static MS_BOOL _Demo_PVR_RecStop(MS_BOOL bTimeshift, MS_U8 u8ProgramIdx)
         printf("[%s][%d] Already stop recording %d\n",__FUNCTION__,__LINE__,_u8hRecord[u8ProgramIdx]);
         return TRUE;
     }
-    if(!MApi_PVR_IsRecording(_u8hRecord[u8ProgramIdx]))
-    {
-        printf("Idx %d stopped recording already!\n",u8ProgramIdx);
-        return FALSE;
-    }
 
 #if (DEMO_PVR_SUPPORT_DYNAMICKEY_TEST == 1)
     // @NOTE DynamicKey Add
@@ -2470,7 +3341,7 @@ static MS_BOOL _Demo_PVR_RecStop(MS_BOOL bTimeshift, MS_U8 u8ProgramIdx)
         u8PlaybackIdx =  _Demo_PVR_Timeshift_GetPlaybackIdx(u8ProgramIdx);
         if (u8PlaybackIdx != PVR_PATH_INVALID)
         {
-            bRet=MApi_PVR_EX_TimeshiftRecordStop(&_u8hRecord[u8ProgramIdx],(void *)&_AVStreamID[_eCurPlaybackProgramPath],&_u8hPVRPlayback[u8PlaybackIdx],u8ProgramIdx,_eCurPlaybackProgramPath);
+            bRet=MApi_PVR_EX_TimeshiftRecordStop(&_u8hRecord[u8ProgramIdx],(void *)&_AVStreamID[_eCurPlaybackProgramPath],&_u8hPlayback[u8PlaybackIdx],u8ProgramIdx,_eCurPlaybackProgramPath);
         }
         DemoPvr_print("[%s][%d] timeshift record stop %d\n",__FUNCTION__,__LINE__,_u8hRecord[u8ProgramIdx]);
     }
@@ -2497,6 +3368,7 @@ MS_BOOL Demo_PVR_SeamlessBackRecordStop(void)
 {
     DEMO_PVR_CHECK_INIT();
     MS_BOOL bRet = FALSE;
+    _u8BackProgramIdx = _u8CurRecProgramIdx;
     DemoPvr_print("Demo_PVR_Record_Stop %d ::%s\n",_u8BackProgramIdx,_backrecprogramInfo[_u8BackProgramIdx].FileName);
 
     if(!PVR_IS_VALID_HANDLER(_u8hRecord[_u8BackProgramIdx]))
@@ -2522,7 +3394,6 @@ MS_BOOL Demo_PVR_SeamlessBackRecordStop(void)
         return FALSE;
     }
 #endif
-    _u8TotalProgramNum--;
     _bBackgroundRecord[_u8BackProgramIdx] = FALSE;
 
     return TRUE;
@@ -2534,7 +3405,13 @@ MS_BOOL _Demo_Dmx_GetCurProgram(EN_DEMO_DMX_FLOW u8DmxFlow,MS_U32 u32PCRPid,MS_U
     st_PG *pstPG = NULL;
     MS_U32 u32PgNum;
     MS_U32 i=0;
+    MS_BOOL bRes = FALSE;
     //printf("[%s][%d]     u16PCRPid=0x%04x, u16VideoPid0x%04x, u16AudioPid0x%04x\n", __FUNCTION__, __LINE__, u16PCRPid, u16VideoPid, u16AudioPid);
+
+    // For merge stream, before doing dmx scan, change source id to source id of current record idx
+    EN_DEMO_DMX_FLT_SOURCEID eTempSrcID = Demo_DMX_GetSrcID(u8DmxFlow);
+    Demo_DMX_SetSrcID(u8DmxFlow, _eCurDMXFltSourceID[_u8CurRecProgramIdx]);
+
     if(Demo_DMX_Scan(u8DmxFlow, FALSE)==TRUE)
     {
         Demo_DMX_GetProgramInfo(&pstPG, &u32PgNum);
@@ -2555,40 +3432,53 @@ MS_BOOL _Demo_Dmx_GetCurProgram(EN_DEMO_DMX_FLOW u8DmxFlow,MS_U32 u32PCRPid,MS_U
 */
                 *pu16PtmPid = (MS_U16)(pstPG+i)->u32PidPmt;
                 *pu16LCN = (MS_U16)(pstPG+i)->u32ProgNum;
-                return TRUE;
+
+                bRes = TRUE;
+                break;
             }
         }
     }
-    return FALSE;
+
+    // For merge stream, recover source id after dmx scan
+    Demo_DMX_SetSrcID(u8DmxFlow, eTempSrcID);
+
+    return bRes;
 }
 
 MS_BOOL _Demo_Dmx_GetLiveProgram(MS_U8 u8LivePath, MS_U32 *u32PCRPid,MS_U32 *u32VideoPid,MS_U32 *u32AudioPid,MS_U32 *u32VCodec,MS_U32 *u32ACodec,MS_U16 *pu16PtmPid,MS_U16 *pu16LCN)
 {
     st_PG *pstPG = NULL;
-    ST_AV_INFO stAVInfo;
+    EN_AV_Device eDevice = (EN_AV_Device)u8LivePath;
     MS_U32 u32PgNum;
     MS_U32 i=0;
+    MS_BOOL bRes = FALSE;
 
-    if (Demo_AV_GetAVInfo((EN_AV_Device)u8LivePath,&stAVInfo)  == FALSE)
+    if (Demo_AV_GetAVInfo(&eDevice,E_AV_GetCmd_LiveInfo,&_stLiveInfo[_eCurPlaybackProgramPath])  == FALSE)
     {
         printf("[%s]Error!!!, Get Live info by Demo_AV_GetAVInfo failed\n",__FUNCTION__);
         return FALSE;
     }
-    *u32AudioPid = (MS_U32)stAVInfo.stAudioParams.u16PID;
-    *u32VideoPid = (MS_U32)stAVInfo.stVideoParams.u16PID;
-    *u32PCRPid = (MS_U32)stAVInfo.stPCRParams.u16PID;
-    *u32VCodec = (MS_U32)stAVInfo.stVideoParams.eVideoCodec;
-    *u32ACodec = (MS_U32)stAVInfo.stAudioParams.eAudioCodec;
-    if (stAVInfo.bInited == FALSE && *u32VideoPid != INVALID_PID_ID)// bInited is set to TRUE in Demo_AV_PlayAV, so for audio only case, we will not return false since it was not initialized in Demo_AV_PlayRadio
+
+
+    *u32AudioPid = (MS_U32)_stLiveInfo[_eCurPlaybackProgramPath].stAudioParams.u16PID;
+    *u32VideoPid = (MS_U32)_stLiveInfo[_eCurPlaybackProgramPath].stVideoParams.u16PID;
+    *u32PCRPid = (MS_U32)_stLiveInfo[_eCurPlaybackProgramPath].stPCRParams.u16PID;
+    *u32VCodec = (MS_U32)_stLiveInfo[_eCurPlaybackProgramPath].stVideoParams.eVideoCodec;
+    *u32ACodec = (MS_U32)_stLiveInfo[_eCurPlaybackProgramPath].stAudioParams.eAudioCodec;
+    if (_stLiveInfo[_eCurPlaybackProgramPath].bInited == FALSE && *u32VideoPid != INVALID_PID_ID)// bInited is set to TRUE in Demo_AV_PlayAV, so for audio only case, we will not return false since it was not initialized in Demo_AV_PlayRadio
     {
         printf("[%s]Error!!!, Get Live PATH(%d) is not alive.\n",__FUNCTION__,u8LivePath);
         return FALSE;
     }
 
+    printf("[%s][%d]Live Program[eFlow:%"DTC_MS_U32_u"]   u32PCRPid=0x%04"DTC_MS_U32_x", u32VideoPid0x%04"DTC_MS_U32_x", u32AudioPid0x%04"DTC_MS_U32_x" u32VCodec:%04"DTC_MS_U32_x" u32ACodec:%04"DTC_MS_U32_x"\n", __FUNCTION__, __LINE__, (MS_U32)_stLiveInfo[_eCurPlaybackProgramPath].stDMXflowParams.eFlow, *u32PCRPid, *u32VideoPid, *u32AudioPid, *u32VCodec, *u32ACodec);
 
+    // For merge stream, before doing dmx scan, change source id to source id of current DTV
+    EN_DEMO_DMX_FLT_SOURCEID eTempDTVSrcID = _stLiveInfo[_eCurPlaybackProgramPath].stDMXflowParams.eDmxFltSourceID;
+    EN_DEMO_DMX_FLT_SOURCEID eTempSrcID = Demo_DMX_GetSrcID(_stLiveInfo[_eCurPlaybackProgramPath].stDMXflowParams.eFlow);
+    Demo_DMX_SetSrcID(_stLiveInfo[_eCurPlaybackProgramPath].stDMXflowParams.eFlow, eTempDTVSrcID);
 
-    printf("[%s][%d]Live Program[eFlow:%"DTC_MS_U32_u"]   u32PCRPid=0x%04"DTC_MS_U32_x", u32VideoPid0x%04"DTC_MS_U32_x", u32AudioPid0x%04"DTC_MS_U32_x" u32VCodec:%04"DTC_MS_U32_x" u32ACodec:%04"DTC_MS_U32_x"\n", __FUNCTION__, __LINE__, (MS_U32)stAVInfo.stDMXflowParams.eFlow, *u32PCRPid, *u32VideoPid, *u32AudioPid, *u32VCodec, *u32ACodec);
-    if(Demo_DMX_Scan(stAVInfo.stDMXflowParams.eFlow, FALSE)==TRUE)
+    if(Demo_DMX_Scan(_stLiveInfo[_eCurPlaybackProgramPath].stDMXflowParams.eFlow, FALSE)==TRUE)
     {
         Demo_DMX_GetProgramInfo(&pstPG, &u32PgNum);
         for (i= 0; i< u32PgNum; i++)
@@ -2608,11 +3498,21 @@ MS_BOOL _Demo_Dmx_GetLiveProgram(MS_U8 u8LivePath, MS_U32 *u32PCRPid,MS_U32 *u32
                             printf("[%s][%d]     264       = %s\n", __FUNCTION__, __LINE__, ((pstPG+i)->b264)? "TRUE": "FALSE");
                             printf("[%s][%d]     AudioFmt  = 0x%08x\n", __FUNCTION__, __LINE__, (pstPG+i)->eAudioFmt);
                             */
-                return TRUE;
+                bRes = TRUE;
+                break;
             }
         }
     }
-   return FALSE;
+
+    // For merge stream, recover source id after dmx scan
+    Demo_DMX_SetSrcID(_stLiveInfo[_eCurPlaybackProgramPath].stDMXflowParams.eFlow, eTempSrcID);
+
+    // There is no live program now. It need to stop the DTV, otherwise the video decoder will initialize fail during playbacking.
+    if(bRes == FALSE)
+    {
+        _DualAVFunc.DualAV_StopAV(&eDevice);
+    }
+    return bRes;
 }
 
 static MS_BOOL _Demo_PVR_StoreProgramInfo(EN_DEMO_DMX_FLOW eDmxPvrInput, MS_BOOL bTimeshift,MS_U32 u32PCRPid, MS_U32 u32VideoPid, MS_U32 u32AudioPid, MS_U32 u32ACodec, MS_U32 u32VCodec , char *fileName)
@@ -2622,24 +3522,31 @@ static MS_BOOL _Demo_PVR_StoreProgramInfo(EN_DEMO_DMX_FLOW eDmxPvrInput, MS_BOOL
     MS_U8 enRecIdx=_u8CurRecProgramIdx;
     MS_U32 u32TempACodec = 0;
     MS_U32 u32TempVCodec = 0;
+    Ex_PVRPlaybackPath ePlaybackidx = PVR_PATH_INVALID;
 
-    // [01] Get relative PID info ==============================================//
     if(bTimeshift)
     {
-        EN_AV_Device eDevice = E_AV_DEVICE_MAIN;
-        Ex_PVRPlaybackPath ePlaybackidx = (Ex_PVRPlaybackPath)_Demo_PVR_Timeshift_GetPlaybackIdx(enRecIdx);
+        ePlaybackidx = (Ex_PVRPlaybackPath)_Demo_PVR_Timeshift_GetPlaybackIdx(enRecIdx);
+        DEMO_PVR_CHECK_PB(ePlaybackidx, FALSE);
+    }
+    // [01] Get relative PID info ==============================================//
 
-        Demo_PVR_Check_AVPath(eDevice, ePlaybackidx,PVR_PATH_MAIN,E_AV_DEVICE_MAIN,PVR_PATH_SUB,E_AV_DEVICE_SUB);
-
-        if(_Demo_Dmx_GetLiveProgram((MS_U8)eDevice, &u32PCRPid, &u32VideoPid, &u32AudioPid, &u32VCodec, &u32ACodec, &u16PmtPid,&u16LCN) == FALSE)
+    if(_Demo_Dmx_GetCurProgram(eDmxPvrInput,u32PCRPid,u32VideoPid,u32AudioPid,&u16PmtPid,&u16LCN) == FALSE)
+    {
+        printf("Fail to get Live TV program PMT and PAT Info.\n");
+        if(bTimeshift)
         {
-            printf("fail to get Live TV Program PMT and PAT Info.\n");
             _livePromInfo[ePlaybackidx].bLive = FALSE;
-            return FALSE;
         }
+        return FALSE;
+    }
 
-        u32TempVCodec = (MS_U32)_Demo_PVR_Get_PromInfo_VDEC_Fmt_FromVDECDDI(u32VCodec);
-        u32TempACodec = (MS_U32)_Demo_PVR_Get_PromInfo_ADEC_Fmt_FromADECDDI(u32ACodec);
+    u32TempVCodec = (MS_U32)_Demo_PVR_Get_PromInfo_VDEC_Fmt_FromPVRDDI(u32VCodec);
+    u32TempACodec = (MS_U32)_Demo_PVR_Get_PromInfo_ADEC_Fmt_FromPVRDDI(u32ACodec);
+
+
+    if(bTimeshift)
+    {
         if(FALSE==_Demo_PVR_SetProgramInfo(&_livePromInfo[ePlaybackidx],u32PCRPid, u32VideoPid, u32AudioPid, u32TempVCodec, u32TempACodec,(MS_U32)u16PmtPid,(MS_U32)u16LCN,FALSE))
         {
             printf("Can't store program info!\n");
@@ -2648,24 +3555,16 @@ static MS_BOOL _Demo_PVR_StoreProgramInfo(EN_DEMO_DMX_FLOW eDmxPvrInput, MS_BOOL
         }
         _livePromInfo[ePlaybackidx].bLive = TRUE;
 
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-        //Get Timeshift Record DSCMB Info From Live Program
-        if (_Demo_PVR_DSCMB_GetLiveInfo((MS_U32)eDevice, &stPVRRecordDSCMBInfo[eDevice]) == TRUE)
+        if(b2ndEncryptionEnabled)
         {
-           DemoPvr_print("Get Timeshift Record(%"DTC_MS_U32_u") DSCMB Info from LIVE => Device:(%"DTC_MS_U32_u") Type:(%s)  CW: Odd(%s) Even(%s)\n",(MS_U32)enRecIdx,(MS_U32)eDevice, stPVRRecordDSCMBInfo[eDevice].u8Type,stPVRRecordDSCMBInfo[eDevice].u8StrOddCW,stPVRRecordDSCMBInfo[eDevice].u8StrEvenCW);
+            EN_AV_Device eDevice = E_AV_DEVICE_MAIN;
+            Demo_PVR_Check_AVPath(eDevice, ePlaybackidx,PVR_PATH_MAIN,E_AV_DEVICE_MAIN,PVR_PATH_SUB,E_AV_DEVICE_SUB);
+            //Get Timeshift Record DSCMB Info From Live Program
+            if (_Demo_PVR_DSCMB_GetLiveInfo((MS_U32)eDevice, &stPVRRecordDSCMBInfo[eDevice]) == TRUE)
+            {
+                DemoPvr_print("Get Timeshift Record(%"DTC_MS_U32_u") DSCMB Info from LIVE => Device:(%"DTC_MS_U32_u") Type:(%s)  CW: Odd(%s) Even(%s)\n",(MS_U32)enRecIdx,(MS_U32)eDevice, stPVRRecordDSCMBInfo[eDevice].u8Type,stPVRRecordDSCMBInfo[eDevice].u8StrOddCW,stPVRRecordDSCMBInfo[eDevice].u8StrEvenCW);
+            }
         }
-#endif
-    }
-    else
-    {
-        if(_Demo_Dmx_GetCurProgram(eDmxPvrInput,u32PCRPid,u32VideoPid,u32AudioPid,&u16PmtPid,&u16LCN) == FALSE)
-        {
-             printf("[PVR Record]fail to Demo_Dmx_GetCurProgram.\n");
-             return FALSE;
-        }
-
-        u32TempVCodec = (MS_U32)_Demo_PVR_Get_PromInfo_VDEC_Fmt_FromPVRDDI(u32VCodec);
-        u32TempACodec = (MS_U32)_Demo_PVR_Get_PromInfo_ADEC_Fmt_FromPVRDDI(u32ACodec);
     }
 
     printf("[Vcodec , Acodec](%"DTC_MS_U32_u",%"DTC_MS_U32_u")\n",u32TempVCodec, u32TempACodec);
@@ -2675,37 +3574,61 @@ static MS_BOOL _Demo_PVR_StoreProgramInfo(EN_DEMO_DMX_FLOW eDmxPvrInput, MS_BOOL
         printf("Can't set program info!\n");
         return FALSE;
     }
+    if(strlen(fileName)>FILE_PATH_SIZE)
+    {
+        printf("fileName size is over %d!\n", FILE_PATH_SIZE);
+        return FALSE;
+    }
+    wcscpy((MS_U16*)_recprogramInfo[_u8CurRecProgramIdx].FileName, (MS_U16*)fileName);
 
-    strcpy(_recprogramInfo[_u8CurRecProgramIdx].FileName,fileName);
+    DemoPvr_print(" _u8CurRecProgramIdx=%d   fileName=",_u8CurRecProgramIdx);
+    wprintf((MS_U16*)_recprogramInfo[_u8CurRecProgramIdx].FileName, TRUE, TRUE);
 
-    DemoPvr_print(" _u8CurRecProgramIdx=%d   fileName=%s\n",_u8CurRecProgramIdx,_recprogramInfo[_u8CurRecProgramIdx].FileName);
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-    #if (DEMO_PVR_SUPPORT_DYNAMICKEY_TEST == 1)
-    _recprogramInfo[_u8CurRecProgramIdx].enEncryptionType = EN_APIPVR_ENCRYPTION_DYNAMICKEY;
-    printf("Apply PVR CA mode(EN_APIPVR_ENCRYPTION_DYNAMICKEY)!\n");
-    #else
-        #if defined(DEMO_PVR_DSCMB_SUPPORT_KL)
-    _recprogramInfo[_u8CurRecProgramIdx].enEncryptionType = EN_APIPVR_ENCRYPTION_SMARTCARD;
-    printf("Apply PVR CA mode(EN_APIPVR_ENCRYPTION_SMARTCARD)!\n");
-        #else//defined(DEMO_PVR_DSCMB_SUPPORT_KL)
-    _recprogramInfo[_u8CurRecProgramIdx].enEncryptionType = EN_APIPVR_ENCRYPTION_USER;
-    printf("Apply PVR CA mode(EN_APIPVR_ENCRYPTION_USER)!(%u)\n",_recprogramInfo[_u8CurRecProgramIdx].enEncryptionType);
-    //!!!Notice: Before release record clear stream lib or source code to customer, need follow formal release rule!!!//
-    //!!!for details, please contact the HQ PVR module owner about the release flow!!!//
-    //_recprogramInfo[_u8CurRecProgramIdx].enEncryptionType     = EN_APIPVR_ENCRYPTION_CLEAR;//record to clear from scrambled, no encryption anymore
-        #endif // defined(DEMO_PVR_DSCMB_SUPPORT_KL)
-    #endif // DEMO_PVR_SUPPORT_DYNAMICKEY_TEST
-#else//(DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-    _recprogramInfo[_u8CurRecProgramIdx].enEncryptionType = EN_APIPVR_ENCRYPTION_NONE;
-    printf("Not Apply PVR CA mode(EN_APIPVR_ENCRYPTION_NONE)!\n");
-#endif
+    if(b2ndEncryptionEnabled)
+    {
+        #if (DEMO_PVR_SUPPORT_DYNAMICKEY_TEST == 1)
+        _recprogramInfo[_u8CurRecProgramIdx].enEncryptionType = EN_APIPVR_ENCRYPTION_DYNAMICKEY;
+        printf("Apply PVR CA mode(EN_APIPVR_ENCRYPTION_DYNAMICKEY)!\n");
+        #else
+            #if defined(DEMO_PVR_DSCMB_SUPPORT_KL)
+            _recprogramInfo[_u8CurRecProgramIdx].enEncryptionType = EN_APIPVR_ENCRYPTION_SMARTCARD;
+            printf("Apply PVR CA mode(EN_APIPVR_ENCRYPTION_SMARTCARD)!\n");
+            #else//defined(DEMO_PVR_DSCMB_SUPPORT_KL)
+            _recprogramInfo[_u8CurRecProgramIdx].enEncryptionType = EN_APIPVR_ENCRYPTION_USER;
+            printf("Apply PVR CA mode(EN_APIPVR_ENCRYPTION_USER)!(%u)\n",_recprogramInfo[_u8CurRecProgramIdx].enEncryptionType);
+            //!!!Notice: Before release record clear stream lib or source code to customer, need follow formal release rule!!!//
+            //!!!for details, please contact the HQ PVR module owner about the release flow!!!//
+            //_recprogramInfo[_u8CurRecProgramIdx].enEncryptionType     = EN_APIPVR_ENCRYPTION_CLEAR;//record to clear from scrambled, no encryption anymore
+            #endif // defined(DEMO_PVR_DSCMB_SUPPORT_KL)
+        #endif // DEMO_PVR_SUPPORT_DYNAMICKEY_TEST
+    }
+    else
+    {
+        _recprogramInfo[_u8CurRecProgramIdx].enEncryptionType = EN_APIPVR_ENCRYPTION_NONE;
+        printf("Not Apply PVR CA mode(EN_APIPVR_ENCRYPTION_NONE)!\n");
+    }
 
-    DemoPvr_print(" _u8TotalProgramNum=%d\n",_u8TotalProgramNum);
     // [02] Store meta data ==============================================//
     //{0,0,0,0} is the user KEY for EN_APIPVR_ENCRYPTION_USER Encryption mode
+    if(_bAppend)
+    {
+        _recprogramInfo[_u8CurRecProgramIdx].bRecordAppend = TRUE;
+        printf("[DemoPVR] Record Append! \n");
+    }
+    else
+    {
+        _recprogramInfo[_u8CurRecProgramIdx].bRecordAppend = FALSE;
+    }
     if(!MApi_PVR_SetMetaData(&_recprogramInfo[_u8CurRecProgramIdx],enRecIdx,0,0,0,0))
     {
         printf("Can't set program info!\n");
+        return FALSE;
+    }
+
+    // For merge stream, pass source id to MW
+    if(!MApi_PVR_SetRecordSourceID(_u8CurRecProgramIdx, (MS_U8)_eCurDMXFltSourceID[_u8CurRecProgramIdx]))
+    {
+        DemoPvr_Errorprint("[ERROR] Can't set source id!\n");
         return FALSE;
     }
 
@@ -2765,7 +3688,15 @@ static MS_BOOL _Demo_PVR_ChangeProgramPIDs(MS_BOOL bTimeshift, EN_DEMO_DMX_FLOW 
         return FALSE;
     }
 
-    DemoPvr_print(" _u8CurProgramIdx=%d   fileName=%s\n",enRecIdx,_recprogramInfo[enRecIdx].FileName);
+    DemoPvr_print(" _u8CurProgramIdx=%d   fileName=",enRecIdx);
+    wprintf((MS_U16*)_recprogramInfo[enRecIdx].FileName, PVR_DBG, TRUE);
+
+    // For merge stream, pass source id to MW
+    if(!MApi_PVR_SetRecordSourceID(_u8CurRecProgramIdx, (MS_U8)_eCurDMXFltSourceID[_u8CurRecProgramIdx]))
+    {
+        DemoPvr_Errorprint("[ERROR] Can't set source id!\n");
+        return FALSE;
+    }
 
     // Update PIDs of new program (real) & record neccessary information of new program (*.pmt)
     if (!MApi_PVR_RecordProgramChange(&_u8hRecord[_u8CurRecProgramIdx],_u8CurRecProgramIdx,&_recprogramInfo[_u8CurRecProgramIdx]))
@@ -2803,18 +3734,43 @@ static MS_BOOL _Demo_PVR_RecordStart(MS_BOOL bTimeshift, EN_DEMO_DMX_FLOW_INPUT 
         DemoPvr_Errorprint( "Invalid fileName!\n");
         return FALSE;
     }
-    if(! _Demo_PVR_CheckUSB((char *)MApi_PVR_GetMouthPath()))
+
+    char *mountPath = NULL;
+    DEMO_PVR_CHECK_MountPath(mountPath, FALSE)
+    if(_Demo_PVR_CheckUSB(mountPath) == FALSE)
     {
         DemoPvr_Errorprint("USB is not ready!\n");
         return FALSE;
     }
 
-    // [02] Store Current Program info ==============================================//
-    if(!_Demo_PVR_StoreProgramInfo(eCurDMXFlowSet, bTimeshift,*PCRPid, *VideoPid, *AudioPid, *pu32ACodec, *pu32VCodec , fileName))
+
+    // For merge stream
+    // source id of current record idx must be equal to source id of current DTV in timeshift record,
+    // if it's not, return false directly.
+
+    EN_AV_Device eDevice = E_AV_DEVICE_MAIN;
+    ST_AV_DMX_INFO stAVDMXInfo;
+    Demo_PVR_Check_AVPath(eDevice,_eCurPlaybackProgramPath,PVR_PATH_MAIN,E_AV_DEVICE_MAIN,PVR_PATH_SUB,E_AV_DEVICE_SUB);
+    Demo_AV_GetAVInfo(&eDevice,E_AV_GetCmd_DMXFlowInfo,&stAVDMXInfo);
+
+    if(bTimeshift && _eCurDMXFltSourceID[_u8CurRecProgramIdx] != stAVDMXInfo.eDmxFltSourceID)
     {
-        DemoPvr_Errorprint("Fail to store program info!\n");
+        DemoPvr_Errorprint("Current DTV source id != Record source id\n");
         return FALSE;
     }
+
+    // [02] Store Current Program info ==============================================//
+    MS_U16 *pu16FileName = NULL;
+
+    pu16FileName = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U16)*FILE_PATH_SIZE);
+    _U8StringToU16String((MS_U8 *)fileName, pu16FileName, strlen(fileName));
+    if(!_Demo_PVR_StoreProgramInfo(eCurDMXFlowSet, bTimeshift,*PCRPid, *VideoPid, *AudioPid, *pu32ACodec, *pu32VCodec , (char*)pu16FileName))
+    {
+        DemoPvr_Errorprint("Fail to store program info!\n");
+        _Demo_PVR_MEMFREE_FUNC((void**)&pu16FileName);
+        return FALSE;
+    }
+    _Demo_PVR_MEMFREE_FUNC((void**)&pu16FileName);
 
     // [03] DMX Flowset and PID open ==============================================//
     if(_u8CurRecProgramIdx < _u8TotalRecorder)
@@ -2864,7 +3820,7 @@ static MS_BOOL _Demo_PVR_GetFileInfo(char *FileName, PVRProgramInfo_t *promInfo)
     printf("VideoFmt  = %s, VCodec = %"DTC_MS_U32_x"\n",VideoFmtStr[promInfo->enVCodec], (MS_U32)promInfo->enVCodec);
     printf("AudioFmt  = %s, ACodec = %"DTC_MS_U32_x"\n",AudioFmtStr[promInfo->u32ACodec], promInfo->u32ACodec);
     printf("\tduration  = %"DTC_MS_U32_u" sec\n",promInfo->u32Duration);
-    printf("\tFile Len  = %llu Bytes\n",promInfo->u64FileLength);
+    printf("\tFile Len  = 0x%"DTC_MS_U64_x"  Bytes\n",promInfo->u64FileLength);
     printf("\tLast Time = %"DTC_MS_U32_u" sec\n",promInfo->u32LastPlayPositionInSec);
     printf("\tAge       = %u \n",promInfo->u8Age);
     printf("\tLock      = %u \n",promInfo->bLocked); // lock by user and it cannot be deleted even if disk is full
@@ -2878,7 +3834,7 @@ static MS_U8 _Demo_PVR_Timeshift_GetPlaybackIdx(MS_U8 u8RecordIdx)
     MS_U8 playbackidx;
     for (playbackidx = 0;playbackidx < MAX_PLAYBACK_NUM;playbackidx++)
     {
-        if (_u8TimeshiftIdx[playbackidx] == u8RecordIdx)
+        if (_u8TimeshiftRecordIdx[playbackidx] == u8RecordIdx)
         {
             DemoPvr_print("[%s] Get timeshift playbackidx:%u  from u8RecordIdx:%u\n",__FUNCTION__,playbackidx,u8RecordIdx);
             return playbackidx;
@@ -2886,6 +3842,16 @@ static MS_U8 _Demo_PVR_Timeshift_GetPlaybackIdx(MS_U8 u8RecordIdx)
     }
     //printf("[%s][%d]Error!!! No match playback index\n",__FUNCTION__, __LINE__);
     return PVR_PATH_INVALID;
+}
+
+static MS_BOOL _Demo_PVR_IsTimeshiftRecord(MS_U8 u8RecordIdx)
+{
+    Ex_PVRPlaybackPath ePlaybackidx = (Ex_PVRPlaybackPath)_Demo_PVR_Timeshift_GetPlaybackIdx(u8RecordIdx);
+    if (ePlaybackidx != PVR_PATH_INVALID)
+    {
+        return TRUE;
+    }
+    return FALSE;
 }
 
 static MS_U8 _Demo_PVR_RecHandler2Idx(MS_U8 u8hRecord)
@@ -2908,7 +3874,7 @@ static MS_U8 _Demo_PVR_PlayHandler2Idx(MS_U8 u8hPlayback)
     MS_U8 playbackidx;
     for (playbackidx = 0;playbackidx < MAX_PLAYBACK_NUM;playbackidx++)
     {
-        if (_u8hPVRPlayback[playbackidx] == u8hPlayback)
+        if (_u8hPlayback[playbackidx] == u8hPlayback)
         {
             DemoPvr_print("[%s] Get playback idx:%u\n",__FUNCTION__,playbackidx);
             return playbackidx;
@@ -2922,14 +3888,17 @@ static MS_U8 _Demo_PVR_PlayHandler2Idx(MS_U8 u8hPlayback)
 void* _Demo_PVR_GetVidStreamID(Ex_PVRPlaybackPath *peAVPATH)
 {
     void *vStreamID = (void *)&_NullVidStreamID;
+
     if(*peAVPATH == PVR_PATH_MAIN)
     {
-        vStreamID = Demo_VDEC_GetStreamID(E_VDEC_DEVICE_MAIN);
+        EN_VDEC_Device eDevice = E_VDEC_DEVICE_MAIN;
+        vStreamID = Demo_VDEC_GetStreamID(&eDevice);
     }
 #if (DEMO_PVR_SUPPORT_DUALPLAYBACK_TEST == 1)
     else if (*peAVPATH == PVR_PATH_SUB)
     {
-        vStreamID = Demo_VDEC_GetStreamID(E_VDEC_DEVICE_SUB);
+        EN_VDEC_Device eDevice = E_VDEC_DEVICE_SUB;
+        vStreamID = Demo_VDEC_GetStreamID(&eDevice);
     }
 #endif
     else
@@ -2951,9 +3920,10 @@ void* _Demo_PVR_GetVidStreamID(Ex_PVRPlaybackPath *peAVPATH)
 
 static void* _Demo_PVR_GetAudStreamID(Ex_PVRPlaybackPath *peAVPATH)
 {
-#if(DEMO_AUDIO_MULTI_TEST == 1)
-    ST_AUDIO_DEC_INFO stAudioInfo;
-    MS_U32 u32ADECDevIdx = 0;
+    if (MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
+    {
+        ST_AUDIO_DEC_INFO stAudioInfo;
+        MS_U32 u32ADECDevIdx = 0;
 
     if (*peAVPATH == PVR_PATH_MAIN)
     {
@@ -2971,13 +3941,15 @@ static void* _Demo_PVR_GetAudStreamID(Ex_PVRPlaybackPath *peAVPATH)
         return (void *)&_NullAudStreamID;
     }
 
-    Demo_Audio_GetDecInfo(u32ADECDevIdx, &stAudioInfo);
-    memcpy(&_AudStreamID[*peAVPATH],&stAudioInfo.eDecID,sizeof(AUDIO_DEC_ID));
+        Demo_Audio_GetDecInfo(u32ADECDevIdx, &stAudioInfo);
+        memcpy(&_AudStreamID[*peAVPATH],&stAudioInfo.eDecID,sizeof(AUDIO_DEC_ID));
 
-    return (void *)&_AudStreamID[*peAVPATH];
-#else
-    return (void *)&_NullAudStreamID;
-#endif
+        return (void *)&_AudStreamID[*peAVPATH];
+    }
+    else
+    {
+        return (void *)&_NullAudStreamID;
+    }
 }
 
 #if (DEMO_PVR_LINUX_MOUNT_NOTIFIER_TEST == 1)
@@ -2985,7 +3957,7 @@ static MS_BOOL _Demo_PVR_GetMountPath(char *moutPath)
 {
     if( (MApi_PVR_GetMouthPath())&&(_bPvrInit))
     {
-        strcpy(moutPath,MApi_PVR_GetMouthPath());
+        _U16StringToU8String((MS_U16*)MApi_PVR_GetMouthPath(), (MS_U8*)moutPath, wcslen((MS_U16*)MApi_PVR_GetMouthPath()));
         printf("Get Mount PATH => [%s]\n",moutPath);
         return TRUE;
     }
@@ -2995,6 +3967,21 @@ static MS_BOOL _Demo_PVR_GetMountPath(char *moutPath)
          return FALSE;
     }
 }
+
+static MS_BOOL _Demo_PVR_Device_Path_Check(char* device_path, const char* pSDA1)
+{
+    strncpy(device_path,"/dev", 4);
+    device_path[4] = '\0';
+
+    if((strlen(device_path) + strlen(pSDA1)) > DIR_PATH_SIZE)
+    {
+        return FALSE;
+    }
+
+    strncat(device_path,(pSDA1+9), strlen(pSDA1) - 9);
+    return TRUE;
+}
+
 
 //-------------------------------------------------------------------------------------------------
 /// PVR USB mount notifier Task, which handle all the Signal from Linux kenel.
@@ -3006,10 +3993,10 @@ static void _Demo_PVR_MountNotifier_Task(MS_U32 argc, void *argv)
     const MS_U16 buffersize = 16 * 1024;
     struct      sockaddr_nl nls;
     struct      pollfd pfd;
-    char buf_cache[1024*2] = {0};
+    char buf_cache[PVR_MOUNT_BUFFER_SIZE] = {0};
     MS_U16 ret;
-    char dir_path[50]={0};
-    char device_path[50]={0};
+    char dir_path[DIR_PATH_SIZE]={0};
+    char device_path[DIR_PATH_SIZE]={0};
     ssize_t byte_recv=0;
 
     // string token
@@ -3017,8 +4004,8 @@ static void _Demo_PVR_MountNotifier_Task(MS_U32 argc, void *argv)
     const char * pREMOVE = NULL;
     const char * pSDA1 = NULL;
 
-    MS_S32 s32MstarCachedPoolID = INVALID_POOL_ID;
-    Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_CACHE,&s32MstarCachedPoolID);
+    MS_U16 u16TimeoutInMS = 10;
+
 
     // Initial socket to receive usb event
     memset(&nls, 0, sizeof(nls));
@@ -3034,7 +4021,10 @@ static void _Demo_PVR_MountNotifier_Task(MS_U32 argc, void *argv)
     }
 
     setsockopt(pfd.fd, SOL_SOCKET, SO_RCVBUFFORCE, &buffersize, sizeof(buffersize));
-
+    struct timeval tv;
+    tv.tv_sec = 1;  /* 1 Secs Timeout */
+    tv.tv_usec = 0;  // Not init'ing this can cause strange errors
+    setsockopt(pfd.fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv,sizeof(struct timeval));
     if(bind(pfd.fd, ((struct sockaddr*)&nls), sizeof(nls)))
     {
         close(pfd.fd);
@@ -3051,8 +4041,10 @@ static void _Demo_PVR_MountNotifier_Task(MS_U32 argc, void *argv)
     }
 
     printf("!!! Create Moniter PVR USB mount/umont event Thread !!!\n");
-    printf("PVR mount path:[%s]\n",dir_path);
-    while(1)
+    printf("PVR mount path: ");
+
+
+    while(_gbPvrMntExit != TRUE)
     {
         char *err_str = strerror(errno);
 
@@ -3064,9 +4056,8 @@ static void _Demo_PVR_MountNotifier_Task(MS_U32 argc, void *argv)
         }
         else
         {
-            break;
+            continue;
         }
-        //printf("======buf_cache: %s\n", buf_cache);
 
         pADD = strstr(buf_cache, "add@");
         if(pADD != NULL)
@@ -3074,23 +4065,45 @@ static void _Demo_PVR_MountNotifier_Task(MS_U32 argc, void *argv)
             pSDA1 = strstr(buf_cache, "block/");
             if((pSDA1 != NULL) &&(pSDA1[9]=='/'))
             {
-                strcpy(device_path,"/dev");
-                strcat(device_path,(pSDA1+9));
-                printf("USB plugin : [%s] path:[%s] dir:[%s]\n",(pSDA1+9),device_path,dir_path);
-                ret = MsFS_Mount(device_path,dir_path,"ntfs3g", 0, 0);
-                if(ret != 0)
-                {
-                    printf("error [%d] : %s\n", errno, err_str);
-                    ret = MsFS_Mount(device_path,dir_path,"vfat",0,0);
-                }
 
-                if(ret != 0)
+
+                if(!_Demo_PVR_Device_Path_Check(device_path, (pSDA1)))
                 {
-                    printf("error [%d] : %s\n", errno, err_str);
+                    close(pfd.fd);
+                    printf("Get Mount PATH failed!!!\n");
+                    return;
                 }
-                else
+                printf("USB plugin : [%s] path:[%s] dir:[%s]\n",(pSDA1+9),device_path,dir_path);
+
+                // It usually takes 10ms~20ms for /dev/sdx to get ready that we can mount successfully
+                // We pick 10 ms as initial value and 100 ms as timeout according to experience
+                while(u16TimeoutInMS < 100)
                 {
-                    printf("mount %s --> %s success!! \n",device_path,dir_path);
+                    MsOS_DelayTask(u16TimeoutInMS);
+                    printf("Wait %d ms.....\n", u16TimeoutInMS);
+                    u16TimeoutInMS += 10;
+
+                    ret = MsFS_Mount(device_path,dir_path,"ntfs3g", 0, 0);
+                    if(ret != 0)
+                    {
+                        printf("error [%d] : %s\n", errno, err_str);
+                        ret = MsFS_Mount(device_path,dir_path,"vfat",0,0);
+                    }
+                    else
+                    {
+                        printf("mount %s --> %s success!! (NTFS)\n",device_path,dir_path);
+                        break;
+                    }
+
+                    if(ret != 0)
+                    {
+                        printf("error [%d] : %s\n", errno, err_str);
+                    }
+                    else
+                    {
+                        printf("mount %s --> %s success!! (FAT)\n",device_path,dir_path);
+                        break;
+                    }
                 }
             }
         }
@@ -3101,53 +4114,45 @@ static void _Demo_PVR_MountNotifier_Task(MS_U32 argc, void *argv)
             pSDA1 = strstr(buf_cache, "block/");
             if((pSDA1 != NULL) &&(pSDA1[9]=='/'))
             {
-                strcpy(device_path,"/dev");
-                strcat(device_path,(pSDA1+9));
+                if(!_Demo_PVR_Device_Path_Check(device_path, (pSDA1)))
+                {
+                    close(pfd.fd);
+                    printf("Get Mount PATH failed!!!\n");
+                    return;
+                }
                 printf("USB plugout : [%s] path:[%s] dir:[%s]\n",(pSDA1+9),device_path,dir_path);
-                ret = MsFS_Umount(dir_path);
-
-                if(ret != 0)
-                {
-                    printf("error [%d] : %s\n", errno, err_str);
-                }
-                else
-                {
-                    printf("umount %s success!! \n",dir_path);
-                }
                 Demo_PVR_USB_UnplugEvent(dir_path);
             }
         }
     }
     close(pfd.fd);
-    //free stack memory
-    if (_pPVR_MNT_TaskStack != NULL)
-    {
-        MsOS_FreeMemory(_pPVR_MNT_TaskStack,s32MstarCachedPoolID);
-    }
-    _s32PVR_MNT_TaskId = -1;
-    _pPVR_MNT_TaskStack = NULL;
+    MsOS_SetEvent(_gs32PvrMntGrp, PVR_MOUNT_DESTROY_PROC_EXIT);
 }
 
 static MS_BOOL _Demo_PVR_MountNotifier_Create(void)
 {
-    MS_S32 s32MstarCachedPoolID = INVALID_POOL_ID;
-    Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_CACHE,&s32MstarCachedPoolID);
+    MS_S32 s32NonCachedPoolID;
+    Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&s32NonCachedPoolID);
 
-    // create app demo task of input device
-    _pPVR_MNT_TaskStack = MsOS_AllocateMemory(DEMO_PVR_MOUNTNOTIFIER_TASK_STACK, s32MstarCachedPoolID);
-    if (_pPVR_MNT_TaskStack == NULL)
+    if(PVR_MOUNTNOTIFIER_TASK_STACK)
     {
-        printf("[%s][%d] Allocate PVR MountNotifier TaskStack Failed \n",__FUNCTION__,__LINE__);
-        return FALSE;
+        _pvrMNTTask.pStack = MsOS_AllocateMemory(PVR_MOUNTNOTIFIER_TASK_STACK,s32NonCachedPoolID);
+        if (_pvrMNTTask.pStack == NULL)
+        {
+            printf("Allocate PVR MountNotifier TaskStack Failed......\n");
+            return FALSE;
+        }
     }
-    _s32PVR_MNT_TaskId = MsOS_CreateTask(_Demo_PVR_MountNotifier_Task,
-                                         0,
-                                         E_TASK_PRI_HIGH, // E_TASK_PRI_MEDIUM,
-                                         TRUE,
-                                         _pPVR_MNT_TaskStack,
-                                         DEMO_PVR_MOUNTNOTIFIER_TASK_STACK,
-                                         "PVR mount notifier Tsk");
-    if (_s32PVR_MNT_TaskId < 0)
+
+    _pvrMNTTask.iId = MsOS_CreateTask((TaskEntry)_Demo_PVR_MountNotifier_Task,
+                                 0,
+                                 _pvrMNTTask.ePriority, // E_TASK_PRI_MEDIUM,
+                                 TRUE,
+                                 _pvrMNTTask.pStack,
+                                 _pvrMNTTask.u32StackSize,
+                                 _pvrMNTTask.szName);
+
+    if (_pvrMNTTask.iId < 0)
     {
         printf("[%s][%d] Create PVR MountNotifier Task Failed \n",__FUNCTION__,__LINE__);
         return FALSE;
@@ -3217,22 +4222,277 @@ static MS_BOOL _Demo_PVR_WriteFirstData(char *Path)
         usb_arr_init = TRUE;
     }
 
-    s32_fd = MsFS_Fopen(Path, "wb");
+    MS_U16 *pu16Path = NULL;
 
-    if(s32_fd < 0)
+    pu16Path = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U16)*FILE_PATH_SIZE);
+    _U8StringToU16String((MS_U8 *)Path, pu16Path, strlen(Path));
+
+    s32_fd = MsFS_Fopen((char*)pu16Path, "wb");
+
+    if(s32_fd == 0)
     {
         printf("[USB Test] create file faild\n");
+        _Demo_PVR_MEMFREE_FUNC((void**)&pu16Path);
         return FALSE;
     }
     MS_U32 u32WriteSize=MsFS_Fwrite((void *)usb_arr_w, 1,TEST_BLOCK_SIZE,s32_fd);
     MsFS_Fflush(s32_fd);
     printf("[%s][%d]Write first Data success!u32WriteSize(%"DTC_MS_U32_u")\n",__FUNCTION__,__LINE__,u32WriteSize);
     MsFS_Fclose(s32_fd);
-    MsFS_Unlink(Path);
-
+    MsFS_Unlink((char*)pu16Path);
+    _Demo_PVR_MEMFREE_FUNC((void**)&pu16Path);
     return TRUE;
 }
 #endif
+
+static APIPVR_PLAYBACK_SPEED _Demo_PVR_GetSlowForward(APIPVR_PLAYBACK_SPEED enPlaybackSpeed)
+{
+    APIPVR_PLAYBACK_SPEED enSpeed=EN_APIPVR_PLAYBACK_SPEED_INVALID;
+    switch(enPlaybackSpeed)
+    {
+        case EN_APIPVR_PLAYBACK_SPEED_1X:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_FF_1_2X;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_FF_1_2X:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_FF_1_4X;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_FF_1_4X:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_FF_1_8X;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_FF_1_8X:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_FF_1_16X;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_FF_1_16X:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_FF_1_32X;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_FF_1_32X:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_1X;
+            break;
+        default:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_1X;
+            printf("[%s][%d] Undefined speed condition for SlowForward!!!, we set the speed as default (%d)\n",__FUNCTION__,__LINE__,enSpeed);
+            break;
+    }
+
+    return enSpeed;
+}
+static APIPVR_PLAYBACK_SPEED _Demo_PVR_GetFastForward(APIPVR_PLAYBACK_SPEED enPlaybackSpeed)
+{
+    APIPVR_PLAYBACK_SPEED enSpeed=EN_APIPVR_PLAYBACK_SPEED_INVALID;
+    switch(enPlaybackSpeed)
+    {
+
+        case EN_APIPVR_PLAYBACK_SPEED_32XFB:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_16XFB;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_16XFB:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_8XFB;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_8XFB:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_4XFB;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_4XFB:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_2XFB;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_2XFB:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_1X;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_1X:
+        case EN_APIPVR_PLAYBACK_SPEED_FF_1_2X:
+        case EN_APIPVR_PLAYBACK_SPEED_FF_1_4X:
+        case EN_APIPVR_PLAYBACK_SPEED_FF_1_8X:
+        case EN_APIPVR_PLAYBACK_SPEED_FF_1_16X:
+        case EN_APIPVR_PLAYBACK_SPEED_FF_1_32X:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_2XFF;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_2XFF:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_4XFF;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_4XFF:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_8XFF;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_8XFF:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_16XFF;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_16XFF:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_32XFF;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_32XFF:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_1X;
+            break;
+        default :
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_1X;
+            printf("[%s][%d] Undefined speed condition for FastForward!!!, we set the speed as default (%d)\n",__FUNCTION__,__LINE__,enSpeed);
+            break;
+
+    }
+
+
+    return enSpeed;
+}
+static APIPVR_PLAYBACK_SPEED _Demo_PVR_GetFastBackward(APIPVR_PLAYBACK_SPEED enPlaybackSpeed)
+{
+    APIPVR_PLAYBACK_SPEED enSpeed=EN_APIPVR_PLAYBACK_SPEED_INVALID;
+    switch(enPlaybackSpeed)
+    {
+        case EN_APIPVR_PLAYBACK_SPEED_32XFB:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_1X;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_16XFB:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_32XFB;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_8XFB:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_16XFB;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_4XFB:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_8XFB;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_2XFB:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_4XFB;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_1X:
+        case EN_APIPVR_PLAYBACK_SPEED_FF_1_2X:
+        case EN_APIPVR_PLAYBACK_SPEED_FF_1_4X:
+        case EN_APIPVR_PLAYBACK_SPEED_FF_1_8X:
+        case EN_APIPVR_PLAYBACK_SPEED_FF_1_16X:
+        case EN_APIPVR_PLAYBACK_SPEED_FF_1_32X:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_2XFB;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_2XFF:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_1X;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_4XFF:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_2XFF;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_8XFF:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_4XFF;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_16XFF:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_8XFF;
+            break;
+        case EN_APIPVR_PLAYBACK_SPEED_32XFF:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_16XFF;
+            break;
+        default:
+            enSpeed = EN_APIPVR_PLAYBACK_SPEED_1X;
+            printf("[%s][%d] Undefined speed condition for FastBackward!!!, we set the speed as default (%d)\n",__FUNCTION__,__LINE__,enSpeed);
+            break;
+
+    }
+
+
+    return enSpeed;
+}
+
+
+static MS_BOOL _Demo_PVR_PlaybackSetSpeed(DEMO_PVR_PLAYBACK_STATE enPlaybackSpeedType, MS_U32 u32Positive, MS_S32 s32Speed)
+{
+    MS_BOOL bRet = FALSE;
+
+    DemoPvr_print("=========  _Demo_PVR_PlaybackSetSpeed =========\n");
+    DEMO_PVR_CHECK_INIT();
+    APIPVR_PLAYBACK_SPEED enPlaybackSpeed=MApi_PVR_PlaybackGetSpeed(_u8hPlayback[_eCurPlaybackProgramPath]);
+
+    if(MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath])!=TRUE)
+    {
+        printf("Not to play!\n");
+        return FALSE;
+    }
+
+    switch(enPlaybackSpeedType)
+    {
+        case EN_DEMO_PVR_PLAYBACK_PAUSE:
+            bRet=MApi_PVR_PlaybackSetSpeed(_u8hPlayback[_eCurPlaybackProgramPath],EN_APIPVR_PLAYBACK_SPEED_0X);
+            break;
+        case EN_DEMO_PVR_PLAYBACK_RESUME:
+            bRet=MApi_PVR_PlaybackSetSpeed(_u8hPlayback[_eCurPlaybackProgramPath],EN_APIPVR_PLAYBACK_SPEED_1X);
+            break;
+        case EN_DEMO_PVR_PLAYBACK_SLOWFORWARD:
+            enPlaybackSpeed=_Demo_PVR_GetSlowForward(enPlaybackSpeed);
+            bRet=MApi_PVR_PlaybackSetSpeed(_u8hPlayback[_eCurPlaybackProgramPath],enPlaybackSpeed);
+            if(EN_APIPVR_PLAYBACK_SPEED_1X != enPlaybackSpeed)
+            {
+                printf("%d xSF Play \n",enPlaybackSpeed);
+            }
+            else
+            {
+                printf("Normal Play \n");
+            }
+            break;
+        case EN_DEMO_PVR_PLAYBACK_FASTFORWARD:
+            enPlaybackSpeed=_Demo_PVR_GetFastForward(enPlaybackSpeed);
+            bRet=MApi_PVR_PlaybackSetSpeed(_u8hPlayback[_eCurPlaybackProgramPath],enPlaybackSpeed);
+            if(EN_APIPVR_PLAYBACK_SPEED_1X != enPlaybackSpeed)
+            {
+                printf("%d xFF Play \n",enPlaybackSpeed);
+            }
+            else
+            {
+                printf("Normal Play \n");
+            }
+            break;
+        case EN_DEMO_PVR_PLAYBACK_FASTBACKWARD:
+            enPlaybackSpeed=_Demo_PVR_GetFastBackward(enPlaybackSpeed);
+            bRet=MApi_PVR_PlaybackSetSpeed(_u8hPlayback[_eCurPlaybackProgramPath],enPlaybackSpeed);
+            if(EN_APIPVR_PLAYBACK_SPEED_1X != enPlaybackSpeed)
+            {
+                printf("%d xFB Play \n",enPlaybackSpeed);
+            }
+            else
+            {
+                printf("Normal Play \n");
+            }
+            break;
+        case EN_DEMO_PVR_PLAYBACK_SETSPEED:
+            if(u32Positive == 0)
+            {
+                s32Speed *= -1;
+            }
+            bRet=MApi_PVR_PlaybackSetSpeed(_u8hPlayback[_eCurPlaybackProgramPath],s32Speed);
+            break;
+        default:
+            printf("Invalid Speed State %d!\n", enPlaybackSpeedType);
+            break;
+
+    }
+    return bRet;
+}
+
+MS_BOOL _Demo_PVR_LiveInfo_Initialize(MS_U32 u32PlaybackPath)
+{
+    if(u32PlaybackPath >= MAX_PLAYBACK_NUM)
+    {
+        printf("Invalid playback path(%"DTC_MS_U32_u")\n",u32PlaybackPath);
+    }
+
+    _stLiveInfo[u32PlaybackPath].bInited = FALSE;
+
+    _stLiveInfo[u32PlaybackPath].stVideoParams.u8Filter = INVALID_FILTER_ID;
+    _stLiveInfo[u32PlaybackPath].stVideoParams.ePCREngID = E_PCR_ENG_INVALID;
+    _stLiveInfo[u32PlaybackPath].stVideoParams.u16PID = INVALID_PID_ID;
+    _stLiveInfo[u32PlaybackPath].stVideoParams.eFIFO_ID = E_DMX_FLT_TYPE_INVALID;
+    _stLiveInfo[u32PlaybackPath].stVideoParams.stFilterType.eEngType = INVALID_FILEIN_TYPE;
+    _stLiveInfo[u32PlaybackPath].stVideoParams.stFilterType.u8EngID = INVALID_FILEIN_ID;
+    _stLiveInfo[u32PlaybackPath].stVideoParams.stFilterType.eEngFormat = E_AV_FileIn_Eng_TS;
+    memset(&_stLiveInfo[u32PlaybackPath].stVideoParams.stVDECSteamID,0, sizeof(VDEC_StreamId));
+    _stLiveInfo[u32PlaybackPath].stVideoParams.eVideoCodec = E_VDEC_DDI_CODEC_TYPE_MPEG2;
+    _stLiveInfo[u32PlaybackPath].stVideoParams.eAudioCodec = DEMO_AUDIO_CODEC_MPEG;
+
+    memcpy(&_stLiveInfo[u32PlaybackPath].stAudioParams, &_stLiveInfo[u32PlaybackPath].stVideoParams, sizeof(ST_AV_Params));
+    memcpy(&_stLiveInfo[u32PlaybackPath].stAudioADParams, &_stLiveInfo[u32PlaybackPath].stVideoParams, sizeof(ST_AV_Params));
+    memcpy(&_stLiveInfo[u32PlaybackPath].stPCRParams, &_stLiveInfo[u32PlaybackPath].stVideoParams, sizeof(ST_AV_Params));
+    memset(&_stLiveInfo[u32PlaybackPath].stDMXflowParams, 0, sizeof(ST_AV_DMX_INFO));
+
+    _stLiveInfo[u32PlaybackPath].eAVSYNC_Mode = E_AV_SYNC_PCR_MODE;
+    memset(&_stLiveInfo[u32PlaybackPath].stShowFrameInfo, 0, sizeof(ST_AV_ShowFrameInfo));
+
+    _stLiveInfo[u32PlaybackPath].bEnableAVSYNC_Task = FALSE;
+    _stLiveInfo[u32PlaybackPath].eAVSYNC_Task_State = E_AV_AVSYNC_STATE_RESET;
+
+    _stLiveInfo[u32PlaybackPath].bInitializeOrNot = FALSE;
+    _stLiveInfo[u32PlaybackPath].eAVInitState = E_AV_AVINIT_STATE_RESET;
+    return TRUE;
+}
 
 //-------------------------------------------------------------------------------------------------
 //  Global Functions
@@ -3261,9 +4521,11 @@ MS_BOOL Demo_PVR_Init(MS_U32 *u32FSType, char *pMountPath)
     DemoPvr_print("========= Demo_PVR_Init =========\n");
     PVR_TSPInfo_t pvrTspInfo = {0};
     int i=0;
-    PVR_AV_INFO stInitFileAVInfo = {FALSE,INVALID_FILTER_ID,INVALID_FILTER_ID,INVALID_FILTER_ID,INVALID_PID_ID,INVALID_PID_ID,INVALID_PID_ID,{0,0},E_VDEC_DDI_CODEC_TYPE_MPEG2,AUDIO_CODEC_MPEG,E_DMX_FLT_TYPE_INVALID,E_DMX_FLT_TYPE_INVALID,E_DMX_FLOW_INVALID};
+    PVR_AV_INFO stInitFileAVInfo = {FALSE,INVALID_FILTER_ID,INVALID_FILTER_ID,INVALID_FILTER_ID,INVALID_PID_ID,INVALID_PID_ID,INVALID_PID_ID,{0,0},E_VDEC_DDI_CODEC_TYPE_MPEG2,DEMO_AUDIO_CODEC_MPEG,E_DMX_FLT_TYPE_INVALID,E_DMX_FLT_TYPE_INVALID,E_DMX_FLOW_INVALID};
     EN_PVR_MEM_MALLOC EN_MEM_MALLOC;
     MS_U8 PlaybackPathNum = MAX_PLAYBACK_NUM;
+    MS_U16 *pu16MountPath = NULL;
+
 
     // [00] check mount path  ==============================================//
     if(pMountPath==NULL)
@@ -3284,21 +4546,24 @@ MS_BOOL Demo_PVR_Init(MS_U32 *u32FSType, char *pMountPath)
     }
     DemoPvr_print("========= PVR Init =========\n");
 
-    if(! _Demo_PVR_CheckUSB(pMountPath))
+    MsFS_Init(TRUE);
+    pu16MountPath = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U16)*FILE_PATH_SIZE);
+    _U8StringToU16String((MS_U8 *)pMountPath, pu16MountPath, strlen(pMountPath));
+    if(! _Demo_PVR_CheckUSB((char*)pu16MountPath))
     {
         printf("No USB Disk Deteded!\n");
+        _Demo_PVR_MEMFREE_FUNC((void**)&pu16MountPath);
         return FALSE;
     }
 
-    MsFS_Init(FALSE);
     DemoPvr_print("enFSType=%"DTC_MS_U32_u" pMountPath=%s\n",*u32FSType,pMountPath);
 
     // [01] Init PVR  ==============================================//
-#if (!((DEMO_PVR_SUPPORT_SWPVR_TEST == 1) || (DEMO_PVR_SUPPORT_RECORD_DUALTYPE_TEST == 1)))
+#if (DEMO_PVR_SUPPORT_SWPVR_TEST != 1)
     _Demo_PVR_SetRecordType(0);//single record
 #endif
 
-    if(!MApi_PVR_Init(pMountPath,(EN_APIPVR_FILE_SYSTEM_TYPE)*u32FSType,(APIPVR_TUNER_NUM)_u8TotalRecorder,pvrTspInfo))
+    if(!MApi_PVR_Init((char*)pu16MountPath,(EN_APIPVR_FILE_SYSTEM_TYPE)*u32FSType,(APIPVR_TUNER_NUM)_u8TotalRecorder,pvrTspInfo))
     {
        printf("Fail to Init PVR!\n");
        return FALSE;
@@ -3308,27 +4573,29 @@ MS_BOOL Demo_PVR_Init(MS_U32 *u32FSType, char *pMountPath)
         printf("Fail to Set PlaybackPathNum!\n");
         return FALSE;
     }
-
+    _bPvrInit = TRUE;
     // [02] Mem Layout: The base address/length of physical memory in MApi_PVR_Mmap ==============//
     EN_MEM_MALLOC = _appDemo_PVR_MemAlloc();
     if (EN_MEM_MALLOC == E_PVR_MEM_MALLOC_FAIL)
     {
         printf("PVR_MEM_MALLOC_FAIL!\n");
-        goto DEMO_PVRInit_Fail;
+        Demo_PVR_Destroy();
+        return FALSE;
     }
     DemoPvr_print("\n");
 
     // [03] Callback Function for PVR ==============//
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-//KL callback function only used for DMA ENCRYPTDECRYPT in non-callback mode,
-//In DMA ENCRYPTDECRYPT in callback mode, _Demo_PVR_KLADDER_FUNC is called in DMA ENCRYPTDECRYPT callback function.
-    #if defined(DEMO_PVR_DSCMB_CALLBACK_MODE)
-    PVRFuncInfo_t pvrFunc={};
-    pvrFunc.DscmbConnect = _Demo_PVR_RECORD_DSCMB_CONNECT_FUNC;
-    pvrFunc.DscmbDisConnect = _Demo_PVR_RECORD_DSCMB_DISCONNECT_FUNC;
-    MApi_PVR_SetFuncInfo(pvrFunc);
-    #endif//(DEMO_PVR_DSCMB_CALLBACK_MODE)
-#endif//(DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
+    if(b2ndEncryptionEnabled)
+    {
+        //KL callback function only used for DMA ENCRYPTDECRYPT in non-callback mode,
+        //In DMA ENCRYPTDECRYPT in callback mode, _Demo_PVR_KLADDER_FUNC is called in DMA ENCRYPTDECRYPT callback function.
+        #if defined(DEMO_PVR_DSCMB_CALLBACK_MODE)
+        PVRFuncInfo_t pvrFunc={};
+        pvrFunc.DscmbConnect = _Demo_PVR_RECORD_DSCMB_CONNECT_FUNC;
+        pvrFunc.DscmbDisConnect = _Demo_PVR_RECORD_DSCMB_DISCONNECT_FUNC;
+        MApi_PVR_SetFuncInfo(pvrFunc);
+        #endif//(DEMO_PVR_DSCMB_CALLBACK_MODE)
+    }
 
     // [04] Recorder and Player type ==============//
     MApi_PVR_SetRecordType(_enRecordType);
@@ -3340,22 +4607,32 @@ MS_BOOL Demo_PVR_Init(MS_U32 *u32FSType, char *pMountPath)
     MApi_PVR_PlaybackSetFileEndAutoResume(FALSE);
 #endif
 
+    PVR_CfgParam stPvrCfgParam;
+
+    stPvrCfgParam.bSet = TRUE;
+    stPvrCfgParam.eCfgCmd = EN_APIPVR_CFG_AUTO_PB_PROGRAM_CHG;
+    stPvrCfgParam.bAutoPlaybackProgramChg = TRUE;
+    MApi_PVR_Configure(&stPvrCfgParam);
+
     // [05] Create Message queue to receive info ==============//
     MApi_PVR_SetMsgWaitMs(0);
     _s32QueueID = MApi_PVR_GetMessageQueueID();
-    if(_s32ThreadID==INVALID_TASK_ID)
+    if(_pvrEventTask.iId==INVALID_TASK_ID)
     {
-        if (INVALID_TASK_ID ==(_s32ThreadID=MsOS_CreateTask(_Demo_PVR_Task,0,_pvrEventTask.ePriority,TRUE,_pvrEventTask.pStack,_pvrEventTask.u32StackSize,_pvrEventTask.szName)))
+        _gbPvrEventExit = FALSE;
+        if (INVALID_TASK_ID ==(_pvrEventTask.iId=MsOS_CreateTask(_Demo_PVR_Task,0,_pvrEventTask.ePriority,TRUE,_pvrEventTask.pStack,_pvrEventTask.u32StackSize,_pvrEventTask.szName)))
         {
             printf("Create Task fail\n");
-            goto DEMO_PVRInit_Fail;
+            _appDemo_PVR_MemFree();
+            Demo_PVR_Destroy();
+            return FALSE;
         }
+
     }
 
     // [06] Init PVR relative info ==============//
-    _bPvrInit = TRUE;
+
     //*Init relative info*//
-    _u8TotalProgramNum=0;
     _u8CurRecProgramIdx=0;
     _eCurDMXInputSrc=E_DMX_FLOW_INPUT_DEMOD0;
     _bUplugMsg=FALSE;
@@ -3365,9 +4642,10 @@ MS_BOOL Demo_PVR_Init(MS_U32 *u32FSType, char *pMountPath)
     _u8TotalPlaybackProgram=0;
     for(i=0;i<MAX_PLAYBACK_NUM;i++)
     {
-         _u8hPVRPlayback[i]=APIPVR_INVALID_HANDLER;
+         _u8hPlayback[i]=APIPVR_INVALID_HANDLER;
          _bScreenFrozen[i]=TRUE;
-         _u8TimeshiftIdx[i]= 0xFF;
+         _u8TimeshiftRecordIdx[i]= INVALID_RECORD_INDEX;
+         _u8TimeshiftPlaybackIdx[i] = PVR_PATH_INVALID;
 #if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
          _bTimeshiftSeamless[i]=FALSE;
          _bBackgroundRecord[i]=FALSE;
@@ -3385,9 +4663,11 @@ MS_BOOL Demo_PVR_Init(MS_U32 *u32FSType, char *pMountPath)
          memcpy(&stFileAVInfo[i],&stInitFileAVInfo,sizeof(PVR_AV_INFO));
          memcpy(&_AudStreamID[i],&_NullAudStreamID,sizeof(AUDIO_DEC_ID));
          memcpy(&_VidStreamID[i],&_NullVidStreamID,sizeof(VDEC_StreamId));
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-         memset(&stPVRLiveDSCMBInfo[i],0,sizeof(PVR_DSCMB_INFO));
-#endif
+        if(b2ndEncryptionEnabled)
+        {
+            memset(&stPVRLiveDSCMBInfo[i],0,sizeof(PVR_DSCMB_INFO));
+        }
+        _Demo_PVR_LiveInfo_Initialize(i);
     }
     // [CHECK] the var init problem
     memset(&_u8PcrDmxId,INVALID_FILTER_ID,sizeof(_u8PcrDmxId));
@@ -3402,9 +4682,10 @@ MS_BOOL Demo_PVR_Init(MS_U32 *u32FSType, char *pMountPath)
          _u8hRecord[i]=APIPVR_INVALID_HANDLER;
          _eCurDMXFlowSet[i]=E_DMX_FLOW_LIVE0;
          memset(&_recprogramInfo[i],0,sizeof(PVRProgramInfo_t));
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-         memset(&stPVRRecordDSCMBInfo[i],0,sizeof(PVR_DSCMB_INFO));
-#endif
+        if(b2ndEncryptionEnabled)
+        {
+            memset(&stPVRRecordDSCMBInfo[i],0,sizeof(PVR_DSCMB_INFO));
+        }
     }
     _gWinInfo.GopDest=E_GOP_DST_OP0;
     _gWinInfo.GeWinId=0xff;
@@ -3416,14 +4697,18 @@ MS_BOOL Demo_PVR_Init(MS_U32 *u32FSType, char *pMountPath)
 
 #if (DEMO_PVR_LINUX_MOUNT_NOTIFIER_TEST == 1)
     //create pvr USB notifier thread
-    if(_s32PVR_MNT_TaskId < 0)
+    if(_pvrMNTTask.iId < 0)
+    {
+        _gbPvrMntExit = FALSE;
         _Demo_PVR_MountNotifier_Create();
+    }
 #endif
 
 #if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
 // [CHECK] Try to fixed the long write file time
-    char Path[256];
-    strcpy(Path, pMountPath);
+    char Path[FILE_PATH_SIZE];
+    strncpy(Path, pMountPath, strlen(pMountPath));
+    Path[strlen(pMountPath)] = '\0';
     MS_U32 length = strlen(Path);
     Path[length] = '/';
     Path[length+1] = 'f';
@@ -3438,10 +4723,7 @@ MS_BOOL Demo_PVR_Init(MS_U32 *u32FSType, char *pMountPath)
     printf("Init PVR successfully  \n");
     return TRUE;
 
-DEMO_PVRInit_Fail:
-    Demo_PVR_Destroy();
-    _appDemo_PVR_MemFree();
-    return FALSE;
+
 }
 
 //------------------------------------------------------------------------------
@@ -3457,22 +4739,28 @@ DEMO_PVRInit_Fail:
 //------------------------------------------------------------------------------
 MS_BOOL Demo_PVR_USB_UnplugEvent(char *moutPath)
 {
-    PVREventInfo_t event_info;
-    memset((void *)&event_info,0,sizeof(PVREventInfo_t));
+    MS_BOOL bRet = FALSE;
+    PVREventInfo_t stEventInfo;
+    memset((void *)&stEventInfo,0,sizeof(PVREventInfo_t));
 
-    if(_bPvrInit)
+    if(_bPvrInit && (NULL != moutPath))
     {
-        if(strstr(MApi_PVR_GetMouthPath(),moutPath)!=NULL)
+        stEventInfo.pvrEvent = EN_APIPVR_EVENT_ERROR_NO_DISK_SPACE;
+        _bUplugMsg=TRUE;
+        if(strlen(moutPath)>FILE_PATH_SIZE)
         {
-            event_info.pvrEvent = EN_APIPVR_EVENT_ERROR_NO_DISK_SPACE;
-            _bUplugMsg=TRUE;
-            strcpy(_moutPath,moutPath);
-            MsOS_SendToQueue(_s32QueueID, (MS_U8 *)&event_info, sizeof(PVREventInfo_t), 1000);
-            DemoPvr_print("send to Queue <2> _u8TimeshiftIdx=%d\n",_u8TimeshiftIdx[_eCurPlaybackProgramPath]);
-            return TRUE;
+            printf("mountPath size is over %d!\n", FILE_PATH_SIZE);
+            return bRet;
         }
+        strncpy(_moutPath,moutPath, strlen(moutPath));
+        _moutPath[strlen(moutPath)] = '\0';
+        MsOS_SendToQueue(_s32QueueID, (MS_U8 *)&stEventInfo, sizeof(PVREventInfo_t), 1000);
+        DemoPvr_print("send to Queue <2> _u8TimeshiftRecordIdx=%d\n",_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]);
+        bRet = TRUE;
+
+
     }
-    return FALSE;
+    return bRet;
 }
 
 //------------------------------------------------------------------------------
@@ -3496,7 +4784,6 @@ MS_BOOL Demo_PVR_CheckUSBSpeed(void)
     return TRUE;
 }
 
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
 #if (DEMO_PVR_SUPPORT_DYNAMICKEY_TEST == 1)
 //------------------------------------------------------------------------------
 /// @brief The sample code to test encrypt file.
@@ -3515,10 +4802,16 @@ MS_BOOL Demo_PVR_CheckEncryptFile(char *fileName)
     DEMO_PVR_CHECK_INIT();
     printf("Please Wait...\n");
 
-    return MApi_PVR_EncryptFileCheck(fileName);
+    MS_BOOL bRet = FALSE;
+    MS_U16 *pu16FileName = NULL;
+
+    pu16FileName = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U16)*FILE_PATH_SIZE);
+    _U8StringToU16String((MS_U8 *)fileName, pu16FileName, strlen(fileName));
+    bRet = MApi_PVR_EncryptFileCheck((char *)pu16FileName);
+    _Demo_PVR_MEMFREE_FUNC(&pu16FileName);
+    return bRet;
 }
 #endif // DEMO_PVR_SUPPORT_DYNAMICKEY_TEST
-#endif // DEMO_PVR_SUPPORT_CAPVR_TEST
 
 //------------------------------------------------------------------------------
 /// @brief The sample code to exit pvr
@@ -3533,28 +4826,81 @@ MS_BOOL Demo_PVR_CheckEncryptFile(char *fileName)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_PVR_Destroy(void)
 {
+
     DemoPvr_print("========= Demo_PVR_Destroy =========\n");
     int i=0;
-    PVR_AV_INFO stInitFileAVInfo = {FALSE,INVALID_FILTER_ID,INVALID_FILTER_ID,INVALID_FILTER_ID,INVALID_PID_ID,INVALID_PID_ID,INVALID_PID_ID,{0,0},E_VDEC_DDI_CODEC_TYPE_MPEG2,AUDIO_CODEC_MPEG,E_DMX_FLT_TYPE_INVALID,E_DMX_FLT_TYPE_INVALID,E_DMX_FLOW_INVALID};
+    PVR_AV_INFO stInitFileAVInfo = {FALSE,INVALID_FILTER_ID,INVALID_FILTER_ID,INVALID_FILTER_ID,INVALID_PID_ID,INVALID_PID_ID,INVALID_PID_ID,{0,0},E_VDEC_DDI_CODEC_TYPE_MPEG2,DEMO_AUDIO_CODEC_MPEG,E_DMX_FLT_TYPE_INVALID,E_DMX_FLT_TYPE_INVALID,E_DMX_FLOW_INVALID};
 
     DEMO_PVR_CHECK_INIT();
+
+    MS_U32  pu32RetrievedEventFlag;
+
+    for(i=0 ; i < PVR_MAX_RECORDING_FILE ; i++)
+    {
+        if(MApi_PVR_IsRecording(i) == TRUE)
+        {
+            printf("There is a Record\n");
+            return FALSE;
+        }
+    }
+
+    for(i=0 ; i < MAX_PLAYBACK_NUM ; i++)
+    {
+        if(MApi_PVR_EX_IsPlaybacking(i) == TRUE)
+        {
+            printf("There is a Playback\n");
+            return FALSE;
+        }
+    }
+
+    // We want to terminate _Demo_PVR_Task before MApi_PVR_Destroy, because the queue will be destroyed in Fuchsia
+    if(_pvrEventTask.iId!=INVALID_TASK_ID)
+    {
+
+        PVREventInfo_t stEventInfo;
+        memset((void *)&stEventInfo,0,sizeof(PVREventInfo_t));
+        stEventInfo.pvrEvent = EN_APIPVR_EVENT_NOTIFY_DESTROY_PVR;
+        _gbPvrEventExit = TRUE;
+        MS_BOOL bRet= MsOS_SendToQueue(_s32QueueID, (MS_U8 *)&stEventInfo, sizeof(PVREventInfo_t), 1000);
+        if (bRet == FALSE)
+        {
+            printf("MsOS_SendToQueue FAIL!!\n");
+        }
+        else
+        {
+            DemoPvr_print("MsOS_SendToQueue SUCCESS\n");
+        }
+        MsOS_WaitEvent(_gs32PvrEvtGrp, PVR_EVENT_DESTROY_PROC_EXIT, &pu32RetrievedEventFlag, E_OR_CLEAR, MSOS_WAIT_FOREVER);
+
+#if defined(MSOS_TYPE_ECOS)
+        //Polling the status of _Demo_PVR_Task to make sure it already returned
+        _Demo_PollingThreadStatus(_pvrEventTask);
+#endif
+        _pvrEventTask.iId = INVALID_TASK_ID;
+
+    }
+#if (DEMO_PVR_LINUX_MOUNT_NOTIFIER_TEST == 1)
+    MS_S32 s32NonCachedPoolID;
+    Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&s32NonCachedPoolID);
+    _gbPvrMntExit = TRUE;
+     MsOS_WaitEvent(_gs32PvrMntGrp, PVR_MOUNT_DESTROY_PROC_EXIT, &pu32RetrievedEventFlag, E_OR_CLEAR, MSOS_WAIT_FOREVER);
+    //free stack memory
+    if (_pvrMNTTask.pStack != NULL)
+    {
+        MsOS_FreeMemory(_pvrMNTTask.pStack,s32NonCachedPoolID);
+    }
+    _pvrMNTTask.iId = -1;
+    _pvrMNTTask.pStack = NULL;
+#endif
+
 
     if(MApi_PVR_Destroy())
     {
         _bPvrInit= FALSE;
         _s32QueueID = -1;
 
-        if(_s32ThreadID!=INVALID_TASK_ID)
-        {
-            // @NOTE: MsOS_DeleteTask() has resource reclaim issue , DO NOT use it...
 
-            //if(MsOS_DeleteTask(_s32ThreadID))
-            //{
-                _s32ThreadID = INVALID_TASK_ID;
-            //}
-        }
         //*Init relative info*//
-        _u8TotalProgramNum=0;
         _u8CurRecProgramIdx=0;
         _eCurDMXInputSrc=E_DMX_FLOW_INPUT_DEMOD0;
         _bUplugMsg=FALSE;
@@ -3564,17 +4910,19 @@ MS_BOOL Demo_PVR_Destroy(void)
         _u8TotalPlaybackProgram=0;
         for(i=0;i<MAX_PLAYBACK_NUM;i++)
         {
-             _u8hPVRPlayback[i]=APIPVR_INVALID_HANDLER;
+             _u8hPlayback[i]=APIPVR_INVALID_HANDLER;
              _bScreenFrozen[i]=TRUE;
-             _u8TimeshiftIdx[i]= 0xFF;
+             _u8TimeshiftRecordIdx[i]= INVALID_RECORD_INDEX;
+             _u8TimeshiftPlaybackIdx[i] = PVR_PATH_INVALID;
              memset(&_plyprogramInfo[i],0,sizeof(PVRProgramInfo_t));
              memset(&_livePromInfo[i],0,sizeof(PVRProgramInfo_t));
              memcpy(&stFileAVInfo[i],&stInitFileAVInfo,sizeof(PVR_AV_INFO));
              memcpy(&_AudStreamID[i],&_NullAudStreamID,sizeof(AUDIO_DEC_ID));
              memcpy(&_VidStreamID[i],&_NullVidStreamID,sizeof(VDEC_StreamId));
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-             memset(&stPVRLiveDSCMBInfo[i],0,sizeof(PVR_DSCMB_INFO));
-#endif
+            if(b2ndEncryptionEnabled)
+            {
+                memset(&stPVRLiveDSCMBInfo[i],0,sizeof(PVR_DSCMB_INFO));
+            }
         }
 
         for(i=0;i<PVR_MAX_RECORDING_FILE;i++)
@@ -3582,11 +4930,29 @@ MS_BOOL Demo_PVR_Destroy(void)
              _u8hRecord[i]=APIPVR_INVALID_HANDLER;
              _eCurDMXFlowSet[i]=E_DMX_FLOW_LIVE0;
              memset(&_recprogramInfo[i],0,sizeof(PVRProgramInfo_t));
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
-             memset(&stPVRRecordDSCMBInfo[i],0,sizeof(PVR_DSCMB_INFO));
-#endif
+            if(b2ndEncryptionEnabled)
+            {
+                memset(&stPVRRecordDSCMBInfo[i],0,sizeof(PVR_DSCMB_INFO));
+            }
         }
         printf("Destroy PVR successfully\n");
+
+        #if defined(MSOS_TYPE_LINUX)
+        if(bSyncConfigHasBeenSet)
+        {
+            MS_U32 u32Value = 0;
+            char recoverDirtyBackgroundRatio[MAX_PROC_BUFFER_SIZE] = {0};
+            char recoverDirtyRatio[MAX_PROC_BUFFER_SIZE] = {0};
+            char recoverDirtyExpireCentisecs[MAX_PROC_BUFFER_SIZE] = {0};
+            char recoverDirtyWritebackCentisecs[MAX_PROC_BUFFER_SIZE]= {0};
+            strncpy(recoverDirtyBackgroundRatio, origDirtyBackgroundRatio, sizeof(recoverDirtyBackgroundRatio)-1);
+            strncpy(recoverDirtyRatio, origDirtyRatio, sizeof(recoverDirtyRatio)-1);
+            strncpy(recoverDirtyExpireCentisecs, origDirtyExpireCentisecs, sizeof(recoverDirtyExpireCentisecs)-1);
+            strncpy(recoverDirtyWritebackCentisecs, origDirtyWritebackCentisecs, sizeof(recoverDirtyWritebackCentisecs)-1);
+            _Demo_PVR_SetSyncConfig(&u32Value, recoverDirtyBackgroundRatio, recoverDirtyRatio, recoverDirtyExpireCentisecs, recoverDirtyWritebackCentisecs);
+        }
+        #endif
+        bSyncConfigHasBeenSet = FALSE;
 
         return TRUE;
     }
@@ -3623,33 +4989,45 @@ MS_BOOL Demo_PVR_Record_Start(MS_U32* VideoPid, MS_U32* AudioPid, MS_U32* PCRPid
     DemoPvr_print("========= PVR Record Start =========\n");
     DemoPvr_print("(%"DTC_MS_U32_u",%"DTC_MS_U32_u",%"DTC_MS_U32_u",%"DTC_MS_U32_u",%"DTC_MS_U32_u")\n",*VideoPid,*AudioPid,*PCRPid,*pu32VCodec,*pu32ACodec);
 
+    DEMO_PVR_CHECK_INIT();
     DEMO_PVR_CHECK_REC_IDX(_u8CurRecProgramIdx, FALSE);
 
-    if( _Demo_PVR_IsFileExist((char *)MApi_PVR_GetMouthPath(),fileName))
+    MS_U8 *pu8MountPath = NULL;
+
+    char *mountPath = NULL;
+    DEMO_PVR_CHECK_MountPath(mountPath, FALSE)
+
+
+    pu8MountPath = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U8)*FILE_PATH_SIZE*2);
+    _U16StringToU8String((MS_U16*)mountPath, pu8MountPath, wcslen((MS_U16*)mountPath));
+    if( _Demo_PVR_IsFileExist((char *)pu8MountPath,fileName) && (_bAppend == FALSE))
     {
         printf("%s exist.\n",fileName);
+        _Demo_PVR_MEMFREE_FUNC((void**)&pu8MountPath);
         return FALSE;
     }
 
-    DemoPvr_print("<2> _Demo_PVR_GetDiskSpace :%s\n",(char *)MApi_PVR_GetMouthPath());
-    if(!_Demo_PVR_GetDiskSpace((char *)MApi_PVR_GetMouthPath(),&u64FreeSpaceInKB,&u64TotalSpaceInKB))
+    DemoPvr_print("<2> _Demo_PVR_GetDiskSpace :%s\n",(char *)pu8MountPath);
+
+    DEMO_PVR_CHECK_MountPath(mountPath, FALSE)
+    if(!_Demo_PVR_GetDiskSpace(mountPath,&u64FreeSpaceInKB,&u64TotalSpaceInKB))
     {
         printf("Disk Space can't be detected! \n");
+        _Demo_PVR_MEMFREE_FUNC((void**)&pu8MountPath);
         return FALSE;
     }
     if(u64FreeSpaceInKB < PVR_FILE_SIZE_TO_STOP)
     {
         printf("Disk Space is not enough! (less than %dMB)\n",PVR_FILE_SIZE_TO_STOP/1024);
+        _Demo_PVR_MEMFREE_FUNC((void**)&pu8MountPath);
         return FALSE;
     }
 
     bRet = _Demo_PVR_RecordStart(FALSE, _eCurDMXInputSrc, _eCurDMXFlowSet[_u8CurRecProgramIdx], u64FreeSpaceInKB/1024, VideoPid, AudioPid, PCRPid, pu32VCodec, pu32ACodec, fileName);
 
-    if(bRet)
-    {
-        _u8TotalProgramNum++;
-    }
-    DemoPvr_print(" MApi_PVR_RecordStart _u8TotalProgramNum=%d\n",_u8TotalProgramNum);
+
+
+    _Demo_PVR_MEMFREE_FUNC((void**)&pu8MountPath);
     return bRet;
 }
 
@@ -3682,8 +5060,7 @@ MS_BOOL Demo_PVR_Record_ChangeProgram(MS_U32* VideoPid, MS_U32* AudioPid, MS_U32
     DemoPvr_print("Change to (VPID,APID,PCR,VDEC,ADEC)(%"DTC_MS_U32_u",%"DTC_MS_U32_u",%"DTC_MS_U32_u",%"DTC_MS_U32_u",%"DTC_MS_U32_u")\n",*VideoPid,*AudioPid,*PCRPid,*pu32VCodec,*pu32ACodec);
 
     DEMO_PVR_CHECK_INIT();
-
-    if(_u8TimeshiftIdx[_eCurPlaybackProgramPath] == _u8CurRecProgramIdx)
+    if (_Demo_PVR_IsTimeshiftRecord(_u8CurRecProgramIdx) == TRUE)
     {
         bTimeshift = TRUE;
     }
@@ -3724,17 +5101,16 @@ MS_BOOL Demo_PVR_Record_ChangeProgram(MS_U32* VideoPid, MS_U32* AudioPid, MS_U32
 MS_BOOL Demo_PVR_Record_Stop(void)
 {
     DEMO_PVR_CHECK_INIT();
-
-    if(_u8TimeshiftIdx[_eCurPlaybackProgramPath]==_u8CurRecProgramIdx)
+    if (_Demo_PVR_IsTimeshiftRecord(_u8CurRecProgramIdx) == TRUE)
     {
-        printf("Error!! Timeshift Mode! %d\n",_u8TimeshiftIdx[_eCurPlaybackProgramPath]);
+        printf("Error!! Timeshift Mode! Current record index : %u\n", _u8CurRecProgramIdx);
         return FALSE;
     }
 
-    DemoPvr_print("Demo_PVR_Record_Stop %d ::%s\n",_u8CurRecProgramIdx,_recprogramInfo[_u8CurRecProgramIdx].FileName);
+    DemoPvr_print("Demo_PVR_Record_Stop %d ::",_u8CurRecProgramIdx);
+    wprintf((MS_U16*)_recprogramInfo[_u8CurRecProgramIdx].FileName, PVR_DBG, TRUE);
     _Demo_PVR_RecStop(FALSE, _u8CurRecProgramIdx);
     DemoPvr_print("Demo_PVR_Record_Stop -->end \n");
-    _u8TotalProgramNum--;
     return TRUE;
 }
 
@@ -3754,7 +5130,7 @@ MS_BOOL Demo_PVR_Record_Pause(void)
     DemoPvr_print("=========  Demo_PVR_Record_Pause =========\n");
     DEMO_PVR_CHECK_INIT();
 
-    return MApi_PVR_RecordPause(_u8CurRecProgramIdx);
+    return MApi_PVR_RecordPause(_u8hRecord[_u8CurRecProgramIdx]);
 }
 
 //------------------------------------------------------------------------------
@@ -3773,10 +5149,9 @@ MS_BOOL Demo_PVR_Record_Resume(void)
     DemoPvr_print("=========  Demo_PVR_Record_Resume =========\n");
     DEMO_PVR_CHECK_INIT();
 
-    return MApi_PVR_RecordResume(_u8CurRecProgramIdx);
+    return MApi_PVR_RecordResume(_u8hRecord[_u8CurRecProgramIdx]);
 }
 
-#if (DEMO_PVR_SUPPORT_CAPVR_TEST == 1)
 #if (DEMO_DSCMB_ADVANCED_TEST == 1)
 //------------------------------------------------------------------------------
 /// @brief The sample code to set global CAVID
@@ -3833,6 +5208,11 @@ MS_BOOL Demo_PVR_Record_DSCMB_Open(MS_U8 *u8Type,MS_U8 *u8StrOddCW,MS_U8 *u8StrE
         return FALSE;
     }
     memset(&stPVRRecordDSCMBInfo[_u8CurRecProgramIdx], 0, sizeof(PVR_DSCMB_INFO));
+    if( (strlen((char *)u8Type) > PVR_DSCMB_INFO_CW_SIZE) || (strlen((char *)u8StrOddCW) > PVR_DSCMB_INFO_CW_SIZE) || (strlen((char *)u8StrEvenCW) > PVR_DSCMB_INFO_CW_SIZE) )
+    {
+        printf("[%s][%d] DSCM CW Size is over %d\n",__FUNCTION__,__LINE__, PVR_DSCMB_INFO_CW_SIZE);
+        return FALSE;
+    }
     memcpy(stPVRRecordDSCMBInfo[_u8CurRecProgramIdx].u8Type, u8Type, strlen((char *)u8Type));
     memcpy(stPVRRecordDSCMBInfo[_u8CurRecProgramIdx].u8StrOddCW, u8StrOddCW, strlen((char *)u8StrOddCW));
     memcpy(stPVRRecordDSCMBInfo[_u8CurRecProgramIdx].u8StrEvenCW, u8StrEvenCW, strlen((char *)u8StrEvenCW));
@@ -3892,6 +5272,11 @@ MS_BOOL Demo_PVR_Record_DSCMB_Change(MS_U8 *u8Type,MS_U8 *u8StrOddCW,MS_U8 *u8St
         printf("[%s][%d]record dscmb Idx[%d] not opened and create resource!\n",__FUNCTION__,__LINE__,_u8CurRecProgramIdx);
         return FALSE;
     }
+    if( (strlen((char *)u8Type) > PVR_DSCMB_INFO_CW_SIZE) || (strlen((char *)u8StrOddCW) > PVR_DSCMB_INFO_CW_SIZE) || (strlen((char *)u8StrEvenCW) > PVR_DSCMB_INFO_CW_SIZE) )
+    {
+        printf("[%s][%d] DSCM CW Size is over %d\n",__FUNCTION__,__LINE__, PVR_DSCMB_INFO_CW_SIZE);
+        return FALSE;
+    }
     memcpy(stPVRRecordDSCMBInfo[_u8CurRecProgramIdx].u8Type, u8Type, strlen((char *)u8Type));
     memcpy(stPVRRecordDSCMBInfo[_u8CurRecProgramIdx].u8StrOddCW, u8StrOddCW, strlen((char *)u8StrOddCW));
     memcpy(stPVRRecordDSCMBInfo[_u8CurRecProgramIdx].u8StrEvenCW, u8StrEvenCW, strlen((char *)u8StrEvenCW));
@@ -3920,7 +5305,7 @@ MS_BOOL Demo_PVR_SetEncryptKeyIdx(MS_U32 *u32KeyIdx)
     return MApi_PVR_EX_SetEncryptKeyIdx(_u8CurRecProgramIdx, *u32KeyIdx);
 }
 #endif // DEMO_PVR_SUPPORT_DYNAMICKEY_TEST
-#endif // DEMO_PVR_SUPPORT_CAPVR_TEST
+
 //------------------------------------------------------------------------------
 /// @brief The sample code to record a live stream in timeshift mode
 /// @param[in] VideoPid Video PID of the current live program
@@ -3944,12 +5329,19 @@ MS_BOOL Demo_PVR_SetEncryptKeyIdx(MS_U32 *u32KeyIdx)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_PVR_Timeshift_RecordStart(MS_U32* VideoPid, MS_U32* AudioPid, MS_U32* PCRPid, MS_U32* pu32VCodec, MS_U32* pu32ACodec, char* fileName)
 {
+    DEMO_PVR_CHECK_INIT();
+
     MS_BOOL bRet=FALSE;
     MS_U64 u64FreeSpaceInKB, u64TotalSpaceInKB;
     DemoPvr_print("=========  Demo_PVR_Timeshift_RecordStart =========\n");
     DemoPvr_print("(%"DTC_MS_U32_d",%"DTC_MS_U32_d",%"DTC_MS_U32_d",%"DTC_MS_U32_d",%"DTC_MS_U32_d")\n",*VideoPid,*AudioPid,*PCRPid,*pu32VCodec,*pu32ACodec);
 
     DEMO_PVR_CHECK_REC_IDX(_u8CurRecProgramIdx, FALSE);
+    if(MApi_PVR_EX_IsTimeShift(_eCurPlaybackProgramPath))
+    {
+        printf("It is timeshift now.\n");
+        return FALSE;
+    }
 
     if(MApi_PVR_IsRecording(_u8hRecord[_u8CurRecProgramIdx]))
     {
@@ -3957,18 +5349,28 @@ MS_BOOL Demo_PVR_Timeshift_RecordStart(MS_U32* VideoPid, MS_U32* AudioPid, MS_U3
         return FALSE;
     }
 
-    if(MApi_PVR_EX_IsPlaybacking(_u8hPVRPlayback[_eCurPlaybackProgramPath]))
+    if(MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
          printf("Play now. Fail to start timeshift record.\n");
          return FALSE;
     }
-    printf("Try to Remove timeshift file.\n");
-    MApi_PVR_RemoveFile(fileName);
 
-    DemoPvr_print("_moutPath=%s\n",(char *)MApi_PVR_GetMouthPath());
-    if( _Demo_PVR_GetDiskSpace((char *)MApi_PVR_GetMouthPath(),&u64FreeSpaceInKB, &u64TotalSpaceInKB))
+    printf("Try to Remove timeshift file.\n");
+    MS_U16 *pu16FileName = NULL;
+
+    pu16FileName = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U16)*FILE_PATH_SIZE);
+    _U8StringToU16String((MS_U8*)fileName, pu16FileName, strlen(fileName));
+    MApi_PVR_RemoveFile((char*)pu16FileName);
+    _Demo_PVR_MEMFREE_FUNC((void**)&pu16FileName);
+
+
+    char *mountPath = NULL;
+    DEMO_PVR_CHECK_MountPath(mountPath, FALSE)
+    DemoPvr_print("_moutPath=");
+    wprintf((MS_U16*)mountPath, PVR_DBG, TRUE);
+    if( _Demo_PVR_GetDiskSpace(mountPath,&u64FreeSpaceInKB, &u64TotalSpaceInKB))
     {
-        printf("u64FreeSpaceInMB=%llu\n",u64FreeSpaceInKB/1024);
+        printf("u64FreeSpaceInMB=0x%"DTC_MS_U64_x" \n",u64FreeSpaceInKB/1024);
         DemoPvr_print("=========  Demo_PVR_Record_Stop =========\n");
         if(u64FreeSpaceInKB < MIN_TIME_SHIFT_DISK_SPACE_IN_KB)
         {
@@ -3982,13 +5384,12 @@ MS_BOOL Demo_PVR_Timeshift_RecordStart(MS_U32* VideoPid, MS_U32* AudioPid, MS_U3
         return FALSE;
     }
 
-    _u8TimeshiftIdx[_eCurPlaybackProgramPath]=_u8CurRecProgramIdx;
-    printf("_u8TimeshiftIdx=%d\n",_u8TimeshiftIdx[_eCurPlaybackProgramPath]);
+    _u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]=_u8CurRecProgramIdx;
+    printf("_u8TimeshiftRecordIdx = %u\n",_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]);
     bRet = _Demo_PVR_RecordStart(TRUE, _eCurDMXInputSrc, _eCurDMXFlowSet[_u8CurRecProgramIdx], u64FreeSpaceInKB/1024, VideoPid, AudioPid, PCRPid, pu32VCodec, pu32ACodec, fileName);
 
     if(bRet)
     {
-        _u8TotalProgramNum++;
         printf("\n***** Timeshift Recorder *****\n");
         printf("Screen Frezon: %s\n",(_bScreenFrozen[_eCurPlaybackProgramPath])?"TRUE":"FALSE");
         printf("File Name: %s\n",fileName);
@@ -4004,15 +5405,72 @@ MS_BOOL Demo_PVR_Timeshift_RecordStart(MS_U32* VideoPid, MS_U32* AudioPid, MS_U3
     }
     else
     {
-        _u8TimeshiftIdx[_eCurPlaybackProgramPath] = 0xFF;
+        _u8TimeshiftRecordIdx[_eCurPlaybackProgramPath] = INVALID_RECORD_INDEX;
     }
-    DemoPvr_print(" MApi_PVR_RecordStart _u8TotalProgramNum=%d\n",_u8TotalProgramNum);
 
 
-    DemoPvr_print("_u8TimeshiftIdx=%d\n",_u8TimeshiftIdx[_eCurPlaybackProgramPath]);
+    DemoPvr_print("_u8TimeshiftIdx=%d\n",_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]);
 
     return bRet;
 }
+
+MS_BOOL _Demo_PVR_Timeshift_RecordStop(MS_U8 u8RecordIdx)
+{
+    DEMO_PVR_CHECK_INIT();
+
+    Ex_PVRPlaybackPath ePlaybackidx = (Ex_PVRPlaybackPath)_Demo_PVR_Timeshift_GetPlaybackIdx(u8RecordIdx);
+    Ex_PVRPlaybackPath ePlayIdxSaved = PVR_PATH_INVALID;
+    if (ePlaybackidx == PVR_PATH_INVALID)
+    {
+        printf("[%s][%d]Fail to get timeshift playbackidx: %u from _u8CurRecProgramIdx:%u _eCurPlaybackProgramPath:%u!\n", __FUNCTION__, __LINE__, ePlaybackidx, _u8CurRecProgramIdx, _eCurPlaybackProgramPath);
+        return FALSE;
+    }
+
+    ePlayIdxSaved = _eCurPlaybackProgramPath;
+    _eCurPlaybackProgramPath = ePlaybackidx;
+    if(!_Demo_PVR_RecStop(TRUE, u8RecordIdx))
+    {
+        printf("Fail to stop recording u8RecordIdx = %u\n", u8RecordIdx);
+        return FALSE;
+    }
+    _eCurPlaybackProgramPath = ePlayIdxSaved;
+    _u8TimeshiftRecordIdx[ePlaybackidx]=INVALID_RECORD_INDEX;
+    //check if there is timeshift playback
+    if(_u8TimeshiftPlaybackIdx[ePlaybackidx] == PVR_PATH_INVALID)
+    {
+#if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
+        EN_AV_Device eDevice = E_AV_DEVICE_MAIN;
+        // ===================== Get the device ID for vdec =============================
+
+        Demo_PVR_Check_AVPath(eDevice,ePlaybackidx,PVR_PATH_MAIN,E_AV_DEVICE_MAIN,PVR_PATH_SUB,E_AV_DEVICE_SUB);
+
+        if(_bTimeshiftSeamless[ePlaybackidx] == TRUE)
+        {
+            _bTimeshiftSeamless[ePlaybackidx] = FALSE;
+            printf("[%s][%d] Set _bTimeshiftSeamless (%d)\n",__FUNCTION__,__LINE__,_bTimeshiftSeamless[ePlaybackidx]);
+            printf("[%s][%d] prepare to switch to live stream and stop live vdec\n",__FUNCTION__,__LINE__);
+            _DualAVFunc.DualAV_StopAV(&eDevice);
+            if(_livePromInfo[ePlaybackidx].bLive)
+            {
+                printf("[%s][%d] switch to live stream!\n",__FUNCTION__, __LINE__);
+                if (_Demo_PVR_AV_Start(TRUE, &_livePromInfo[ePlaybackidx]))
+                {
+                    _Demo_PVR_AV_Play();
+                    printf("[%s][%d] switch to live stream success\n",__FUNCTION__, __LINE__);
+                    _Demo_PVR_LiveInfo_Initialize(ePlaybackidx);
+                }
+                else
+                {
+                    printf("[%s][%d] \n[Demo_PVR_PlaybackStop] Return to Live[%u] failed!!!\n\n",__FUNCTION__, __LINE__,ePlaybackidx);
+                }
+            }
+        }
+#endif
+    }
+    _u64FileSizeInKB = PVR_FILE_SIZE_MAX;
+    return TRUE;
+}
+
 //------------------------------------------------------------------------------
 /// @brief The sample code to stop recording in timeshift mode
 /// @param[in]
@@ -4026,54 +5484,8 @@ MS_BOOL Demo_PVR_Timeshift_RecordStart(MS_U32* VideoPid, MS_U32* AudioPid, MS_U3
 //------------------------------------------------------------------------------
 MS_BOOL Demo_PVR_Timeshift_RecordStop(void)
 {
-    DEMO_PVR_CHECK_INIT();
+    return _Demo_PVR_Timeshift_RecordStop(_u8CurRecProgramIdx);
 
-    if(_u8TimeshiftIdx[_eCurPlaybackProgramPath]==0xFF)
-    {
-        printf("Already stop recording\n");
-        return FALSE;
-    }
-
-    if(!_Demo_PVR_RecStop(TRUE, _u8TimeshiftIdx[_eCurPlaybackProgramPath]))
-    {
-        printf("Fail to stop recording\n");
-        return FALSE;
-    }
-
-    //check if there is timeshift playback
-    if(!MApi_PVR_EX_IsPlaybacking(_u8hPVRPlayback[_eCurPlaybackProgramPath]))
-    {
-         _u8TimeshiftIdx[_eCurPlaybackProgramPath]=0xFF;
-#if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
-        EN_AV_Device eDevice = E_AV_DEVICE_MAIN;
-        // ===================== Get the device ID for vdec =============================
-
-        Demo_PVR_Check_AVPath(eDevice,_eCurPlaybackProgramPath,PVR_PATH_MAIN,E_AV_DEVICE_MAIN,PVR_PATH_SUB,E_AV_DEVICE_SUB);
-
-        if(_bTimeshiftSeamless[_eCurPlaybackProgramPath] == TRUE)
-        {
-            _bTimeshiftSeamless[_eCurPlaybackProgramPath] = FALSE;
-            printf("[%s][%d] Set _bTimeshiftSeamless (%d)\n",__FUNCTION__,__LINE__,_bTimeshiftSeamless[_eCurPlaybackProgramPath]);
-            printf("[%s][%d] prepare to switch to live stream and stop live vdec\n",__FUNCTION__,__LINE__);
-            _DualAVFunc.DualAV_StopAV(&eDevice);
-            if(_livePromInfo[_eCurPlaybackProgramPath].bLive)
-            {
-                printf("[%s][%d] switch to live stream!\n",__FUNCTION__, __LINE__);
-                if (_Demo_PVR_AV_Start(&_livePromInfo[_eCurPlaybackProgramPath]))
-                {
-                    _Demo_PVR_AV_Play();
-                    printf("[%s][%d] switch to live stream success\n",__FUNCTION__, __LINE__);
-                }
-                else
-                {
-                    printf("[%s][%d] \n[Demo_PVR_PlaybackStop] Return to Live[%u] failed!!!\n\n",__FUNCTION__, __LINE__,_eCurPlaybackProgramPath);
-                }
-            }
-        }
-#endif
-    }
-    _u8TotalProgramNum--;
-    return TRUE;
 }
 
 //------------------------------------------------------------------------------
@@ -4091,16 +5503,15 @@ MS_BOOL Demo_PVR_Timeshift_Stop(void)
 {
     DemoPvr_print("=========  Demo_PVR_Timeshift_Stop =========\n");
     DEMO_PVR_CHECK_INIT();
-    if(_u8TimeshiftIdx[_eCurPlaybackProgramPath]==0xFF)
+    if(_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]==INVALID_RECORD_INDEX && _u8TimeshiftPlaybackIdx[_eCurPlaybackProgramPath] == PVR_PATH_INVALID)
     {
         printf("Already stop timeshift mode!\n");
         return FALSE;
     }
 
     Demo_PVR_Timeshift_PlaybackStop();
-    Demo_PVR_Timeshift_RecordStop();
+    _Demo_PVR_Timeshift_RecordStop(_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]);
 
-    _u8TimeshiftIdx[_eCurPlaybackProgramPath]=0xFF;
     return TRUE;
 }
 //------------------------------------------------------------------------------
@@ -4134,42 +5545,49 @@ MS_BOOL Demo_PVR_Timeshift_PlaybackStart(void)
     Demo_PVR_Check_AVPath(eDevice,_eCurPlaybackProgramPath,PVR_PATH_MAIN,E_AV_DEVICE_MAIN,PVR_PATH_SUB,E_AV_DEVICE_SUB);
 
     // ===================== Check Machine ===========================================
-    if(_u8TimeshiftIdx[_eCurPlaybackProgramPath]==0xFF)
+    if(_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]==INVALID_RECORD_INDEX)
     {
         printf("Not to Start timeshiftrecording!\n");
         return FALSE;
     }
 
-    if(! _Demo_PVR_CheckUSB((char *)MApi_PVR_GetMouthPath()))
+    char *mountPath = NULL;
+    DEMO_PVR_CHECK_MountPath(mountPath, FALSE)
+    if(_Demo_PVR_CheckUSB(mountPath) == FALSE)
     {
-        printf("USB is not ready!\n");
+        DemoPvr_Errorprint("USB is not ready!\n");
         return FALSE;
     }
 
-    if(MApi_PVR_EX_IsPlaybacking(_u8hPVRPlayback[_eCurPlaybackProgramPath]))
+    if(MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         DemoPvr_print("Normal Play\n");
-        bRet=MApi_PVR_PlaybackSetSpeed(_u8hPVRPlayback[_eCurPlaybackProgramPath],EN_APIPVR_PLAYBACK_SPEED_1X);
+        bRet=MApi_PVR_PlaybackSetSpeed(_u8hPlayback[_eCurPlaybackProgramPath],EN_APIPVR_PLAYBACK_SPEED_1X);
     }
     else
     {
-        DemoPvr_print("Play FileName[%d] = %s\n",_u8TimeshiftIdx[_eCurPlaybackProgramPath],_recprogramInfo[_u8TimeshiftIdx[_eCurPlaybackProgramPath]].FileName);
+        DemoPvr_print("Play FileName[%d] = ",_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]);
+        wprintf((MS_U16*)_recprogramInfo[_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]].FileName, PVR_DBG, TRUE);
         // ------ [1] Prepare playback info. (pids and codec) ------
-        Filters= _recprogramInfo[_u8TimeshiftIdx[_eCurPlaybackProgramPath]].Filters;
+        Filters= _recprogramInfo[_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]].Filters;
         u32VideoPid=_Demo_PVR_FindPidinFilter(Filters, DMX_FILTER_TYPE_VIDEO);
-        u32AudioPid=_recprogramInfo[_u8TimeshiftIdx[_eCurPlaybackProgramPath]].u16AudioPid;
+        u32AudioPid=_recprogramInfo[_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]].u16AudioPid;
         u32PCRPid=_Demo_PVR_FindPidinFilter(Filters, DMX_FILTER_TYPE_PCR);
-        u32VCodec=_recprogramInfo[_u8TimeshiftIdx[_eCurPlaybackProgramPath]].enVCodec;
-        u32ACodec=_recprogramInfo[_u8TimeshiftIdx[_eCurPlaybackProgramPath]].u32ACodec;
+        u32VCodec=_recprogramInfo[_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]].enVCodec;
+        u32ACodec=_recprogramInfo[_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]].u32ACodec;
         u32PmtPid=_Demo_PVR_FindPidinFilter(Filters, DMX_FILTER_TYPE_SECTION);
-        u32LCN=_recprogramInfo[_u8TimeshiftIdx[_eCurPlaybackProgramPath]].u32LCN;
+        u32LCN=_recprogramInfo[_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]].u32LCN;
         DemoPvr_print("(%"DTC_MS_U32_u",%"DTC_MS_U32_u",%"DTC_MS_U32_u",%"DTC_MS_U32_u",%"DTC_MS_U32_u")  %d\n",u32VideoPid,u32AudioPid,u32PCRPid,u32VCodec,u32ACodec,_recprogramInfo[_u8TimeshiftIdx[_eCurPlaybackProgramPath]].enVCodec);
 
         // ------ [2] Store playback info. to _plyprogramInfo structure ------
-        _Demo_PVR_SetProgramInfo(&_plyprogramInfo[_eCurPlaybackProgramPath],u32PCRPid, u32VideoPid, u32AudioPid,  u32VCodec,  u32ACodec, u32PmtPid,  u32LCN,FALSE);
+        if(_Demo_PVR_SetProgramInfo(&_plyprogramInfo[_eCurPlaybackProgramPath],u32PCRPid, u32VideoPid, u32AudioPid,  u32VCodec,  u32ACodec, u32PmtPid,  u32LCN,FALSE) == FALSE)
+        {
+            return FALSE;
+        }
 
-        strcpy(_plyprogramInfo[_eCurPlaybackProgramPath].FileName,_recprogramInfo[_u8TimeshiftIdx[_eCurPlaybackProgramPath]].FileName);
-        DemoPvr_print("Play FileName = %s\n",_plyprogramInfo[_eCurPlaybackProgramPath].FileName);
+        wcscpy((MS_U16*)_plyprogramInfo[_eCurPlaybackProgramPath].FileName,(MS_U16*)_recprogramInfo[_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]].FileName);
+        DemoPvr_print("Play FileName = ");
+        wprintf((MS_U16*)_plyprogramInfo[_eCurPlaybackProgramPath].FileName, PVR_DBG, TRUE);
         // [3] ------  Get AV stream ID ------
         _AVStreamID[_eCurPlaybackProgramPath].vstreamID = _Demo_PVR_GetVidStreamID(&_eCurPlaybackProgramPath);
         _AVStreamID[_eCurPlaybackProgramPath].astreamID = _Demo_PVR_GetAudStreamID(&_eCurPlaybackProgramPath);
@@ -4181,6 +5599,11 @@ MS_BOOL Demo_PVR_Timeshift_PlaybackStart(void)
 
         if(_livePromInfo[_eCurPlaybackProgramPath].bLive)
         {
+            if (Demo_AV_GetAVInfo(&eDevice,E_AV_GetCmd_LiveInfo,&_stLiveInfo[_eCurPlaybackProgramPath])  == FALSE)
+            {
+                printf("[%s]Error!!!, Get Live info by Demo_AV_GetAVInfo failed\n",__FUNCTION__);
+                return FALSE;
+            }
 #if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
             if(_bTimeshiftSeamless[_eCurPlaybackProgramPath] == TRUE)
             {
@@ -4197,22 +5620,25 @@ MS_BOOL Demo_PVR_Timeshift_PlaybackStart(void)
         }
 
         do{
-            MApi_PVR_EX_PlaybackABLoopReset(_u8hPVRPlayback[_eCurPlaybackProgramPath]);
+            MApi_PVR_EX_PlaybackABLoopReset(_u8hPlayback[_eCurPlaybackProgramPath]);
 
-            bRet=MApi_PVR_EX_TimeshiftPlaybackStart(_eCurPlaybackProgramPath,&_u8hPVRPlayback[_eCurPlaybackProgramPath],_eCurPlaybackProgramPath,(void *)&_AVStreamID[_eCurPlaybackProgramPath],_plyprogramInfo[_eCurPlaybackProgramPath].FileName,0,0);
+            bRet=MApi_PVR_EX_TimeshiftPlaybackStart(_eCurPlaybackProgramPath,&_u8hPlayback[_eCurPlaybackProgramPath],_eCurPlaybackProgramPath,(void *)&_AVStreamID[_eCurPlaybackProgramPath],_plyprogramInfo[_eCurPlaybackProgramPath].FileName,0,0);
         }while(0);
         if( bRet!=TRUE)
         {
-            _DualFileFunc.FileIn_StopAV(&_eCurPlaybackProgramPath);
+            // If playback failed,
+            // playbackstop & playbackclose would be called in PVR MW.
+            // No need to call FileIn_StopAV.
 
             if(_livePromInfo[_eCurPlaybackProgramPath].bLive)
             {
                 printf("timeshift play fail.\nPlay live stream...\n");
-                if (_Demo_PVR_AV_Start(&_livePromInfo[_eCurPlaybackProgramPath]))
+                if (_Demo_PVR_AV_Start(TRUE, &_livePromInfo[_eCurPlaybackProgramPath]))
                 {
                     printf("switch to live stream seccess!\n");
                     _Demo_PVR_FreezeScreen(FALSE);
                     _Demo_PVR_AV_Play();
+                    _Demo_PVR_LiveInfo_Initialize(_eCurPlaybackProgramPath);
                 }
                 else
                 {
@@ -4223,6 +5649,7 @@ MS_BOOL Demo_PVR_Timeshift_PlaybackStart(void)
         }
         else
         {
+            _u8TimeshiftPlaybackIdx[_eCurPlaybackProgramPath] = _eCurPlaybackProgramPath;
             _u8TotalPlaybackProgram++;
         }
 #if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
@@ -4259,28 +5686,27 @@ MS_BOOL Demo_PVR_Timeshift_PlaybackStart(void)
 MS_BOOL Demo_PVR_Timeshift_PlaybackStop(void)
 {
     MS_BOOL bRet=FALSE;
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
     DEMO_PVR_CHECK_INIT();
 
-    if(_u8TimeshiftIdx[_eCurPlaybackProgramPath]==0xFF)
+    if(_u8TimeshiftPlaybackIdx[_eCurPlaybackProgramPath]==PVR_PATH_INVALID)
     {
         printf("Already stop playing\n");
         return FALSE;
     }
-    if(!MApi_PVR_EX_IsPlaybacking(u8curPlayIdx))
+    if(!MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         printf("No to play!\n");
         return FALSE;
     }
 
-    bRet = MApi_PVR_EX_TimeshiftPlaybackStop(&_u8hPVRPlayback[_eCurPlaybackProgramPath],_u8hRecord[_u8TimeshiftIdx[_eCurPlaybackProgramPath]],_eCurPlaybackProgramPath);
+    bRet = MApi_PVR_EX_TimeshiftPlaybackStop(&_u8hPlayback[_eCurPlaybackProgramPath],_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath],_eCurPlaybackProgramPath);
     if(!bRet)
     {
         printf("Fail to Timeshift playback stop\n");
         return bRet;
     }
 
-    if(MApi_PVR_EX_IsPlaybacking(u8curPlayIdx)==FALSE)
+    if(MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath])==FALSE)
     {
         if(_livePromInfo[_eCurPlaybackProgramPath].bLive)
         {
@@ -4291,10 +5717,11 @@ MS_BOOL Demo_PVR_Timeshift_PlaybackStop(void)
                 printf("[%s][%d] Set _bTimeshiftSeamless (%d)\n",__FUNCTION__,__LINE__,_bTimeshiftSeamless[_eCurPlaybackProgramPath]);
             }
 #endif
-            if (_Demo_PVR_AV_Start(&_livePromInfo[_eCurPlaybackProgramPath]))
+            if (_Demo_PVR_AV_Start(TRUE, &_livePromInfo[_eCurPlaybackProgramPath]))
             {
                 printf("switch to live stream!\n");
                 _Demo_PVR_AV_Play();
+                _Demo_PVR_LiveInfo_Initialize(_eCurPlaybackProgramPath);
             }
             else
             {
@@ -4303,14 +5730,11 @@ MS_BOOL Demo_PVR_Timeshift_PlaybackStop(void)
         }
     }
 
-    //check if there is timeshift record
-    if(!MApi_PVR_IsRecording(_u8hRecord[_u8TimeshiftIdx[_eCurPlaybackProgramPath]]))
-    {
-        _u8TimeshiftIdx[_eCurPlaybackProgramPath]=0xFF;
-    }
+
     if(bRet)
     {
         _u8TotalPlaybackProgram--;
+        _u8TimeshiftPlaybackIdx[_eCurPlaybackProgramPath] = PVR_PATH_INVALID;
     }
 
     return bRet;
@@ -4334,12 +5758,13 @@ MS_BOOL Demo_PVR_PlaybackStart(char *filename)
     MS_U32 PCRPid = 0;
     MS_U32 pu32VCodec = 0;
     MS_U32 pu32ACodec = 0;
+    char *mountPath = NULL;
 
     DemoPvr_print("=========  Demo_PVR_PlaybackStart =========\n");
     DemoPvr_print("filename=%s\n",(filename)?filename:"NULL");
     MS_BOOL bRet=FALSE;
-    MS_U16 u16PmtPid;
-    MS_U16 u16LCN;
+    MS_U16 u16PmtPid = 0;
+    MS_U16 u16LCN = 0;
     EN_AV_Device eDevice = E_AV_DEVICE_MAIN;
 
     if ((!filename)||(strlen(filename)<=0))
@@ -4348,36 +5773,63 @@ MS_BOOL Demo_PVR_PlaybackStart(char *filename)
         return FALSE;
     }
 
-    if(0 == strcmp(filename,_recprogramInfo[_u8TimeshiftIdx[_eCurPlaybackProgramPath]].FileName))
+    MS_U16 *pu16FileName = NULL;
+    MS_U8 *pu8MountPath = NULL;
+
+    pu16FileName = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U16)*FILE_PATH_SIZE);
+
+    if(pu16FileName == NULL)
     {
-        printf("Error!! Timeshift Mode! %d\n", _u8TimeshiftIdx[_eCurPlaybackProgramPath]);
         return FALSE;
     }
 
+    _U8StringToU16String((MS_U8*)filename, pu16FileName, strlen(filename));
+    if((_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath] != INVALID_RECORD_INDEX)
+    && (0 == wcscmp(pu16FileName,(MS_U16*)_recprogramInfo[_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]].FileName)) )
+    {
+        printf("Error!! Timeshift Mode! %d\n", _u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]);
+        bRet = FALSE;
+        goto END;
+    }
 
     DEMO_PVR_CHECK_INIT();
 
-    if(! _Demo_PVR_CheckUSB((char *)MApi_PVR_GetMouthPath()))
+    DEMO_PVR_CHECK_MountPath(mountPath, FALSE)
+
+    if(! _Demo_PVR_CheckUSB(mountPath))
     {
         printf("USB is not ready!\n");
-        return FALSE;
+        bRet = FALSE;
+        goto END;
     }
 
     DemoPvr_print("[%s][%d]  _Demo_PVR_IsFileExist\n", __FUNCTION__, __LINE__);
+    pu8MountPath = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U8)*FILE_PATH_SIZE*2);
+    if(pu8MountPath == NULL)
+    {
+        printf("Alloc memory fail!!\n");
+        bRet = FALSE;
+        goto END;
+    }
 
-    if(!_Demo_PVR_IsFileExist((char *)MApi_PVR_GetMouthPath(),filename))
+    DEMO_PVR_CHECK_MountPath(mountPath, FALSE)
+    _U16StringToU8String((MS_U16*)mountPath, pu8MountPath, wcslen((MS_U16*)mountPath));
+
+    if(!_Demo_PVR_IsFileExist((char *)pu8MountPath, filename))
     {
         printf("%s did not exist.\n",filename);
-        return FALSE;
+        bRet = FALSE;
+        goto END;
     }
 
 
     Demo_PVR_Check_AVPath(eDevice,_eCurPlaybackProgramPath,PVR_PATH_MAIN,E_AV_DEVICE_MAIN,PVR_PATH_SUB,E_AV_DEVICE_SUB);
 
-    if(MApi_PVR_EX_IsPlaybacking(_u8hPVRPlayback[_eCurPlaybackProgramPath]))
+    if(MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         printf("Normal Play\n");
-        return MApi_PVR_PlaybackSetSpeed(_u8hPVRPlayback[_eCurPlaybackProgramPath],EN_APIPVR_PLAYBACK_SPEED_1X);
+        bRet = MApi_PVR_PlaybackSetSpeed(_u8hPlayback[_eCurPlaybackProgramPath],EN_APIPVR_PLAYBACK_SPEED_1X);
+        goto END;
     }
     // Due to Normal Playback now,  set TimeshiftSeamless flag false to enter normal playback flow.
 #if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
@@ -4401,7 +5853,8 @@ MS_BOOL Demo_PVR_PlaybackStart(char *filename)
         if(FALSE==_Demo_PVR_SetProgramInfo(&_livePromInfo[_eCurPlaybackProgramPath],(PCRPid), (VideoPid), (AudioPid), (pu32VCodec), (pu32ACodec),(MS_U32)u16PmtPid, (MS_U32)u16LCN,FALSE))
         {
             printf("Can't set program info!\n");
-            return FALSE;
+            bRet = FALSE;
+            goto END;
         }
         _livePromInfo[_eCurPlaybackProgramPath].bLive = TRUE;
     }
@@ -4413,17 +5866,18 @@ MS_BOOL Demo_PVR_PlaybackStart(char *filename)
 
     do{
         printf("Get Ply info  %s\n",filename);
-        if(_Demo_PVR_GetFileInfo(filename, &_plyprogramInfo[_eCurPlaybackProgramPath])==FALSE)
+        if(_Demo_PVR_GetFileInfo((char*)pu16FileName, &_plyprogramInfo[_eCurPlaybackProgramPath])==FALSE)
         {
             printf("Can't get program info\n");
             bRet = FALSE;
             break;
         }
 
-        DemoPvr_print("[%s][%d] path=%s \n", __FUNCTION__, __LINE__,_plyprogramInfo[_eCurPlaybackProgramPath].FileName);
-        MApi_PVR_EX_PlaybackABLoopReset(_u8hPVRPlayback[_eCurPlaybackProgramPath]);
+        DemoPvr_print("[%s][%d] path= ", __FUNCTION__, __LINE__);
+        wprintf((MS_U16*)_plyprogramInfo[_eCurPlaybackProgramPath].FileName, PVR_DBG, TRUE);
+        MApi_PVR_EX_PlaybackABLoopReset(_u8hPlayback[_eCurPlaybackProgramPath]);
 
-        bRet = MApi_PVR_EX_PlaybackStart(_eCurPlaybackProgramPath,&_u8hPVRPlayback[_eCurPlaybackProgramPath],(void *)&_AVStreamID[_eCurPlaybackProgramPath],filename,0,0);
+        bRet = MApi_PVR_EX_PlaybackStart(_eCurPlaybackProgramPath,&_u8hPlayback[_eCurPlaybackProgramPath],(void *)&_AVStreamID[_eCurPlaybackProgramPath],(char*)pu16FileName,0,0);
     }while(0);
     if(!bRet)
     {
@@ -4431,16 +5885,16 @@ MS_BOOL Demo_PVR_PlaybackStart(char *filename)
         if(_livePromInfo[_eCurPlaybackProgramPath].bLive)
         {
             printf("switch to live \n");
-            if (_Demo_PVR_AV_Start(&_livePromInfo[_eCurPlaybackProgramPath]))
+            if (_Demo_PVR_AV_Start(TRUE, &_livePromInfo[_eCurPlaybackProgramPath]))
             {
                 printf("switch to live stream seccess!\n");
                 _Demo_PVR_AV_Play();
+                _Demo_PVR_LiveInfo_Initialize(_eCurPlaybackProgramPath);
             }
             else
             {
                 printf("\n[Demo_PVR_PlaybackStart] Return to Live[%u] failed!!!\n\n",_eCurPlaybackProgramPath);
             }
-            return bRet;
         }
     }
     else
@@ -4448,7 +5902,96 @@ MS_BOOL Demo_PVR_PlaybackStart(char *filename)
         _u8TotalPlaybackProgram++;
     }
 
+END:
+    _Demo_PVR_MEMFREE_FUNC((void**)&pu16FileName);
+    _Demo_PVR_MEMFREE_FUNC((void**)&pu8MountPath);
+
     return bRet;
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to trigger program playback change for Dynamic PMT.
+///           Which will triger PVR suspend to prepared for PMT change.
+///           And then "must" implement following PMT change flow,that is,_Demo_PVR_ChangePMTEvent(), in event "EN_APIPVR_EVENT_NOTIFY_PLAYBACK_SUSPEND".
+/// @param[in] VideoPid Video PID of the current live program
+/// @param[in] AudioPid Audio PID of the current live program
+/// @param[in] PCRPid PCR PID of the current live program
+/// @param[in] pu32VCodec Video Codec  of the current live program  0 is for MPEG2.1 is for H264. 2 is for AVS. 3 is for HEVC(H.265).
+/// @param[in] pu32ACodec Audio Codec  of the current live program
+///         0: NOT VALID
+///         1: MPEG
+///         2: AC3
+///         3: AC3P
+///         4: AAC
+/// @param[in] filename  the file name of a recored file
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Command: \b PVR_PlaybackChangeProgram \n
+///
+/// Sample Command:PVR_PlaybackChangeProgram 101 102 101 0 1 28106_101_102_101_0_TEST_19921009_212744.ts
+//------------------------------------------------------------------------------
+MS_BOOL Demo_PVR_PlaybackChangeProgram(MS_U32* VideoPid, MS_U32* AudioPid, MS_U32* PCRPid,const  MS_U32* pu32VCodec,const  MS_U32* pu32ACodec,char *filename)
+{
+    MS_U16 u16PmtPid;
+    MS_U16 u16LCN;
+    char u8FileName[32]={0};
+    MS_U32 u32TempACodec;
+    MS_U32 u32TempVCodec;
+    DemoPvr_print("=========  Demo_PVR_PlaybackChangeProgram =========\n");
+    DemoPvr_print("filename=%s\n",(filename)?filename:"NULL");
+    DemoPvr_print("Change to (VPID,APID,PCR,VDEC,ADEC)(%"DTC_MS_U32_u",%"DTC_MS_U32_u",%"DTC_MS_U32_u",%"DTC_MS_U32_u",%"DTC_MS_U32_u")\n",*VideoPid,*AudioPid,*PCRPid,*pu32VCodec,*pu32ACodec);
+
+    DEMO_PVR_CHECK_INIT();
+
+    if(MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]) != TRUE)
+    {
+        printf("Not to play!\n");
+        return FALSE;
+    }
+
+    if ((!filename)||(strlen(filename)<=0))
+    {
+        printf("No Such File Name\n");
+        return FALSE;
+    }
+
+    strncpy(u8FileName,filename, strlen(filename));
+    u8FileName[strlen(filename)] = '\0';
+
+    if(_Demo_Dmx_GetCurProgram(_eCurDMXFlowSet[_u8CurRecProgramIdx],*PCRPid,*VideoPid,*AudioPid,&u16PmtPid,&u16LCN) == FALSE)
+    {
+        DemoPvr_print("fail to Demo_Dmx_GetCurProgram.\n");
+        return FALSE;
+    }
+
+    u32TempVCodec = (MS_U32)_Demo_PVR_Get_PromInfo_VDEC_Fmt_FromPVRDDI(*pu32VCodec);
+    u32TempACodec = (MS_U32)_Demo_PVR_Get_PromInfo_ADEC_Fmt_FromPVRDDI(*pu32ACodec);
+
+    if(FALSE==_Demo_PVR_SetProgramInfo(&_plyprogramInfo[_eCurPlaybackProgramPath],(*PCRPid), (*VideoPid), (*AudioPid), u32TempVCodec, u32TempACodec, (MS_U32)u16PmtPid, (MS_U32)u16LCN, FALSE))
+    {
+        printf("Can't set program info for play program!\n");
+        return FALSE;
+    }
+
+#ifdef PVR_DBG
+    DemoPvr_print("\n**************PMT Change*************\n\n");
+    DemoPvr_print("\tvideo pid = 0x%u\n",_Demo_PVR_FindPidinFilter(_plyprogramInfo[_eCurPlaybackProgramPath].Filters, DMX_FILTER_TYPE_VIDEO));
+    DemoPvr_print("\taudio pid = 0x%"DTC_MS_U32_u"\n",_plyprogramInfo[_eCurPlaybackProgramPath].u16AudioPid);
+    DemoPvr_print("\tpcr   pid = 0x%u\n",_Demo_PVR_FindPidinFilter(_plyprogramInfo[_eCurPlaybackProgramPath].Filters, DMX_FILTER_TYPE_PCR));
+    DemoPvr_print("\tVideoFmt       = %"DTC_MS_U32_u"\n",_plyprogramInfo[_eCurPlaybackProgramPath].enVCodec);
+    DemoPvr_print("\tAudioFmt  = %"DTC_MS_U32_u"\n",_plyprogramInfo[_eCurPlaybackProgramPath].u32ACodec);
+    DemoPvr_print("\n***************************\n\n");
+#endif
+
+    if(FALSE==MApi_PVR_PlaybackProgramChangeOpen(_u8hPlayback[_eCurPlaybackProgramPath]))
+    {
+        printf("MApi_PVR_PlaybackProgramChangeOpen Failed!\n");
+        return FALSE;
+    }
+
+    return TRUE;
 }
 
 //------------------------------------------------------------------------------
@@ -4465,20 +6008,21 @@ MS_BOOL Demo_PVR_PlaybackStart(char *filename)
 MS_BOOL Demo_PVR_PlaybackStop(void)
 {
     DEMO_PVR_CHECK_INIT();
-    
-    if(0 == strcmp(_plyprogramInfo[_eCurPlaybackProgramPath].FileName,_recprogramInfo[_u8TimeshiftIdx[_eCurPlaybackProgramPath]].FileName))
+    DEMO_PVR_CHECK_PB(_eCurPlaybackProgramPath, FALSE)
+    if((_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath] != INVALID_RECORD_INDEX)
+    && (0 == wcscmp((MS_U16*)_plyprogramInfo[_eCurPlaybackProgramPath].FileName,(MS_U16*)_recprogramInfo[_u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]].FileName)) )
     {
-        printf("Error!! Timeshift Mode! %d\n", _u8TimeshiftIdx[_eCurPlaybackProgramPath]);
+        printf("Error!! Timeshift Mode! %d\n", _u8TimeshiftRecordIdx[_eCurPlaybackProgramPath]);
         return FALSE;
     }
 
-    if(MApi_PVR_EX_IsPlaybacking(_u8hPVRPlayback[_eCurPlaybackProgramPath])==FALSE)
+    if(MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath])==FALSE)
     {
         printf("Already stop playing\n");
         return FALSE;
     }
 
-    if(!MApi_PVR_PlaybackStop(&_u8hPVRPlayback[_eCurPlaybackProgramPath]))
+    if(!MApi_PVR_PlaybackStop(&_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         printf("Fail to playback stop\n");
         return FALSE;
@@ -4487,13 +6031,12 @@ MS_BOOL Demo_PVR_PlaybackStop(void)
     printf("prepare to switch to live stream\n");
     if(_livePromInfo[_eCurPlaybackProgramPath].bLive)
     {
-
         printf("switch to live stream!\n");
-
-        if (_Demo_PVR_AV_Start(&_livePromInfo[_eCurPlaybackProgramPath]))
+        if (_Demo_PVR_AV_Start(TRUE, &_livePromInfo[_eCurPlaybackProgramPath]))
         {
             _Demo_PVR_AV_Play();
             printf("switch to live stream success\n");
+            _Demo_PVR_LiveInfo_Initialize(_eCurPlaybackProgramPath);
         }
         else
         {
@@ -4506,6 +6049,9 @@ MS_BOOL Demo_PVR_PlaybackStop(void)
 
     return TRUE;
 }
+
+
+
 //------------------------------------------------------------------------------
 /// @brief The sample code to pause a playback
 /// @param[in]
@@ -4519,17 +6065,7 @@ MS_BOOL Demo_PVR_PlaybackStop(void)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_PVR_PlaybackPause(void)
 {
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
-    DemoPvr_print("=========  Demo_PVR_PlaybackPause =========\n");
-    DEMO_PVR_CHECK_INIT();
-
-    if(MApi_PVR_EX_IsPlaybacking(u8curPlayIdx)!=TRUE)
-    {
-        printf("Not to play!\n");
-        return FALSE;
-    }
-
-    return MApi_PVR_PlaybackPause(u8curPlayIdx);
+    return _Demo_PVR_PlaybackSetSpeed(EN_DEMO_PVR_PLAYBACK_PAUSE,0,0);
 }
 //------------------------------------------------------------------------------
 /// @brief The sample code to resume a playback
@@ -4544,51 +6080,10 @@ MS_BOOL Demo_PVR_PlaybackPause(void)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_PVR_PlaybackResume(void)
 {
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
-    DEMO_PVR_CHECK_INIT();
-
-    if(MApi_PVR_EX_IsPlaybacking(u8curPlayIdx)!=TRUE)
-    {
-        printf("Not to play!\n");
-        return FALSE;
-    }
-    if(MApi_PVR_PlaybackGetSpeed(u8curPlayIdx)==EN_APIPVR_PLAYBACK_SPEED_0X)
-    {
-        return MApi_PVR_PlaybackResume(u8curPlayIdx);
-    }
-
-    return MApi_PVR_PlaybackSetSpeed(u8curPlayIdx,EN_APIPVR_PLAYBACK_SPEED_1X);
+    return _Demo_PVR_PlaybackSetSpeed(EN_DEMO_PVR_PLAYBACK_RESUME,0,0);
 }
 
-APIPVR_PLAYBACK_SPEED _Demo_PVR_GetSlowForward(APIPVR_PLAYBACK_SPEED enPlaybackSpeed)
-{
-    APIPVR_PLAYBACK_SPEED enSpeed=EN_APIPVR_PLAYBACK_SPEED_INVALID;
-    switch(enPlaybackSpeed)
-    {
-        case EN_APIPVR_PLAYBACK_SPEED_1X:
-            enSpeed = EN_APIPVR_PLAYBACK_SPEED_FF_1_2X;
-            break;
-        case EN_APIPVR_PLAYBACK_SPEED_FF_1_2X:
-            enSpeed = EN_APIPVR_PLAYBACK_SPEED_FF_1_4X;
-            break;
-        case EN_APIPVR_PLAYBACK_SPEED_FF_1_4X:
-            enSpeed = EN_APIPVR_PLAYBACK_SPEED_FF_1_8X;
-            break;
-        case EN_APIPVR_PLAYBACK_SPEED_FF_1_8X:
-            enSpeed = EN_APIPVR_PLAYBACK_SPEED_FF_1_16X;
-            break;
-        case EN_APIPVR_PLAYBACK_SPEED_FF_1_16X:
-            enSpeed = EN_APIPVR_PLAYBACK_SPEED_FF_1_32X;
-            break;
-        case EN_APIPVR_PLAYBACK_SPEED_FF_1_32X:
-            enSpeed = EN_APIPVR_PLAYBACK_SPEED_1X;
-            break;
-        default :
-            break;
-    }
 
-    return enSpeed;
-}
 
 //------------------------------------------------------------------------------
 /// @brief The sample code to playback slow forward
@@ -4603,37 +6098,7 @@ APIPVR_PLAYBACK_SPEED _Demo_PVR_GetSlowForward(APIPVR_PLAYBACK_SPEED enPlaybackS
 //------------------------------------------------------------------------------
 MS_BOOL Demo_PVR_PlaybackSlowForward(void)
 {
-    MS_BOOL bRet=FALSE;
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
-    APIPVR_PLAYBACK_SPEED enSpeed=EN_APIPVR_PLAYBACK_SPEED_INVALID;
-
-    DEMO_PVR_CHECK_INIT();
-    if(MApi_PVR_EX_IsPlaybacking(u8curPlayIdx)!=TRUE)
-    {
-        printf("Not to play!\n");
-        return FALSE;
-    }
-
-    enSpeed=MApi_PVR_PlaybackGetSpeed(u8curPlayIdx);
-    if(enSpeed == EN_APIPVR_PLAYBACK_SPEED_32XFF)
-    {
-        bRet=MApi_PVR_PlaybackSetSpeed(u8curPlayIdx,EN_APIPVR_PLAYBACK_SPEED_1X);
-    }
-    else
-    {
-        enSpeed=_Demo_PVR_GetSlowForward(enSpeed);
-        bRet=MApi_PVR_PlaybackSetSpeed(u8curPlayIdx,enSpeed);
-    }
-
-    if(EN_APIPVR_PLAYBACK_SPEED_1X != MApi_PVR_PlaybackGetSpeed(u8curPlayIdx))
-    {
-        printf("%"DTC_MS_U32_d"xSF Play \n",MApi_PVR_PlaybackGetSpeed(u8curPlayIdx));
-    }
-    else
-    {
-        printf("Normal Play \n");
-    }
-    return bRet;
+    return _Demo_PVR_PlaybackSetSpeed(EN_DEMO_PVR_PLAYBACK_SLOWFORWARD,0,0);
 }
 
 //------------------------------------------------------------------------------
@@ -4649,34 +6114,10 @@ MS_BOOL Demo_PVR_PlaybackSlowForward(void)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_PVR_PlaybackFastForward(void)
 {
-    MS_BOOL bRet=FALSE;
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
-
-    DEMO_PVR_CHECK_INIT();
-    if(MApi_PVR_EX_IsPlaybacking(u8curPlayIdx)!=TRUE)
-    {
-        printf("Not to play!\n");
-        return FALSE;
-    }
-
-    if(MApi_PVR_PlaybackGetSpeed(u8curPlayIdx)==EN_APIPVR_PLAYBACK_SPEED_32XFF)
-    {
-        bRet=MApi_PVR_PlaybackSetSpeed(u8curPlayIdx,EN_APIPVR_PLAYBACK_SPEED_1X);
-    }
-    else
-    {
-        bRet=MApi_PVR_PlaybackFastForward(u8curPlayIdx);
-    }
-    if(EN_APIPVR_PLAYBACK_SPEED_1X != MApi_PVR_PlaybackGetSpeed(u8curPlayIdx))
-    {
-        printf("%"DTC_MS_U32_d"xFF Play \n",MApi_PVR_PlaybackGetSpeed(u8curPlayIdx)/1000);
-    }
-    else
-    {
-        printf("Normal Play \n");
-    }
-    return bRet;
+    return _Demo_PVR_PlaybackSetSpeed(EN_DEMO_PVR_PLAYBACK_FASTFORWARD,0,0);
 }
+
+
 //------------------------------------------------------------------------------
 /// @brief The sample code to playback fast backward
 /// @param[in]
@@ -4690,35 +6131,25 @@ MS_BOOL Demo_PVR_PlaybackFastForward(void)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_PVR_PlaybackFastBackward(void)
 {
-    MS_BOOL bRet=FALSE;
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
-
-    DEMO_PVR_CHECK_INIT();
-
-    if(MApi_PVR_EX_IsPlaybacking(u8curPlayIdx)!=TRUE)
-    {
-        printf("Not to play!\n");
-        return FALSE;
-    }
-
-    if(MApi_PVR_PlaybackGetSpeed(u8curPlayIdx)==EN_APIPVR_PLAYBACK_SPEED_32XFB)
-    {
-        bRet=MApi_PVR_PlaybackSetSpeed(u8curPlayIdx,EN_APIPVR_PLAYBACK_SPEED_1X);
-    }
-    else
-    {
-        bRet=MApi_PVR_PlaybackFastBackward(u8curPlayIdx);
-    }
-
-    if(EN_APIPVR_PLAYBACK_SPEED_1X != MApi_PVR_PlaybackGetSpeed(u8curPlayIdx))
-    {
-        printf("%"DTC_MS_U32_d"xFB Play \n",MApi_PVR_PlaybackGetSpeed(u8curPlayIdx)/1000);
-    }
-    else
-    {
-        printf("Normal Play \n");
-    }
-    return bRet;
+    return _Demo_PVR_PlaybackSetSpeed(EN_DEMO_PVR_PLAYBACK_FASTBACKWARD,0,0);
+}
+//------------------------------------------------------------------------------
+/// @brief The sample code to playback set speed
+/// @param[in] u32Positive 0: negative 1: positive
+/// @param[in] s32Speed 0~64000, which means how many milliseconds original data could be played in 1 second
+/// (< FBx1 :  -64000 <= s32Speed < -1000 , >= FFx2 : 2000<= s32Speed <=64000, Pause : 0, Resume : 1,
+///     SFx1/32 : 32, SFx1/16: 64, SFx1/8 : 125, SFx1/4 : 250, SFx1/2 : 500)
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Command: \b PVR_PlaybackSetSpeed  \n
+///
+/// Sample Command:PVR_PlaybackSetSpeed 1 2000
+//------------------------------------------------------------------------------
+MS_BOOL Demo_PVR_PlaybackSetSpeed(MS_U32 *u32Positive, MS_S32 *s32Speed)
+{
+    return _Demo_PVR_PlaybackSetSpeed(EN_DEMO_PVR_PLAYBACK_SETSPEED,*u32Positive,*s32Speed);
 }
 
 //------------------------------------------------------------------------------
@@ -4739,35 +6170,37 @@ MS_BOOL Demo_PVR_PlaybackJumpToTime(MS_U32 *u32Hour,MS_U32 *u32Minute,MS_U32 *u3
     MS_U32 u32JumpToTimeInSeconds = (*u32Hour)*60*60+(*u32Minute)*60+(*u32Second);
     DemoPvr_print("Target Time: %2"DTC_MS_U32_d":%2"DTC_MS_U32_d":%2"DTC_MS_U32_d"\n",*u32Hour,*u32Minute,*u32Second);
     DemoPvr_print("Target Time: %"DTC_MS_U32_d" seconds\n",u32JumpToTimeInSeconds);
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
     MS_BOOL bret = FALSE;
 
     DEMO_PVR_CHECK_INIT();
 
-    if(((*u32Minute)>59) || ((*u32Minute)<0))
+    if((*u32Minute)>59)
     {
         printf("The value of a minute should be between 0~59.\n");
         return FALSE;
     }
-    if(((*u32Second)>59) || ((*u32Second)<0))
+    if((*u32Second)>59)
     {
         printf("The value of a second should be between 0~59.\n");
         return FALSE;
     }
-
     if(u32JumpToTimeInSeconds > JumpToTimeMaxRange)
     {
         printf("Time out of range.\n");
         return FALSE;
     }
 
-    if(MApi_PVR_EX_IsPlaybacking(u8curPlayIdx)!=TRUE)
+    if(MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath])!=TRUE)
     {
         printf("Not to play!\n");
         return FALSE;
     }
 
-    bret = MApi_PVR_PlaybackJumpToTime(u8curPlayIdx,u32JumpToTimeInSeconds);
+    if(_bAutoScriptDbg == TRUE )
+    {
+        _bAutoScriptJumpToTime = TRUE;
+    }
+    bret = MApi_PVR_PlaybackJumpToTime(_u8hPlayback[_eCurPlaybackProgramPath],u32JumpToTimeInSeconds);
 
     return bret;
 }
@@ -4800,9 +6233,16 @@ MS_BOOL Demo_PVR_GetFileInfo(char *FileName)
         return FALSE;
     }
 
-    _Demo_PVR_SetProgramInfo(&promInfo,INVALID_PID_ID, INVALID_PID_ID, INVALID_PID_ID, 0, 0,INVALID_PID_ID, 0, FALSE);
+    if(_Demo_PVR_SetProgramInfo(&promInfo,INVALID_PID_ID, INVALID_PID_ID, INVALID_PID_ID, 0, 0,INVALID_PID_ID, 0, FALSE) == FALSE)
+    {
+        return FALSE;
+    }
 
-    if(_Demo_PVR_GetFileInfo(FileName, &promInfo)==FALSE)
+    MS_U16 *pu16FileName = NULL;
+
+    pu16FileName = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U16)*FILE_PATH_SIZE);
+    _U8StringToU16String((MS_U8*)FileName, pu16FileName, strlen(FileName));
+    if(_Demo_PVR_GetFileInfo((char*)pu16FileName, &promInfo)==FALSE)
     {
         printf("GetFileInformation fail!\n");
         return FALSE;
@@ -4835,26 +6275,20 @@ MS_BOOL _Demo_PVR_SetRecordType(MS_U32 u32RecordType)
             printf("Set \"Single Recorder\" Successfully[%d]\n",_u8TotalRecorder);
             break;
         case 1:
-#if (DEMO_PVR_SUPPORT_RECORD_DUALTYPE_TEST == 1)
-            _enRecordType=EN_APIPVR_RECORD_TYPE_DUAL;
-            printf("Set \"Dual Recorder\" Successfully\n");
-            _u8TotalRecorder=2;
-#else /*DEMO_PVR_SUPPORT_RECORD_DUALTYPE_TEST*/
-            printf("Set \"Dual Recorder\" Failed\n");
-            printf("Dual Type Recorder not defined\n");
+            printf("Dual Record has been deprecated, not support anymore.\n");
+            _enRecordType=EN_APIPVR_RECORD_TYPE_SINGLE;
+            _u8TotalRecorder=u32EngNum;
             return FALSE;
-#endif /*DEMO_PVR_SUPPORT_RECORD_DUALTYPE_TEST*/
-            break;
         case 2:
 #if (DEMO_PVR_SUPPORT_SWPVR_TEST == 1)
             _enRecordType=EN_APIPVR_RECORD_TYPE_SWPVR;
             printf("Set \"SWPVR Recorder\" Successfully\n");
             _u8TotalRecorder=2;
-#else /*DEMO_PVR_SUPPORT_SWPVR_TEST*/
+#else
             printf("Set \"SWPVR Recorder\" Failed\n");
             printf("SWPVR not defined\n");
             return FALSE;
-#endif /*DEMO_PVR_SUPPORT_SWPVR_TEST*/
+#endif
             break;
         default:
             printf("Fail to set due to invalid record type. (%"DTC_MS_U32_u")\n",u32RecordType);
@@ -4869,7 +6303,7 @@ MS_BOOL _Demo_PVR_SetRecordType(MS_U32 u32RecordType)
 /// @brief The sample code to set  record type
 /// @param[in] record Type
 ///         0: single record (support n record, n is define by HW PVR engine capability, max record number is PVR_MAX_RECORDING_FILE )
-///         1: dual record (support one timeshift and one normal record for the same program from source of the same record engine.)
+///         1: dual record (deprecated)
 ///         2: SWPVR record(support two record(two program) from  source of the same record engine by SW TSP Parser)
 /// @return TRUE: Process success.
 /// @return FALSE: Process fail.
@@ -4920,6 +6354,60 @@ MS_BOOL Demo_PVR_GetRecIdx(void)
 
     printf("Current idx =%d\n",_u8CurRecProgramIdx);
     return TRUE;
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to set src id for specific record idx
+/// @param[in]
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Command: \b PVR_SetRecSrcId \n
+///
+/// Sample Command:PVR_SetRecSrcId 0 1
+//------------------------------------------------------------------------------
+MS_BOOL Demo_PVR_SetRecSrcID(MS_U32 *idx, EN_DEMO_DMX_FLT_SOURCEID *peDmxFltSourceID)
+{
+    DEMO_PVR_CHECK_INIT();
+
+    if(*idx < PVR_MAX_RECORDING_FILE)
+    {
+        _eCurDMXFltSourceID[*idx] = *peDmxFltSourceID;
+        printf("_eCurDMXFltSourceID[%"DTC_MS_U32_u"] = %d\n", *idx, _eCurDMXFltSourceID[*idx]);
+        return TRUE;
+    }
+    else
+    {
+        printf("Invalid Rec Idx %"DTC_MS_U32_u"\n", *idx);
+        return FALSE;
+    }
+}
+//------------------------------------------------------------------------------
+/// @brief The sample code to get current src id for specific record idx
+/// @param[in]
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Command: \b PVR_GetRecSrcId \n
+///
+/// Sample Command:PVR_GetRecSrcId 0
+//------------------------------------------------------------------------------
+MS_BOOL Demo_PVR_GetRecSrcID(MS_U32 *idx)
+{
+    DEMO_PVR_CHECK_INIT();
+
+    if(*idx < PVR_MAX_RECORDING_FILE)
+    {
+        printf("Current source id =%d\n",_eCurDMXFltSourceID[*idx]);
+        return TRUE;
+    }
+    else
+    {
+        printf("Invalid Rec Idx %"DTC_MS_U32_u"\n", *idx);
+        return FALSE;
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -5035,26 +6523,36 @@ MS_BOOL Demo_PVR_RecFlowSet(EN_DEMO_DMX_FLOW_INPUT* peDmxInput,EN_DEMO_DMX_FLOW*
 MS_BOOL Demo_PVR_PlaybackStepIn(void)
 {
     DemoPvr_print("=========  Demo_PVR_PlaybackStepIn =========\n");
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
+
     MS_BOOL bRet = FALSE;
 
     DEMO_PVR_CHECK_INIT();
-    if(! _Demo_PVR_CheckUSB((char *)MApi_PVR_GetMouthPath()))
+    char *mountPath = NULL;
+    DEMO_PVR_CHECK_MountPath(mountPath, FALSE)
+    if(_Demo_PVR_CheckUSB(mountPath) == FALSE)
     {
-        printf("USB is not ready!\n");
+        DemoPvr_Errorprint("USB is not ready!\n");
         return FALSE;
     }
 
-    if(MApi_PVR_EX_IsPlaybacking(u8curPlayIdx)!=TRUE)
+    if(MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath])!=TRUE)
     {
         printf("Not play!\n");
         return FALSE;
     }
 
-    if( (bRet=MApi_PVR_PlaybackStepIn(u8curPlayIdx))!=TRUE)
+    APIPVR_PLAYBACK_SPEED enPlaybackSpeed = MApi_PVR_PlaybackGetSpeed(_u8hPlayback[_eCurPlaybackProgramPath]);
+    if(enPlaybackSpeed == EN_APIPVR_PLAYBACK_SPEED_0X || enPlaybackSpeed == EN_APIPVR_PLAYBACK_SPEED_STEP_IN)
     {
-         printf("StepIn play failed!\n");
-         return FALSE;
+        if( (bRet=MApi_PVR_PlaybackStepIn(_u8hPlayback[_eCurPlaybackProgramPath]))!=TRUE)
+        {
+            printf("StepIn play failed!\n");
+            return FALSE;
+        }
+    }
+    else
+    {
+        return _Demo_PVR_PlaybackSetSpeed(EN_DEMO_PVR_PLAYBACK_PAUSE,0,0);
     }
 
     return bRet;
@@ -5074,25 +6572,26 @@ MS_BOOL Demo_PVR_PlaybackWithNormalSpeed(void)
 {
     DemoPvr_print("=========  Demo_PVR_PlaybackWithNormalSpeed =========\n");
     MS_BOOL bRestart = FALSE;
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
     DEMO_PVR_CHECK_INIT();
-    if(! _Demo_PVR_CheckUSB((char *)MApi_PVR_GetMouthPath()))
+    char *mountPath = NULL;
+    DEMO_PVR_CHECK_MountPath(mountPath, FALSE)
+    if(_Demo_PVR_CheckUSB(mountPath) == FALSE)
     {
-        printf("USB is not ready!\n");
+        DemoPvr_Errorprint("USB is not ready!\n");
         return FALSE;
     }
-    if(MApi_PVR_EX_IsPlaybacking(u8curPlayIdx)!=TRUE)
+    if(MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath])!=TRUE)
     {
         printf("Not play!\n");
         return FALSE;
     }
 
-    if(EN_APIPVR_PLAYBACK_SPEED_STEP_IN == MApi_PVR_PlaybackGetSpeed(u8curPlayIdx))
+    if(EN_APIPVR_PLAYBACK_SPEED_STEP_IN == MApi_PVR_PlaybackGetSpeed(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         bRestart = TRUE;
     }
 
-    MApi_PVR_PlaybackSetSpeed(u8curPlayIdx,EN_APIPVR_PLAYBACK_SPEED_1X);
+    MApi_PVR_PlaybackSetSpeed(_u8hPlayback[_eCurPlaybackProgramPath],EN_APIPVR_PLAYBACK_SPEED_1X);
 
     //Fix me!
     if(bRestart)
@@ -5117,14 +6616,12 @@ MS_BOOL Demo_PVR_CaptureThumbnail(char *filename)
 {
     DemoPvr_print("=========  Demo_PVR_CaptureThumbnail =========\n");
     MS_U32 u32capturepts=0;
-    MS_U32 u32PhysicalAddr;
+    MS_PHY phyAddr;
     MS_U32 u32Timestamp;
     MS_U32 u32Width =PVR_THUMBNAIL_CAPTURE_WIDTH;
     MS_U32 u32Height =PVR_THUMBNAIL_CAPTURE_HEIGHT;
-    char fullpathname[FILE_PATH_SIZE]={0};
     MS_U32 u32VirtualAddr = 0;
     MS_U8 u8FBId =0xff;
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
 
     if(strlen(filename)==0)
     {
@@ -5138,15 +6635,17 @@ MS_BOOL Demo_PVR_CaptureThumbnail(char *filename)
 
     }
     DEMO_PVR_CHECK_INIT();
-    if(!_Demo_PVR_CheckUSB((char *)MApi_PVR_GetMouthPath()))
+    char *mountPath = NULL;
+    DEMO_PVR_CHECK_MountPath(mountPath, FALSE)
+    if(_Demo_PVR_CheckUSB(mountPath) == FALSE)
     {
-        printf("USB is not ready!\n");
+        DemoPvr_Errorprint("USB is not ready!\n");
         return FALSE;
     }
 
-    if(MApi_PVR_EX_IsPlaybacking(u8curPlayIdx))
+    if(MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
-        u32Timestamp = MApi_PVR_GetPlaybackTime(u8curPlayIdx);
+        u32Timestamp = MApi_PVR_GetPlaybackTime(_u8hPlayback[_eCurPlaybackProgramPath]);
     }
     else if(MApi_PVR_IsRecording(_u8hRecord[_u8CurRecProgramIdx]))
     {
@@ -5169,7 +6668,7 @@ MS_BOOL Demo_PVR_CaptureThumbnail(char *filename)
     MApi_GOP_GWIN_GetFBInfo( u8FBId, &DstFBInfo);
     MApi_GFX_ClearFrameBuffer(DstFBInfo.addr, DstFBInfo.size, 0x00);
     MApi_GFX_FlushQueue();
-    MApi_GOP_GWIN_GetFBAddr(u8FBId, &u32PhysicalAddr);
+    MApi_GOP_GWIN_GetFBAddr(u8FBId, &phyAddr);
     //printf("[%d]u8FBId=%d ,u32PhysicalAddr=0x%08lx\n",__LINE__,u8FBId,u32PhysicalAddr);
 
     if(_AVStreamID[_eCurPlaybackProgramPath].vstreamID ==NULL)
@@ -5177,7 +6676,7 @@ MS_BOOL Demo_PVR_CaptureThumbnail(char *filename)
         printf("streamID not initialize\n");
         return FALSE;
     }
-    if(!MApi_PVR_EX_CaptureVideo((void *)&_AVStreamID[_eCurPlaybackProgramPath],u32PhysicalAddr, u32Width, u32Height,&u32capturepts))
+    if(!MApi_PVR_EX_CaptureVideo((void *)&_AVStreamID[_eCurPlaybackProgramPath],phyAddr, u32Width, u32Height,&u32capturepts))
     {
         MApi_GOP_GWIN_DestroyFB(u8FBId);
         printf("Fail to capture video!\n");
@@ -5185,17 +6684,30 @@ MS_BOOL Demo_PVR_CaptureThumbnail(char *filename)
     }
 
     //--------Save file--------
-    sprintf(fullpathname,"%s/%s",(char *)MApi_PVR_GetMouthPath(),filename);
-    FILE *filePointer = MsFS_Fopen(fullpathname, "w");
+    MS_U16 *pu16FileName = NULL, *pu16FullPathName = NULL;
+    MS_U16 u16Delimiter[] = {L'/', L'\0'};
+
+    pu16FileName = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U16)*FILE_PATH_SIZE);
+    pu16FullPathName = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U16)*FILE_PATH_SIZE);
+
+    DEMO_PVR_CHECK_MountPath(mountPath, FALSE)
+    wcscpy(pu16FullPathName, (MS_U16*)mountPath);
+    wcscat(pu16FullPathName, u16Delimiter);
+    _U8StringToU16String((MS_U8*)filename, pu16FileName, strlen(filename));
+    wcscat(pu16FullPathName, pu16FileName);
+
+    FILE *filePointer = MsFS_Fopen((char*)pu16FullPathName, "w");
     if(filePointer == NULL)
     {
        printf("can't open file\n");
        MApi_GOP_GWIN_DestroyFB(u8FBId);
+       _Demo_PVR_MEMFREE_FUNC((void**)&pu16FileName);
+       _Demo_PVR_MEMFREE_FUNC((void**)&pu16FullPathName);
        return FALSE;
     }
     else
     {
-       u32VirtualAddr = MsOS_PA2KSEG1(u32PhysicalAddr);
+       u32VirtualAddr = MsOS_PA2KSEG1(phyAddr);
        MsFS_Fwrite((void *)&u32Timestamp, sizeof(u32Timestamp), 1, filePointer);
        MsFS_Fwrite((void *)&u32capturepts, sizeof(u32capturepts), 1, filePointer);
        MsFS_Fwrite((void *)&u32Width, sizeof(u32Width), 1, filePointer);
@@ -5205,8 +6717,10 @@ MS_BOOL Demo_PVR_CaptureThumbnail(char *filename)
     MsFS_Fflush(filePointer);
     MsFS_Fclose(filePointer);
     //--------Show capture Video--------
-    _Demo_PVR_Show_Capture_Video(u32PhysicalAddr);
+    _Demo_PVR_Show_Capture_Video(phyAddr);
     MApi_GOP_GWIN_DestroyFB(u8FBId);
+    _Demo_PVR_MEMFREE_FUNC((void**)&pu16FileName);
+    _Demo_PVR_MEMFREE_FUNC((void**)&pu16FullPathName);
     return TRUE;
 }
 
@@ -5226,14 +6740,13 @@ MS_BOOL Demo_PVR_JumpToThumbnail(char *filename)
     DemoPvr_print("=========  Demo_PVR_CaptureThumbnail =========\n");
     MS_U32 u32capturepts=0;
     MS_U32 u32Timestamp;
-    char fullpathname[FILE_PATH_SIZE]={0};
     MS_S32 s32NonCachedPoolID = 0;
     void * virtualAddr=NULL;
     MS_U32 u32PhysicalAddr;
     MS_U32 u32Width =PVR_THUMBNAIL_CAPTURE_WIDTH;
     MS_U32 u32Height =PVR_THUMBNAIL_CAPTURE_HEIGHT;
     FILE *filePointer;
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
+    MS_BOOL bRet = FALSE;
 
     Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&s32NonCachedPoolID);
     virtualAddr=MsOS_AllocateMemory(PVR_THUMBNAIL_SURFACE_SIZE, s32NonCachedPoolID);
@@ -5249,18 +6762,38 @@ MS_BOOL Demo_PVR_JumpToThumbnail(char *filename)
     }
 
     DEMO_PVR_CHECK_INIT();
-    if(! _Demo_PVR_CheckUSB((char *)MApi_PVR_GetMouthPath()))
+    char *mountPath = NULL;
+    DEMO_PVR_CHECK_MountPath(mountPath, FALSE)
+    if(_Demo_PVR_CheckUSB(mountPath) == FALSE)
     {
-        printf("USB is not ready!\n");
+        DemoPvr_Errorprint("USB is not ready!\n");
         return FALSE;
     }
-    sprintf(fullpathname,"%s/%s",(char *)MApi_PVR_GetMouthPath(),filename);
-    filePointer = MsFS_Fopen(fullpathname, "r");
+
+    MS_U16 *pu16FileName = NULL, *pu16FullPathName = NULL;
+    MS_U16 u16Delimiter[] = {L'/', L'\0'};
+
+    pu16FileName = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U16)*FILE_PATH_SIZE);
+    pu16FullPathName = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U16)*FILE_PATH_SIZE);
+    if((pu16FileName == NULL)||(pu16FullPathName == NULL))
+    {
+        printf("Alloc memory fail\n");
+        bRet = FALSE;
+        goto END;
+    }
+
+    DEMO_PVR_CHECK_MountPath(mountPath, FALSE)
+    wcscpy(pu16FullPathName, (MS_U16*)mountPath);
+    wcscat(pu16FullPathName, u16Delimiter);
+    _U8StringToU16String((MS_U8*)filename, pu16FileName, strlen(filename));
+    wcscat(pu16FullPathName, pu16FileName);
+
+    filePointer = MsFS_Fopen((char*)pu16FullPathName, "r");
     if(filePointer == NULL)
     {
        printf("can't open file\n");
-
-       return FALSE;
+       bRet = FALSE;
+       goto END;
     }
     else
     {
@@ -5276,15 +6809,19 @@ MS_BOOL Demo_PVR_JumpToThumbnail(char *filename)
     }
     MsFS_Fflush(filePointer);
     MsFS_Fclose(filePointer);
-    if(MApi_PVR_EX_IsPlaybacking(u8curPlayIdx))
+    if(MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         u32PhysicalAddr=MS_VA2PA((MS_U32)virtualAddr);
         _Demo_PVR_Show_Capture_Video(u32PhysicalAddr);
-        MApi_PVR_PlaybackJumpToThumbnail(u8curPlayIdx,u32Timestamp, u32capturepts);
+        MApi_PVR_PlaybackJumpToThumbnail(_u8hPlayback[_eCurPlaybackProgramPath],u32Timestamp, u32capturepts);
         MsOS_FreeMemory(virtualAddr,s32NonCachedPoolID);
-        return TRUE;
+        bRet = TRUE;
     }
-    return FALSE;
+
+END:
+    _Demo_PVR_MEMFREE_FUNC((void**)&pu16FileName);
+    _Demo_PVR_MEMFREE_FUNC((void**)&pu16FullPathName);
+    return bRet;
 }
 //------------------------------------------------------------------------------
 /// @brief The sample code to Jump to the pts of Thumbnail
@@ -5317,13 +6854,12 @@ MS_BOOL Demo_PVR_HideThumbnail(void)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_PVR_PlaybackABLoop(MS_U32 *u32ABBeginTime,MS_U32 *u32ABEndTime)
 {
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
-    if(!MApi_PVR_EX_IsPlaybacking(u8curPlayIdx))
+    if(!MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         printf("No Play.\n");
         return FALSE;
     }
-    return MApi_PVR_EX_PlaybackABLoop(u8curPlayIdx,_plyprogramInfo[_eCurPlaybackProgramPath].FileName,*u32ABBeginTime,*u32ABEndTime);
+    return MApi_PVR_EX_PlaybackABLoop(_u8hPlayback[_eCurPlaybackProgramPath],_plyprogramInfo[_eCurPlaybackProgramPath].FileName,*u32ABBeginTime,*u32ABEndTime);
 }
 
 //------------------------------------------------------------------------------
@@ -5340,13 +6876,12 @@ MS_BOOL Demo_PVR_PlaybackABLoop(MS_U32 *u32ABBeginTime,MS_U32 *u32ABEndTime)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_PVR_PlaybackResetABLoop(void)
 {
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
-    if(!MApi_PVR_EX_IsPlaybacking(u8curPlayIdx))
+    if(!MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         printf("No Play.\n");
         return FALSE;
     }
-    return MApi_PVR_EX_PlaybackABLoopReset(u8curPlayIdx);
+    return MApi_PVR_EX_PlaybackABLoopReset(_u8hPlayback[_eCurPlaybackProgramPath]);
 }
 
 //------------------------------------------------------------------------------
@@ -5363,13 +6898,12 @@ MS_BOOL Demo_PVR_PlaybackResetABLoop(void)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_PVR_PlaybackAddSkipTime(MS_U32 *u32BeginTimeInSec,MS_U32 *u32EndTimeInSec)
 {
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
-    if(!MApi_PVR_EX_IsPlaybacking(u8curPlayIdx))
+    if(!MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         printf("No Play.\n");
         return FALSE;
     }
-    return MApi_PVR_EX_SkipTableAdd(u8curPlayIdx,_plyprogramInfo[_eCurPlaybackProgramPath].FileName,*u32BeginTimeInSec,*u32EndTimeInSec);
+    return MApi_PVR_EX_SkipTableAdd(_u8hPlayback[_eCurPlaybackProgramPath],_plyprogramInfo[_eCurPlaybackProgramPath].FileName,*u32BeginTimeInSec,*u32EndTimeInSec);
 }
 
 //------------------------------------------------------------------------------
@@ -5389,18 +6923,17 @@ MS_BOOL Demo_PVR_PlaybackRemoveSkipTime(MS_U32 *u32BeginTimeInSec,MS_U32 *u32End
     MS_U32 u32SkipBeginTime=*u32BeginTimeInSec;
     MS_U32 u32Idx=0;
     MS_U32 u32SkipEndTime=*u32EndTimeInSec;
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
-    if(!MApi_PVR_EX_IsPlaybacking(u8curPlayIdx))
+    if(!MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         printf("No Play.\n");
         return FALSE;
     }
-    if(!MApi_PVR_EX_SkipTableGetIndex(u8curPlayIdx,&u32SkipBeginTime,&u32Idx, &u32SkipEndTime))
+    if(!MApi_PVR_EX_SkipTableGetIndex(_u8hPlayback[_eCurPlaybackProgramPath],&u32SkipBeginTime,&u32Idx, &u32SkipEndTime))
     {
         printf("Cannot find such interval.\n");
         return FALSE;
     }
-    if(!MApi_PVR_EX_SkipTableRemove(u8curPlayIdx,_plyprogramInfo[_eCurPlaybackProgramPath].FileName,u32Idx))
+    if(!MApi_PVR_EX_SkipTableRemove(_u8hPlayback[_eCurPlaybackProgramPath],_plyprogramInfo[_eCurPlaybackProgramPath].FileName,u32Idx))
     {
         printf("Fail to remove!\n");
         return FALSE;
@@ -5408,12 +6941,12 @@ MS_BOOL Demo_PVR_PlaybackRemoveSkipTime(MS_U32 *u32BeginTimeInSec,MS_U32 *u32End
     if(u32SkipEndTime>*u32EndTimeInSec)
     {
         printf("Still skip %"DTC_MS_U32_u" to %"DTC_MS_U32_u"!\n",*u32EndTimeInSec,u32SkipEndTime);
-        MApi_PVR_EX_SkipTableAdd(u8curPlayIdx,_plyprogramInfo[_eCurPlaybackProgramPath].FileName,*u32EndTimeInSec,u32SkipEndTime);
+        MApi_PVR_EX_SkipTableAdd(_u8hPlayback[_eCurPlaybackProgramPath],_plyprogramInfo[_eCurPlaybackProgramPath].FileName,*u32EndTimeInSec,u32SkipEndTime);
     }
     if(*u32BeginTimeInSec>u32SkipBeginTime)
     {
         printf("Still skip %"DTC_MS_U32_u" to %"DTC_MS_U32_u"!\n",u32SkipBeginTime,*u32BeginTimeInSec);
-        MApi_PVR_EX_SkipTableAdd(u8curPlayIdx,_plyprogramInfo[_eCurPlaybackProgramPath].FileName,u32SkipBeginTime,*u32BeginTimeInSec);
+        MApi_PVR_EX_SkipTableAdd(_u8hPlayback[_eCurPlaybackProgramPath],_plyprogramInfo[_eCurPlaybackProgramPath].FileName,u32SkipBeginTime,*u32BeginTimeInSec);
     }
     return TRUE;
 }
@@ -5431,13 +6964,12 @@ MS_BOOL Demo_PVR_PlaybackRemoveSkipTime(MS_U32 *u32BeginTimeInSec,MS_U32 *u32End
 MS_BOOL Demo_PVR_SetPlaybackRetentionLimit(MS_U32 *u32RetentionLimitTimeInSec)
 {
     MS_U32 u32RetentionLimitTime=*u32RetentionLimitTimeInSec;
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
-    if(!MApi_PVR_EX_IsPlaybacking(u8curPlayIdx))
+    if(!MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         printf("No Play.\n");
         return FALSE;
     }
-    if(!MApi_PVR_EX_SetPlaybackRetentionLimit(u8curPlayIdx,_plyprogramInfo[_eCurPlaybackProgramPath].FileName,&u32RetentionLimitTime))
+    if(!MApi_PVR_EX_SetPlaybackRetentionLimit(_u8hPlayback[_eCurPlaybackProgramPath],_plyprogramInfo[_eCurPlaybackProgramPath].FileName,&u32RetentionLimitTime))
     {
         printf("Fail to set retention time!\n");
         return FALSE;
@@ -5463,13 +6995,12 @@ MS_BOOL Demo_PVR_PlaybackJumpForward(void)
 {
     DEMO_PVR_CHECK_INIT();
 
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
-    if(!MApi_PVR_EX_IsPlaybacking(u8curPlayIdx))
+    if(!MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         printf("No Play.\n");
         return FALSE;
     }
-    if(!MApi_PVR_PlaybackJumpForward(u8curPlayIdx))
+    if(!MApi_PVR_PlaybackJumpForward(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         printf("Fail to Jump Forward!\n");
         return FALSE;
@@ -5491,13 +7022,12 @@ MS_BOOL Demo_PVR_PlaybackJumpBackward(void)
 {
     DEMO_PVR_CHECK_INIT();
 
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
-    if(!MApi_PVR_EX_IsPlaybacking(u8curPlayIdx))
+    if(!MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         printf("No to Play.\n");
         return FALSE;
     }
-    if(!MApi_PVR_PlaybackJumpBackward(u8curPlayIdx))
+    if(!MApi_PVR_PlaybackJumpBackward(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         printf("Fail to Jump Forward!\n");
         return FALSE;
@@ -5514,9 +7044,9 @@ MS_BOOL Demo_PVR_PlaybackJumpBackward(void)
 /// @return FALSE: Process fail.
 /// @sa
 /// @note
-/// Command: \b PVR_SetSkipTime \n
+/// Command: \b PVR_ShowTime \n
 ///
-/// Sample Command:PVR_SetSkipTime 2 10
+/// Sample Command:PVR_ShowTime 2 10
 //------------------------------------------------------------------------------
 MS_BOOL Demo_PVR_ShowTime(MS_U32 *u32Type,MS_U32 *u32Set)
 {
@@ -5531,6 +7061,10 @@ MS_BOOL Demo_PVR_ShowTime(MS_U32 *u32Type,MS_U32 *u32Set)
     else if(*u32Type==2)
     {
         _bShowPlayTime=(*u32Set==0)?FALSE:TRUE;
+    }
+    else if(*u32Type==3)
+    {
+        _bShowRecordStartTime=(*u32Set==0)?FALSE:TRUE;
     }
     else
     {
@@ -5558,12 +7092,18 @@ MS_BOOL Demo_PVR_RemoveFile(char *fileName)
         printf("No File Name\n");
         return FALSE;
     }
-    if(!MApi_PVR_RemoveFile(fileName))
+
+    MS_U16 *pu16FileName = NULL;
+    pu16FileName = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U16)*FILE_PATH_SIZE);
+    _U8StringToU16String((MS_U8*)fileName, pu16FileName, strlen(fileName));
+    if(!MApi_PVR_RemoveFile((char*)pu16FileName))
     {
         printf("Remove file fail!\n");
+        _Demo_PVR_MEMFREE_FUNC((void**)&pu16FileName);
         return FALSE;
     }
 
+    _Demo_PVR_MEMFREE_FUNC((void**)&pu16FileName);
     return TRUE;
 }
 
@@ -5581,15 +7121,34 @@ MS_BOOL Demo_PVR_RemoveFile(char *fileName)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_PVR_RenameFile(char *fileName,char *newFileName)
 {
+    MS_BOOL bRet = FALSE;
+    MS_U16 *pu16FileName = NULL, *pu16NewFileName = NULL;
+    int i = 0;
     DEMO_PVR_CHECK_INIT();
 
-    if(MApi_PVR_IsPlaybacking())
+
+    for(i=0 ; i < MAX_PLAYBACK_NUM ; i++)
     {
-        printf("Cannot set Playback type during playing\n");
-        return FALSE;
+        if(MApi_PVR_EX_IsPlaybacking(i) == TRUE)
+        {
+            printf("Cannot set Playback type during playing\n");
+            return FALSE;
+        }
     }
 
-    return MApi_PVR_RenameFileName(fileName,newFileName);
+
+
+    pu16FileName = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U16)*FILE_PATH_SIZE);
+    pu16NewFileName = _Demo_PVR_MEMALLOC_FUNC(sizeof(MS_U16)*FILE_PATH_SIZE);
+
+    _U8StringToU16String((MS_U8*)fileName, pu16FileName, strlen(fileName));
+    _U8StringToU16String((MS_U8*)newFileName, pu16NewFileName, strlen(newFileName));
+
+    bRet = MApi_PVR_RenameFileName((char*)pu16FileName,(char*)pu16NewFileName);
+
+    _Demo_PVR_MEMFREE_FUNC((void**)&pu16FileName);
+    _Demo_PVR_MEMFREE_FUNC((void**)&pu16NewFileName);
+    return bRet;
 }
 
 //------------------------------------------------------------------------------
@@ -5621,13 +7180,13 @@ MS_BOOL Demo_PVR_SetTimeshiftRecScreenFrozen(const MS_BOOL *bFrozen)
 /// @return FALSE: Process fail.
 /// @sa
 /// @note
-/// Command: \b Demo_PVR_SetTimeshiftRecDuration \n
+/// Command: \b PVR_SetTimeshiftRecDuration \n
 ///
-/// Sample Command:PVR_TimeshiftRecordDuration 1
+/// Sample Command:PVR_SetTimeshiftRecDuration 1
 //------------------------------------------------------------------------------
 MS_BOOL Demo_PVR_SetTimeshiftRecDuration(MS_U32 *u32PlanRecTimeInMin)
 {
-    if((MApi_PVR_EX_IsTimeShift(_eCurPlaybackProgramPath))&&(_u8TimeshiftIdx[_eCurPlaybackProgramPath]!=0xFF))
+    if(_Demo_PVR_IsTimeshiftRecord(_u8CurRecProgramIdx) == TRUE)
     {
         printf("Cannot set TimeShift duration during timeshift recording\n");
         return FALSE;
@@ -5637,6 +7196,154 @@ MS_BOOL Demo_PVR_SetTimeshiftRecDuration(MS_U32 *u32PlanRecTimeInMin)
     return MApi_PVR_SetTimeshiftFileDuration(*u32PlanRecTimeInMin * 60);
 }
 
+//------------------------------------------------------------------------------
+/// @brief The sample code to set bounded linear record, need to set before record start
+///           It is "must option" for bounded linear record setting.
+/// @param[in] bBounded bounded linear record or not
+///         *bBounded = 1 (bounded linear record)
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Command: \b PVR_SetBoundedLinearRecord \n
+///
+/// Sample Command:PVR_SetBoundedLinearRecord 0
+//------------------------------------------------------------------------------
+MS_BOOL Demo_PVR_SetBoundedLinearRecord(const MS_BOOL *bBounded)
+{
+    printf("Bounded Linear Record: %d \n",*bBounded);
+    PVR_CfgParam stPvrCfgParam = {};
+    PVRBoundedLinearRecordInfo_t sBoundedLiearRecordInfo;
+    sBoundedLiearRecordInfo.u8RecordIdx= _u8CurRecProgramIdx;
+    sBoundedLiearRecordInfo.bBoundedLinearRecord = *bBounded;
+    stPvrCfgParam.bSet = TRUE;
+    stPvrCfgParam.eCfgCmd = EN_APIPVR_CFG_IS_BOUNDED_LINEAR_RECORD;
+    stPvrCfgParam.pCfgPara = &sBoundedLiearRecordInfo;
+    _bBoundedLinearRecord = *bBounded;
+
+    return MApi_PVR_Configure(&stPvrCfgParam);
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to set precision of timeshift duration , need to set before timeshift record start
+///           It is "not must option" for timeshift record setting.
+/// @param[in] *u32PrecisionInSec  Unit: Second
+///
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Command: \b PVR_SetRecPrecision \n
+///
+/// Sample Command:PVR_SetRecPrecision 0
+//------------------------------------------------------------------------------
+MS_BOOL Demo_PVR_SetRecordPrecision(MS_U32 *u32PrecisionInSec)
+{
+    printf("[DemoPVR]Record Precision:%"DTC_MS_U32_u" sec\n",*u32PrecisionInSec);
+    PVR_CfgParam stPvrCfgParam = {};
+
+    stPvrCfgParam.bSet = TRUE;
+    stPvrCfgParam.eCfgCmd = EN_APIPVR_CFG_RECORD_DURATION_PRECISION;
+    stPvrCfgParam.pCfgPara = (MS_U32 *)u32PrecisionInSec;
+
+    return MApi_PVR_Configure(&stPvrCfgParam);
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to set recorded file size of timeshift record.
+///           It is "not must option" for timeshift record setting.
+/// @param[in] *u32FileSizeInMB  Unit: MB
+///
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Command: \b PVR_SetRecFileSize or PVR_SetTimeshiftRecFileSize \n
+///
+/// Sample Command:PVR_SetRecFileSize 0 or PVR_SetTimeshiftRecFileSize 0
+//------------------------------------------------------------------------------
+MS_BOOL Demo_PVR_SetRecordFileSize(MS_U32 *u32FileSizeInMB)
+{
+    printf("[DemoPVR]  Rec File Size:%"DTC_MS_U32_u" MB\n", *u32FileSizeInMB);
+    _u64FileSizeInKB = (MS_U64)(*u32FileSizeInMB) * 1024;
+    if((*u32FileSizeInMB == 0) && MApi_PVR_IsRecording(_u8hRecord[_u8CurRecProgramIdx]))
+    {
+        return MApi_PVR_SetRecordFileSize(_u8CurRecProgramIdx, _u64FileSizeInKB);
+    }
+    return TRUE;
+}
+
+
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to enable/disable record append mode.
+/// @param[in] *u32Enable  TRUE/FALSE
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Command: \b PVR_SetRecordAppend 0 or PVR_SetRecordAppend 1 \n
+///
+/// Sample Command:PVR_SetRecordAppend 0 or PVR_SetRecordAppend 1
+//------------------------------------------------------------------------------
+MS_BOOL Demo_PVR_SetRecordAppend(MS_U32 *u32Enable)
+{
+    DEMO_PVR_CHECK_INIT();
+    printf("[DemoPVR] Record Append : %"DTC_MS_U32_u"\n", *u32Enable);
+    if(*u32Enable == 1)
+    {
+        _bAppend = TRUE;
+    }
+    else
+    {
+        _bAppend = FALSE;
+    }
+    return TRUE;
+}
+//------------------------------------------------------------------------------
+/// @brief The sample code to set bounded linear duration, need to set before bounded linear record start
+///           It is "not must option" for bounded linear record setting.
+///           Bounded linear recording duration is dominated by file size if duration is not setting.
+///           If both bounded linear recording file duration and size is set, bounded linear recording file size dominate to which condition first achieve.
+/// @param[in] u32PlanRecTimeInMin
+///         Bounded Linear Record Time Duration, 10~240 Minutes , Unit: Minutes
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Command: \b PVR_SetRecDuration \n
+///
+/// Sample Command:PVR_SetRecDuration 10
+//------------------------------------------------------------------------------
+MS_BOOL Demo_PVR_SetRecordDuration(MS_U32 *u32PlanRecTimeInMin)
+{
+    printf("[DemoPVR] Rec Time Duration:%"DTC_MS_U32_u" min\n",*u32PlanRecTimeInMin);
+    _u32Duration = *u32PlanRecTimeInMin *60;
+    return TRUE;
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to set slice record buffer size
+///           It is "not must option" for timeshift record setting.
+/// @param[in] *u32FileSliceInMB  Unit: MB
+/// value of u32FileSliceInMB :max: 4 GB ; min: Record buffer size; default value :0
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Command: \b PVR_SetRecFileSlice  \n
+///
+/// Sample Command:PVR_SetRecFileSlice  10
+//------------------------------------------------------------------------------
+MS_BOOL Demo_PVR_SetRecordFileSlice(MS_U32 *u32FileSliceInMB)
+{
+    printf("[DemoPVR]TimeShift Rec File Slice:%"DTC_MS_U32_u" MB\n",*u32FileSliceInMB);
+    _u64FileSliceSize = (MS_U64)(*u32FileSliceInMB) * 1024 * 1024;
+    printf("[DemoPVR]_u64FileSliceSize File Slice:0x%"DTC_MS_U64_x"  B\n",_u64FileSliceSize);
+    return TRUE;
+}
+
+
 MS_BOOL Demo_PVR_GetRecFlowSet(EN_DEMO_DMX_FLOW_INPUT* peDmxInput,EN_DEMO_DMX_FLOW* pePlayback)
 {
     DEMO_PVR_CHECK_INIT();
@@ -5644,7 +7351,7 @@ MS_BOOL Demo_PVR_GetRecFlowSet(EN_DEMO_DMX_FLOW_INPUT* peDmxInput,EN_DEMO_DMX_FL
     *peDmxInput = _eCurDMXInputSrc ;
     *pePlayback = _eCurDMXFlowSet[_u8CurRecProgramIdx];
 
-    printf("[%s][%d] DMX flow input = %d, DMX flow =%d\n",__FUNCTION__,__LINE__,*peDmxInput,*pePlayback);
+    printf("[%s][%d][DemoPVR] DMX flow input = %d, DMX flow =%d\n",__FUNCTION__,__LINE__,*peDmxInput,*pePlayback);
     return TRUE;
 }
 
@@ -5675,6 +7382,7 @@ MS_BOOL Demo_PVR_GetRecEng(EN_DEMO_DMX_PVR_ENG *peDmxPvrEng)
     //printf("[%s][%d] _u8CurRecProgramIdx= %u, PvrEng=%ld\n",__FUNCTION__,__LINE__,_u8CurRecProgramIdx,*peDmxPvrEng);
     return TRUE;
 }
+
 
 #if (DEMO_PVR_SUPPORT_TIMESHIFTSEAMLESS_TEST == 1)
 MS_BOOL Demo_PVR_SeamlessBackRecordStart(void)
@@ -5738,8 +7446,43 @@ MS_BOOL Demo_PVR_Help(void)
     return TRUE;
 }
 
+
+MS_BOOL Demo_PVR_SetConfigure(MS_U32 *pu32CfgCmd, MS_U32 *pu32Enable)
+{
+    if( (*pu32Enable != 0) && (*pu32Enable != 1) )
+    {
+        printf("Please use 1 or 0 to enable/disable Configure\n");
+        return FALSE;
+    }
+
+    if((EN_APIPVR_PVR_CFG_CMD)(*pu32CfgCmd) == PVR_AUTO_SCRIPT_CMD)
+    {
+        if(*pu32Enable == 1)
+        {
+            printf("Auto Script Mode is on\n");
+            _bAutoScriptDbg = TRUE;
+        }
+        else if(*pu32Enable == 0)
+        {
+            printf("Auto Script Mode is off\n");
+            _bAutoScriptDbg = FALSE;
+        }
+        return TRUE;
+    }
+    else
+    {
+        PVR_CfgParam stPvrCfgParam;
+        stPvrCfgParam.bSet = (MS_BOOL)(*pu32Enable);
+        stPvrCfgParam.eCfgCmd = (EN_APIPVR_PVR_CFG_CMD)(*pu32CfgCmd);
+        MApi_PVR_Configure(&stPvrCfgParam);
+        return TRUE;
+    }
+}
+
+
 MS_BOOL Demo_PVR_SetDBGLevel(PVR_DBG_LEVEL *dbglevel , MS_U32 *intervelTime)
 {
+
     printf("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
     printf("0:No DEBUG\n");
     printf("Bit0:Main Vdec  Bit1:Sub Vdec\n");
@@ -5762,7 +7505,7 @@ MS_BOOL Demo_PVR_SetDBGLevel(PVR_DBG_LEVEL *dbglevel , MS_U32 *intervelTime)
         MApi_AUDIO_SetCommAudioInfo(Audio_Comm_infoType_Dump_Dsp_Info, 0x15, (MS_U16)*intervelTime);
     }
 
-    if(_u8DBGLevel > 0 && _s32DbgPVRTaskID == INVALID_TASK_ID)
+    if(_u8DBGLevel > 0 && _pvrDBGTask.iId == INVALID_TASK_ID)
     {
         DemoPvr_print("_u8DBGLevel  : %d\n",_u8DBGLevel);
         if(!_Demo_PVR_DBGCreateTask())
@@ -5770,7 +7513,7 @@ MS_BOOL Demo_PVR_SetDBGLevel(PVR_DBG_LEVEL *dbglevel , MS_U32 *intervelTime)
             printf("create PVR DBG task fail!!!!!!!!!!! OH NO \n");
         }
     }
-    else if(_u8DBGLevel == 0 && _s32DbgPVRTaskID != INVALID_TASK_ID)
+    else if(_u8DBGLevel == 0 && _pvrDBGTask.iId != INVALID_TASK_ID)
     {
         DemoPvr_print("close the pvr debug task\n");
         MS_S32 s32NonCachedPoolID = 0;
@@ -5781,11 +7524,16 @@ MS_BOOL Demo_PVR_SetDBGLevel(PVR_DBG_LEVEL *dbglevel , MS_U32 *intervelTime)
         printf("[DDI_PVR] Free stack !!!(%"DTC_MS_U32_u")\n",u32Events);
         MsOS_DeleteEventGroup(s32_PVRLoopEvent_id);
         s32_PVRLoopEvent_id = INVALID_EVENT_ID;
-        _s32DbgPVRTaskID = INVALID_TASK_ID;
-        if (_pPVRDbgTaskStack != NULL)
+#if defined(MSOS_TYPE_ECOS)
+        _Demo_PollingThreadStatus(_pvrDBGTask);
+        //Polling the status of _pvrDBGTask to make sure it already returned
+
+#endif
+        _pvrDBGTask.iId = INVALID_TASK_ID;
+        if (_pvrDBGTask.pStack != NULL)
         {
-            MsOS_FreeMemory(_pPVRDbgTaskStack,s32NonCachedPoolID);
-            _pPVRDbgTaskStack = NULL;
+            MsOS_FreeMemory(_pvrDBGTask.pStack,s32NonCachedPoolID);
+            _pvrDBGTask.pStack = NULL;
         }
     }
     else
@@ -5803,11 +7551,14 @@ static void _Demo_PVRDBG_Task(void)
     MS_U32 upstc0=0, dwnstc0=0;
     MS_U32 upspcr0=0, dwnpcr0=0;
 
-    MS_U32 pu32Write=0, pu32Stamp=0, u32CmdCount=0, u32FileInTS=0, u32TS=0;
+    MS_PHY phyWrite=0;
+    MS_U32 pu32Stamp=0, u32CmdCount=0, u32FileInTS=0, u32TS=0;
     AUDIO_STC_SOURCE stc0_id = E_TSP_0;
     MS_U32 video_fifo0 = 0;
     MS_U32 audio_fifo0 = 0;
     Ex_PVRPlaybackPath  eAVPATH = 0;
+    MS_U32 u32stc32 = 0;
+    MS_U32 u32stc = 0;
 #if (DEMO_PVR_SUPPORT_DUALPLAYBACK_TEST == 1)
     void *subvStreamID;
     VDEC_EX_Status vdecSubStatus;
@@ -5816,6 +7567,7 @@ static void _Demo_PVRDBG_Task(void)
     AUDIO_STC_SOURCE stc1_id = E_TSP_1;
     MS_U32 video_fifo1 = 0;
     MS_U32 audio_fifo1 = 0;
+
 #endif
 
     while(_u8DBGLevel != 0)
@@ -5832,15 +7584,17 @@ static void _Demo_PVRDBG_Task(void)
             {
                 memset(&vdecMainStatus, 0, sizeof(VDEC_EX_Status));
                 MApi_VDEC_EX_GetStatus((VDEC_StreamId *)mainvStreamID,&vdecMainStatus);
+                MApi_DMX_Stc_Eng_Get((DMX_PVR_ENG)_u8CurRecProgramIdx,&u32stc32, &u32stc);
                 if(TRUE == vdecMainStatus.bInit)
                 {
                     printf("=============Main Video Stream=================\n");
-                    printf("VPTS:0x%8"DTC_MS_U32_x" Diff:0x%8"DTC_MS_S64_d"(Seq:0x%8"DTC_MS_U32_x" I:0x%8"DTC_MS_U32_x" 1stF:0x%8"DTC_MS_U32_x") AV(on:0x%8"DTC_MS_U32_x" Start:0x%"DTC_MS_U32_x" Reach:0x%8"DTC_MS_U32_x")\n",
-                        MApi_VDEC_EX_GetPTS(mainvStreamID),MApi_VDEC_EX_GetVideoPtsStcDelta(mainvStreamID),
+                    printf("VPTS:0x%8"DTC_MS_U32_x" Diff:%"DTC_MS_U32_d"(Seq:0x%8"DTC_MS_U32_x" I:0x%8"DTC_MS_U32_x" 1stF:0x%8"DTC_MS_U32_x") AV(on:0x%8"DTC_MS_U32_x" Start:0x%"DTC_MS_U32_x" Reach:0x%8"DTC_MS_U32_x")\n",
+                        MApi_VDEC_EX_GetPTS(mainvStreamID),MApi_VDEC_EX_GetPTS(mainvStreamID)- u32stc / 90,
                         (MS_U32)MApi_VDEC_EX_IsSeqChg(mainvStreamID), (MS_U32)MApi_VDEC_EX_IsIFrameFound(mainvStreamID), (MS_U32)MApi_VDEC_EX_IsFrameRdy(mainvStreamID),
                         (MS_U32)MApi_VDEC_EX_IsAVSyncOn(mainvStreamID), (MS_U32)MApi_VDEC_EX_IsStartSync(mainvStreamID), (MS_U32)MApi_VDEC_EX_IsReachSync(mainvStreamID));
                     printf("ES(R:0x%8"DTC_MS_U32_x" W:0x%8"DTC_MS_U32_x") ( Disp:0x%8"DTC_MS_U32_x" Dec:0x%8"DTC_MS_U32_x" Err:0x%8"DTC_MS_U32_x" Skip:0x%8"DTC_MS_U32_x" Drop:0x%8"DTC_MS_U32_x")\n",MApi_VDEC_EX_GetESReadPtr(mainvStreamID)  ,  MApi_VDEC_EX_GetESWritePtr(mainvStreamID), MApi_VDEC_EX_GetDispCnt(mainvStreamID),
                         MApi_VDEC_EX_GetFrameCnt(mainvStreamID), MApi_VDEC_EX_GetErrCnt(mainvStreamID), MApi_VDEC_EX_GetSkipCnt(mainvStreamID), MApi_VDEC_EX_GetDropCnt(mainvStreamID));
+
                 }
             }
             else
@@ -5881,8 +7635,8 @@ static void _Demo_PVRDBG_Task(void)
         {
             printf("=============Main ADEC1 Info=================\n");
             printf("APTS_ms:%8"DTC_MS_U32_u" STCPTS_Diff_ms:%8"DTC_MS_U32_u" okfrmCnt:0x%8"DTC_MS_U32_x" errFrmCnt:0x%8"DTC_MS_U32_x" esBuf_currLevel:0x%8"DTC_MS_U32_x" pcmBuf_currLevel:0x%8"DTC_MS_U32_x"\n",
-                (MS_U32)MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_ADEC1_1ms_timeStamp),
-                (MS_U32)MApi_AUDIO_GetCommAudioInfo((Audio_Comm_infoType_ADEC1_33bit_STCPTS_DIFF)/90),
+                (MS_U32)MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_ADEC1_33bit_PTS),
+                (MS_U32)(MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_ADEC1_33bit_STCPTS_DIFF)/90),
                 (MS_U32)MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_ADEC1_okFrmCnt),
                 (MS_U32)MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_ADEC1_errFrmCnt),
                 (MS_U32)MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_ADEC1_esBuf_currLevel),
@@ -5903,21 +7657,42 @@ static void _Demo_PVRDBG_Task(void)
              );
         }
 #endif
+
         //dmx
         if(_u8DBGLevel & E_PVR_DBG_DMX_REC) //DMX record
         {
             printf("=============DMX Record Info=================\n");
-            MApi_DMX_Pvr_Eng_WriteGet((DMX_PVR_ENG)_u8CurRecProgramIdx,&pu32Write);
-            MApi_DMX_Pvr_Eng_GetRecordStamp((DMX_PVR_ENG)_u8CurRecProgramIdx,&pu32Stamp);
-            printf("Engine Write:0x%8"DTC_MS_U32_x" RecordStamp0x%8"DTC_MS_U32_x" \n",pu32Write,pu32Stamp);
+            if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_WriteGet((DMX_PVR_ENG)_u8CurRecProgramIdx,&phyWrite))
+            {
+                printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Pvr_Eng_WriteGet()!\n",  __FILE__, __FUNCTION__,__LINE__);
+
+            }
+            if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_GetRecordStamp((DMX_PVR_ENG)_u8CurRecProgramIdx,&pu32Stamp))
+            {
+                printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Pvr_Eng_GetRecordStamp()!\n",  __FILE__, __FUNCTION__,__LINE__);
+
+            }
+            printf("Engine Write:0x%8"DTC_MS_PHY_x" RecordStamp0x%8"DTC_MS_U32_x" \n",phyWrite,pu32Stamp);
         }
 
         if(_u8DBGLevel & E_PVR_DBG_DMX_PLAY) //DMX play
         {
             printf("=============DMX Playback Info=================\n");
-            MApi_DMX_Filein_Eng_CMDQ_GetEmptyNum((DMX_FILEIN_PATH)_eCurPlaybackProgramPath,&u32CmdCount);
-            MApi_DMX_Filein_Eng_GetFileInTimeStamp((DMX_FILEIN_PATH)_eCurPlaybackProgramPath,&u32FileInTS);
-            MApi_DMX_Filein_Eng_GetPlaybackStamp((DMX_FILEIN_PATH)_eCurPlaybackProgramPath,&u32TS);
+            if (DMX_FILTER_STATUS_OK != MApi_DMX_Filein_Eng_CMDQ_GetEmptyNum((DMX_FILEIN_PATH)_eCurPlaybackProgramPath,&u32CmdCount))
+            {
+                printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Pvr_Eng_GetRecordStamp()!\n",  __FILE__, __FUNCTION__,__LINE__);
+
+            }
+            if (DMX_FILTER_STATUS_OK != MApi_DMX_Filein_Eng_GetFileInTimeStamp((DMX_FILEIN_PATH)_eCurPlaybackProgramPath,&u32FileInTS))
+            {
+                printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Pvr_Eng_GetRecordStamp()!\n",  __FILE__, __FUNCTION__,__LINE__);
+
+            }
+            if (DMX_FILTER_STATUS_OK != MApi_DMX_Filein_Eng_GetPlaybackStamp((DMX_FILEIN_PATH)_eCurPlaybackProgramPath,&u32TS))
+            {
+                printf("[%s][%s][%d] <ERR> Fail to MApi_DMX_Pvr_Eng_GetRecordStamp()!\n",  __FILE__, __FUNCTION__,__LINE__);
+
+            }
             printf("IDLE:%d EmptyNum:0x%8"DTC_MS_U32_x" FileInTS:0x%8"DTC_MS_U32_x" PlaybackTS:0x%8"DTC_MS_U32_x"\n",MApi_DMX_Filein_Eng_IsIdle((DMX_FILEIN_PATH)_eCurPlaybackProgramPath*2),u32CmdCount,u32FileInTS,u32TS);
 
             if (TRUE != _Demo_PVR_FileIn_Set_STC(PVR_PATH_MAIN, &stc0_id))
@@ -5939,8 +7714,10 @@ static void _Demo_PVRDBG_Task(void)
 
             printf("TSP [STC0:PCR0] => %8"DTC_MS_U32_x":%8"DTC_MS_U32_x"\n",dwnstc0,dwnpcr0);
             printf("VIDEO State: 0x%"DTC_MS_U32_x"  AUDIO State: 0x%"DTC_MS_U32_x"\n", video_fifo0, audio_fifo0);
-            printf("VIDEO LEVEL: 0x%"DTC_MS_U32_x"  AUDIO LEVEL: 0x%"DTC_MS_U32_x"\n", (video_fifo0& DMX_FIFO_STATUS_LV_USAGE_MASK)>> DMX_FIFO_STATUS_LV_USAGE_SHIFT, (audio_fifo0& DMX_FIFO_STATUS_LV_USAGE_MASK)>> DMX_FIFO_STATUS_LV_USAGE_SHIFT);
-            printf("VIDEO EMPTY: %"DTC_MS_U32_x"  AUDIO EMPTY: %"DTC_MS_U32_x"\n", video_fifo0&DMX_FIFO_STATUS_LV_EMPTY, audio_fifo0&DMX_FIFO_STATUS_LV_EMPTY);
+            printf("VIDEO LEVEL: 0x%"DTC_MS_U32_x"  AUDIO LEVEL: 0x%"DTC_MS_U32_x"\n",
+                (MS_U32)((video_fifo0& DMX_FIFO_STATUS_LV_USAGE_MASK)>> DMX_FIFO_STATUS_LV_USAGE_SHIFT), (MS_U32)((audio_fifo0& DMX_FIFO_STATUS_LV_USAGE_MASK)>> DMX_FIFO_STATUS_LV_USAGE_SHIFT));
+            printf("VIDEO EMPTY: %"DTC_MS_U32_x"  AUDIO EMPTY: %"DTC_MS_U32_x"\n",
+                (MS_U32)(video_fifo0&DMX_FIFO_STATUS_LV_EMPTY), (MS_U32)(audio_fifo0&DMX_FIFO_STATUS_LV_EMPTY));
 #if (DEMO_PVR_SUPPORT_DUALPLAYBACK_TEST == 1)
             if (TRUE != _Demo_PVR_FileIn_Set_STC(PVR_PATH_SUB, &stc1_id))
             {
@@ -5961,14 +7738,17 @@ static void _Demo_PVRDBG_Task(void)
 
             printf("TSP [STC1:PCR1] => 0x%8"DTC_MS_U32_x":0x%8"DTC_MS_U32_x"\n",dwnstc1,dwnpcr1);
             printf("VIDE1 State: 0x%"DTC_MS_U32_x"  AUDI1 State: 0x%"DTC_MS_U32_x"\n", video_fifo1, audio_fifo1);
-            printf("VIDE1 LEVEL: 0x%"DTC_MS_U32_x"  AUDI1 LEVEL: 0x%"DTC_MS_U32_x"\n", (video_fifo1& DMX_FIFO_STATUS_LV_USAGE_MASK)>> DMX_FIFO_STATUS_LV_USAGE_SHIFT, (audio_fifo1& DMX_FIFO_STATUS_LV_USAGE_MASK)>> DMX_FIFO_STATUS_LV_USAGE_SHIFT);
-            printf("VIDE1 EMPTY: %"DTC_MS_U32_x"  AUDI1 EMPTY: %"DTC_MS_U32_x"\n", video_fifo1& DMX_FIFO_STATUS_LV_EMPTY, audio_fifo1&DMX_FIFO_STATUS_LV_EMPTY);
+            printf("VIDE1 LEVEL: 0x%"DTC_MS_U32_x"  AUDI1 LEVEL: 0x%"DTC_MS_U32_x"\n",
+                (MS_U32)((video_fifo1& DMX_FIFO_STATUS_LV_USAGE_MASK)>> DMX_FIFO_STATUS_LV_USAGE_SHIFT), (MS_U32)((audio_fifo1& DMX_FIFO_STATUS_LV_USAGE_MASK)>> DMX_FIFO_STATUS_LV_USAGE_SHIFT));
+            printf("VIDE1 EMPTY: %"DTC_MS_U32_x"  AUDI1 EMPTY: %"DTC_MS_U32_x"\n",
+                (MS_U32)(video_fifo1& DMX_FIFO_STATUS_LV_EMPTY), (MS_U32)(audio_fifo1&DMX_FIFO_STATUS_LV_EMPTY));
 #endif
             //printf("FIFO:AV0 %8lu , %8lu  AV1 %8lu , %8lu",video_fifo0,audio_fifo0,video_fifo1,audio_fifo1);
         }
         printf("---------------------------------------------------------------------------------------------------------------------------------\n");
 
         MsOS_DelayTask(_u32DBGIntervel);
+
     }
     MsOS_SetEvent(s32_PVRLoopEvent_id, PVR_DBG_LOOP_EVENT);
     printf("[DDI_PVR] Leave loop\n");
@@ -5977,7 +7757,6 @@ static void _Demo_PVRDBG_Task(void)
 static MS_BOOL _Demo_PVR_GetAudioTrackNum(MS_U32* const pu32AudioTrackNum)
 {
     APIPVR_PARAM_t stParam;
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
 
     if(NULL == pu32AudioTrackNum)
     {
@@ -5990,14 +7769,14 @@ static MS_BOOL _Demo_PVR_GetAudioTrackNum(MS_U32* const pu32AudioTrackNum)
     stParam.enInfoType = EN_APIPVR_INFO_NB_AUDIO_TRACK;
     stParam.pParam = pu32AudioTrackNum;
     stParam.u32Paramsize = (MS_U32)sizeof(MS_U32); //Audio track number parameter size is MS_U32.
-    if(FALSE == MApi_PVR_PlaybackGetTrackInfoByPara(u8curPlayIdx, &stParam, (MS_U32)1))
+    if(FALSE == MApi_PVR_PlaybackGetTrackInfoByPara(_u8hPlayback[_eCurPlaybackProgramPath], &stParam, (MS_U32)1))
     {
         DemoPvr_Errorprint("[%s:%d] Get the number of audio track failed!!!\n", __FUNCTION__, __LINE__);
         return FALSE;
     }
     if(*pu32AudioTrackNum <= 0)
     {
-        DemoPvr_Errorprint("[%s:%d] The number of audio tracks is wrong(%lu)!!!\n", __FUNCTION__, __LINE__, *pu32AudioTrackNum);
+        DemoPvr_Errorprint("[%s:%d] The number of audio tracks is wrong(%"DTC_MS_U32_u")!!!\n", __FUNCTION__, __LINE__, *pu32AudioTrackNum);
         return FALSE;
     }
 
@@ -6008,7 +7787,6 @@ static MS_BOOL _Demo_PVR_GetAudioTrackInfo(APIPVRTrackInfo_t *astTrackInfo, cons
 {
     APIPVR_PARAM_t *astParam = NULL;
     MS_U32 u32iCount = 0;
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
 
     if(NULL == astTrackInfo)
     {
@@ -6030,14 +7808,14 @@ static MS_BOOL _Demo_PVR_GetAudioTrackInfo(APIPVRTrackInfo_t *astTrackInfo, cons
         astParam[u32iCount].u32Paramsize = (MS_U32)sizeof(APIPVRTrackInfo_t);
     }
 
-    if(FALSE == MApi_PVR_PlaybackGetTrackInfoByPara(u8curPlayIdx, astParam, u32AudioTrackNum))
+    if(FALSE == MApi_PVR_PlaybackGetTrackInfoByPara(_u8hPlayback[_eCurPlaybackProgramPath], astParam, u32AudioTrackNum))
     {
         DemoPvr_Errorprint("[%s:%d] MApi_PVR_PlaybackGetTrackInfoByPara() failed!!!\n", __FUNCTION__, __LINE__);
-        _Demo_PVR_MEMFREE_FUNC(astParam);
+        _Demo_PVR_MEMFREE_FUNC((void**)&astParam);
         return FALSE;
     }
 
-    _Demo_PVR_MEMFREE_FUNC(astParam);
+    _Demo_PVR_MEMFREE_FUNC((void**)&astParam);
 
     return TRUE;
 }
@@ -6047,11 +7825,10 @@ MS_BOOL Demo_PVR_ShowAudioTrackInfo(void)
     APIPVRTrackInfo_t *astTrackInfo = NULL;
     MS_U32 u32AudioTrackNum = 0;
     MS_U32 u32iCount = 0;
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
     DemoPvr_print("=========  Demo_PVR_SetAudioTrackByIndex =========\n");
 
     DEMO_PVR_CHECK_INIT();
-    if(TRUE != MApi_PVR_EX_IsPlaybacking(u8curPlayIdx))
+    if(TRUE != MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         DemoPvr_Errorprint("Not to play!\n");
         return FALSE;
@@ -6075,16 +7852,16 @@ MS_BOOL Demo_PVR_ShowAudioTrackInfo(void)
     if(FALSE == _Demo_PVR_GetAudioTrackInfo(astTrackInfo, u32AudioTrackNum))
     {
         DemoPvr_Errorprint("[%s:%d] Get the information of audio tracks failed!!!\n", __FUNCTION__, __LINE__);
-        _Demo_PVR_MEMFREE_FUNC(astTrackInfo);
+        _Demo_PVR_MEMFREE_FUNC((void**)&astTrackInfo);
         return FALSE;
     }
 
     for(u32iCount = 0; u32iCount < u32AudioTrackNum; u32iCount++)
     {
-        printf("Audio track [%lu], Codec = %u\n", u32iCount, (astTrackInfo[u32iCount].enAVCodecType - EN_APIPVR_AV_CODEC_AUD_NONE));
+        printf("Audio track [%"DTC_MS_U32_u"], Codec = 0x%X\n", u32iCount, (astTrackInfo[u32iCount].enAVCodecType - EN_APIPVR_AV_CODEC_AUD_NONE));
     }
 
-    _Demo_PVR_MEMFREE_FUNC(astTrackInfo);
+    _Demo_PVR_MEMFREE_FUNC((void**)&astTrackInfo);
 
     return TRUE;
 }
@@ -6093,11 +7870,10 @@ MS_BOOL Demo_PVR_SetAudioTrackByIndex(MS_U32 *u32AudIdx)
 {
     APIPVRTrackInfo_t *astTrackInfo = NULL;
     MS_U32 u32AudioTrackNum = 0;
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
     DemoPvr_print("=========  Demo_PVR_SetAudioTrackByIndex =========\n");
 
     DEMO_PVR_CHECK_INIT();
-    if(TRUE != MApi_PVR_EX_IsPlaybacking(u8curPlayIdx))
+    if(TRUE != MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         DemoPvr_Errorprint("Not to play!\n");
         return FALSE;
@@ -6111,7 +7887,7 @@ MS_BOOL Demo_PVR_SetAudioTrackByIndex(MS_U32 *u32AudIdx)
     }
     if(*u32AudIdx > u32AudioTrackNum)
     {
-        DemoPvr_Errorprint("[%s:%d] Audio index(%lu) > Audio track number(%lu)!!!\n", __FUNCTION__, __LINE__, *u32AudIdx, u32AudioTrackNum);
+        DemoPvr_Errorprint("[%s:%d] Audio index(%"DTC_MS_U32_u") > Audio track number(%"DTC_MS_U32_u")!!!\n", __FUNCTION__, __LINE__, *u32AudIdx, u32AudioTrackNum);
         return FALSE;
     }
 
@@ -6126,18 +7902,18 @@ MS_BOOL Demo_PVR_SetAudioTrackByIndex(MS_U32 *u32AudIdx)
     if(FALSE == _Demo_PVR_GetAudioTrackInfo(astTrackInfo, u32AudioTrackNum))
     {
         DemoPvr_Errorprint("[%s:%d] Get the information of audio tracks failed!!!\n", __FUNCTION__, __LINE__);
-        _Demo_PVR_MEMFREE_FUNC(astTrackInfo);
+        _Demo_PVR_MEMFREE_FUNC((void**)&astTrackInfo);
         return FALSE;
     }
 
     //Change audio track by index.
-    if(FALSE == MApi_PVR_PlaybackTrackChange(u8curPlayIdx, &astTrackInfo[*u32AudIdx], (MS_U32)1))
+    if(FALSE == MApi_PVR_PlaybackTrackChange(_u8hPlayback[_eCurPlaybackProgramPath], &astTrackInfo[*u32AudIdx], (MS_U32)1))
     {
         DemoPvr_Errorprint("[%s:%d] MApi_PVR_PlaybackTrackChange() failed!!!\n", __FUNCTION__, __LINE__);
         return FALSE;
     }
 
-    _Demo_PVR_MEMFREE_FUNC(astTrackInfo);
+    _Demo_PVR_MEMFREE_FUNC((void**)&astTrackInfo);
 
     return TRUE;
 }
@@ -6163,8 +7939,7 @@ MS_BOOL Demo_PVR_ChangeDisplayWindowSize(MS_U32 *u32Width,MS_U32 *u32Height,MS_U
     DemoPvr_print("=========  Demo_PVR_ChangeDisplayWindowSize =========\n");
     DEMO_PVR_CHECK_INIT();
 
-    MS_U8  u8curPlayIdx = _u8hPVRPlayback[_eCurPlaybackProgramPath];
-    if(TRUE != MApi_PVR_EX_IsPlaybacking(u8curPlayIdx))
+    if(TRUE != MApi_PVR_EX_IsPlaybacking(_u8hPlayback[_eCurPlaybackProgramPath]))
     {
         DemoPvr_Errorprint("Not to play!\n");
         return FALSE;
@@ -6176,7 +7951,372 @@ MS_BOOL Demo_PVR_ChangeDisplayWindowSize(MS_U32 *u32Width,MS_U32 *u32Height,MS_U
     stDispWinInfo.u32X_Pos   = *u32XPos;
     stDispWinInfo.u32Y_Pos   = *u32YPos;
     stDispWinInfo.bDef = *bDef;
-    return MApi_PVR_DispPlayWindowChange(u8curPlayIdx,stDispWinInfo);
+    return MApi_PVR_DispPlayWindowChange(_u8hPlayback[_eCurPlaybackProgramPath],stDispWinInfo);
 }
 #endif
+
+#if defined(MSOS_TYPE_ECOS)
+static void _Demo_PVR_eCos_cpu_usage(cyg_handle_t alarm,cyg_addrword_t data)
+{
+    MS_U8 u8Index = 0;
+
+    // Accumulate each thread's count into a MS_U64 array,
+    // and accumulate total count.
+    for(u8Index = 0;u8Index < CYGDBG_STACK_CHECK_TASK_TOTAL_NUM;u8Index++)
+    {
+        if(TaskUsageInfo[u8Index].count !=0)
+        {
+            if(TaskNameArray[u8Index] == NULL)
+            {
+                TaskNameArray[u8Index] = TaskUsageInfo[u8Index].Name;
+            }
+            TaskUsageSum[u8Index] += TaskUsageInfo[u8Index].count;
+            u64TotalSum += TaskUsageInfo[u8Index].count;
+        }
+    }
+
+    *((MS_U64 *) data) += CPU_USAGE_MEASURE_INTERVAL;
+
+    // Timeout
+    // Disable alarm and report result.
+    if(*((MS_U64 *) data) >= CPU_USAGE_MEASURE_DURATION * 1000)
+    {
+        // Set GetUsageActive set to 0, so kernel would stop measuring cpu usage.
+        GetUsageActive = 0;
+        cyg_alarm_disable(alarm);
+        cyg_alarm_delete(alarm);
+        bEnabled = FALSE;
+
+        printf("\e[1m\e[32m***  MeasureResult  ***\e[0m\n");
+        for(u8Index = 0;u8Index < CYGDBG_STACK_CHECK_TASK_TOTAL_NUM;u8Index++)
+        {
+            if(TaskUsageSum[u8Index] !=0)
+            {
+                printf("%s : %"DTC_MS_U64_u".%"DTC_MS_U64_u"%%\n", TaskNameArray[u8Index], TaskUsageSum[u8Index] * 100 / u64TotalSum, TaskUsageSum[u8Index] * 100 % u64TotalSum * 100 / u64TotalSum);
+            }
+        }
+        printf("\e[1m\e[32m*** *** *** *** *** ***\e[0m\n");
+    }
+
+    // The counter in TaskUsageInfo is U32.
+    // Reset task usage info to prevent it from overflow.
+    memset(TaskUsageInfo, 0, CYGDBG_STACK_CHECK_TASK_TOTAL_NUM * sizeof(Task_Usage_Info));
+
+}
+#elif defined(MSOS_TYPE_LINUX)
+static void _Demo_PVR_Linux_cpu_usage(PVR_CPU_INFO *pInfo)
+{
+    MS_U32 u32Pos = 0;
+    int c = 0;
+    memset(stringBuffer, 0, STAT_FILE_BUFFER_LEN);
+
+    do // read one line
+    {
+        c = fgetc(fpStatFile);
+        if(u32Pos == STAT_FILE_BUFFER_LEN - 1)
+        {
+            break;
+        }
+        if(c != EOF)
+        {
+            stringBuffer[u32Pos++] = (char) c;
+        }
+    }while(c != EOF && c != '\n');
+
+    stringBuffer[u32Pos] = '\0';
+
+    // handle line
+    if(strstr(stringBuffer, "cpu"))
+    {
+        sscanf(stringBuffer, "cpu %"DTC_MS_U64_u" %"DTC_MS_U64_u" %"DTC_MS_U64_u" %"DTC_MS_U64_u" %"DTC_MS_U64_u" %"DTC_MS_U64_u" %"DTC_MS_U64_u" %"DTC_MS_U64_u" %"DTC_MS_U64_u"", &pInfo->u64User, &pInfo->u64Nice, &pInfo->u64System, &pInfo->u64Idle, &pInfo->u64IOWait, &pInfo->u64Irq, &pInfo->u64SoftIrq, &pInfo->u64StealStolen, &pInfo->u64Guest);
+        //printf("user %"DTC_MS_U64_u" nice %"DTC_MS_U64_u" system %"DTC_MS_U64_u" idle %"DTC_MS_U64_u" iowait %"DTC_MS_U64_u" irq %"DTC_MS_U64_u" softirq %"DTC_MS_U64_u" stealstolen %"DTC_MS_U64_u" guest %"DTC_MS_U64_u"\n", pInfo->u64User, pInfo->u64Nice, pInfo->u64System, pInfo->u64Idle, pInfo->u64IOWait, pInfo->u64Irq, pInfo->u64SoftIrq, pInfo->u64StealStolen, pInfo->u64Guest);
+    }
+    else
+    {
+        printf("[Error] scan stat file error!\n");
+    }
+
+    fseek(fpStatFile, 0, SEEK_SET);
+    fflush(fpStatFile);
+}
+#endif
+
+static void _Demo_PVR_PerformanceTest(MS_U32 u32Time)
+{
+    if(u32Time < CPU_USAGE_START_MEASURE)
+    {
+        return;
+    }
+    // Once overrun can be 100% detected, remove this part,
+    // and call MApi_PVR_GetReadWritePerformanceReport 0x02 at the end of measurement.
+    if((u32Time < u32MeasurementPeriod*60 + CPU_USAGE_START_MEASURE) && !bEnabled)
+    {
+        MS_U8 u8Index = 0;
+        for(u8Index = 0;u8Index < _u8TotalRecorder;u8Index++)
+        {
+            printf("MApi_PVR_GetReadWritePerformanceReport u8Index = %u\n", u8Index);
+            MApi_PVR_GetReadWritePerformanceReport(0, u8Index, 0x82);
+        }
+    }
+
+    #if defined(MSOS_TYPE_LINUX)
+    if((u32Time < u32MeasurementPeriod*60 + CPU_USAGE_START_MEASURE) && !bEnabled)
+    {
+        if(fpStatFile == NULL)
+        {
+            fpStatFile = fopen("/proc/stat", "r");
+        }
+        if(fpStatFile == NULL)
+        {
+            printf("[PVR] open Error!(Errno:%d) %s \n", errno, strerror(errno));
+            printf("[Error] open /proc/stat fail!\n");
+        }
+        else
+        {
+            printf("\e[1m\e[32m***  Measure Start  ***\e[0m\n");
+            memset(&StartCPUTime, 0, sizeof(PVR_CPU_INFO));
+            memset(&EndCPUTime, 0, sizeof(PVR_CPU_INFO));
+            bEnabled = TRUE;
+            _Demo_PVR_Linux_cpu_usage(&StartCPUTime);
+        }
+    }
+    if((u32Time >= u32MeasurementPeriod*60 + CPU_USAGE_START_MEASURE) && bEnabled && fpStatFile)
+    {
+        _Demo_PVR_Linux_cpu_usage(&EndCPUTime);
+        PVR_CPU_INFO DiffCPUTime = {};
+        DiffCPUTime.u64User = EndCPUTime.u64User - StartCPUTime.u64User;
+        DiffCPUTime.u64Nice = EndCPUTime.u64Nice - StartCPUTime.u64Nice;
+        DiffCPUTime.u64System = EndCPUTime.u64System - StartCPUTime.u64System;
+        DiffCPUTime.u64Idle = EndCPUTime.u64Idle - StartCPUTime.u64Idle;
+        DiffCPUTime.u64IOWait= EndCPUTime.u64IOWait - StartCPUTime.u64IOWait;
+        DiffCPUTime.u64Irq = EndCPUTime.u64Irq - StartCPUTime.u64Irq;
+        DiffCPUTime.u64SoftIrq= EndCPUTime.u64SoftIrq - StartCPUTime.u64SoftIrq;
+        DiffCPUTime.u64StealStolen= EndCPUTime.u64StealStolen - StartCPUTime.u64StealStolen;
+        DiffCPUTime.u64Guest= EndCPUTime.u64Guest - StartCPUTime.u64Guest;
+        //printf("diff user %"DTC_MS_U64_u" nice %"DTC_MS_U64_u" system %"DTC_MS_U64_u" idle %"DTC_MS_U64_u" iowait %"DTC_MS_U64_u" irq %"DTC_MS_U64_u" softirq %"DTC_MS_U64_u" stealstolen %"DTC_MS_U64_u" guest %"DTC_MS_U64_u"\n", DiffCPUTime.u64User, DiffCPUTime.u64Nice, DiffCPUTime.u64System, DiffCPUTime.u64Idle, DiffCPUTime.u64IOWait, DiffCPUTime.u64Irq, DiffCPUTime.u64SoftIrq, DiffCPUTime.u64StealStolen, DiffCPUTime.u64Guest);
+        MS_U64 u64TotalTime = DiffCPUTime.u64User + DiffCPUTime.u64Nice + DiffCPUTime.u64System + DiffCPUTime.u64Idle + DiffCPUTime.u64IOWait + DiffCPUTime.u64Irq + DiffCPUTime.u64SoftIrq + DiffCPUTime.u64StealStolen + DiffCPUTime.u64Guest;
+        MS_U64 u64NonIdleTime = u64TotalTime - DiffCPUTime.u64Idle;
+
+        printf("\e[1m\e[32m***  MeasureResult  ***\e[0m\n");
+
+        printf("Total : %"DTC_MS_U64_u".%"DTC_MS_U64_u"%%\n", u64NonIdleTime * 100 / u64TotalTime, u64NonIdleTime * 100 % u64TotalTime * 100 / u64TotalTime);
+        printf("User : %"DTC_MS_U64_u".%"DTC_MS_U64_u"%%\n", DiffCPUTime.u64User * 100 / u64TotalTime, DiffCPUTime.u64User * 100 % u64TotalTime * 100 / u64TotalTime);
+        printf("System : %"DTC_MS_U64_u".%"DTC_MS_U64_u"%%\n", DiffCPUTime.u64System * 100 / u64TotalTime, DiffCPUTime.u64System * 100 % u64TotalTime * 100 / u64TotalTime);
+        printf("IOWait : %"DTC_MS_U64_u".%"DTC_MS_U64_u"%%\n", DiffCPUTime.u64IOWait * 100 / u64TotalTime, DiffCPUTime.u64IOWait * 100 % u64TotalTime * 100 / u64TotalTime);
+        printf("Idle : %"DTC_MS_U64_u".%"DTC_MS_U64_u"%%\n", DiffCPUTime.u64Idle * 100 / u64TotalTime, DiffCPUTime.u64Idle * 100 % u64TotalTime * 100 / u64TotalTime);
+
+        printf("\e[1m\e[32m*** *** *** *** *** ***\e[0m\n");
+
+        if(fpStatFile != NULL)
+        {
+            fclose(fpStatFile);
+            fpStatFile = NULL;
+        }
+        bEnabled = FALSE;
+    }
+    #elif defined(MSOS_TYPE_ECOS)
+    if((u32Time < u32MeasurementPeriod*60 + CPU_USAGE_START_MEASURE) && !bEnabled)
+    {
+        MS_U32 u32Index = 0;
+        for(u32Index = 0;u32Index < CYGDBG_STACK_CHECK_TASK_TOTAL_NUM;u32Index++)
+        {
+            TaskNameArray[u32Index] = NULL;
+            TaskUsageSum[u32Index] = 0;
+        }
+        u64TotalSum = 0;
+
+        MS_U64 u64MeasureDuration = 0;
+        cyg_handle_t counter;
+        cyg_clock_to_counter(cyg_real_time_clock(),&counter);
+        cyg_handle_t alarmH;
+        // Create alarm.
+        // _Demo_PVR_eCos_cpu_usage is the alarm function.
+        // u64MeasureDuration is passed to alarm function and used as a timer to indicate the ending of measurement.
+        cyg_alarm_create(counter, _Demo_PVR_eCos_cpu_usage, (cyg_addrword_t)&u64MeasureDuration, &alarmH, &alarm_s);
+
+        // The first time _Demo_PVR_eCos_cpu_usage being executed would be cyg_current_time() + CPU_USAGE_MEASURE_INTERVAL,
+        // and would be continually executed in every CPU_USAGE_MEASURE_INTERVAL ms.
+        cyg_alarm_initialize(alarmH, cyg_current_time() + CPU_USAGE_MEASURE_INTERVAL, CPU_USAGE_MEASURE_INTERVAL);
+        cyg_alarm_enable(alarmH);
+        // When GetUsageActive set to 1, kernel would start measuring cpu usage and record results in TaskUsageInfo.
+        // Please see src/sched/sche.cxx in ecospro
+        GetUsageActive = 1;
+        printf("\e[1m\e[32m***  Measure Start  ***\e[0m\n");
+        bEnabled = TRUE;
+    }
+    #endif
+}
+//------------------------------------------------------------------------------
+/// @brief The sample code to record a live stream in timeshift mode
+/// @param[in] Enable/Disable the performance test
+/// @param[in] period to measure the performance
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Command: \b PVR_SetPerformanceTest \n
+///
+/// Sample Command:PVR_SetPerformanceTest 1 30
+
+MS_BOOL Demo_PVR_SetPerformanceTest(MS_U32 *u32Enable, MS_U32 *u32MeasurementTime)
+{
+    if(*u32Enable == 1)
+    {
+        bPVRPerformanceTest = TRUE;
+    }
+    else
+    {
+        bPVRPerformanceTest = FALSE;
+    }
+    if(*u32MeasurementTime > 0)
+    {
+        u32MeasurementPeriod = *u32MeasurementTime;
+    }
+    return TRUE;
+}
+
+static MS_BOOL _Demo_PVR_SetSyncConfig(MS_U32 *u32Value, char *DirtyBackgroundRatio, char *DirtyRatio, char *DirtyExpireCentisecs, char *DirtyWritebackCentisecs)
+{
+    PVR_CfgParam stPvrCfgParam;
+    stPvrCfgParam.bSet = TRUE;
+    stPvrCfgParam.eCfgCmd = EN_APIPVR_CFG_FILE_SYNC_CONFIG;
+    stPvrCfgParam.pCfgPara = u32Value;
+    if(MApi_PVR_Configure(&stPvrCfgParam) == FALSE)
+    {
+        return FALSE;
+    }
+
+    #if defined(MSOS_TYPE_LINUX)
+    // Default values:
+    // vm.dirty_background_bytes = 0
+    // vm.dirty_background_ratio = 10
+    // vm.dirty_bytes = 0
+    // vm.dirty_expire_centisecs = 3000
+    // vm.dirty_ratio = 20
+    // vm.dirty_writeback_centisecs = 500
+
+    printf("input paramaters===\nDirtyBackgroundRatio = %s\nDirtyRatio = %s\nDirtyExpireCentisecs = %s\nDirtyWritebackCentisecs = %s\n===\n", DirtyBackgroundRatio, DirtyRatio, DirtyExpireCentisecs, DirtyWritebackCentisecs);
+
+    char tempDirtyBackgroundRatio[MAX_PROC_BUFFER_SIZE] = {0};
+    char tempDirtyRatio[MAX_PROC_BUFFER_SIZE] = {0};
+    char tempDirtyExpireCentisecs[MAX_PROC_BUFFER_SIZE] = {0};
+    char tempDirtyWritebackCentisecs[MAX_PROC_BUFFER_SIZE] = {0};
+
+    // (1) dirty_background_ratio
+    char getCmd[MAX_CMD_BUFFER_SIZE] = {0};
+    strncpy(getCmd, "cat /proc/sys/vm/dirty_background_ratio", sizeof(getCmd)-1);
+
+    char setCmd[MAX_CMD_BUFFER_SIZE] = {0};
+    snprintf(setCmd, sizeof(setCmd)-1, "echo %s > /proc/sys/vm/dirty_background_ratio\n", DirtyBackgroundRatio);
+
+    _ExecuteCommand(getCmd, origDirtyBackgroundRatio, MAX_PROC_BUFFER_SIZE);
+    printf("orig dirty_background_ratio = %s\n", origDirtyBackgroundRatio);
+    _ExecuteCommand(setCmd, NULL, 0);
+    _ExecuteCommand(getCmd, tempDirtyBackgroundRatio, MAX_PROC_BUFFER_SIZE);
+    printf("new dirty_background_ratio = %s\n", tempDirtyBackgroundRatio);
+
+    // (2) dirty_ratio
+    strncpy(getCmd, "cat /proc/sys/vm/dirty_ratio", sizeof(getCmd)-1);
+    snprintf(setCmd, sizeof(setCmd)-1, "echo %s > /proc/sys/vm/dirty_ratio\n", DirtyRatio);
+
+    _ExecuteCommand(getCmd, origDirtyRatio, MAX_PROC_BUFFER_SIZE);
+    printf("orig dirty_ratio = %s\n", origDirtyRatio);
+    _ExecuteCommand(setCmd, NULL, 0);
+    _ExecuteCommand(getCmd, tempDirtyRatio, MAX_PROC_BUFFER_SIZE);
+    printf("new dirty_ratio = %s\n", tempDirtyRatio);
+
+    // (3) dirty_expire_centisecs
+    strncpy(getCmd, "cat /proc/sys/vm/dirty_expire_centisecs", sizeof(getCmd)-1);
+    snprintf(setCmd, sizeof(setCmd)-1, "echo %s > /proc/sys/vm/dirty_expire_centisecs\n", DirtyExpireCentisecs);
+
+    _ExecuteCommand(getCmd, origDirtyExpireCentisecs, MAX_PROC_BUFFER_SIZE);
+    printf("orig dirty_expire_centisecs = %s\n", origDirtyExpireCentisecs);
+    _ExecuteCommand(setCmd, NULL, 0);
+    _ExecuteCommand(getCmd, tempDirtyExpireCentisecs, MAX_PROC_BUFFER_SIZE);
+    printf("new dirty_expire_centisecs = %s\n", tempDirtyExpireCentisecs);
+
+    // (4) dirty_writeback_centisecs
+    strncpy(getCmd, "cat /proc/sys/vm/dirty_writeback_centisecs",  sizeof(getCmd)-1);
+    snprintf(setCmd, sizeof(setCmd)-1, "echo %s > /proc/sys/vm/dirty_writeback_centisecs\n", DirtyWritebackCentisecs);
+
+    _ExecuteCommand(getCmd, origDirtyWritebackCentisecs, MAX_PROC_BUFFER_SIZE);
+    printf("orig dirty_writeback_centisecs = %s\n", origDirtyWritebackCentisecs);
+    _ExecuteCommand(setCmd, NULL, 0);
+    _ExecuteCommand(getCmd, tempDirtyWritebackCentisecs, MAX_PROC_BUFFER_SIZE);
+    printf("new dirty_writeback_centisecs = %s\n", tempDirtyWritebackCentisecs);
+
+    #endif
+
+    return TRUE;
+}
+
+static EN_AV_Device _PVRPlaybackPath_Mapping_AV_Device(Ex_PVRPlaybackPath enPVRPlaybackPath)
+{
+    switch(enPVRPlaybackPath)
+    {
+        case PVR_PATH_MAIN:
+            return E_AV_DEVICE_MAIN;
+        case PVR_PATH_SUB:
+            return  E_AV_DEVICE_SUB;
+        default:
+            printf("Wrong PVR Playback Path%d\n", enPVRPlaybackPath);
+            return E_AV_DEVICE_MAIN;
+    }
+}
+
+// For eCos:
+// u32Value > 0: adjust the synchronization interval.
+// u32Value = 0: old code flow. synchronize after every write.
+// DirtyBackgroundRatio, DirtyRatio, DirtyExpireCentisecs and DirtyWritebackCentisecs are unused.
+//
+// For Linux:
+// u32Value > 0: disable the synchronization in PVR MW.
+// u32Value = 0: enable the synchronization in PVR MW.
+// If u32Value > 0,
+// users can tune DirtyBackgroundRatio, DirtyRatio, DirtyExpireCentisecs and DirtyWritebackCentisecs values.
+// This demo cmd would set the users-tuned values to procfs, and recover them to default values when pvr exit.
+MS_BOOL Demo_PVR_SetSyncConfig(MS_U32 *u32Value, char *DirtyBackgroundRatio, char *DirtyRatio, char *DirtyExpireCentisecs, char *DirtyWritebackCentisecs)
+{
+    if(bSyncConfigHasBeenSet)
+    {
+        printf("Cannot set sync config more than once!\n");
+        return FALSE;
+    }
+    if(_Demo_PVR_SetSyncConfig(u32Value, DirtyBackgroundRatio, DirtyRatio, DirtyExpireCentisecs, DirtyWritebackCentisecs) == FALSE)
+    {
+        printf("Set sync config fail!\n");
+        return FALSE;
+    }
+    bSyncConfigHasBeenSet = TRUE;
+
+    return TRUE;
+}
+
+MS_BOOL Demo_PVR_Disable2ndEncryption(MS_U32 *u32Disable)
+{
+    if(_bPvrInit)
+    {
+        printf("Cannot Disable/Enable 2nd Encryption after PVR init!\n");
+        return FALSE;
+    }
+    else
+    {
+        if(*u32Disable == 1)
+        {
+            b2ndEncryptionEnabled = FALSE;
+            printf("2nd Encryption Disabled!\n");
+        }
+        else if(*u32Disable == 0)
+        {
+            b2ndEncryptionEnabled = TRUE;
+            printf("2nd Encryption Enabled!\n");
+        }
+        else
+        {
+            printf("Unknown 2nd Encryption Config!\n");
+        }
+        return TRUE;
+    }
+}
+
 #endif /* DEMO_PVR_TEST */

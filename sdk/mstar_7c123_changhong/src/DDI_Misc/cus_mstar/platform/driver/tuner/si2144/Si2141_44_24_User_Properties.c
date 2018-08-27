@@ -10,11 +10,11 @@
    API properties definitions
    FILE: Si2141_44_24_L1_Properties.c
    Supported IC : Si2141-A10, Si2141-B10, Si2144-A20, Si2124-A20
-   Compiled for ROM 61 firmware 1_1_build_10
-   Revision: 0.1
-   Tag:  ROM61_1_1_build_10_V0.1
-   Date: July 24 2015
-  (C) Copyright 2015, Silicon Laboratories, Inc. All rights reserved.
+   Compiled for ROM 61 firmware 1_1_build_12
+   Revision: 0.0
+   Tag:  ROM61_1_1_build_12_V0.0
+   Date: March 04 2016
+  (C) Copyright 2016, Silicon Laboratories, Inc. All rights reserved.
 **************************************************************************************/
 #define   Si2141_44_24_COMMAND_PROTOTYPES
 
@@ -160,7 +160,7 @@ void          Si2141_44_24_storeUserProperties    (Si2141_44_24_PropObj   *prop,
     {
         #ifdef    Si2144_TUNER_RETURN_LOSS_PROP
           prop->tuner_return_loss.reserved           = Si2144_TUNER_RETURN_LOSS_PROP_RESERVED_RESERVED         ; /* (default 'RESERVED') */
-          prop->tuner_return_loss.returnloss         = Si2144_TUNER_RETURN_LOSS_PROP_RETURNLOSS_RETURNLOSS_8DB ; /* (default 'RETURNLOSS_8DB') */
+          prop->tuner_return_loss.returnloss         = Si2144_TUNER_RETURN_LOSS_PROP_RETURNLOSS_RETURNLOSS_5DB ; /* (default 'RETURNLOSS_8DB') */
         #endif /* Si2144_TUNER_RETURN_LOSS_PROP */
     }
 

@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -128,6 +128,7 @@ MS_BOOL Demo_PM_STR_Driver_Suspend(void);
 MS_BOOL Demo_PM_STR_Driver_Resume(void);
 MS_BOOL Demo_PM_RTC_WakeUp(MS_U32 *WakeUpTime, MS_U32 *SysTime, MS_U8 *mode);
 MS_BOOL Demo_PM_ConfigWOL(MS_BOOL *On, char*mac);
+MS_BOOL Demo_PM_DRAM_Disable(void);
 #endif
 
 #endif

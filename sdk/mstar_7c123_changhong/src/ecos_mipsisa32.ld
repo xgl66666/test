@@ -13,11 +13,13 @@ GROUP(libtarget.a libgcc.a libsupc++.a)
 
 /* kernel memory pool reserved for the use of malloc by kernel ONLY */
 KERNEL_POOL_SIZE = 0x400000; /* 4096KB */
+/*KERNEL_POOL_SIZE = 0x100000;*/ /* 1024KB */
 
 
 MEMORY
 {
-    ram : ORIGIN = 0x80000180, LENGTH = 0x03fffe80 /* 64MB */
+    /*ram : ORIGIN = 0x80000180, LENGTH = 0x03fffe80*/ /* 64MB */
+    ram : ORIGIN = 0x80000180, LENGTH = 0x01fffe80 /* 32MB */
 }
 
 SECTIONS
@@ -25,26 +27,20 @@ SECTIONS
     .rom_vectors 0x80000180 : { __ram_code_start = .; KEEP(*(.other_vector)) . = . + 0x80; KEEP (*(.reset_vector)) . = ALIGN(0x200); KEEP (*(.utlb_vector)) . = . + 0x100; . = ALIGN(0x80); . = ALIGN(0x80); KEEP(*(.debug_vector)) } > ram
     .tspdat ALIGN (0x40) : { . = .; *(.tspdat) } > ram
     .mvd3fw ALIGN (0x1000) : { . = .; *(.mvd3fw) } > ram
-    .cmdcnfgsect ALIGN (0x40) : { . = .; *(.FS_CFGi_RAMEMSConfig) } > ram
-    .cmdpartasect ALIGN (0x40) : { . = .; *(.FS_CFGi_RAMPartitionA) } > ram
     .interp ALIGN (0x40) : { *(.interp) } > ram .hash : AT ((LOADADDR (.interp) + SIZEOF (.interp) + 0x40 - 1) & ~ (0x40 - 1)) { *(.hash) } > ram .dynsym : AT ((LOADADDR (.hash) + SIZEOF (.hash) + 0x40 - 1) & ~ (0x40 - 1)) { *(.dynsym) } > ram .dynstr : AT ((LOADADDR (.dynsym) + SIZEOF (.dynsym) + 0x40 - 1) & ~ (0x40 - 1)) { *(.dynstr) } > ram .gnu.version : AT ((LOADADDR (.dynstr) + SIZEOF (.dynstr) + 0x40 - 1) & ~ (0x40 - 1)) { *(.gnu.version) } > ram .gnu.version_d : AT ((LOADADDR (.gnu.version) + SIZEOF (.gnu.version) + 0x40 - 1) & ~ (0x40 - 1)) { *(.gnu.version_d) } > ram .gnu.version_r : AT ((LOADADDR (.gnu.version_d) + SIZEOF (.gnu.version_d) + 0x40 - 1) & ~ (0x40 - 1)) { *(.gnu.version_r) } > ram .plt : AT ((LOADADDR (.gnu.version_r) + SIZEOF (.gnu.version_r) + 0x40 - 1) & ~ (0x40 - 1)) { *(.plt) } > ram
     .rel.text : { *(.rel.text) *(.rel.text.*) *(.rel.gnu.linkonce.t*) } > ram .rela.text : { *(.rela.text) *(.rela.text.*) *(.rela.gnu.linkonce.t*) } > ram .rel.data : { *(.rel.data) *(.rel.data.*) *(.rel.gnu.linkonce.d*) } > ram .rela.data : { *(.rela.data) *(.rela.data.*) *(.rela.gnu.linkonce.d*) } > ram .rel.rodata : { *(.rel.rodata) *(.rel.rodata.*) *(.rel.gnu.linkonce.r*) } > ram .rela.rodata : { *(.rela.rodata) *(.rela.rodata.*) *(.rela.gnu.linkonce.r*) } > ram .rel.got : { *(.rel.got) } > ram .rela.got : { *(.rela.got) } > ram .rel.ctors : { *(.rel.ctors) } > ram .rela.ctors : { *(.rela.ctors) } > ram .rel.dtors : { *(.rel.dtors) } > ram .rela.dtors : { *(.rela.dtors) } > ram .rel.init : { *(.rel.init) } > ram .rela.init : { *(.rela.init) } > ram .rel.fini : { *(.rel.fini) } > ram .rela.fini : { *(.rela.fini) } > ram .rel.bss : { *(.rel.bss) } > ram .rela.bss : { *(.rela.bss) } > ram .rel.plt : { *(.rel.plt) } > ram .rela.plt : { *(.rela.plt) } > ram .rel.dyn : { *(.rel.dyn) } > ram
     .init ALIGN (0x40) : { . = .; KEEP (*(.init)) } > ram =0
-    . = . + 0x1000;
     .text ALIGN (0x40) : { _stext = .; _ftext = . ; *(.text) *(.text.*) *(.stub) *(.gnu.warning) *(.gnu.linkonce.t*) *(.mips16.fn.*) *(.mips16.call.*) } > ram =0 _etext = .; PROVIDE (etext = .);
-    .miu_clk ALIGN(0x80) : { . = .; *(.miuclk)} > ram
     .fini ALIGN (0x40) : { . = .; KEEP (*(.fini)) } > ram =0
     .rodata ALIGN (0x40) : { . = .; *(.rodata) *(.rodata.*) *(.gnu.linkonce.r*) } > ram
-    .rodata1 ALIGN (0x40) : { . = .; *(.rodata1) *(.rodata1.*) } > ram  
-    .ric_region ALIGN (0x4) : { _ric_region_start = .; . = .; } > ram
-    _ric_region_end = .; __ram_code_end = .;
+    .rodata1 ALIGN (0x40) : { . = .; *(.rodata1) *(.rodata1.*) } > ram  __ram_code_end = .;
     .dvbcdat ALIGN(0x40) : { . = .; *(.dvbcdat) } > ram
     .data ALIGN (0x40) : AT ((LOADADDR (.dvbcdat) + SIZEOF (.dvbcdat) + 0x40 - 1) & ~ (0x40 - 1)) { __ram_data_start = ABSOLUTE (.); _fdata = . ; *(.data) *(.data.*) *(.gnu.linkonce.d*) *( .2ram.*) . = ALIGN (8); SORT(CONSTRUCTORS) } > ram __rom_data_start = LOADADDR(.data);
     .data1 ALIGN (0x40) : AT ((LOADADDR (.data) + SIZEOF (.data) + 0x40 - 1) & ~ (0x40 - 1)) { . = .; *(.data1) *(.data1.*) } > ram
     .eh_frame ALIGN (0x40) : AT ((LOADADDR (.data1) + SIZEOF (.data1) + 0x40 - 1) & ~ (0x40 - 1)) { . = .; __EH_FRAME_BEGIN__ = .; KEEP(*(.eh_frame)) __FRAME_END__ = .; . = . + 8; } > ram = 0
     .gcc_except_table ALIGN (0x40) : AT ((LOADADDR (.eh_frame) + SIZEOF (.eh_frame) + 0x40 - 1) & ~ (0x40 - 1)) { . = .; KEEP(*(.gcc_except_table)) *(.gcc_except_table.*) } > ram
-    .ctors ALIGN (0x40) : AT ((LOADADDR (.gcc_except_table) + SIZEOF (.gcc_except_table) + 0x40 - 1) & ~ (0x40 - 1)) { . = .; KEEP (*crtbegin.o(.ctors)) __CTOR_LIST__ = .; PROVIDE (__CTOR_LIST__ = .); KEEP (*(EXCLUDE_FILE (*crtend.o) .ctors)) KEEP (*(SORT(.ctors.*))) KEEP (*(.ctors)) __CTOR_END__ = .; PROVIDE (__CTOR_END__ = .); } > ram
-    .dtors ALIGN (0x40) : AT ((LOADADDR (.ctors) + SIZEOF (.ctors) + 0x40 - 1) & ~ (0x40 - 1)) { . = .; KEEP (*crtbegin.o(.dtors)) __DTOR_LIST__ = .; PROVIDE (__DTOR_LIST__ = .); KEEP (*(EXCLUDE_FILE (*crtend.o) .dtors)) KEEP (*(SORT(.dtors.*))) KEEP (*(.dtors)) __DTOR_END__ = .; PROVIDE (__DTOR_END__ = .); } > ram
+    .ctors ALIGN (0x40) : AT ((LOADADDR (.gcc_except_table) + SIZEOF (.gcc_except_table) + 0x40 - 1) & ~ (0x40 - 1)) { . = .; KEEP (*crtbegin.o(.ctors)) __CTOR_LIST__ = .; PROVIDE (__CTOR_LIST__ = .); KEEP (*(EXCLUDE_FILE (*crtend.o) .ctors)) KEEP (*(SORT(EXCLUDE_FILE (*crtend.o) .ctors.*))) __CTOR_END__ = .; PROVIDE (__CTOR_END__ = .); } > ram
+    .dtors ALIGN (0x40) : AT ((LOADADDR (.ctors) + SIZEOF (.ctors) + 0x40 - 1) & ~ (0x40 - 1)) { . = .; KEEP (*crtbegin.o(.dtors)) __DTOR_LIST__ = .; PROVIDE (__DTOR_LIST__ = .); KEEP (*(EXCLUDE_FILE (*crtend.o) .dtors)) KEEP (*(SORT(EXCLUDE_FILE (*crtend.o) .dtors.*))) __DTOR_END__ = .; PROVIDE (__DTOR_END__ = .); } > ram
     .devtab ALIGN (0x40) : AT ((LOADADDR (.dtors) + SIZEOF (.dtors) + 0x40 - 1) & ~ (0x40 - 1)) { . = .; KEEP(*( SORT (.ecos.table.*))) ; } > ram
     .demodtab ALIGN (0x40) : AT ((LOADADDR (.devtab) + SIZEOF (.devtab) + 0x40 - 1) & ~ (0x40 - 1)) { . = .; KEEP(*( SORT (.ecos.demod.*))) ; } > ram
     .tunertab ALIGN (0x40) : AT ((LOADADDR (.demodtab) + SIZEOF (.demodtab) + 0x40 - 1) & ~ (0x40 - 1)) { . = .; KEEP(*( SORT (.ecos.tuner.*))) ; } > ram

@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -314,8 +314,6 @@ void MDrv_UART_DecodeNormalCommand(void)
 
 #if PHOENIX_DEBUG
     U16 RegAddr=0, RegData=0;
-    U8    u8Standard=0;
-
     U8 RegData_Read=0;
 #endif
     switch ( UART_CMD )
@@ -324,8 +322,6 @@ void MDrv_UART_DecodeNormalCommand(void)
         case uartRead_Demod:
             {
                 RegAddr = ( ( U16 ) g_UartCommand.Buffer[_UART_CMD_INDEX1_] << 8 ) | ( U16 ) g_UartCommand.Buffer[_UART_CMD_INDEX2_];
-                u8Standard = g_UartCommand.Buffer[_UART_CMD_INDEX3_];
-                //RegData = MDrv_Demod_ReadReg( RegAddr );
                 MApi_DigiTuner_ReadReg(0,RegAddr,&RegData_Read);
                 putcharb( 0xF3 );
                 putcharb( ( U8 ) ( RegData >> 8 ) );
@@ -337,8 +333,6 @@ void MDrv_UART_DecodeNormalCommand(void)
             {
                 RegAddr = ( ( U16 ) g_UartCommand.Buffer[_UART_CMD_INDEX1_] << 8 ) | ( U16 ) g_UartCommand.Buffer[_UART_CMD_INDEX2_];
                 RegData = ( ( U16 ) g_UartCommand.Buffer[_UART_CMD_INDEX3_] << 8 ) | ( U16 ) g_UartCommand.Buffer[_UART_CMD_INDEX4_];
-                u8Standard = g_UartCommand.Buffer[_UART_CMD_INDEX5_];
-                //RegData = MDrv_Demod_WriteReg( RegAddr, RegData );
                 RegData = MApi_DigiTuner_WriteReg( 0,RegAddr, RegData );
                 putcharb( 0xF1 );
                 printf("[%x] = %x\n", RegAddr, RegData);
@@ -444,7 +438,7 @@ void Cus_UART_Scan(void)
                 FeParam.CabParam.u16SymbolRate   = u32Data; //u32SymbolRate;
 #ifdef FRONTEND_DEMOD_IQ_TYPE
                 FeParam.CabParam.eIQMode         = FRONTEND_DEMOD_IQ_TYPE;
-#elif
+#else
                 FeParam.CabParam.eIQMode         = 0;
 #endif // FRONTEND_DEMOD_IQ_TYPE
                 FeParam.CabParam.u8TapAssign     = 1;

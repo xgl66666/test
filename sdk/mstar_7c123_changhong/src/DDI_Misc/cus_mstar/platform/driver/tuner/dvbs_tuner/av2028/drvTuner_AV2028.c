@@ -380,7 +380,7 @@ TUNER_ErrorCode AV2028_Tuner_I2C_Write (MS_U8 u8TunerIndex, pTunerPara pAVtuner_
     TUNER_ErrorCode result = Tuner_No_Error;
     UINT8 queue[16];
     UINT8 i;
-	HWI2C_PORT ePort;
+	MS_IIC_PORT ePort;
     ePort = getI2CPort(u8TunerIndex);
 
     queue[0]=reg_start;
@@ -425,7 +425,7 @@ TUNER_ErrorCode AV2028_Tuner_I2C_Read (MS_U8 u8TunerIndex, pTunerPara pAVtuner_t
 
     UINT8 queue[16];
     UINT8 i;
-	HWI2C_PORT ePort;
+	MS_IIC_PORT ePort;
     ePort = getI2CPort(u8TunerIndex);
 
     queue[0]=pAVtuner_t->I2C_ADDR; // I2C write address
@@ -471,7 +471,7 @@ TUNER_ErrorCode AV2028_Time_DELAY_MS (UINT32 ms)
 MS_BOOL AV2028_ReadReg(MS_U8 u8TunerIndex, MS_U8 u8SlaveID, MS_U8 u8Addr, MS_U8 *u8Data)
 {
     MS_BOOL bRet=TRUE;
-	HWI2C_PORT ePort;
+	MS_IIC_PORT ePort;
     ePort = getI2CPort(u8TunerIndex);
     //bRet&=MDrv_IIC_Write(u8SlaveID, 0, 0, &u8Addr, 1);
 	bRet&=MDrv_IIC_WriteBytes(ePort, u8SlaveID, 0, 0, 1, &u8Addr);

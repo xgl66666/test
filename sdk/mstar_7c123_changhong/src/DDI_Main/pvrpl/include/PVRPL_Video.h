@@ -119,6 +119,7 @@ extern "C"
 
 typedef void* (*VDEC_CB_PLAY)(MS_U32 u32VCodec, MS_BOOL bStart);
 typedef void* (*DISP_CB_ENABLE)(MS_BOOL bEnable);
+
 typedef enum
 {
     EN_PVRPL_XC_INPUT_SOURCE_DTV              = 0,
@@ -140,13 +141,13 @@ typedef struct
 {
     MS_U32                      u32Version;  // Store Version got from Demo_VDEC_GetStreamID.
     MS_U32                      u32Id;       // Store Id got from Demo_VDEC_GetStreamID.
-    MS_S16                      s16VSpeed;   // for _PVRPL_Video_SetDecodeMode
+    MS_S32                      s32VSpeed;   // for _PVRPL_Video_SetDecodeMode
     PVR_PATH                    u8PathIdx;   // main or sub. for almost all PVRPL_Video functions.
     MS_BOOL                     bVInit;      // If Vdec initialized. after PVRPL_Video_Init is called, this value should be TRUE.
     MS_BOOL                     bPCRClosed;  // for PVRPL_Video_SetSync. PCR Pid filter is stopped when enter the trick mode.
     MS_BOOL                     bIsSeamless; // for PVRPL_Video_Init. This value is used to judge if initialze Vdec is necessary. If this value is TRUE, Vdec shouldn't be initialzed again.
+    EN_PVRPL_AVSYNC_MODE        eAVSyncMode; // AV sync mode
 } POOL_VDEC_StreamInfo;
-
 
 /// PVR CPL status indicator
 typedef enum
@@ -158,6 +159,7 @@ typedef enum
 typedef enum
 {
     E_PVRPL_VIDEO_DBG_NONE,
+    E_PVRPL_VIDEO_DBG_MUST,
     E_PVRPL_VIDEO_DBG_ERR,
     E_PVRPL_VIDEO_DBG_WARN,
     E_PVRPL_VIDEO_DBG_INFO,
@@ -194,7 +196,11 @@ typedef enum
     EN_VIDEO_CPL_INFO_ES_WP,
     EN_VIDEO_CPL_INFO_ES_RP,
     EN_VIDEO_CPL_INFO_WATERLEVEL,
-    EN_VIDEO_CPL_INFO_GET_PTSSTC_DELTA
+    EN_VIDEO_CPL_INFO_GET_PTSSTC_DELTA,
+    EN_VIDEO_CPL_INFO_GET_FRAME_RATE,
+    EN_VIDEO_CPL_INFO_GET_TOLERANCE,
+    EN_VIDEO_CPL_INFO_IS_FFX2_CAP_ENOUGH,
+    EN_VIDEO_CPL_INFO_GET_MIN_TSP_DATA_SIZE
 }EN_VIDEO_CPL_INFO;
 
 typedef enum
@@ -253,7 +259,7 @@ PVRPL_VIDEO_STATUS PVRPL_Video_GetInfo(POOL_VDEC_StreamInfo *pStreamVideoInfo, E
 MS_U32             PVRPL_GetWaterLevel(POOL_VDEC_StreamInfo *pStreamVideoInfo,MS_U32 u32MmapSize);
 PVRPL_VIDEO_STATUS PVRPL_Video_Mute(POOL_VDEC_StreamInfo *pStreamVideoInfo, MS_U8 u8PathID, MS_BOOL bEnable);
 PVRPL_VIDEO_STATUS PVRPL_Video_EnableCMD(POOL_VDEC_StreamInfo *pStreamVideoInfo, EN_VIDEO_CPL_CMD eVideoCmd, MS_U32 u32pmtr);
-PVRPL_VIDEO_STATUS PVRPL_Video_SetDecodeMode(POOL_VDEC_StreamInfo *pStreamVideoInfo, MS_S16 speed, EN_VIDEO_CPL_DECODE_TYPE enDecodeType, EN_VIDEO_CPL_DATA_TYPE enDataType);
+PVRPL_VIDEO_STATUS PVRPL_Video_SetDecodeMode(POOL_VDEC_StreamInfo *pStreamVideoInfo, MS_S32 s32Speed, EN_VIDEO_CPL_DECODE_TYPE enDecodeType, EN_VIDEO_CPL_DATA_TYPE enDataType);
 PVRPL_VIDEO_STATUS PVRPL_Video_StepDisp(POOL_VDEC_StreamInfo *pStreamVideoInfo);
 
 PVRPL_VIDEO_STATUS PVRPL_Video_SetSync(POOL_VDEC_StreamInfo *pStreamVideoInfo, EN_PL_VDEC_TRICK_TYPE type, MS_U16 u16Pid,MS_U8 *u8PidFlt);
@@ -267,7 +273,9 @@ PVRPL_VIDEO_STATUS PVRPL_Video_FlushData(POOL_VDEC_StreamInfo *pStreamVideoInfo,
 PVRPL_VIDEO_STATUS PVRPL_Video_FileEnd(POOL_VDEC_StreamInfo *pStreamVideoInfo, MS_U16 u16VideoPID, MS_U16 u16PacketLen, MS_U32 u32VirAdr);
 PVRPL_VIDEO_STATUS PVRPL_Video_Exit(POOL_VDEC_StreamInfo *pStreamVideoInfo);
 PVRPL_VIDEO_STATUS PVRPL_Video_ChangeDisplayWindow(POOL_VDEC_StreamInfo *pStreamVideoInfo,ST_PVRPL_VDEC_DISPLAYWININFO stDisplayWinInfo)__attribute__((weak));
+
 PVRPL_VIDEO_STATUS PVRPL_Video_RegisterPlayCB(VDEC_CB_PLAY PlayCB);
+
 #ifdef __cplusplus
 }
 #endif

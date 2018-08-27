@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -97,6 +97,14 @@
 //-------------------------------------------------------------------------------------------------
 #include "MsCommon.h"
 #include "demo_bench_dhryston.h"
+
+#include <cyg/kernel/kapi.h>
+#include <cyg/kernel/kapidata.h>
+#include <cyg/cpuload/cpuload.h>
+MS_BOOL Demo_eCos_CPULoad(void);
+MS_BOOL Demo_eCos_CPULoad_OFF(void);
+
+static MS_U32 cpu_delay = 1000;
 //-------------------------------------------------------------------------------------------------
 //                                MACROS
 //-------------------------------------------------------------------------------------------------
@@ -128,9 +136,146 @@
 //-------------------------------------------------------------------------------------------------
 //  Global Functions
 //-------------------------------------------------------------------------------------------------
+//
+#define TASK_CPULOAD_STACKSIZE       0x2000
+#define TASK_CPUEXTLOAD_STACKSIZE       0x2000
+//static MS_U8 _u8TaskCPULoad[TASK_CPULOAD_STACKSIZE];
+static MS_U8 _u8TaskCPUEXTLoad[TASK_CPUEXTLOAD_STACKSIZE];
+MS_BOOL stopflag = FALSE;
+MS_S32 s32CPUEXTLoadID = -1;
+//static MS_S32 s32CPULoadID = -1;
+
+static void _CPUExtLoadTaskStart (void)
+{
+    //int iArraySize = (int)(*(volatile unsigned short*)(REG_ADDR_BASE+(0x000e00<<1)+(0x34<<2)));
+    int iArraySize = 0;
+    char* x;
+    char* z;
+
+    int a = 1;
+    int b = 3;
+    int c = 0;
+    int d = 0;
+    int Run = 1;
+    int Cnt = 0;
+    int i = 0;
+
+
+    if (iArraySize == 0)
+    {
+        iArraySize = 50;
+        // 100 83%
+        // 120 92%
+    }
+
+    x = (char*)malloc(iArraySize*sizeof(char));
+    z = (char*)malloc(iArraySize*sizeof(char));
+
+
+    while(1)
+    {
+        for(i=0;i<iArraySize;i++)
+        {
+            x[i] = 0;
+            z[i] = 0;
+        }
+
+        x[1] = 2;
+        z[1] = 2;
+        Run = 1;
+        Cnt = 0;
+        a = 1;
+        b = 3;
+        c = 0;
+        d = 0;
+
+        while(Run && (++Cnt< 200000000))
+        {
+            d = 0;
+
+            for(i=iArraySize-1; i>0; i--)
+            {
+                c = z[i]*a + d;
+                z[i] = c % 10;
+                d = c / 10;
+            }
+
+            d = 0;
+            for(i=0; i< iArraySize; i++)
+            {
+                c = z[i]+d*10;
+                z[i] = c / b;
+                d = c % b;
+            }
+
+            Run = 0;
+            for(i=iArraySize-1; i>0; i--)
+            {
+                c = x[i] + z[i];
+                x[i] = c%10;
+                x[i-1] += c/10;
+                Run |= z[i];
+            }
+            a++;
+            b+=2;
+            //MsOS_DelayTask(1);
+        }
+        for(i = 0;i<10;i++)
+        {
+            //HB_DBG("%x",x[i]);
+        }
+        //HB_DBG("\n");
+        //MsOS_DelayTask(u8CPUDelay);
+        MsOS_DelayTaskUs(cpu_delay);
+    }
+}
+
+
+MS_BOOL _CPUExtLoad(void)
+{
+    // for eCos
+    if (s32CPUEXTLoadID < 0)
+    {
+        //_CPUAdjustDelay();
+        memset(_u8TaskCPUEXTLoad,0,sizeof(MS_U8)*TASK_CPUEXTLOAD_STACKSIZE);
+        s32CPUEXTLoadID = MsOS_CreateTask((TaskEntry) _CPUExtLoadTaskStart,
+                                        (MS_U32)NULL,
+                                        E_TASK_PRI_LOWEST,
+                                        TRUE,
+                                        _u8TaskCPUEXTLoad,
+                                        TASK_CPUEXTLOAD_STACKSIZE,
+                                        "CPUExtLoad" );
+    }
+    return TRUE;
+}
+
+MS_BOOL execute_cpu_unload(void)
+{
+    if (s32CPUEXTLoadID != -1) {
+        MsOS_DeleteTask(s32CPUEXTLoadID);
+        s32CPUEXTLoadID = -1;
+        printf("delete cpu load task\n");
+    }
+    return TRUE;
+}
+
+MS_BOOL bench_set_delay(MS_U32 *delay)
+{
+    printf("new cpu delay value = %d\n", *delay);
+    cpu_delay = *delay;
+    return TRUE;
+}
+
+MS_BOOL execute_cpu_load(void)
+{
+    _CPUExtLoad();
+    return TRUE;
+}
+
 
 MS_BOOL Demo_Bench_Dhryston_Run(MS_U32 *pLoop, MS_U32 *pDelayTime, MS_U32 *pbBackground)
 {
+#if 0
     extern int cyg_dhrystone_test(void);
     MS_U32 u32Count = *pLoop;
     printf("this command will run test for %ld loops \n",u32Count);
@@ -142,7 +287,11 @@ MS_BOOL Demo_Bench_Dhryston_Run(MS_U32 *pLoop, MS_U32 *pDelayTime, MS_U32 *pbBac
         u32Count -- ;
         MsOS_DelayTask(*pDelayTime);
     }
+#endif
     return TRUE;
 }
+
+
+
 
 #endif

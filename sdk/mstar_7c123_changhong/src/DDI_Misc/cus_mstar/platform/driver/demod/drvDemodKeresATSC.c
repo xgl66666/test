@@ -77,7 +77,8 @@
 //<MStar Software>
 #include "Board.h"
 
-#if defined(CHIP_KERES) || defined(CHIP_KIRIN)
+#if IS_THIS_DEMOD_PICKED(DEMOD_MSKERES_ATSC)
+#if defined(CHIP_KERES) || defined(CHIP_KIRIN) || defined(CHIP_K5TN) || defined(CHIP_KAYLA) || defined(CHIP_K1C)
 #include "MsCommon.h"
 #include "HbCommon.h"
 #include "drvDMD_common.h"
@@ -124,7 +125,8 @@ MS_BOOL MDrv_Demod_MSATSC_51_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam
     }
 
     MDrv_DMD_PreInit(); //register DEMOD base address
-    if(FALSE == pParam->pstTunertab->GetTunerIF(u8DemodIndex, &_u32IFrequency[u8DemodIndex]))
+    //if(FALSE == pParam->pstTunertab->GetTunerIF(u8DemodIndex, &_u32IFrequency[u8DemodIndex]))
+    if(1)
     {
         DMD_DBG(("Get IF from Tuner FAIL !! Use Default\n"));
          _u32IFrequency[u8DemodIndex] = 5000;
@@ -141,7 +143,16 @@ MS_BOOL MDrv_Demod_MSATSC_51_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam
     sDMD_ATSC_InitData.u8DMD_ATSC_InitExt=NULL; // TODO use system variable type
 
     sDMD_ATSC_InitData.u16IF_KHZ = _u32IFrequency[u8DemodIndex];
-    sDMD_ATSC_InitData.bIQSwap = FALSE;
+    if(pParam->pstTunertab->data == TUNER_R850)
+    {
+        sDMD_ATSC_InitData.bIQSwap = TRUE;
+    }
+    else
+    {
+        sDMD_ATSC_InitData.bIQSwap = FALSE;
+    }
+
+    MDrv_DMD_ATSC_DoIQSwap(sDMD_ATSC_InitData.bIQSwap);
     sDMD_ATSC_InitData.u8IS_DUAL = FALSE;
     sDMD_ATSC_InitData.bIsExtDemod = FALSE;
 
@@ -167,7 +178,6 @@ MS_BOOL MDrv_Demod_MSATSC_51_Open(MS_U8 u8DemodIndex)
         DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
         return FALSE;
     }
-    MDrv_DMD_ATSC_SEL_DMD((eDMD_SEL)u8DemodIndex);
     HB_ReleaseMutex(_s32MutexId);
 
     return TRUE;
@@ -183,7 +193,6 @@ MS_BOOL MDrv_Demod_MSATSC_51_Close(MS_U8 u8DemodIndex)
         return FALSE;
     }
 
-    MDrv_DMD_ATSC_SEL_DMD((eDMD_SEL)u8DemodIndex);
     ret = MDrv_DMD_ATSC_Exit();
     if(ret == TRUE)
     {
@@ -209,7 +218,6 @@ MS_BOOL MDrv_Demod_MSATSC_51_SetSerialControl(MS_U8 u8DemodIndex, MS_BOOL bEnabl
         HB_ReleaseMutex(_s32MutexId);
         return FALSE;
     }
-    MDrv_DMD_ATSC_SEL_DMD((eDMD_SEL)u8DemodIndex);
     ret = MDrv_DMD_ATSC_SetSerialControl(bEnable);
     HB_ReleaseMutex(_s32MutexId);
     return ret;
@@ -222,7 +230,6 @@ MS_BOOL MDrv_Demod_MSATSC_51_PowerOnOff(MS_U8 u8DemodIndex, MS_BOOL bPowerOn)
         DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
         return FALSE;
     }
-    MDrv_DMD_ATSC_SEL_DMD((eDMD_SEL)u8DemodIndex);
     HB_ReleaseMutex(_s32MutexId);
     return TRUE;
 }
@@ -242,7 +249,6 @@ MS_BOOL MDrv_Demod_MSATSC_51_GetLock(MS_U8 u8DemodIndex, EN_LOCK_STATUS *peLockS
         HB_ReleaseMutex(_s32MutexId);
         return FALSE;
     }
-    MDrv_DMD_ATSC_SEL_DMD((eDMD_SEL)u8DemodIndex);
 
     LockStatus = MDrv_DMD_ATSC_GetLock(DMD_ATSC_GETLOCK);
     DMD_DBG(("[%s][%d] LockStatus %d \n",__FUNCTION__,__LINE__,LockStatus));
@@ -283,7 +289,6 @@ MS_BOOL MDrv_Demod_MSATSC_51_GetSNR(MS_U8 u8DemodIndex, float *pfSNR)
         return FALSE;
     }
 
-    MDrv_DMD_ATSC_SEL_DMD((eDMD_SEL)u8DemodIndex);
     *pfSNR = (float)MDrv_DMD_ATSC_GetSNRPercentage()*0.4;
     HB_ReleaseMutex(_s32MutexId);
 
@@ -307,7 +312,6 @@ MS_BOOL MDrv_Demod_MSATSC_51_GetBER(MS_U8 u8DemodIndex, float *pfBER)
         HB_ReleaseMutex(_s32MutexId);
         return FALSE;
     }
-    MDrv_DMD_ATSC_SEL_DMD((eDMD_SEL)u8DemodIndex);
     ret = MDrv_DMD_ATSC_GetPostViterbiBer(pfBER);
 
     HB_ReleaseMutex(_s32MutexId);
@@ -330,12 +334,33 @@ MS_BOOL MDrv_Demod_MSATSC_51_GetPWR(MS_U8 u8DemodIndex, MS_S32 *ps32Signal)
         HB_ReleaseMutex(_s32MutexId);
         return FALSE;
     }
-    MDrv_DMD_ATSC_SEL_DMD((eDMD_SEL)u8DemodIndex);
     ret = MDrv_DMD_ATSC_GetSignalStrength((MS_U16*)ps32Signal);
 
     HB_ReleaseMutex(_s32MutexId);
     return ret;
 }
+
+MS_BOOL MDrv_Demod_MSATSC_51_GetSSI(MS_U8 u8DemodIndex, MS_U16 *pu16SSI)
+{
+    MS_BOOL ret;
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+        DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    if(bInited[u8DemodIndex] == FALSE)
+    {
+        *pu16SSI = 0;
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+    ret = MDrv_DMD_ATSC_GetSignalStrength(pu16SSI);
+
+    HB_ReleaseMutex(_s32MutexId);
+    return ret;
+}
+
 
 MS_BOOL MDrv_Demod_MSATSC_51_GetSignalQuality(MS_U8 u8DemodIndex, MS_U16 *pu16quality)
 {
@@ -353,7 +378,6 @@ MS_BOOL MDrv_Demod_MSATSC_51_GetSignalQuality(MS_U8 u8DemodIndex, MS_U16 *pu16qu
         return FALSE;
     }
 
-    MDrv_DMD_ATSC_SEL_DMD((eDMD_SEL)u8DemodIndex);
     *pu16quality = (MS_U16)MDrv_DMD_ATSC_GetSNRPercentage();
     HB_ReleaseMutex(_s32MutexId);
     return ret;
@@ -367,7 +391,6 @@ MS_BOOL MDrv_Demod_MSATSC_51_Config(MS_U8 u8DemodIndex, MS_U8 *pRegParam)
         DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
         return FALSE;
     }
-    MDrv_DMD_ATSC_SEL_DMD((eDMD_SEL)u8DemodIndex);
     HB_ReleaseMutex(_s32MutexId);
     return TRUE;
 }
@@ -375,12 +398,15 @@ MS_BOOL MDrv_Demod_MSATSC_51_Config(MS_U8 u8DemodIndex, MS_U8 *pRegParam)
 
 MS_BOOL MDrv_Demod_MSATSC_51_GetParam(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM* pParam)
 {
+    DMD_ATSC_DEMOD_TYPE eMODType;
+
+    eMODType = MDrv_DMD_ATSC_GetModulationMode();
+    pParam->J83BParam.eJ83BConstellation = (DEMOD_ATSC_CONSTEL_TYPE)eMODType;
     return TRUE;
 }
 
 MS_BOOL MDrv_Demod_MSATSC_51_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM* pParam,MS_U32 u32BroadCastType)
 {
-    MDrv_DMD_ATSC_SEL_DMD((eDMD_SEL)u8DemodIndex);
     MDrv_DMD_ATSC_SetConfig(DMD_ATSC_DEMOD_ATSC_256QAM, TRUE);
     return TRUE;
 
@@ -394,7 +420,6 @@ MS_BOOL MDrv_Demod_MSATSC_51_SetMode(MS_U8 u8DemodIndex, Demod_Mode* pMode)
         DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
         return FALSE;
     }
-    MDrv_DMD_ATSC_SEL_DMD((eDMD_SEL)u8DemodIndex);
     HB_ReleaseMutex(_s32MutexId);
     return TRUE;
 }
@@ -406,7 +431,6 @@ MS_BOOL MDrv_Demod_MSATSC_51_SetOutoutPath(MS_U8 u8DemodIndex, DEMOD_INTERFACE_M
         DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
         return FALSE;
     }
-    MDrv_DMD_ATSC_SEL_DMD((eDMD_SEL)u8DemodIndex);
     HB_ReleaseMutex(_s32MutexId);
     return TRUE;
 }
@@ -418,7 +442,6 @@ DEMOD_INTERFACE_MODE MDrv_Demod_MSATSC_51_GetOutoutPath(MS_U8 u8DemodIndex)
         DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
         return FALSE;
     }
-    MDrv_DMD_ATSC_SEL_DMD((eDMD_SEL)u8DemodIndex);
     HB_ReleaseMutex(_s32MutexId);
     return DEMOD_INTERFACE_PARALLEL;
 }
@@ -448,11 +471,13 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKERES_ATSC) DDI_DRV_TABLE_ENTR
 {
      .name                         = "DEMOD_MSKERES_ATSC",
      .data                         = DEMOD_MSKERES_ATSC,
+     .SupportINT                   = FALSE,
      .init                         = MDrv_Demod_MSATSC_51_Init,
      .GetLock                      = MDrv_Demod_MSATSC_51_GetLock,
      .GetSNR                       = MDrv_Demod_MSATSC_51_GetSNR,
      .GetBER                       = MDrv_Demod_MSATSC_51_GetBER,
      .GetPWR                       = MDrv_Demod_MSATSC_51_GetPWR,
+     .GetSSI                       = MDrv_Demod_MSATSC_51_GetSSI,
      .GetQuality                   = MDrv_Demod_MSATSC_51_GetSignalQuality,
      .GetParam                     = MDrv_Demod_MSATSC_51_GetParam,
      .Restart                      = MDrv_Demod_MSATSC_51_Restart,
@@ -460,7 +485,8 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKERES_ATSC) DDI_DRV_TABLE_ENTR
      .I2CByPassPreSetting          = NULL,
      .Extension_Function           = DEMOD_MSKELTIC_ATSC_Extension_Function,
      .Extension_FunctionPreSetting = NULL,
-     .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error,     
+     .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error,
+     .CheckExist                   = MDrv_Demod_null_CheckExist,
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
@@ -483,9 +509,11 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKERES_ATSC) DDI_DRV_TABLE_ENTR
      .DiSEqCGetLNBOut              = MDrv_Demod_null_DiSEqC_GetLNBOut,
      .DiSEqCSet22kOnOff            = MDrv_Demod_null_DiSEqC_Set22kOnOff,
      .DiSEqCGet22kOnOff            = MDrv_Demod_null_DiSEqC_Get22kOnOff,
-     .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd
+     .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd,
+     .GetISIDInfo                  = MDrv_Demod_null_GetVCM_ISID_INFO,
+     .SetISID                      = MDrv_Demod_null_SetVCM_ISID
 #endif
 };
 
 #endif // (FRONTEND_DEMOD_TYPE == DEMOD_MSATSC_C)
-
+#endif

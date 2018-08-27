@@ -1196,7 +1196,7 @@ tmErrorCode_t
 tmbslNT220xGetPowerLevel
 (
     tmUnitSelect_t  tUnit,      /* I: Unit number */
-    UInt32*         pPowerLevel /* O: Power Level in dBÂµV */
+    UInt32*         pPowerLevel /* O: Power Level in dBµV */
 )
 {
     ptmNT220xObject_t pObj = Null;

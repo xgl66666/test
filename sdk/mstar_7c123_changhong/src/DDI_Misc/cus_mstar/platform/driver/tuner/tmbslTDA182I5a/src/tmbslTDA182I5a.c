@@ -1747,7 +1747,7 @@ tmbslTDA182I5a_GetPowerLevel
 /*============================================================================*/
 /* FUNCTION:    tmbslTDA182I5a_GetThermo:                                      */
 /*                                                                            */
-/* DESCRIPTION: returns IC temperature in  Â°C                                 */
+/* DESCRIPTION: returns IC temperature in  °C                                 */
 /*                                                                            */
 /* RETURN:      TM_OK if no error                                             */
 /*                                                                            */
@@ -1757,7 +1757,7 @@ tmbslTDA182I5a_GetPowerLevel
 tmErrorCode_t
 tmbslTDA182I5a_GetThermo(
     tmUnitSelect_t  tUnit,      /* I: Unit number */
-    UInt8*          pThermo     /* O: temperature in Â°C */
+    UInt8*          pThermo     /* O: temperature in °C */
 )
 {
     pTDA182I5aObject_t   pObj = Null;
@@ -2467,11 +2467,11 @@ iTDA182I5a_VCOselection(
        NLOinf = NLOinf + 1;
     } while ( (UInt32)(NLOtab[NLOinf]*LO) < FreqWIFI5G && NLOinf < 8 );
 
-    /* calculate potential drift in TÂ° up and down */
+    /* calculate potential drift in T° up and down */
     for (VCOi=0; VCOi<3; VCOi++)
     {
-        diffupfreq[VCOi] = pObj->VCO[VCOi].fmax / 6622 * 3  * pObj->Temp_Meas; /* TÂ° decrease to 0Â° */
-        diffdofreq[VCOi] = pObj->VCO[VCOi].fmax / 6622 * 3  * (125 - pObj->Temp_Meas); /* TÂ° increase to 125Â° */
+        diffupfreq[VCOi] = pObj->VCO[VCOi].fmax / 6622 * 3  * pObj->Temp_Meas; /* T° decrease to 0° */
+        diffdofreq[VCOi] = pObj->VCO[VCOi].fmax / 6622 * 3  * (125 - pObj->Temp_Meas); /* T° increase to 125° */
     }
 
     /* selection VCO of NLOsup  */
@@ -3093,7 +3093,7 @@ iTDA182I5a_SetLO(
 
     /* check potential VCO change */
     VCOnum_new = VCOnum;
-    if ((err == TM_OK) && (uVal > 5) && (uThermo < 50) && VCOnum!=TDA182I5a_VCO_Select_VCO_High) /* vt > 1.8v & tj < 50Â° */
+    if ((err == TM_OK) && (uVal > 5) && (uThermo < 50) && VCOnum!=TDA182I5a_VCO_Select_VCO_High) /* vt > 1.8v & tj < 50° */
     {
         /* Choose upper VCO  */
         tmDBGPRINTEx(DEBUGLVL_TERSE,"request upper  VCO  change  %d\n\r");

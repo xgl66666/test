@@ -110,7 +110,7 @@ static MXL_STATUS_E MxL_Ctrl_WriteFWSegement(UINT8 devId,
       {
         if (MXL_HYDRA_FW_DOWNLOAD_ABORT == fwCallbackFn(devId, (UINT32)fwCBFreq, &cbPayload))
         {
-          MXL_HYDRA_PRINT("%s: Firmware download has been aborted based on application's request\n", __FUNCTION__);
+          MXLDBG1(MXL_HYDRA_PRINT("%s: Firmware download has been aborted based on application's request\n", __FUNCTION__););
           mxlStatus = MXL_NOT_READY; // FW ABORT request received
           break;
         }
@@ -147,7 +147,7 @@ MXL_STATUS_E MxLWare_FW_Download(UINT8 devId, UINT32 mbinBufferSize, const UINT8
     mbinBufferSize = (mbinBufferSize + 4) & (UINT32)(~3);
   }
 
-  MXL_HYDRA_PRINT("%s: Header ID = %d, Segments number = %d \n", __FUNCTION__, mbinPtr->header.id, mbinPtr->header.numSegments);
+  MXLDBG2(MXL_HYDRA_PRINT("%s: Header ID = %d, Segments number = %d \n", __FUNCTION__, mbinPtr->header.id, mbinPtr->header.numSegments););
 
   mxlStatus = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
   if (mxlStatus == MXL_SUCCESS)
@@ -165,7 +165,7 @@ MXL_STATUS_E MxLWare_FW_Download(UINT8 devId, UINT32 mbinBufferSize, const UINT8
         // Validate segment header ID
         if ( segmentPtr->header.id != MBIN_SEGMENT_HEADER_ID)
         {
-          MXL_HYDRA_PRINT("%s: Invalid segment header ID (%c)\n", __FUNCTION__, segmentPtr->header.id);
+          MXLERR(MXL_HYDRA_PRINT("%s: Invalid segment header ID (%c)\n", __FUNCTION__, segmentPtr->header.id););
           mxlStatus = MXL_NOT_SUPPORTED; // If the segment format is wrong, then exit with MXL_FAILURE
           break;
         }
@@ -178,7 +178,7 @@ MXL_STATUS_E MxLWare_FW_Download(UINT8 devId, UINT32 mbinBufferSize, const UINT8
         mxlStatus |= MxLWare_HYDRA_ReadRegister(devId, HYDRA_CPU_RESET_REG, &data);
         MXL_HYDRA_PRINT("%s: Before Segment = %d SegAddr = 0x%X\n", __FUNCTION__, index, segAddress);
 #endif
-        MXL_HYDRA_PRINT("%s: Segment = %d SegAddr = 0x%X SegLength = %d\n", __FUNCTION__, index, segAddress, segLength);
+        MXLDBG3(MXL_HYDRA_PRINT("%s: Segment = %d SegAddr = 0x%X SegLength = %d\n", __FUNCTION__, index, segAddress, segLength););
 
 
 #if defined (MXL_HYDRA_568_ENABLE)
@@ -224,7 +224,7 @@ MXL_STATUS_E MxLWare_FW_Download(UINT8 devId, UINT32 mbinBufferSize, const UINT8
     }
     else
     {
-      MXL_HYDRA_PRINT("%s: Invalid file header ID (%c)\n", __FUNCTION__, mbinPtr->header.id);
+      MXLERR(MXL_HYDRA_PRINT("%s: Invalid file header ID (%c)\n", __FUNCTION__, mbinPtr->header.id););
       mxlStatus = MXL_NOT_SUPPORTED; // the mbin file formate not supported
     }
   }

@@ -1881,7 +1881,7 @@ tmErrorCode_t
 tmbslTDA18250A_GetPowerLevel(
     UInt8           u8TunerIndex,
     tmUnitSelect_t  tUnit,      /* I: Unit number */
-    Int32*          pPowerLevel /* O: Power Level in (x100) dBÂµVrms */
+    Int32*          pPowerLevel /* O: Power Level in (x100) dBµVrms */
 )
 {
     pTDA18250AObject_t  pObj = Null;
@@ -2106,7 +2106,7 @@ iTDA18250A_GetPowerLevel(
 )
 {
     tmErrorCode_t   err = TM_OK;
-	Int32           PowerLevel = 0; /* in (x100) dBÂµV */
+	Int32           PowerLevel = 0; /* in (x100) dBµV */
     Int32           DeltaAGC1NBTunerGain = 0; /* in dB x 1000 */
     Int32           DeltaAGC1NBMasterGain = 0; /* in dB x 1000 */
     Int32           DeltaAGC2NBGain = 0; /* in dB x 1000 */
@@ -2124,8 +2124,8 @@ iTDA18250A_GetPowerLevel(
     /*************************************/
     /*  RSSI contribution                */
     /*************************************/
-    /* For 0 < RSSI[7:0] <= 203  => RSSI value= 109.5 - RSSI[7:0] *0.25 (in dBÂµV) */
-    /* For RSSI[7:0] > 204     => RSSI value = 58.75dBÂµVrms (in dBÂµV) */
+    /* For 0 < RSSI[7:0] <= 203  => RSSI value= 109.5 - RSSI[7:0] *0.25 (in dBµV) */
+    /* For RSSI[7:0] > 204     => RSSI value = 58.75dBµVrms (in dBµV) */
     if ( uRSSIValue > 204 )
     {
       PowerLevel = 10975;

@@ -105,6 +105,8 @@
 
 #if ((DEMO_DRM_TEST == 1) || (DEMO_HBBTV_TEST == 1) || (DEMO_APM_TEST == 1) || (DEMO_QT_TEST == 1) || (DEMO_DFB_TEST == 1))
 
+#include "apiAUDIO.h"
+
 #include "MsCommon.h"
 #include "mmsdk_interface_def.h"
 
@@ -241,14 +243,14 @@ MS_BOOL Demo_OTT_VDEC_IsAVSyncDone(void)
 {
     EN_VDEC_Device eVDevice = E_VDEC_DEVICE_MAIN;
 
-    Demo_VDEC_IsAVSyncDone(eVDevice);
+    Demo_VDEC_IsAVSyncDone(&eVDevice);
 
     return TRUE;
 }
 MS_BOOL Demo_OTT_VDEC_GetStreamID(VDEC_StreamId* pstStreamID)
 {
     EN_VDEC_Device eVDevice = E_VDEC_DEVICE_MAIN;
-    pstStreamID = (VDEC_StreamId*)Demo_VDEC_GetStreamID(eVDevice);
+    pstStreamID = (VDEC_StreamId*)Demo_VDEC_GetStreamID(&eVDevice);
     return TRUE;
 }
 
@@ -267,18 +269,20 @@ MS_BOOL Demo_OTT_MM_DeINIT(void)
 MS_BOOL Demo_OTT_MM_AllocAudDec(void)
 {
     MS_BOOL bRet = TRUE;
-#if(DEMO_AUDIO_MULTI_TEST == 1)
-    bRet = Demo_MM_AllocAudDec();
-#endif
+    if (MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
+    {
+        bRet = Demo_MM_AllocAudDec();
+    }
     return bRet;
 }
 
 MS_BOOL Demo_OTT_MM_FreeAudDec(void)
 {
     MS_BOOL bRet = TRUE;
-#if(DEMO_AUDIO_MULTI_TEST == 1)
-    bRet = Demo_MM_FreeAudDec();
-#endif
+    if (MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
+    {
+        bRet = Demo_MM_FreeAudDec();
+    }
     return bRet;
 }
 

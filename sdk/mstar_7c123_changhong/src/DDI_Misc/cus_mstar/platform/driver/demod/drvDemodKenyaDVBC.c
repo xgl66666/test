@@ -76,8 +76,8 @@
 //******************************************************************************
 //<MStar Software>
 #include "Board.h"
+#if IS_THIS_DEMOD_PICKED(DEMOD_MSKENYA_DVBC)
 #if defined(CHIP_KENYA)
-
 #include "MsCommon.h"
 #include "HbCommon.h"
 #include "drvDMD_common.h"
@@ -518,10 +518,31 @@ MS_BOOL MDrv_Kenya_Demod_GetPWR(MS_U8 u8DemodIndex,MS_S32 *ps32Signal)
         HB_ReleaseMutex(_s32MutexId);
         return FALSE;
     }
-    ret = MDrv_DMD_DVBC_GetSignalStrength((MS_U16*)ps32Signal);
+    ret = KenyaDVBC_InitParam.pstTunertab->Extension_Function(u8DemodIndex, TUNER_EXT_FUNC_GET_POWER_LEVEL, ps32Signal);
     HB_ReleaseMutex(_s32MutexId);
     return ret;
 }
+
+MS_BOOL MDrv_Kenya_Demod_GetSSI(MS_U8 u8DemodIndex,MS_U16 *pu16SSI)
+{
+    MS_BOOL ret;
+    if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+        DMD_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    if(bInited == FALSE)
+    {
+        *pu16SSI = 0;
+        HB_ReleaseMutex(_s32MutexId);
+        return FALSE;
+    }
+    ret = MDrv_DMD_DVBC_GetSignalStrength(pu16SSI);
+    HB_ReleaseMutex(_s32MutexId);
+    return ret;
+}
+
 
 MS_BOOL MDrv_Kenya_Demod_GetSignalQuality(MS_U8 u8DemodIndex,MS_U16 *pu16quality)
 {
@@ -785,11 +806,13 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKENYA_DVBC) DDI_DRV_TABLE_ENTR
 {
      .name                         = "DEMOD_MSKENYA_DVBC",
      .data                         = DEMOD_MSKENYA_DVBC,
+     .SupportINT                   = FALSE,
      .init                         = MDrv_Kenya_Demod_Init,
      .GetLock                      = MDrv_Kenya_Demod_GetLock,
      .GetSNR                       = MDrv_Kenya_Demod_GetSNR,
      .GetBER                       = MDrv_Kenya_Demod_GetBER,
      .GetPWR                       = MDrv_Kenya_Demod_GetPWR,
+     .GetSSI                       = MDrv_Kenya_Demod_GetSSI,
      .GetQuality                   = MDrv_Kenya_Demod_GetSignalQuality,
      .GetParam                     = MDrv_Kenya_Demod_GetParam,
      .Restart                      = MDrv_Kenya_Demod_Restart,
@@ -798,6 +821,7 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKENYA_DVBC) DDI_DRV_TABLE_ENTR
      .Extension_Function           = DEMOD_MSKENYA_DVBC_Extension_Function,
      .Extension_FunctionPreSetting = NULL,
      .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error,     
+     .CheckExist                   = MDrv_Demod_null_CheckExist,
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
@@ -820,9 +844,12 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKENYA_DVBC) DDI_DRV_TABLE_ENTR
      .DiSEqCGetLNBOut              = MDrv_Demod_null_DiSEqC_GetLNBOut,
      .DiSEqCSet22kOnOff            = MDrv_Demod_null_DiSEqC_Set22kOnOff,
      .DiSEqCGet22kOnOff            = MDrv_Demod_null_DiSEqC_Get22kOnOff,
-     .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd
+     .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd,
+     .DiSEqC_GetReply              = MDrv_Demod_null_DiSEqC_GetReply,
+     .GetISIDInfo                  = MDrv_Demod_null_GetVCM_ISID_INFO,
+     .SetISID                      = MDrv_Demod_null_SetVCM_ISID
 #endif
 };
 
 #endif // (FRONTEND_DEMOD_TYPE == DEMOD_MSDVBC_51)
-
+#endif

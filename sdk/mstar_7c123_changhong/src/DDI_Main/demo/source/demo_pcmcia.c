@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (!Â¡Â±MStar Confidential Information!Â¡L) by the recipient.
+// (!¡±MStar Confidential Information!¡L) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -144,7 +144,7 @@ MS_BOOL Demo_PCMCIA(MS_U8 *devPath, MS_U32 * partitions, MS_U32 *p1_size, MS_U32
     int i = 0;
     memset(&pu8CIS[0],0,sizeof(MS_U8)*MAX_LOCAL_CIS_SIZE);
     PCMCIA_INFO pInfo;
-
+    MS_U16 m_u16LpduBufferSize=0;
     printf("%s\n", __FUNCTION__);
     MDrv_PCMCIA_Init(FALSE);
 
@@ -153,16 +153,16 @@ MS_BOOL Demo_PCMCIA(MS_U8 *devPath, MS_U32 * partitions, MS_U32 *p1_size, MS_U32
 
     printf("waiting for card insert\n");
 
-    for(;;)
+    MDrv_PCMCIA_Polling();
+
+    if(FALSE == MDrv_PCMCIA_IsModuleStillPlugged())
     {
-        if(TRUE == MDrv_PCMCIA_Polling())
-        {
-            if(TRUE == MDrv_PCMCIA_IsModuleStillPlugged())
-            {
-                printf("card detect\n");
-                break;
-            }
-        }
+        printf("[%s] CI not detect\n", __FUNCTION__);
+        return FALSE;
+    }
+    else
+    {
+        printf("[CI] CI detect ok\n");
     }
 
     TunerOnPCMCIA();
@@ -173,6 +173,10 @@ MS_BOOL Demo_PCMCIA(MS_U8 *devPath, MS_U32 * partitions, MS_U32 *p1_size, MS_U32
 
     MDrv_PCMCIA_ResetHW();
     printf("reset HW ok\n");
+
+    printf("delay 3s\n");
+    MsOS_DelayTask(3000);
+    printf("delay 3s done\n");
 
     for(i=0;i<0x100;i++)
     {
@@ -190,6 +194,9 @@ MS_BOOL Demo_PCMCIA(MS_U8 *devPath, MS_U32 * partitions, MS_U32 *p1_size, MS_U32
     printf( "ProductName %s \n", pInfo.pszProductName );
     printf( "ProductInfo1 %s \n", pInfo.pszProductInfo1 );
     printf( "ProductInfo2 %s \n", pInfo.pszProductInfo2 );
+    printf( "fCITagsPresent %X \n", pInfo.Config[0].fCITagsPresent );
+    printf("COR  Addr %X\n",(unsigned int) pInfo.ConfigOffset);
+    printf("COR  Value  %X\n",pInfo.Config[0].bConfigIndex);
 
     if(FALSE == MDrv_PCMCIA_SwitchToIOmode(&pInfo))
     {
@@ -201,8 +208,41 @@ MS_BOOL Demo_PCMCIA(MS_U8 *devPath, MS_U32 * partitions, MS_U32 *p1_size, MS_U32
         printf("MDrv_PCMCIA_ResetInterface FAIL\n");
     }
 
-    printf("Buffer size = 0x%x\n", (unsigned int)MDrv_PCMCIA_NegotiateBufferSize(&pInfo));
+    MsOS_DelayTask(1000);
+    printf("[CI] Nego buf size\n");
+    //printf("Buffer size = 0x%x\n", (unsigned int)MDrv_PCMCIA_NegotiateBufferSize(&pInfo));
+    m_u16LpduBufferSize = MDrv_PCMCIA_NegotiateBufferSizeV2(E_PCMCIA_MODULE_A, &pInfo);
+    if(0 == m_u16LpduBufferSize)
+    {
+        printf("[%s] Negotiate buffer size FAIL\n", __FUNCTION__);
+        return FALSE;
+    }
+    else
+    {
+        printf("[CI] Negotiate buffer size %u\n", m_u16LpduBufferSize);
+        MDrv_PCMCIA_WriteBufferSizeV2(E_PCMCIA_MODULE_A, m_u16LpduBufferSize);
+    }
 
+    MS_U8 WriteBuffer[] = {0x01, 0x00, 0x82, 0x01, 0x01};
+    MS_U8 ReadBuffer[9];
+    MS_U8 GoldenBuffer[9] = {0x01, 0x00, 0x83, 0x01, 0x01, 0x80, 0x02, 0x01, 0x00};
+    //printf("[CI] WriteData\n");
+    MDrv_PCMCIA_WriteDataV2(E_PCMCIA_MODULE_A, WriteBuffer, sizeof(WriteBuffer) );
+    printf("[CI] WriteData PASS\n");
+    MDrv_PCMCIA_ReadDataV2(E_PCMCIA_MODULE_A, ReadBuffer, 9 );
+
+    if(memcmp(ReadBuffer, GoldenBuffer, 9) != 0)
+    {
+        int index = 0;
+        for(index = 0; index < 9; index++)
+        {
+            printf("0x%02x ", ReadBuffer[index]);
+        }
+    }
+    else
+    {
+        printf("[CI] ReadData PASS\n");
+    }
     TunerOffPCMCIA();
     return TRUE;
 }

@@ -11,7 +11,8 @@
 #include "porting_os.h"
 #include "porting_sysinfo.h"
 
-#define gprintf(...)
+#define PT_GRAPHIC_ERR(fmt, arg...)   PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_ERR, "\033[1;33m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
+#define PT_GRAPHIC_DBG(fmt, arg...)   PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_DBG, "\033[1;33m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
 
 #ifdef __cplusplus
 extern "C"
@@ -31,7 +32,7 @@ extern "C"
 #define IS_VALID_SURFACE(a) do {\
                                 if (NULL == a)\
                                 {\
-                                    gprintf("[%s] Err:Invalid param!\n",__FUNCTION__);\
+                                    PT_GRAPHIC_ERR("[%s] Err:Invalid param!\n",__FUNCTION__);\
                                     return FALSE;\
                                 }\
                             } while(0);
@@ -75,7 +76,7 @@ GFX_Buffer_Format _TranslateToGFXBufferFormat(EN_MMSDK_COLOR_FORMAT eFormat)
         case E_MMSDK_COLOR_FORMAT_YUV422:
             return GFX_FMT_YUV422;
         default:
-            printf("_TranslateToGFXBufferFormat : possible wrong MMSDK color fornat input\n");
+            PT_GRAPHIC_ERR("_TranslateToGFXBufferFormat : possible wrong MMSDK color fornat input\n");
             return E_MMSDK_COLOR_FORMAT_ARGB8888;
     }
 }
@@ -119,12 +120,12 @@ MMSDK_BOOL PT_Graphic_Release(PT_GRAPHICITEM* pSurface)
     {
         if (pGraphicSurface!= NULL)
         {
-            printf("Surface is not NULL?! shall it free Surface??\n");
+            PT_GRAPHIC_ERR("Surface is not NULL?! shall it free Surface??\n");
         }
         return TRUE;
     }
 
-    //printf("[PT_Graphic_Release] pGraphicSurface =0x%x\n", (unsigned int)pGraphicSurface);
+    PT_GRAPHIC_ERR("[PT_Graphic_Release] pGraphicSurface =0x%x\n", (unsigned int)pGraphicSurface);
 
     if (pGraphicSurface!= NULL)
     {
@@ -154,15 +155,15 @@ MMSDK_BOOL PT_Graphic_CreateSurface(PT_GRAPHICITEM* pSurface, EN_MMSDK_COLOR_FOR
         memset(pGraphicSurface, 0, sizeof(ST_GRAPHIC_SURFACE));
     else
     {
-        printf("[PT_Graphic_CreateSurface] malloc fail !\n");
+        PT_GRAPHIC_ERR("[PT_Graphic_CreateSurface] malloc fail !\n");
         return FALSE;
     }
 
     //GFX_DrawRect _GFX_DrawRect;
 
-    gprintf("[PT_Graphic_CreateSurface] eFormat =%d, u32BuffAddr=0x%x, u32Height=%d, u32Width=%d, u32Pitch=%d\n",
+    PT_GRAPHIC_DBG("[PT_Graphic_CreateSurface] eFormat =%d, u32BuffAddr=0x%x, u32Height=%d, u32Width=%d, u32Pitch=%d\n",
     eFormat, (unsigned int)u32BuffAddr, (int)u32Height, (int)u32Width, (int)u32Pitch);
-    gprintf("[PT_Graphic_CreateSurface] pGraphicSurface =0x%x\n", (unsigned int)pGraphicSurface);
+    PT_GRAPHIC_DBG("[PT_Graphic_CreateSurface] pGraphicSurface =0x%x\n", (unsigned int)pGraphicSurface);
 
     pGraphicSurface->eFormat = eFormat;
     pGraphicSurface->u32BuffAddr = (MS_PHYADDR)u32BuffAddr; //Not use DFB, use PA is OK
@@ -257,7 +258,7 @@ MMSDK_BOOL PT_Graphic_SetClip(PT_GRAPHICITEM Surface, ST_MMSDK_RECT Rect)
     pGraphicSurface->stRegion.x2 = (Rect.s32X + Rect.u16Width) - 1;
     pGraphicSurface->stRegion.y2 = (Rect.s32Y + Rect.u16Height) - 1;
 
-    gprintf("[PT_Graphic_SetClip] pGraphicSurface =0x%x, x1 = %d, y1 = %d, x2 = %d, y2 = %d \n",
+    PT_GRAPHIC_DBG("[PT_Graphic_SetClip] pGraphicSurface =0x%x, x1 = %d, y1 = %d, x2 = %d, y2 = %d \n",
         (int)pGraphicSurface, pGraphicSurface->stRegion.x1, pGraphicSurface->stRegion.y1,
         pGraphicSurface->stRegion.x2, pGraphicSurface->stRegion.y2);
 
@@ -277,7 +278,7 @@ MMSDK_BOOL PT_Graphic_SetClip(PT_GRAPHICITEM Surface, ST_MMSDK_RECT Rect)
     stRegion.y1 = Rect.s32Y;
     stRegion.x2 = (Rect.s32X + Rect.u16Width) - 1;
     stRegion.y2 = (Rect.s32Y + Rect.u16Height) - 1;
-    //printf("\n pThumbnailSurface->SetClip x1[%d]  y1[%d]  x2[%d]  y2[%d] ", stRegion.x1, stRegion.y1, stRegion.x2, stRegion.y2);
+    //PT_GRAPHIC_ERR("\n pThumbnailSurface->SetClip x1[%d]  y1[%d]  x2[%d]  y2[%d] ", stRegion.x1, stRegion.y1, stRegion.x2, stRegion.y2);
     eResult = pGraphicSurface->SetClip(pGraphicSurface, &stRegion);
     PHOTO_DFB_CHECK(eResult);
 
@@ -296,7 +297,7 @@ MMSDK_BOOL PT_Graphic_SetColor(PT_GRAPHICITEM Surface, ST_MMSDK_THUMBNAIL_PARAM*
 
     IS_VALID_SURFACE(pGraphicSurface);
 
-    gprintf("[PT_Graphic_SetColor] pGraphicSurface =0x%x, u8A =%d, u8R=%d, u8G=%d, u8B=%d\n",
+    PT_GRAPHIC_DBG("[PT_Graphic_SetColor] pGraphicSurface =0x%x, u8A =%d, u8R=%d, u8G=%d, u8B=%d\n",
         (unsigned int)pGraphicSurface, pstPhotoRequest->u8A, pstPhotoRequest->u8R, pstPhotoRequest->u8G, pstPhotoRequest->u8B);
 
 
@@ -339,7 +340,7 @@ MMSDK_BOOL PT_Graphic_Clear(PT_GRAPHICITEM Surface, const MMSDK_U8 u8A, const MM
     memset((void*)&gfxPt0, 0, sizeof(GFX_Point));
     memset((void*)&gfxPt1, 0, sizeof(GFX_Point));
 
-    gprintf("[PT_Graphic_Clear] pGraphicSurface =0x%lx, u8A =%d, u8R=%d, u8G=%d, u8B=%d\n",
+    PT_GRAPHIC_DBG("[PT_Graphic_Clear] pGraphicSurface =0x%lx, u8A =%d, u8R=%d, u8G=%d, u8B=%d\n",
     pGraphicSurface, u8A, u8R, u8G, u8B);
 
     if (GFX_FMT_YUV422 == _TranslateToGFXBufferFormat(pGraphicSurface->eFormat))
@@ -348,7 +349,7 @@ MMSDK_BOOL PT_Graphic_Clear(PT_GRAPHICITEM Surface, const MMSDK_U8 u8A, const MM
         sRectInfo.colorRange.color_e.r= sRectInfo.colorRange.color_s.b = 128 + (MS_U8)(-0.169 * u8R  - 0.331 * u8G + 0.5 * u8B);
         sRectInfo.colorRange.color_e.g= sRectInfo.colorRange.color_s.g = (MS_U8)(0.299 * u8R + 0.587 * u8G + 0.144 * u8B);
         sRectInfo.colorRange.color_e.b= sRectInfo.colorRange.color_s.r = 128 + (MS_U8)(0.5 * u8R - 0.419 * u8G - 0.0813 * u8B);
-        gprintf("[PT_Graphic_Clear] after transfer : v= %d, y=%d, u=%d\n", sRectInfo.colorRange.color_e.r, sRectInfo.colorRange.color_e.g,sRectInfo.colorRange.color_e.b);
+        PT_GRAPHIC_DBG("[PT_Graphic_Clear] after transfer : v= %d, y=%d, u=%d\n", sRectInfo.colorRange.color_e.r, sRectInfo.colorRange.color_e.g,sRectInfo.colorRange.color_e.b);
     }
     else
     {
@@ -374,7 +375,7 @@ MMSDK_BOOL PT_Graphic_Clear(PT_GRAPHICITEM Surface, const MMSDK_U8 u8A, const MM
         i++;
         if(i > 200)
         {
-            printf("%s : MApi_GFX_BeginDraw GFX wait lock timeout.\n", __FUNCTION__);
+            PT_GRAPHIC_ERR("%s : MApi_GFX_BeginDraw GFX wait lock timeout.\n", __FUNCTION__);
             return FALSE;
         }
     }
@@ -385,7 +386,7 @@ MMSDK_BOOL PT_Graphic_Clear(PT_GRAPHICITEM Surface, const MMSDK_U8 u8A, const MM
     dstbuf.u32Pitch = _CalcPitch(dstbuf.u32ColorFmt, pGraphicSurface->u32Pitch);
     dstbuf.u32Width = pGraphicSurface->u32Width;
 
-    gprintf("[PT_Graphic_Clear] dstbuf.u32Addr =0x%x, u32ColorFmt=%d, u32Height=%d, u32Width=%d, u32Pitch=%d\n",
+    PT_GRAPHIC_DBG("[PT_Graphic_Clear] dstbuf.u32Addr =0x%x, u32ColorFmt=%d, u32Height=%d, u32Width=%d, u32Pitch=%d\n",
     (unsigned int)dstbuf.u32Addr, dstbuf.u32ColorFmt, (int)dstbuf.u32Height , (int)dstbuf.u32Width, (int)dstbuf.u32Pitch);
 
     gfxPt0.x = sRectInfo.dstBlock.x;
@@ -399,12 +400,12 @@ MMSDK_BOOL PT_Graphic_Clear(PT_GRAPHICITEM Surface, const MMSDK_U8 u8A, const MM
 
     if (result_!=GFX_SUCCESS)
     {
-        gprintf("[PT_Graphic_Clear] MApi_GFX_RectFill FAIL result_=%d\n", result_);
+        PT_GRAPHIC_DBG("[PT_Graphic_Clear] MApi_GFX_RectFill FAIL result_=%d\n", result_);
         MApi_GFX_EndDraw();
         GFX_RETURN(GF_FAIL);
         return FALSE;
     }
-    gprintf("[PT_Graphic_Clear] MApi_GFX_RectFill Success result_=%d\n", result_);
+    PT_GRAPHIC_DBG("[PT_Graphic_Clear] MApi_GFX_RectFill Success result_=%d\n", result_);
     MApi_GFX_EndDraw();
     GFX_RETURN(GF_SUCCESS);
 
@@ -426,7 +427,7 @@ MMSDK_BOOL PT_Graphic_SetBlittingFlags(PT_GRAPHICITEM Surface, EN_MMSDK_ROTATE_A
     IS_DISPLAY_PHOTO_IN_MMSDK_FLOW;
 
     ST_GRAPHIC_SURFACE* pGraphicSurface = (ST_GRAPHIC_SURFACE*)Surface;
-    gprintf(" [PT_Graphic_SetBlittingFlags] pGraphicSurface->eAngle =%d, u32BlitFlags =%d\n",
+    PT_GRAPHIC_DBG(" [PT_Graphic_SetBlittingFlags] pGraphicSurface->eAngle =%d, u32BlitFlags =%d\n",
          eAngle, u32BlitFlags);
 
     IS_VALID_SURFACE(pGraphicSurface);
@@ -479,7 +480,7 @@ MMSDK_BOOL PT_Graphic_SetRenderOptions(PT_GRAPHICITEM Surface, MMSDK_U32 u32DFBS
 {
     IS_DISPLAY_PHOTO_IN_MMSDK_FLOW;
 
-    gprintf("[PT_Graphic_SetRenderOptions]\n");
+    PT_GRAPHIC_DBG("[PT_Graphic_SetRenderOptions]\n");
 
     IS_VALID_SURFACE(Surface);
 
@@ -493,6 +494,26 @@ MMSDK_BOOL PT_Graphic_SetRenderOptions(PT_GRAPHICITEM Surface, MMSDK_U32 u32DFBS
         return TRUE;
     else
         return FALSE;*/
+    return TRUE;
+}
+
+MMSDK_BOOL _PT_Graphic_ConvertRect(PT_GRAPHICITEM Surface, ST_MMSDK_RECT *pstRectIn, ST_MMSDK_RECT *pstRectOut)
+{
+    ST_GRAPHIC_SURFACE* pGraphicSurface = (ST_GRAPHIC_SURFACE*)Surface;
+    if(pstRectIn == NULL)
+    {
+        pstRectOut->s32X = 0;
+        pstRectOut->s32Y = 0;
+        pstRectOut->u16Width= (MMSDK_U16)pGraphicSurface->u32Width;
+        pstRectOut->u16Height = (MMSDK_U16)pGraphicSurface->u32Height;
+    }
+    else
+    {
+        pstRectOut->s32X = pstRectIn->s32X;
+        pstRectOut->s32Y = pstRectIn->s32Y;
+        pstRectOut->u16Width= pstRectIn->u16Width;
+        pstRectOut->u16Height = pstRectIn->u16Height;
+    }
     return TRUE;
 }
 
@@ -513,9 +534,14 @@ MMSDK_BOOL PT_Graphic_StretchBlit(PT_GRAPHICITEM DesSurface, PT_GRAPHICITEM SrcS
     GFX_Point gfxPt0;
     GFX_Point gfxPt1;
 
+    ST_MMSDK_RECT stSrcRect, stDesRect;
+
+    _PT_Graphic_ConvertRect(SrcSurface, SrcRect, &stSrcRect);
+    _PT_Graphic_ConvertRect(DesSurface, DesRect, &stDesRect);
+
     int i = 0;
 
-    gprintf("[PT_Graphic_StretchBlit]\n");
+    PT_GRAPHIC_DBG("[PT_Graphic_StretchBlit]\n");
 
     IS_VALID_SURFACE(pSrcGraphicSurface);
     IS_VALID_SURFACE(pDesGraphicSurface);
@@ -531,15 +557,16 @@ MMSDK_BOOL PT_Graphic_StretchBlit(PT_GRAPHICITEM DesSurface, PT_GRAPHICITEM SrcS
         i++;
         if(i > 200)
         {
-            printf("%s : MApi_GFX_BeginDraw GFX wait lock timeout.\n", __FUNCTION__);
+            PT_GRAPHIC_ERR("%s : MApi_GFX_BeginDraw GFX wait lock timeout.\n", __FUNCTION__);
             return FALSE;
         }
     }
 
     gfxPt0.x = 0;
     gfxPt0.y = 0;
-    gfxPt1.x = DesRect->s32X + DesRect->u16Width;
-    gfxPt1.y = DesRect->s32Y + DesRect->u16Height;
+    gfxPt1.x = stDesRect.s32X + stDesRect.u16Width;
+    gfxPt1.y = stDesRect.s32Y + stDesRect.u16Height;
+
     MApi_GFX_SetClip(&gfxPt0, &gfxPt1);
 
 
@@ -549,8 +576,8 @@ MMSDK_BOOL PT_Graphic_StretchBlit(PT_GRAPHICITEM DesSurface, PT_GRAPHICITEM SrcS
     sBltSrcInfo.u32Width = pSrcGraphicSurface->u32Width;
     sBltSrcInfo.u32Pitch = _CalcPitch(sBltSrcInfo.u32ColorFmt, pSrcGraphicSurface->u32Pitch);
 
-    //printf("\n PT_Graphic_StretchBlit pSrcGraphicSurface =0x%x", pSrcGraphicSurface);
-    gprintf("[PT_Graphic_StretchBlit] src eFormat =%d, u32BuffAddr=0x%x, u32Height=%d, u32Width=%d, u32Pitch=%d\n",
+    //PT_GRAPHIC_ERR("\n PT_Graphic_StretchBlit pSrcGraphicSurface =0x%x", pSrcGraphicSurface);
+    PT_GRAPHIC_DBG("[PT_Graphic_StretchBlit] src eFormat =%d, u32BuffAddr=0x%x, u32Height=%d, u32Width=%d, u32Pitch=%d\n",
     sBltSrcInfo.u32ColorFmt, (unsigned int)sBltSrcInfo.u32Addr, (int)sBltSrcInfo.u32Height, (int)sBltSrcInfo.u32Width, (int)sBltSrcInfo.u32Pitch);
 
     MApi_GFX_SetSrcBufferInfo(&sBltSrcInfo, 0);
@@ -561,43 +588,42 @@ MMSDK_BOOL PT_Graphic_StretchBlit(PT_GRAPHICITEM DesSurface, PT_GRAPHICITEM SrcS
     dstbuf.u32Width = pDesGraphicSurface->u32Width;
     dstbuf.u32Pitch = _CalcPitch(dstbuf.u32ColorFmt, pDesGraphicSurface->u32Pitch);
 
-    //printf("\n PT_Graphic_StretchBlit pDesGraphicSurface =0x%x", pDesGraphicSurface);
-    gprintf("[PT_Graphic_StretchBlit] dst eFormat =%d, u32BuffAddr=0x%x, u32Height=%d, u32Width=%d, u32Pitch=%d, eAngle=%d\n",
+    //PT_GRAPHIC_ERR("\n PT_Graphic_StretchBlit pDesGraphicSurface =0x%x", pDesGraphicSurface);
+    PT_GRAPHIC_DBG("[PT_Graphic_StretchBlit] dst eFormat =%d, u32BuffAddr=0x%x, u32Height=%d, u32Width=%d, u32Pitch=%d, eAngle=%d\n",
     dstbuf.u32ColorFmt, (unsigned int)dstbuf.u32Addr, (int)dstbuf.u32Height, (int)dstbuf.u32Width, (int)dstbuf.u32Pitch, pDesGraphicSurface->eAngle);
-
 
     MApi_GFX_SetDstBufferInfo(&dstbuf, 0);
 
-    sBitInfo.srcblk.x = SrcRect->s32X;
-    sBitInfo.srcblk.y = SrcRect->s32Y;
-    sBitInfo.srcblk.width = SrcRect->u16Width;
-    sBitInfo.srcblk.height = SrcRect->u16Height;
+    sBitInfo.srcblk.x = stSrcRect.s32X;
+    sBitInfo.srcblk.y = stSrcRect.s32Y;
+    sBitInfo.srcblk.width = stSrcRect.u16Width;
+    sBitInfo.srcblk.height = stSrcRect.u16Height;
 
-    sBitInfo.dstblk.x = DesRect->s32X;
-    sBitInfo.dstblk.y = DesRect->s32Y;
+    sBitInfo.dstblk.x = stDesRect.s32X;
+    sBitInfo.dstblk.y = stDesRect.s32Y;
 
     if (pDesGraphicSurface->eAngle == E_MMSDK_ROTATE_90 || pDesGraphicSurface->eAngle == E_MMSDK_ROTATE_270)
     {
-        sBitInfo.dstblk.width = DesRect->u16Height;
-        sBitInfo.dstblk.height = DesRect->u16Width;
+        sBitInfo.dstblk.width = stDesRect.u16Height;
+        sBitInfo.dstblk.height = stDesRect.u16Width;
     }
     else
     {
-        sBitInfo.dstblk.width = DesRect->u16Width;
-        sBitInfo.dstblk.height = DesRect->u16Height;
+        sBitInfo.dstblk.width = stDesRect.u16Width;
+        sBitInfo.dstblk.height = stDesRect.u16Height;
     }
 
-    gprintf("[PT_Graphic_StretchBlit] src x=%d, y=%d, w=%d, h=%d\n",
+    PT_GRAPHIC_DBG("[PT_Graphic_StretchBlit] src x=%d, y=%d, w=%d, h=%d\n",
     sBitInfo.srcblk.x, sBitInfo.srcblk.y, sBitInfo.srcblk.width , sBitInfo.srcblk.height);
-    gprintf("[PT_Graphic_StretchBlit] dst x=%d, y=%d, w=%d, h=%d\n",
+    PT_GRAPHIC_DBG("[PT_Graphic_StretchBlit] dst x=%d, y=%d, w=%d, h=%d\n",
     sBitInfo.dstblk.x, sBitInfo.dstblk.y, sBitInfo.dstblk.width , sBitInfo.dstblk.height);
 
     MApi_GFX_SetDC_CSC_FMT(GFX_YUV_RGB2YUV_PC, GFX_YUV_OUT_255, GFX_YUV_IN_255, GFX_YUV_YVYU, GFX_YUV_YVYU);
 
-    gprintf("[PT_Graphic_StretchBlit] pSrcGraphicSurface->IsTransformed = %d\n", pSrcGraphicSurface->IsTransformed);
+    PT_GRAPHIC_DBG("[PT_Graphic_StretchBlit] pSrcGraphicSurface->IsTransformed = %d\n", pSrcGraphicSurface->IsTransformed);
     if (pSrcGraphicSurface->IsAlphaBlending)
     {
-        gprintf("[PT_Graphic_StretchBlit] pSrcGraphicSurface->u16Alpha=%d\n", pSrcGraphicSurface->u16Alpha);
+        PT_GRAPHIC_DBG("[PT_Graphic_StretchBlit] pSrcGraphicSurface->u16Alpha=%d\n", pSrcGraphicSurface->u16Alpha);
         MApi_GFX_SetAlpha(TRUE, COEF_1_CONST, ABL_FROM_CONST, pSrcGraphicSurface->u16Alpha);
         pSrcGraphicSurface->IsAlphaBlending = FALSE;
     }
@@ -605,25 +631,25 @@ MMSDK_BOOL PT_Graphic_StretchBlit(PT_GRAPHICITEM DesSurface, PT_GRAPHICITEM SrcS
     {
         MApi_GFX_SetAlpha(FALSE, COEF_ASRC, ABL_FROM_ASRC, 0x0);
 
-        gprintf("[PT_Graphic_StretchBlit] sBltSrcInfo.u32ColorFmt=%d\n", sBltSrcInfo.u32ColorFmt);
+        PT_GRAPHIC_DBG("[PT_Graphic_StretchBlit] sBltSrcInfo.u32ColorFmt=%d\n", sBltSrcInfo.u32ColorFmt);
         if (((dstbuf.u32ColorFmt ==GFX_FMT_YUV422) && (sBltSrcInfo.u32ColorFmt==GFX_FMT_ARGB8888 )) ||
             ((dstbuf.u32ColorFmt ==GFX_FMT_YUV422) && (sBltSrcInfo.u32ColorFmt==GFX_FMT_ARGB1555 )))
         {
             // only first time GFX_FMT_ARGB8888 from decoder to GFX_FMT_YUV422 need to switch GFX_YUV_YVYU to GFX_YUV_YUYV
-            gprintf("[PT_Graphic_StretchBlit] GFX_FMT_ARGB8888 to GFX_FMT_YUV422\n");
+            PT_GRAPHIC_DBG("[PT_Graphic_StretchBlit] GFX_FMT_ARGB8888 to GFX_FMT_YUV422\n");
             pDesGraphicSurface->IsTransformed = TRUE;
             MApi_GFX_SetDC_CSC_FMT(GFX_YUV_RGB2YUV_PC, GFX_YUV_OUT_255, GFX_YUV_IN_255, GFX_YUV_YVYU, GFX_YUV_YUYV);
         }
         else if (((dstbuf.u32ColorFmt ==GFX_FMT_ARGB8888) && (sBltSrcInfo.u32ColorFmt==GFX_FMT_YUV422)) ||
             ((dstbuf.u32ColorFmt ==GFX_FMT_ARGB1555) && (sBltSrcInfo.u32ColorFmt==GFX_FMT_YUV422)))
         {
-            gprintf("[PT_Graphic_StretchBlit] GFX_FMT_YUV422 to  GFX_FMT_ARGB8888\n");
+            PT_GRAPHIC_DBG("[PT_Graphic_StretchBlit] GFX_FMT_YUV422 to  GFX_FMT_ARGB8888\n");
             pDesGraphicSurface->IsTransformed = TRUE;
             //MApi_GFX_SetDC_CSC_FMT(GFX_YUV_RGB2YUV_PC, GFX_YUV_OUT_255, GFX_YUV_IN_255, GFX_YUV_YVYU, GFX_YUV_YVYU);
         }
         else
         {
-            gprintf("[PT_Graphic_StretchBlit] no transform... \n");
+            PT_GRAPHIC_DBG("[PT_Graphic_StretchBlit] no transform... \n");
             //MApi_GFX_SetDC_CSC_FMT(GFX_YUV_RGB2YUV_PC, GFX_YUV_OUT_255, GFX_YUV_IN_255, GFX_YUV_YVYU, GFX_YUV_YUYV);
         }
     }else
@@ -657,16 +683,16 @@ MMSDK_BOOL PT_Graphic_StretchBlit(PT_GRAPHICITEM DesSurface, PT_GRAPHICITEM SrcS
     }
     MApi_GFX_SetRotate(egfxangle);
 
-    gprintf("[PT_Graphic_StretchBlit] MApi_GFX_SetRotate egfxangle=%d\n", egfxangle);
+    PT_GRAPHIC_DBG("[PT_Graphic_StretchBlit] MApi_GFX_SetRotate egfxangle=%d\n", egfxangle);
 
     ret = MApi_GFX_BitBlt(&sBitInfo, GFXDRAW_FLAG_SCALE);
-    gprintf("[PT_Graphic_StretchBlit] ret val of MApi_GFX_BitBlt = %d\n", ret);
+    PT_GRAPHIC_DBG("[PT_Graphic_StretchBlit] ret val of MApi_GFX_BitBlt = %d\n", ret);
 
     MApi_GFX_SetRotate(GEROTATE_0);
 
     if (ret != GFX_SUCCESS)
     {
-        gprintf("[PT_Graphic_StretchBlit] FAIL ret val of MApi_GFX_BitBlt  = %d\n", ret);
+        PT_GRAPHIC_DBG("[PT_Graphic_StretchBlit] FAIL ret val of MApi_GFX_BitBlt  = %d\n", ret);
 
         MApi_GFX_EndDraw();
         return FALSE;
@@ -684,7 +710,7 @@ MMSDK_BOOL PT_Graphic_Dump(PT_GRAPHICITEM Surface, const char * directory, const
 {
     IS_DISPLAY_PHOTO_IN_MMSDK_FLOW;
 
-    gprintf("[PT_Graphic_Dump]\n");
+    PT_GRAPHIC_DBG("[PT_Graphic_Dump]\n");
     return TRUE;
 }
 
@@ -703,7 +729,7 @@ MMSDK_BOOL PT_Graphic_SetAlpha(PT_GRAPHICITEM Surface, MMSDK_U16 u16Alpha)
 
     IS_VALID_SURFACE(pGraphicSurface);
 
-    gprintf("[PT_Graphic_SetAlpha]  u16Alpha = %d, pGraphicSurface = %p\n", u16Alpha, pGraphicSurface);
+    PT_GRAPHIC_DBG("[PT_Graphic_SetAlpha]  u16Alpha = %d, pGraphicSurface = %p\n", u16Alpha, pGraphicSurface);
     pGraphicSurface->u16Alpha = u16Alpha;
     pGraphicSurface->IsAlphaBlending = TRUE;
 
@@ -720,13 +746,13 @@ MMSDK_BOOL PT_Graphic_SetAlpha(PT_GRAPHICITEM Surface, MMSDK_U16 u16Alpha)
         {
             if(y == 0&& x<10)
             {
-                printf(" PT_Graphic_SetAlpha orig pixel32(%d,%d) = 0x%x\n", x, y, pixel32[x]);
+                PT_GRAPHIC_ERR(" PT_Graphic_SetAlpha orig pixel32(%d,%d) = 0x%x\n", x, y, pixel32[x]);
             }
 
             pixel32[x] = ((pixel32[x] & 0x00FFFFFF) | ((u16Alpha << 24) & 0xFF000000) );
             if(y == 0&& x<10)
             {
-                printf(" PT_Graphic_SetAlpha new pixel32(%d,%d) = 0x%x\n", x, y, pixel32[x]);
+                PT_GRAPHIC_ERR(" PT_Graphic_SetAlpha new pixel32(%d,%d) = 0x%x\n", x, y, pixel32[x]);
             }
         }
     }

@@ -94,17 +94,102 @@
 ////////////////////////////////////////////////////////////////////////////////
 #define _IIC_C_
 
+#ifdef __KERNEL__
 #include <linux/string.h>
+#else
+#include <string.h>
+#endif
 #include "Board.h"
 #include "drvIIC.h"
 #include "drvGPIO.h"
 #include "drvMMIO.h"
-#include "drvHWI2C.h"
 
+#ifdef __KERNEL__
+#include <linux/vmalloc.h>
+#define free vfree
+#define malloc(size) vmalloc((size))
+#endif
 
+#if SWI2C_INUSE
+static MS_U8* pu8SwIICPort = NULL;
+static MS_U8 u8SwIICCount = 0;
+static MS_BOOL bSwIICSetupDone = FALSE;
+static SWI2C_ReadMode eSW_Read_Mode_Default = E_SWI2C_READ_MODE_DIRECTION_CHANGE;
+#endif
+static MS_S32 s32IICMutex = -1;
+static HWI2C_ReadMode eHW_Read_Mode_Default = E_HWI2C_READ_MODE_DIRECTION_CHANGE;
 
+#define MDrv_IIC_MUTEX_TIMEOUT (2000)
+#define MDrv_IIC_LOCK()      do{if(s32IICMutex!=-1)MsOS_ObtainMutex(s32IICMutex, MDrv_IIC_MUTEX_TIMEOUT);}while(0);
+#define MDrv_IIC_UNLOCK()    do{if(s32IICMutex!=-1)MsOS_ReleaseMutex(s32IICMutex);}while(0);
 
-void MDrv_IIC_InitPort0(HWI2C_PORT ePort)
+#if SWI2C_INUSE
+static MS_BOOL _SwIICPort_mapping(MS_IIC_PORT ePort, MS_U8* pu8SwI2CBus)
+{
+    MS_U8 i;
+
+    if(pu8SwIICPort == NULL)
+        return FALSE;
+
+    for(i=0;i<u8SwIICCount;i++)
+    {
+       if(ePort == (*(pu8SwIICPort + i)))
+       {
+          *pu8SwI2CBus = i;
+          return TRUE;
+       }
+    }
+
+    return FALSE;
+}
+
+MS_BOOL MDrv_IIC_SetupSwPort(MS_U8 u8BusCount, MS_IIC_SwBus* pstConfig)
+{
+    SWI2C_BusCfg stBusCfg[E_MS_IIC_SW_PORT_MAX - E_MS_IIC_SW_PORT_0 + 1];
+    MS_IIC_SwBus* pstConfigI = NULL;
+    MS_U8 i;
+
+    if(!bSwIICSetupDone)
+    {
+        if(u8BusCount > (sizeof(stBusCfg)/sizeof(SWI2C_BusCfg)))
+        {
+           printf("Number of SW I2C Bus Over Limitation\n");
+           printf("Max count of SW I2C Bus is %d", (int)(sizeof(stBusCfg)/sizeof(SWI2C_BusCfg)));
+           return FALSE;
+        }
+        
+        if(pu8SwIICPort == NULL)
+        {
+            pu8SwIICPort = (MS_U8 *)malloc(sizeof(MS_U8) * u8BusCount);
+        }
+
+        for(i=0;i<u8BusCount;i++)
+        {
+            pstConfigI = pstConfig + i;
+            if((pstConfigI->ePort >= E_MS_IIC_PORT_NOSUP) ||\
+               (pstConfigI->ePort < E_MS_IIC_SW_PORT_0))
+            {
+                printf("Wrong parameter for SW IIC setup\n");
+                return FALSE;
+            }
+
+            stBusCfg[i].padSCL = pstConfigI->u16SclPad;
+            stBusCfg[i].padSDA = pstConfigI->u16SdaPad;
+            stBusCfg[i].defDelay= pstConfigI->u16Delay;
+            *(pu8SwIICPort + i) = (MS_U8)pstConfigI->ePort;
+            MApi_SWI2C_SetBusReadMode(i,eSW_Read_Mode_Default);
+        }
+
+        MApi_SWI2C_Init(stBusCfg, u8BusCount);
+        bSwIICSetupDone = TRUE;
+        u8SwIICCount = u8BusCount;
+    }
+
+    return TRUE;
+}
+#endif
+
+void MDrv_IIC_InitPort0(MS_IIC_PORT ePort)
 {
     MS_BOOL bResult = FALSE;
     HWI2C_UnitCfg hwI2CCfg;
@@ -126,21 +211,21 @@ void MDrv_IIC_InitPort0(HWI2C_PORT ePort)
     bResult = MDrv_HWI2C_Init(&hwI2CCfg);
     if(bResult)
     {
-        printf("MDrv_IIC_InitPort0: OK\n");
+        printf("MDrv_IIC_InitPort%d: OK\n", (int)ePort);
     }
     else
     {
-        printf("MDrv_IIC_InitPort0: FAIL\n");
+        printf("MDrv_IIC_InitPort%d: FAIL\n", (int)ePort);
         return;
     }
 
     MDrv_HWI2C_SelectPort(hwI2CCfg.ePort);
     MDrv_HWI2C_SetClk(hwI2CCfg.eSpeed);
-    MDrv_HWI2C_SetReadMode(E_HWI2C_READ_MODE_DIRECTION_CHANGE);
+    MDrv_HWI2C_SetReadMode(eHW_Read_Mode_Default);
 
 }
 
-void MDrv_IIC_InitPort1(HWI2C_PORT ePort)
+void MDrv_IIC_InitPort1(MS_IIC_PORT ePort)
 {
     MS_BOOL bResult;
     HWI2C_UnitCfg hwI2CCfg;
@@ -172,22 +257,40 @@ void MDrv_IIC_InitPort1(HWI2C_PORT ePort)
 
     MDrv_HWI2C_SelectPort1(hwI2CCfg.ePort);
     MDrv_HWI2C_SetClkP1(hwI2CCfg.eSpeed);
-    MDrv_HWI2C_SetReadModeP1(E_HWI2C_READ_MODE_DIRECTION_CHANGE);
+    MDrv_HWI2C_SetReadModeP1(eHW_Read_Mode_Default);
 
 }
 
-void MDrv_IIC_Init(HWI2C_PORT ePort)
+void MDrv_IIC_Init(MS_IIC_PORT ePort)
 {
     printf("MDrv_IIC_Init  PORT  %d \n", ePort);
 
-    if (E_HWI2C_PORT_NOSUP == ePort)
+    if(ePort >= E_MS_IIC_PORT_NOSUP)
     {
+        printf("MDrv_IIC_Init: FAIL, Invalid Port number\n");
         return;
     }
 
-    if(ePort >= E_HWI2C_PORT_1)
+    if(s32IICMutex == -1)
     {
-         MDrv_IIC_InitPort1(ePort);
+        s32IICMutex = MsOS_CreateMutex(E_MSOS_FIFO, "Mdrv_IIC_Mutex", MSOS_PROCESS_SHARED);
+        if(s32IICMutex == -1)
+        {
+            printf("MDrv_IIC_Init: FAIL, Create Mutex fail\n");
+            return;
+        }
+    }
+
+    if ((ePort >= E_MS_IIC_SW_PORT_0) && (ePort < E_MS_IIC_PORT_NOSUP))
+    {
+    #if SWI2C_INUSE
+        if(!bSwIICSetupDone)
+        {
+            printf("MDrv_IIC_Init: FAIL, this is SW I2C port, setup I2C SW port by MDrv_IIC_SetupSwPort\n");
+        }
+    #else
+        printf("MDrv_IIC_Init: FAIL, SW I2C is disabled\n");
+    #endif
     }
     else
     {
@@ -200,91 +303,229 @@ void MDrv_IIC_Init(HWI2C_PORT ePort)
 
 MS_BOOL MDrv_IIC_ReadBytesPort0(MS_U16 u16BusNumSlaveID, MS_U8 ucSubAdr, MS_U8* paddr, MS_U16 ucBufLen, MS_U8* pBuf)
 {
-    return MDrv_HWI2C_ReadBytes(u16BusNumSlaveID, (MS_U32)ucSubAdr, paddr, (MS_U32)ucBufLen, pBuf);
+    MS_BOOL bRet = FALSE;
+
+    MDrv_IIC_LOCK();
+    bRet = MDrv_HWI2C_ReadBytes(u16BusNumSlaveID, (MS_U32)ucSubAdr, paddr, (MS_U32)ucBufLen, pBuf);
+    MDrv_IIC_UNLOCK();
+
+    return bRet;
 }
 
 
 MS_BOOL MDrv_IIC_ReadBytesPort1(MS_U16 u16BusNumSlaveID, MS_U8 ucSubAdr, MS_U8* paddr, MS_U16 ucBufLen, MS_U8* pBuf)
 {
-    return MDrv_HWI2C_ReadBytesP1(u16BusNumSlaveID, (MS_U32)ucSubAdr, paddr, (MS_U32)ucBufLen, pBuf);
+    MS_BOOL bRet = FALSE;
+
+    MDrv_IIC_LOCK();
+    bRet = MDrv_HWI2C_ReadBytesP1(u16BusNumSlaveID, (MS_U32)ucSubAdr, paddr, (MS_U32)ucBufLen, pBuf);
+    MDrv_IIC_UNLOCK();
+
+    return bRet;
+
 }
 
-MS_BOOL MDrv_IIC_ReadBytes(HWI2C_PORT ePort, MS_U16 u16BusNumSlaveID, MS_U8 ucSubAdr, MS_U8* paddr, MS_U16 ucBufLen, MS_U8* pBuf)
+MS_BOOL MDrv_IIC_ReadBytes(MS_IIC_PORT ePort, MS_U16 u16BusNumSlaveID, MS_U8 ucSubAdr, MS_U8* paddr, MS_U16 ucBufLen, MS_U8* pBuf)
 {
-    //HB_printf("MDrv_IIC_ReadBytes  PORT  %d \n", ePort);
-    if(ePort >= E_HWI2C_PORT_1)
+    MS_U16 u16PortIndex;
+    MS_BOOL bRet = FALSE;
+#if SWI2C_INUSE    
+    MS_U8 u8SwI2CBus = 0;
+#endif
+
+    MDrv_IIC_LOCK();
+
+    if(ePort < E_MS_IIC_SW_PORT_0)
     {
-        return MDrv_IIC_ReadBytesPort1(u16BusNumSlaveID,ucSubAdr, paddr,ucBufLen, pBuf);
+        //printf("IIC HW mode Read\n");
+        u16PortIndex = (ePort/8)<<8;
+        u16BusNumSlaveID |= u16PortIndex;
+        bRet = MDrv_HWI2C_ReadBytes(u16BusNumSlaveID, (MS_U32)ucSubAdr, paddr, (MS_U32)ucBufLen, pBuf);
     }
-    else
+    else if(ePort < E_MS_IIC_PORT_NOSUP)
     {
-        return MDrv_IIC_ReadBytesPort0(u16BusNumSlaveID,ucSubAdr, paddr,ucBufLen, pBuf);
+       //printf("IIC SW mode Read\n");
+#if SWI2C_INUSE
+       if(bSwIICSetupDone)
+      {
+        if(_SwIICPort_mapping(ePort, &u8SwI2CBus))
+        {
+            u16PortIndex = (u8SwI2CBus<<8);
+            u16BusNumSlaveID |= u16PortIndex;
+            bRet = MApi_SWI2C_ReadBytes(u16BusNumSlaveID, ucSubAdr, paddr, ucBufLen, pBuf);
+        }
+      }
+#endif       
     }
+    
+    MDrv_IIC_UNLOCK();
+    
+    return bRet;
+}
+
+MS_BOOL MDrv_IIC_ReadWithMode(MS_IIC_PORT ePort, MS_U16 u16BusNumSlaveID, MS_U8 ucSubAdr, MS_U8* paddr, MS_U16 ucBufLen, MS_U8* pBuf, MS_IIC_ReadMode eMode)
+{
+    MS_U16 u16PortIndex;
+    MS_BOOL bRet = TRUE;
+#if SWI2C_INUSE    
+    MS_U8 u8SwI2CBus = 0;
+#endif
+
+    MDrv_IIC_LOCK();
+
+    if(ePort < E_MS_IIC_SW_PORT_0)
+    {
+        //printf("IIC HW mode Read\n");
+        u16PortIndex = (ePort/8)<<8;
+        u16BusNumSlaveID |= u16PortIndex;
+        bRet &= MDrv_HWI2C_SelectPort((HWI2C_PORT)ePort);
+        bRet &= MDrv_HWI2C_SetReadMode((HWI2C_ReadMode)eMode);
+        bRet &= MDrv_HWI2C_ReadBytes(u16BusNumSlaveID, (MS_U32)ucSubAdr, paddr, (MS_U32)ucBufLen, pBuf);
+        MDrv_HWI2C_SetReadMode(eHW_Read_Mode_Default);
+    }
+    else if(ePort < E_MS_IIC_PORT_NOSUP)
+    {
+       //printf("IIC SW mode Read\n");
+ #if SWI2C_INUSE      
+       if(bSwIICSetupDone)
+      {
+        if(_SwIICPort_mapping(ePort, &u8SwI2CBus))
+        {
+            u16PortIndex = (u8SwI2CBus<<8);
+            u16BusNumSlaveID |= u16PortIndex;
+            bRet &= MApi_SWI2C_SetBusReadMode(u8SwI2CBus, (SWI2C_ReadMode)eMode);
+            bRet &= MApi_SWI2C_ReadBytes(u16BusNumSlaveID, ucSubAdr, paddr, ucBufLen, pBuf);
+            bRet &= MApi_SWI2C_SetBusReadMode(u8SwI2CBus, eSW_Read_Mode_Default);
+        }
+      }
+ #endif      
+    }
+    
+    MDrv_IIC_UNLOCK();
+    
+    return bRet;
 }
 
 
 MS_BOOL MDrv_IIC_WriteBytesPort0(MS_U16 u16BusNumSlaveID, MS_U8 AddrCnt, MS_U8* pu8addr, MS_U16 u16size, MS_U8* pBuf)
 {
-    return MDrv_HWI2C_WriteBytes(u16BusNumSlaveID, (MS_U32)AddrCnt, pu8addr, (MS_U32)u16size, pBuf);
+    MS_BOOL bRet = FALSE;
+
+    MDrv_IIC_LOCK();
+    bRet = MDrv_HWI2C_WriteBytes(u16BusNumSlaveID, (MS_U32)AddrCnt, pu8addr, (MS_U32)u16size, pBuf);
+    MDrv_IIC_UNLOCK();
+
+    return bRet;
 }
 
 MS_BOOL MDrv_IIC_WriteBytesPort1(MS_U16 u16BusNumSlaveID, MS_U8 AddrCnt, MS_U8* pu8addr, MS_U16 u16size, MS_U8* pBuf)
 {
-    return MDrv_HWI2C_WriteBytesP1(u16BusNumSlaveID, (MS_U32)AddrCnt, pu8addr, (MS_U32)u16size, pBuf);
+    MS_BOOL bRet = FALSE;
+
+    MDrv_IIC_LOCK();
+    bRet = MDrv_HWI2C_WriteBytesP1(u16BusNumSlaveID, (MS_U32)AddrCnt, pu8addr, (MS_U32)u16size, pBuf);
+    MDrv_IIC_UNLOCK();
+
+    return bRet;
 }
 
-MS_BOOL MDrv_IIC_WriteBytes(HWI2C_PORT ePort, MS_U16 u16BusNumSlaveID, MS_U8 AddrCnt, MS_U8* pu8addr, MS_U16 u16size, MS_U8* pBuf)
+
+MS_BOOL MDrv_IIC_WriteBytes(MS_IIC_PORT ePort, MS_U16 u16BusNumSlaveID, MS_U8 AddrCnt, MS_U8* pu8addr, MS_U16 u16size, MS_U8* pBuf)
 {
-    //HB_printf("MDrv_IIC_WriteBytes  PORT  %d \n", ePort);
-    if(ePort >= E_HWI2C_PORT_1)
-    {
-        return MDrv_IIC_WriteBytesPort1(u16BusNumSlaveID,AddrCnt, pu8addr,u16size, pBuf);
-    }
-    else
-    {
-        return MDrv_IIC_WriteBytesPort0(u16BusNumSlaveID,AddrCnt, pu8addr,u16size, pBuf);
-    }
+   MS_U16 u16PortIndex;
+   MS_BOOL bRet = FALSE;
+#if SWI2C_INUSE    
+   MS_U8 u8SwI2CBus = 0;
+#endif
+
+   MDrv_IIC_LOCK();
+
+   if(ePort < E_MS_IIC_SW_PORT_0)
+   {
+        u16PortIndex = (ePort/8)<<8;
+        u16BusNumSlaveID |= u16PortIndex;
+        bRet = MDrv_HWI2C_WriteBytes(u16BusNumSlaveID, (MS_U32)AddrCnt, pu8addr, (MS_U32)u16size, pBuf);
+   }
+   else if(ePort < E_MS_IIC_PORT_NOSUP)
+   {
+ #if SWI2C_INUSE    
+      if(bSwIICSetupDone)
+      {
+        if(_SwIICPort_mapping(ePort, &u8SwI2CBus))
+        {
+            u16PortIndex = (u8SwI2CBus<<8);
+            u16BusNumSlaveID |= u16PortIndex;
+            bRet = MApi_SWI2C_WriteBytes(u16BusNumSlaveID, AddrCnt, pu8addr, u16size, pBuf);
+        }
+      }
+ #endif      
+   }
+    
+   MDrv_IIC_UNLOCK();
+    
+   return bRet;
 }
 
 
 
 MS_BOOL MDrv_IIC_Read(MS_U16 u16BusNumSlaveID, MS_U8* pu8addr, MS_U8 AddrCnt, MS_U8* pBuf,  MS_U16 u16size)
 {
-    MS_BOOL ret;
-    ret = MDrv_HWI2C_ReadBytes(u16BusNumSlaveID, (MS_U32)AddrCnt, pu8addr, (MS_U32)u16size, pBuf);
-    return ret;
+    MS_BOOL bRet;
+    
+    MDrv_IIC_LOCK();
+    bRet = MDrv_HWI2C_ReadBytes(u16BusNumSlaveID, (MS_U32)AddrCnt, pu8addr, (MS_U32)u16size, pBuf);
+    MDrv_IIC_UNLOCK();
+    return bRet;
 }
 
 MS_BOOL MDrv_IIC1_Read(MS_U16 u16BusNumSlaveID, MS_U8* pu8addr, MS_U8 AddrCnt, MS_U8* pBuf,  MS_U16 u16size)
 {
-    return MDrv_HWI2C_ReadBytesP1(u16BusNumSlaveID, (MS_U32)AddrCnt, pu8addr, (MS_U32)u16size, pBuf);
+    MS_BOOL bRet;
+    
+    MDrv_IIC_LOCK();
+    bRet = MDrv_HWI2C_ReadBytesP1(u16BusNumSlaveID, (MS_U32)AddrCnt, pu8addr, (MS_U32)u16size, pBuf);
+    MDrv_IIC_UNLOCK();
+    return bRet;
+
 }
 
 MS_BOOL MDrv_IIC_Write(MS_U16 u16BusNumSlaveID, MS_U8* pu8addr, MS_U8 AddrCnt, MS_U8* pBuf,  MS_U16 u16size)
 {
-    MS_BOOL ret;
-    ret = MDrv_IIC_WriteBytesPort0(u16BusNumSlaveID,AddrCnt, pu8addr,u16size, pBuf);
-    return ret;
+    MS_BOOL bRet;
+
+    bRet = MDrv_IIC_WriteBytesPort0(u16BusNumSlaveID,AddrCnt, pu8addr,u16size, pBuf);
+
+    return bRet;
 
 }
 
 MS_BOOL MDrv_IIC1_Write(MS_U16 u16BusNumSlaveID, MS_U8* pu8addr, MS_U8 AddrCnt, MS_U8* pBuf,  MS_U16 u16size)
 {
-    return MDrv_IIC_WriteBytesPort1(u16BusNumSlaveID,AddrCnt, pu8addr,u16size, pBuf);
+    MS_BOOL bRet;
+    
+    bRet = MDrv_IIC_WriteBytesPort1(u16BusNumSlaveID,AddrCnt, pu8addr,u16size, pBuf);
+
+    return bRet;
+
 }
 
 
-MS_BOOL MDrv_IIC_SelectCLK(HWI2C_PORT ePort, HWI2C_CLKSEL eSpeed)
+MS_BOOL MDrv_IIC_SelectCLK(MS_IIC_PORT ePort, HWI2C_CLKSEL eSpeed)
 {
-    if(ePort >= E_HWI2C_PORT_1)
-    {
-        return MDrv_HWI2C_SetClkP1(eSpeed);
+    MS_BOOL bRet;
 
+    MDrv_IIC_LOCK();
+    if(ePort >= E_MS_IIC_PORT_1)
+    {       
+      bRet = MDrv_HWI2C_SetClkP1(eSpeed);
     }
     else
     {
-        return MDrv_HWI2C_SetClk(eSpeed);
+      bRet =MDrv_HWI2C_SetClk(eSpeed);
     }
+    MDrv_IIC_UNLOCK();
+
+    return bRet;
 }
 
 
@@ -305,7 +546,7 @@ MS_BOOL IIC_SendByte(MS_U8 u8dat)
     return 0;
 }
 
-HWI2C_PORT getI2CPort(MS_U8 drv_frontend_index)
+MS_IIC_PORT getI2CPort(MS_U8 drv_frontend_index)
 {
     HWI2C_PORT ePort;
     switch(drv_frontend_index)
@@ -315,7 +556,7 @@ HWI2C_PORT getI2CPort(MS_U8 drv_frontend_index)
         break;
         case 1:
             ePort = FRONTEND_TUNER_PORT1;
-        break;  
+        break;
         case 2:
             ePort = FRONTEND_TUNER_PORT2;
         break;
@@ -329,7 +570,7 @@ HWI2C_PORT getI2CPort(MS_U8 drv_frontend_index)
     return ePort;
 }
 
-HWI2C_PORT getDishI2CPort(MS_U8 drv_frontend_index)
+MS_IIC_PORT getDishI2CPort(MS_U8 drv_frontend_index)
 {
     HWI2C_PORT ePort;
     switch(drv_frontend_index)
@@ -341,7 +582,7 @@ HWI2C_PORT getDishI2CPort(MS_U8 drv_frontend_index)
             ePort = FRONTEND_TUNER_PORT0;
         #endif
         break;
-        
+
         case 1:
         #ifdef DISH_IIC_PORT1
              ePort = DISH_IIC_PORT1;
@@ -349,7 +590,7 @@ HWI2C_PORT getDishI2CPort(MS_U8 drv_frontend_index)
              ePort = FRONTEND_TUNER_PORT1;
         #endif
 
-        break;  
+        break;
         case 2:
         #ifdef DISH_IIC_PORT2
              ePort = DISH_IIC_PORT2;
@@ -373,6 +614,14 @@ HWI2C_PORT getDishI2CPort(MS_U8 drv_frontend_index)
     return ePort;
 }
 
+#ifdef MSOS_TYPE_LINUX_KERNEL
+#include <linux/module.h>   // for EXPORT_SYMBOL
+MODULE_LICENSE("LGPL");
+EXPORT_SYMBOL(MDrv_IIC_ReadBytes);
+EXPORT_SYMBOL(MDrv_IIC_WriteBytes);
+EXPORT_SYMBOL(MDrv_IIC_Init);
+EXPORT_SYMBOL(MDrv_IIC_SelectCLK);
+#endif
 
 #undef _IIC_C_
 

@@ -89,5 +89,6 @@ MS_U32  MDrv_Tuner_Null_StandBy(MS_U8 u8TunerIndex);
 MS_U32  MDrv_Tuner_Null_WakeUp(MS_U8 u8TunerIndex);
 MS_BOOL MDRV_Tuner_Null_GetTunerIF(MS_U8 u8TunerIndex, MS_U32* pu32IF_Freq);
 MS_BOOL MDrv_Tuner_Null_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE fuction_type, void *data);
+MS_BOOL MDrv_Tuner_Null_SetATVTuner(MS_U8 u8TunerIndex, MS_U32 u32FreqKHz,TUNER_EN_RFBAND eBand, MS_U8 u8OtherMode);
 
 #endif // #define __DRV_TUNER_NULL_H__

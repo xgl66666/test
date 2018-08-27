@@ -92,9 +92,18 @@ rights to any and all damages, losses, costs and expenses resulting therefrom.
  * File  : mapi_demodulator_msb123x.cpp
  **********************************************************************/
 
+#ifdef MSOS_TYPE_LINUX_KERNEL
+#include <linux/string.h>
+#include <linux/fs.h>
+#include <linux/vmalloc.h>
+#include <linux/err.h>
+#include <asm/uaccess.h>
+#include <linux/slab.h>
+#else
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#endif
 #include "MsCommon.h"
 #include "Board.h"
 

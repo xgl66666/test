@@ -119,7 +119,7 @@ typedef struct
 
 typedef struct
 {
-  MXL_HYDRA_FSK_CFG_FREQ_MODE_E fskFreqMode;
+  UINT32 fskFreqMode;      // MXL_HYDRA_FSK_CFG_FREQ_MODE_E
   UINT32 freq;
 } MXL58x_CFG_FSK_FREQ_T;
 
@@ -140,9 +140,32 @@ typedef struct
 
 typedef struct
 {
+  UINT32 diseqcId;     // DSQ 0, 1, 2 or 3
+  UINT32 opModeTx;     //Enable Tx Tone mode (1) or Tx Envelop mode (0)
+  UINT32 invertTx;     //Invert Tx path (1)
+  UINT32 opModeRx;     //Enable Rx Tone mode (1) or Rx Envelop mode (0)
+  UINT32 invertRx;     //Invert Rx path (1)
+  UINT32 version;      // 0: 1.0 , 1: 1.1 , 2: Disable
+  UINT32 centerFreq;   // 0: 22KHz, 1: 33KHz and 2: 44 KHz
+} MXL58x_DSQ_OP_MODE_TXRX_T;
+
+typedef struct
+{
   UINT32 diseqcId;
   UINT32 contToneFlag;  // 1: Enable , 0: Disable
 } MXL_HYDRA_DISEQC_CFG_CONT_TONE_T;
+
+#define MXL_HYDRA_NEWMSG_DELAY_MAX 63
+#define MXL_HYDRA_ENDMSG_DELAY_MAX 63
+#define MXL_HYDRA_STARTMSG_DELAY_MAX 255
+#define MXL_HYDRA_REPLYMSG_DELAY_MAX 1023
+typedef struct
+{
+    UINT16 newMsgDelayMs;   //  default: 0ms
+    UINT16 endMsgDelayMs;   //  default: 14ms
+    UINT16 replyDelayMs;    //  default: 0ms
+    UINT16 startMsgDelayMs; //  default: 17ms
+} MXL_HYDRA_DISEQC_MSG_DELAYS_T;
 
 MXL_STATUS_E MxLWare_HYDRA_API_ResetFsk(UINT8 devId);
 
@@ -153,6 +176,19 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDiseqcOpMode(UINT8 devId,
                                                MXL_HYDRA_DISEQC_OPMODE_E opMode,
                                                MXL_HYDRA_DISEQC_VER_E version,
                                                MXL_HYDRA_DISEQC_CARRIER_FREQ_E carrierFreqInHz);
+
+MXL_STATUS_E MxLWare_HYDRA_API_CfgDiseqcMsgDelays(UINT8 devId, 
+                      MXL_HYDRA_DISEQC_ID_E diseqcId,
+                      MXL_HYDRA_DISEQC_MSG_DELAYS_T * msgDelaysPtr);
+
+MXL_STATUS_E MxLWare_HYDRA_API_CfgDiseqcOpModeTxRx(UINT8 devId,
+                                                   MXL_HYDRA_DISEQC_ID_E diseqcId,
+                                                   MXL_HYDRA_DISEQC_OPMODE_E opModeTx,
+                                                   MXL_BOOL_E invertTx,
+                                                   MXL_HYDRA_DISEQC_OPMODE_E opModeRx,
+                                                   MXL_BOOL_E invertRx,
+                                                   MXL_HYDRA_DISEQC_VER_E version,
+                                                   MXL_HYDRA_DISEQC_CARRIER_FREQ_E carrierFreqInHz);
 
 MXL_STATUS_E MxLWare_HYDRA_API_ReqDiseqcStatus(UINT8 devId, MXL_HYDRA_DISEQC_ID_E diseqcId, UINT32 *statusPtr);
 
@@ -170,7 +206,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_ReqFskMsgRead(UINT8 devId, MXL_HYDRA_FSK_MSG_T *m
 
 MXL_STATUS_E MxLWare_HYDRA_API_CfgFskMsgWrite(UINT8 devId, MXL_HYDRA_FSK_MSG_T *msgPtr);
 
-MXL_STATUS_E MxLWare_HYDRA_API_CfgFskFreq(UINT8 devId, MXL_HYDRA_FSK_CFG_FREQ_MODE_E fskFreqMode, UINT32 freq);
+MXL_STATUS_E MxLWare_HYDRA_API_CfgFskFreq(UINT8 devId, MXL_HYDRA_FSK_CFG_FREQ_MODE_E fskFreqMode, UINT32 freqHz);
 
 MXL_STATUS_E MxLWare_HYDRA_API_PowerDownFsk(UINT8 devId);
 

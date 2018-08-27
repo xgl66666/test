@@ -363,6 +363,14 @@ typedef struct
     MMSDK_U32 u32RequestSize;
 } ST_MMSDK_AUDIO_DRA_INIT_INFO;
 
+/// Define the attached information for callback process. The callback message is E_CPCODEC_MSG_OPUS_INIT.
+typedef struct
+{
+    /// Media object relative information.
+    void* Media;
+    /// OPUS file request size.
+    MMSDK_U32 u32RequestSize;
+} ST_MMSDK_AUDIO_OPUS_INIT_INFO;
 
 //-------------------------------------------------------------------------------------------------
 /// Audio Initialize: malloc resource return audio intance item
@@ -554,6 +562,15 @@ MMSDK_BOOL PT_Audio_GetAudioUnsupport(PT_AUDIOITEM AudioItem, MMSDK_U64 *pu64Inf
 //-------------------------------------------------------------------------------------------------
 MMSDK_U64 PT_Audio_GetUnsupportAudioCodec(void) __attribute__ ((weak));
 
+//-------------------------------------------------------------------------------------------------
+/// Trigger system to set audio delay
+/// 1. After set window
+/// 2. After init ok in audio only case
+/// @param AudioItem            \b IN: audio instance item
+///
+/// @return None
+//-------------------------------------------------------------------------------------------------
+void PT_Audio_SetAudioDelay(PT_AUDIOITEM AudioItem) __attribute__ ((weak));
 
 /// @} // end of porting_audio
 

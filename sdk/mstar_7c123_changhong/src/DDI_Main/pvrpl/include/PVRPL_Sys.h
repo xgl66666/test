@@ -160,6 +160,7 @@ typedef enum
     EN_PVRPL_WAIT_EVENT
 } PVRPL_EVENT_CMD;
 
+// Sys DBG enum
 typedef enum
 {
     PVRPLSYS_DBG_NONE,
@@ -169,6 +170,7 @@ typedef enum
     PVRPLSYS_DBG_FUNC,
     PVRPLSYS_DBG_TRACE,
 } PVRPLSYS_DBGMSG_LEVEL;
+//--------------------------------------------------------
 
 typedef struct
 {

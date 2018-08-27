@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -99,6 +99,8 @@ MS_BOOL Demo_EMMC_Init(void);
 MS_BOOL Demo_EMMC_WriteData(MS_U32 *u32_SrcPhyAddr, MS_U32 *u32_DataByteCnt, MS_U32 *u32_BlkAddr);
 MS_BOOL Demo_EMMC_ReadData(MS_U32 *u32_SrcPhyAddr, MS_U32 *u32_DataByteCnt, MS_U32 *u32_BlkAddr);
 MS_BOOL Demo_EMMC_DumpData(MS_U32 *u32_SrcPhyAddr);
+MS_BOOL Demo_EMMC_Compare(MS_U32 *pu32_buf0, MS_U32 *pu32_buf1, MS_U32 *u32_byteCnt);
+MS_BOOL Demo_EMMC_Verify(MS_U32 *pu32_buf0, MS_U32 *pu32_buf1);
 
 #endif
 

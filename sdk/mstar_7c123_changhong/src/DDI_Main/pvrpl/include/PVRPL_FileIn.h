@@ -112,8 +112,6 @@ extern "C"
 
 #define FILEIN_ERROR_Handler 0xff
 
-
-
 #define PVRPL_FILEIN_FILTER_TYPE_MASK                    0x0000000F   ///< DMX filter type mask
 #define PVRPL_FILEIN_FILTER_TYPE_VIDEO                   0x00000000   ///< DMX video filter type
 #define PVRPL_FILEIN_FILTER_TYPE_AUDIO                   0x00000001   ///< DMX audio filter type
@@ -125,16 +123,18 @@ extern "C"
 #define PVRPL_FILEIN_FILTER_TYPE_AUDIO3                  0x00000009   ///< DMX audio 3 filter type
 #define PVRPL_FILEIN_FILTER_TYPE_AUDIO4                  0x0000000A   ///< DMX audio 4 filter type
 
-
+// FileIn DBG enum
 typedef enum
 {
     PVRPL_DBG_NONE,
+    PVRPL_DBG_MUST,
     PVRPL_DBG_ERR,
     PVRPL_DBG_WARN,
     PVRPL_DBG_INFO,
     PVRPL_DBG_FUNC,
     PVRPL_DBG_TRACE,
 } PVRPL_DBGMSG_LEVEL;
+//--------------------------------------------------------
 
 typedef enum
 {
@@ -197,14 +197,15 @@ typedef enum
     E_PVRPL_DMX_FLOW_PLAYBACK_NOCA              = 18,                      ///< DMX playback flow without pass through CA
     E_PVRPL_DMX_FLOW_PLAYBACK_SRC_TS1           = 19,                      ///< DMX playback, CA input from TS1 output to Live0
 
-	E_PVRPL_DMX_FLOW_PLAYBACK_FI				= 20,					   ///< DMX playback flow from TSFI (version 3.0)
+    E_PVRPL_DMX_FLOW_PLAYBACK_FI                = 20,                      ///< DMX playback flow from TSFI (version 3.0)
 
     E_PVRPL_DMX_FLOW_NUM,
 } EN_PVRPL_DMX_FLOW;
 
-typedef enum 
+typedef enum
 {
-    EN_FILEIN_INFO_PCR
+    EN_FILEIN_INFO_PCR,
+    EN_FILEIN_INFO_PCR_HIGH_BIT
 }EN_FILEIN_INFO;
 
 typedef struct

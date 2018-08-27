@@ -78,6 +78,27 @@
 #ifndef __DRV_DISH_H__
 #define __DRV_DISH_H__
 #include "drvDemod.h"
+#include "drvIIC.h"
+
+#define MAX_LNB_SUPPORT 4
+//============ debug setting ========================
+#define DISH_EN_ERR 0x01
+#define DISH_EN_DBG 0x02
+#define DISH_EN_API 0x04
+#define DISH_DEBUG_OPTIONS  0
+
+
+#if (DISH_DEBUG_OPTIONS & DISH_EN_ERR)
+#define DISH_ERR(x) printf("[DISH ERR]");printf x
+#else
+#define DISH_ERR(x) 
+#endif
+
+#if (DISH_DEBUG_OPTIONS & DISH_EN_DBG)
+#define DISH_DBG(x) printf("[DISH DBG]");printf x
+#else
+#define DISH_DBG(x) 
+#endif
 
 typedef enum
 {
@@ -123,9 +144,15 @@ typedef enum
 
 typedef struct
 {
+  MS_IIC_PORT eI2C_PORT;  ///<I2C port
+} LNBCTRL_CON_CONFIG;
+
+typedef struct
+{
     struct drv_demodtab_entry*                    pstDemodtab;
     MS_U8 u8CableIndex;                          //LNB IC to Cable connector, depend on Layout
     MS_U8 u8CurControlReg;
+    LNBCTRL_CON_CONFIG                      stLNBCon; 
 } DISH_MS_INIT_PARAM;
 
 typedef MS_BOOL     drv_dishop_Init(MS_U8 u8DishIndex, DISH_MS_INIT_PARAM* pParam);

@@ -1,0 +1,159 @@
+// There are three method to retrieve version from a CI (configuration items)
+// 1. Txt : Captre version from the first line of a txt file
+// 2. Elf : Embedded version by using binutility:
+//    Insert : arm-none-linux-gnueabi-objcopy --add-section .mmodule_version=version_info libXXXXX.so
+//    Readelf: readelf --string-dump=.mmodule_version libXXXXX.so
+// 3. MSIF: Embedded a binary string into a binary. And this string has a pre-defined format.
+//           'M','S','I','F',                /* Version ID Header */\
+//           '0','3',                          /* Info Class Code */\
+//           0x0000,                               /* Customer ID */\
+//           0x0000,                                 /* Module ID */\
+//           0x0000,                                   /* Chip ID */\
+//           '0',                                          /* CPU */\
+//           'S','N','_','_'                     /* Library Code */\
+//           '0','0',                              /* Library Ver */\
+//           '0','1',                             /* Build Number */\
+//           '0','0','1','2','3','4','5','5', /* P4 Change Number */\
+//           '2'                                            /* OS */\
+
+
+#Kernel(MSIF)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/linux/linux_kernel/3.10.40/uImage
+
+#Mboot(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/linux/MST245A_D01A_S_EMMC_32BIT.bin
+
+#Utopia(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/liblinux.so
+
+//#Utopia_AMAZON(Elf)
+//THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libAMAZON.so
+#Utopia_ACE(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiACE.so
+#Utopia_ACP(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiACP.so
+#Utopia_AUDIOApi(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiAUDIO.so
+#Utopia_CEC(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiCEC.so
+#Utopia_DAC(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiDAC.so
+#Utopia_DLC(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiDLC.so
+#Utopia_DMX(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiDMX.so
+#Utopia_GFX(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiGFX.so
+#Utopia_GOP(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiGOP.so
+#Utopia_GPD(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiGPD.so
+#Utopia_HDMITX(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiHDMITX.so
+#Utopia_HSL(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiHSL.so
+#Utopia_JPEG(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiJPEG.so
+#Utopia_MBX(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiMBX.so
+#Utopia_MFE(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiMFE.so
+#Utopia_PNL(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiPNL.so
+#Utopia_SWI2C(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiSWI2C.so
+#Utopia_VDEC(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiVDEC.so
+#Utopia_XC(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libapiXC.so
+//#Utopia_cashmere(Elf)
+//THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libcashmere.so
+#Utopia_AESDMA(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvAESDMA.so
+#Utopia_AUDSP(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvAUDSP.so
+#Utopia_AVD(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvAVD.so
+#Utopia_BDMA(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvBDMA.so
+#Utopia_CA2(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvCA2.so
+#Utopia_CIPHER(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvCIPHER.so
+#Utopia_CMDQ(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvCMDQ.so
+#Utopia_CPU(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvCPU.so
+#Utopia_DDC2BI(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvDDC2BI.so
+#Utopia_DEMOD(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvDEMOD.so
+#Utopia_DSCMB2(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvDSCMB2.so
+#Utopia_extdemod(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvdvbt2_extdemod.so
+#Utopia_GPIO(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvGPIO.so
+#Utopia_HWI2C(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvHWI2C.so
+#Utopia_IPAUTH(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvIPAUTH.so
+#Utopia_IR(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvIR.so
+#Utopia_MFE(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvMFE.so
+#Utopia_MIU(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvMIU.so
+#Utopia_MSPI(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvMSPI.so
+#Utopia_MVOP(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvMVOP.so
+#Utopia_PCMCIA(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvPCMCIA.so
+#Utopia_PM(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvPM.so
+#Utopia_PWM(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvPWM.so
+#Utopia_PWS(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvPWS.so
+#Utopia_RTC(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvRTC.so
+#Utopia_SAR(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvSAR.so
+#Utopia_SC(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvSC.so
+#Utopia_SEM(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvSEM.so
+#Utopia_SERFLASH.s(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvSERFLASH.so
+#Utopia_SYS(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvSYS.so
+#Utopia_URDMA(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvURDMA.so
+#Utopia_VE(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvVE.so
+#Utopia_VIF(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvVIF.so
+#Utopia_WDT(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libdrvWDT.so
+#Utopia_MsFS(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libMsFS.so
+
+#msAPI_GEGOP(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libmsAPI_GEGOP.so
+#msAPI_XC(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/bsp/vendor/lib_dynamic/libmsAPI_XC.so
+
+#Vdplayer(MSIF)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/cus_mstar/api/mm/vdplayer/libvdplayer_hf.a
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/cus_mstar/api/mm/vdplayer/libvdplayer.so
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/cus_mstar/api/mm/vdplayer/vdplayer.a
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/cus_mstar/api/mm/vdplayer_streaming/libvdplayer_hf.a
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/cus_mstar/api/mm/vdplayer_streaming/libvdplayer.so
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/cus_mstar/api/mm/vdplayer_streaming/vdplayer.a
+
+#mmsdk(Elf)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/cus_mstar/api/mm/mmsdk/libmmsdk.a
+
+#PVR(MSIF)
+THEALE/Uranus/Curry/DDI_Package/ddi_pkg_linux/cus_mstar/api/pvr/libmwPVR.a

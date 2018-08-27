@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -101,16 +101,18 @@ typedef enum
     E_ZAPPING_XC_SEAMLESS,
     E_ZAPPING_GOP_SEAMLESS,
     E_ZAPPING_FQ,
+    E_ZAPPING_DIP_SEAMLESS,
     E_ZAPPING_TYPE_NUM,
 }EN_ZAPPING_TYPE;
 
 MS_BOOL Demo_Zapping_SaveFreq(MS_U32* pu32Ch, MS_U32* pu32Freq, MS_U32* pu32QAM, MS_U32* pu32SR);
 MS_BOOL Demo_Zapping_SavePid(MS_U32* pu32Ch, MS_U32* pu32VideoPid, MS_U32* pu32AudioPid, MS_U32* pu32PCRPid, MS_U32* pu32VCodec, MS_U32* pu32ACodec);
 MS_BOOL Demo_Zapping_SaveTunerConfig(MS_U32* pu32TunerIndex, EN_DEMO_DMX_FLOW* DmxPlayback, EN_DEMO_DMX_FLOW_INPUT* DmxInput, int* DmxClkInv, int* DmxExtSync, int* DmxParallal);
+MS_BOOL Demo_Zapping_SaveDeviceInfo(EN_AV_Device* peDevice, MS_U32* pu32Mode, MS_U32* pu32Window, MS_U16* pu16X, MS_U16* pu16Y, MS_U16* pu16Width, MS_U16* pu16Height, MS_U16* pu16Layer);
 MS_BOOL Demo_Zapping_ZappingType(MS_U8* pu8ZappingType);
+MS_BOOL Demo_Zapping_ZappingType_EX(EN_AV_Device* peDevice,MS_U8* pu8ZappingType);
 MS_BOOL Demo_Zapping_Channel(EN_AV_Device* peDevice,MS_U32* pu32Ch);
-
-MS_BOOL Demo_Zapping_GetZappingType(EN_ZAPPING_TYPE* peZappingType);
+MS_BOOL Demo_Zapping_GetZappingType(EN_AV_Device* peDevice,EN_ZAPPING_TYPE* peZappingType);
 
 #if (DEMO_ZAPPING_FQ_TEST == 1)
 MS_BOOL Demo_FQ_Eng_Init(MS_U32* pu32Ch,MS_U32* pu32FillFQTime);

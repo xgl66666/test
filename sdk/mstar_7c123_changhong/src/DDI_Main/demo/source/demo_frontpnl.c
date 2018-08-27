@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -108,6 +108,8 @@
 #include "msAPI_Gpio.h"
 #include "drvFrontPnl.h"
 #include "demo_utility.h"
+#include "demo_frontpnl.h"
+#include "demo_pm.h"
 //-------------------------------------------------------------------------------------------------
 //                                MACROS
 //-------------------------------------------------------------------------------------------------
@@ -118,7 +120,7 @@
 //  Local Defines
 //-------------------------------------------------------------------------------------------------
 #define APP_DEMO_FrontPnl_TASK_STACK         (4096)
-
+#define ONE_PRESS_DETECT_NUM 25
 //-------------------------------------------------------------------------------------------------
 //  Local Variables
 //-------------------------------------------------------------------------------------------------
@@ -126,6 +128,16 @@ static void *_pTaskStack = NULL;
 static MS_S32 _s32TaskId = -1;
 static MS_S32 _s32TimerId = -1;
 
+static void *_pKeyTaskStack = NULL;
+static MS_S32 _s32KeyTaskId = -1;
+
+//------------------------------------------------------------------------------
+/// @brief app demo of input device to handle all interrupts and events.
+/// @return None
+/// @sa
+/// @note
+/// Command: \b none \n
+//------------------------------------------------------------------------------
 static void appDemo_FrontPnl_TimerCb(MS_U32 u32StTimer, MS_U32 u32TimerID)
 {
     static MS_U8 u8dot = 0;
@@ -207,10 +219,14 @@ static void appDemo_FrontPnl_TimerCb(MS_U32 u32StTimer, MS_U32 u32TimerID)
         u8dot = 0;
     }
 }
-//-------------------------------------------------------------------------------------------------
-/// app demo of input device to handle all interrupts and events.
+
+//------------------------------------------------------------------------------
+/// @brief app demo of input device to handle all interrupts and events.
 /// @return None
-//-------------------------------------------------------------------------------------------------
+/// @sa
+/// @note
+/// Command: \b none \n
+//------------------------------------------------------------------------------
 static void _appDemo_FrontPnl_Task(MS_U32 argc, void *argv)
 {
     MS_U32 u32KeyValue = 0;
@@ -223,20 +239,25 @@ static void _appDemo_FrontPnl_Task(MS_U32 argc, void *argv)
         MDrv_FrontPnl_ReadKeyPad(&u32KeyValue);
 
         if(u32KeyValue != 0){
-            //printf("MDrv_FrontPnl_ReadKeyPad KeyValue = 0x%lu\n",u32KeyValue);
+            //printf("\33[31m MDrv_FrontPnl_ReadKeyPad KeyValue = 0x%lu\n \33[m",u32KeyValue);
         }
 
         MsOS_DelayTask(2);
-        //delay(500);
 
-        #if 1
         MDrv_FrontPnl_Show();
 
         MsOS_DelayTask(2);
-        #endif
+
     }
 }
 
+//------------------------------------------------------------------------------
+/// @brief Create the Front Panel Task to show time in digits
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Command: \b none \n
+//------------------------------------------------------------------------------
 MS_BOOL Demo_FrontPnl_Init(void)
 {
     MS_S32 s32MstarCachedPoolID = INVALID_POOL_ID;
@@ -280,6 +301,17 @@ MS_BOOL Demo_FrontPnl_Dot_Enable(MS_U32 *u32Dot)
     return TRUE;
 }
 
+//------------------------------------------------------------------------------
+/// @brief Set the four digit value
+/// @param[in] Digital 4
+/// @param[in] Digital 3
+/// @Param[in] Digital 2
+/// @Param[in] Digital 1
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Command: \b none \n
+//------------------------------------------------------------------------------
 MS_BOOL Demo_FrontPnl_Digital_Set(MS_U32 *u32D4, MS_U32 *u32D3, MS_U32 *u32D2, MS_U32 *u32D1)
 {
     MS_U8 arDigital[4];
@@ -291,6 +323,157 @@ MS_BOOL Demo_FrontPnl_Digital_Set(MS_U32 *u32D4, MS_U32 *u32D3, MS_U32 *u32D2, M
 
     return MDrv_FrontPnl_Digital_Set(arDigital,4);
 }
+
+//------------------------------------------------------------------------------
+/// @brief app demo of input device to handle all interrupts and set the LED value
+/// @return None
+/// @sa
+/// @note
+/// Command: \b none \n
+//------------------------------------------------------------------------------
+static void _appDemo_FrontPnl_KeyDetect_Task(MS_U32 argc, void *argv)
+{
+    MS_U32 u32KeyValue = 0;
+    MS_U32 u32Digit0 = 0;
+    MS_U32 u32Digit1 = 0;
+    MS_U32 u32Digit2 = 0;
+    MS_U32 u32Digit3 = 0;
+    MS_U32 u32count = 0;
+    MDrv_FrontPnl_Init();
+    Demo_FrontPnl_Digital_Set(&u32Digit0,&u32Digit1,&u32Digit2,&u32Digit3);
+
+    while(1)
+    {
+        MDrv_FrontPnl_ReadKeyPad(&u32KeyValue);
+
+        if(u32KeyValue != 0)
+        {
+            u32count++;
+            //the count value could be ajusted to detect one press
+            if(u32count >= ONE_PRESS_DETECT_NUM)
+            {
+                u32count = 0;
+                switch ((EN_FRONTPANEL_KEYPAD_VALUE)u32KeyValue)
+                {
+                    case EN_FRONTPANEL_KEYPAD_VOLMINUS:
+                    {
+                        if(u32Digit3 == 0x9)
+                        {
+                            u32Digit3 = 0;
+                        }
+                        else
+                        {
+                            u32Digit3++;
+
+                        }
+                        break;
+                    }
+                    case EN_FRONTPANEL_KEYPAD_VOLPLUS:
+                    {
+                        if(u32Digit2 == 0x9)
+                        {
+                            u32Digit2 = 0;
+                        }
+                        else
+                        {
+                            u32Digit2++;
+
+                        }
+                        break;
+                    }
+                    case EN_FRONTPANEL_KEYPAD_CHMINUS:
+                    {
+                        if(u32Digit1 == 0x9)
+                        {
+                            u32Digit1 = 0;
+                        }
+                        else
+                        {
+                            u32Digit1++;
+
+                        }
+                        break;
+                    }
+                    case EN_FRONTPANEL_KEYPAD_CHPLUS:
+                    {
+                        if(u32Digit0 == 0x9)
+                        {
+                            u32Digit0 = 0;
+                        }
+                        else
+                        {
+                            u32Digit0++;
+
+                        }
+                        break;
+                    }
+                    case EN_FRONTPANEL_KEYPAD_STANDBY:
+                    {
+                        //Standby key has been pressed, goto PM sleep
+                        Demo_PM_STR();
+                        break;
+                    }
+                    default:
+                    {
+                        printf("Get unhandle key code!!!\n");
+                        break;
+                    }
+                    //printf("MDrv_FrontPnl_ReadKeyPad KeyValue = 0x%lu\n",u32KeyValue);
+
+                }
+            }
+            //set the digital value
+            Demo_FrontPnl_Digital_Set(&u32Digit0,&u32Digit1,&u32Digit2,&u32Digit3);
+        }
+        else
+        {
+            u32count = 0;
+        }
+        MsOS_DelayTask(2);
+
+        // show digital value
+        MDrv_FrontPnl_Show();
+
+        MsOS_DelayTask(2);
+    }
+}
+
+
+//------------------------------------------------------------------------------
+/// @brief Create a task to monitor the key interrupt
+/// @return None
+/// @sa
+/// @note
+/// Command: \b none \n
+//------------------------------------------------------------------------------
+MS_BOOL Demo_FrontPnl_KeyEnable(void)
+{
+    MS_S32 s32MstarCachedPoolID = INVALID_POOL_ID;
+
+    Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_CACHE,&s32MstarCachedPoolID);
+    // create app demo task of input device
+    _pKeyTaskStack = MsOS_AllocateMemory( APP_DEMO_FrontPnl_TASK_STACK, s32MstarCachedPoolID);
+    if (_pKeyTaskStack == NULL)
+    {
+        GEN_EXCEP;
+    }
+    _s32KeyTaskId = MsOS_CreateTask(_appDemo_FrontPnl_KeyDetect_Task,
+                                         NULL,
+                                         E_TASK_PRI_HIGH, // E_TASK_PRI_MEDIUM,
+                                         TRUE,
+                                         _pKeyTaskStack,
+                                         APP_DEMO_FrontPnl_TASK_STACK,
+                                         "Demo FrontPnl Tsk");
+    if (_s32KeyTaskId < 0)
+    {
+        GEN_EXCEP;
+    }
+
+    return TRUE;
+
+}
+
+
 
 MS_BOOL Demo_FrontPnl_ShowOpen_Enable(MS_U32 *u32ShowOpen)
 {

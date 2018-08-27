@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -928,9 +928,10 @@ static void _Demo_AESDMA_RandomNumber(void)
     MS_S32 NON_CACHE_POOL_ID = INVALID_POOL_ID;
     Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&NON_CACHE_POOL_ID);
 
-    MS_U8 *pu8RandomNmber = (MS_U8*)MsOS_AllocateMemory(FIPS140_1_NUMBYTES, NON_CACHE_POOL_ID);
+    MS_U8 *pu8RandomNumber = (MS_U8 *)MsOS_AllocateMemory(FIPS140_1_NUMBYTES, NON_CACHE_POOL_ID);
+    MS_U32 u32RandomNumber = MsOS_VA2PA((MS_U32)pu8RandomNumber);
 
-    memset(pu8RandomNmber, 0, FIPS140_1_NUMBYTES);
+    memset(pu8RandomNumber, 0, FIPS140_1_NUMBYTES);
 
 #if DDI_DEMO_AESDMA_UTPA2
     MS_U32 u32Ret = UTOPIA_STATUS_SUCCESS;
@@ -942,7 +943,7 @@ static void _Demo_AESDMA_RandomNumber(void)
         return;
     }
 
-    pArgs.u32PABuf = (MS_U32 *)MsOS_VA2PA((MS_U32)pu8RandomNmber);
+    pArgs.u32PABuf = (MS_U32 *)u32RandomNumber;
     pArgs.u32Size  = FIPS140_1_NUMBYTES;
 
     u32Ret = UtopiaIoctl(pu32CipherDevice, MDrv_CMD_AESDMA_Rand, (void*)&pArgs);
@@ -953,7 +954,8 @@ static void _Demo_AESDMA_RandomNumber(void)
     }
 
 #else
-    if(DRVAESDMA_OK != MDrv_AESDMA_Rand((MS_U32 *)MsOS_VA2PA((MS_U32)pu8RandomNmber),FIPS140_1_NUMBYTES))
+
+    if(DRVAESDMA_OK != MDrv_AESDMA_Rand((MS_U32 *)u32RandomNumber,FIPS140_1_NUMBYTES))
     {
         printf("AESDMA: Get random number fail\n");
         goto AESDMA_RNDNUM_EXIT;
@@ -961,19 +963,19 @@ static void _Demo_AESDMA_RandomNumber(void)
     }
 #endif
 
-    if(FALSE == _FIPS140_1_Monobit_test(pu8RandomNmber, FIPS140_1_NUMBYTES))
+    if(FALSE == _FIPS140_1_Monobit_test(pu8RandomNumber, FIPS140_1_NUMBYTES))
     {
         printf("AESDMA: Random number monobit test fail\n");
         u8Error++;
     }
 
-    if(FALSE == _FIPS140_1_Poker_test(pu8RandomNmber, FIPS140_1_NUMBYTES))
+    if(FALSE == _FIPS140_1_Poker_test(pu8RandomNumber, FIPS140_1_NUMBYTES))
     {
         printf("AESDMA: Random number poker test fail\n");
         u8Error++;
     }
 
-    if(FALSE == _FIPS140_1_Runs_test(pu8RandomNmber, FIPS140_1_NUMBYTES))
+    if(FALSE == _FIPS140_1_Runs_test(pu8RandomNumber, FIPS140_1_NUMBYTES))
     {
         printf("AESDMA: Random number runs & long runs test fail\n");
         u8Error++;
@@ -986,7 +988,7 @@ static void _Demo_AESDMA_RandomNumber(void)
 
 AESDMA_RNDNUM_EXIT:
 
-    MsOS_FreeMemory(pu8RandomNmber, NON_CACHE_POOL_ID);
+    MsOS_FreeMemory(pu8RandomNumber, NON_CACHE_POOL_ID);
 
     return;
 }
@@ -1411,6 +1413,12 @@ MS_BOOL Demo_CIPHER_DoCIPHERDemo(void)
     MS_U32 u32MsgSize = sizeof(msg0) + sizeof(msg1) + sizeof(msg2);
     MS_U8 *pu8MsgIn   = u8Buf;
     MS_U8 *pu8Digest_Buffer = u8Buf + u32MsgSize;
+    MS_U32 u32AlignSize = 0;                     // alignment
+    u32AlignSize = (int)pu8Digest_Buffer;
+    if((u32AlignSize%16)!=0)
+        {
+            pu8Digest_Buffer = pu8Digest_Buffer + 16 -(u32AlignSize%16) ;
+        }
 
     if(u8Buf == NULL) {
         printf("Error: failed\n");
@@ -1520,7 +1528,7 @@ MS_U32 u32Loop_wait_time)
         ((stDemoCIPHERConfig.eKeySrc == E_DEMO_CIPHER_KSRC_KL) && (stDemoCIPHERConfig.pKLCallbackFunc == NULL)) ||
         ((stDemoCIPHERConfig.eMode == E_DEMO_CIPHER_MODE_AES_CBC) && (stDemoCIPHERConfig.pu8IV == NULL)))
     {
-        printf("[%s][%d]Error Key! [KeySrc, CPUKey, KLCallback]:[%d,%8lX,%8lX] , [Mode, IVKey]:[%d,%8lX]",__FUNCTION__,__LINE__,stDemoCIPHERConfig.eKeySrc,(MS_U32)stDemoCIPHERConfig.puCPU8Key,(MS_U32)stDemoCIPHERConfig.pKLCallbackFunc,stDemoCIPHERConfig.eMode,(MS_U32)stDemoCIPHERConfig.pu8IV);
+        printf("[%s][%d]Error Key! [KeySrc, CPUKey, KLCallback]:[%d,%08x,%08x] , [Mode, IVKey]:[%d,%08x]",__FUNCTION__,__LINE__,stDemoCIPHERConfig.eKeySrc,(unsigned int)stDemoCIPHERConfig.puCPU8Key,(unsigned int)stDemoCIPHERConfig.pKLCallbackFunc,stDemoCIPHERConfig.eMode,(unsigned int)stDemoCIPHERConfig.pu8IV);
         return FALSE;
     }
 
@@ -1528,7 +1536,7 @@ MS_U32 u32Loop_wait_time)
     if((u32Length <DEMO_CIPHER_ALIGNMENT_LEN) || (u32Length%DEMO_CIPHER_ALIGNMENT_LEN !=0)
         || (u32PhyAddressIn%DEMO_CIPHER_ALIGNMENT_LEN!=0) || (u32PhyAddressOut%DEMO_CIPHER_ALIGNMENT_LEN!=0))
     {
-        printf("[%s][%d]Error: CIPHER Write Buffer (%8lX,%8lX,%8lX) is invalid in mode(%d). \n",__FUNCTION__,__LINE__,u32PhyAddressIn,u32PhyAddressOut,u32Length,bDescrypt);
+        printf("[%s][%d]Error: CIPHER Write Buffer (%08x,%08x,%08x) is invalid in mode(%d). \n",__FUNCTION__,__LINE__,(unsigned int)u32PhyAddressIn,(unsigned int)u32PhyAddressOut,(unsigned int)u32Length,bDescrypt);
         return FALSE;
     }
 
@@ -1666,11 +1674,11 @@ MS_U32 u32Loop_wait_time)
 
 MS_BOOL Demo_CIPHER_RandonNumber(void)
 {
-    if(FALSE == _Demo_CIPHER_Init())
+    if(DRV_CIPHER_OK != MDrv_AESDMA_Init(0,0,0))
     {
-        printf("CIPHER: driver init failed\n");
+        printf("Error: MDrv_AESDMA_Init() failed\n");
+        return FALSE;
     }
-
     //Random number test : FIPS140-1
     _Demo_AESDMA_RandomNumber();
 

@@ -90,7 +90,7 @@ extern "C"
 /// @{
 
 /// define mmsdk stack size
-#define MMSDK_PTHREAD_STACK_SIZE 8*1024 //8K
+#define MMSDK_PTHREAD_STACK_SIZE 0x10000 //64K
 
 
 /// define mutex multiple-instance item
@@ -118,6 +118,16 @@ typedef enum
     E_MMSDK_TASK_PRI_LOWEST   = 24,
     ///< super priority task and set Round-robin schedule
     E_MMSDK_TASK_PRI_SUPER_SCHEDULE_RR = 100,
+    ///< The start offset for set Round-robin schedule
+    E_MMSDK_TASK_PRI_OFFSET_SCHEDULE_RR = 0x100,
+    ///< Low priority task and set Round-robin schedule
+    E_MMSDK_TASK_PRI_LOW_SCHEDULE_RR = E_MMSDK_TASK_PRI_OFFSET_SCHEDULE_RR + 1,
+    ///< Medium priority task and set Round-robin schedule
+    E_MMSDK_TASK_PRI_MEDIUM_SCHEDULE_RR = E_MMSDK_TASK_PRI_OFFSET_SCHEDULE_RR + 50,
+    ///< super priority task and set Round-robin schedule(same setting with E_MMSDK_TASK_PRI_SUPER_SCHEDULE_RR)
+    E_MMSDK_TASK_PRI_HIGHEST_SCHEDULE_RR = E_MMSDK_TASK_PRI_OFFSET_SCHEDULE_RR + 99,
+    ///< The start offset for set FIFO schedule
+    E_MMSDK_TASK_PRI_OFFSET_SCHEDULE_FIFO = 0x200,
 } EN_MMSDK_TASK_PRIORITY;
 
 //------------------------------------------------------------------------------

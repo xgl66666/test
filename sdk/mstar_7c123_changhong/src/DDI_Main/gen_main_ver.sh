@@ -5,7 +5,7 @@ else
     CURR_PATH=$1
 fi
 
-PROJ_PATH=`/usr/bin/git remote -v | head -n1 | awk '{print $2}' | sed 's/ssh:\/\/.*@.*:[0-9]*\///'`
+PROJ_PATH=`git remote -v | head -n1 | awk '{print $2}' | sed 's/ssh:\/\/.*@.*:[0-9]*\///'`
 VER=`git rev-parse HEAD`
 echo "$VER @ $PROJ_PATH"
 

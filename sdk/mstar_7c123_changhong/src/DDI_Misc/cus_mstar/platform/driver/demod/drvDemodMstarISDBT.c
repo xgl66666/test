@@ -90,9 +90,12 @@ rights to any and all damages, losses, costs and expenses resulting therefrom.
  **********************************************************************/
 #define _INTERN_ISDBT_C_
 #include "Board.h"
-#if defined(CHIP_KAPPA) || defined(CHIP_KIWI)
+
+#if IS_THIS_DEMOD_PICKED(DEMOD_MSINTERN_ISDBT)
+#if defined(CHIP_KAPPA) || defined(CHIP_KIWI) || defined(CHIP_K5TN) || defined(CHIP_K5AP)
 
 #include <math.h>
+#include <string.h>
 #include "MsCommon.h"
 #include "drvDemod.h"
 //#include "Tuner.h"
@@ -142,7 +145,8 @@ rights to any and all damages, losses, costs and expenses resulting therefrom.
 
 const static MS_U32 _u32IFrequency = 5000;
 static DEMOD_ISDBT_Layer eISDBT_Layer = DEMOD_ISDBT_Layer_A;
-static MS_U32 u32ISDBT_TDI_BUF_ADR = NULL;
+static MS_U32 u32ISDBT_TDI_BUF_ADR = 0;
+static DEMOD_MS_INIT_PARAM MS_ISDBT_INIT_PARAM;
 
 //static BOOL s_bI2C_FastMode = false;
 
@@ -176,7 +180,7 @@ MAPI_BOOL Set_PowerOff(void)
     return TRUE;
 }
 
-MAPI_BOOL MDrv_MStar_ISDBT_Power_On_Initialization(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
+MAPI_BOOL MDrv_MSISDBT_Power_On_Initialization(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
 {
     MAPI_BOOL   bResult = true;
     DMD_ISDBT_InitData sDMD_ISDBT_InitData;
@@ -195,6 +199,8 @@ MAPI_BOOL MDrv_MStar_ISDBT_Power_On_Initialization(MS_U8 u8DemodIndex,DEMOD_MS_I
     {
        DMD_DBG(("INTERN_ISDBT Get Tuner IF %d kHz\n", (int)u32IF_Freq));
     }
+    
+    MS_ISDBT_INIT_PARAM.pstTunertab = pParam->pstTunertab;
 
     // copy tuner config
     //mapi_interface::Get_mapi_pcb()->GetIsdbTuner(0)->ExtendCommand(mapi_tuner_datatype::E_TUNER_SUBCMD_GET_IQ_SWAP, E_TUNER_DTV_ISDB_MODE, NULL, &u8IqSwap);
@@ -209,7 +215,7 @@ MAPI_BOOL MDrv_MStar_ISDBT_Power_On_Initialization(MS_U8 u8DemodIndex,DEMOD_MS_I
 #ifdef ISDBT_TDI_BUF_ADR
     sDMD_ISDBT_InitData.u32TdiStartAddr= ISDBT_TDI_BUF_ADR/16;
 #else
-    if(NULL == u32ISDBT_TDI_BUF_ADR)
+    if(u32ISDBT_TDI_BUF_ADR == 0)
         return FALSE;
     else
         sDMD_ISDBT_InitData.u32TdiStartAddr= u32ISDBT_TDI_BUF_ADR/16;
@@ -238,7 +244,7 @@ MAPI_BOOL MDrv_MStar_ISDBT_Power_On_Initialization(MS_U8 u8DemodIndex,DEMOD_MS_I
     return bResult;
 }
 
-MAPI_BOOL MDrv_MStar_ISDBT_Lock(MS_U8 u8DemodIndex,EN_LOCK_STATUS *peLockStatus)
+MAPI_BOOL MDrv_MSISDBT_Lock(MS_U8 u8DemodIndex,EN_LOCK_STATUS *peLockStatus)
 {
     DMD_ISDBT_LOCK_STATUS eLockStatus = DMD_ISDBT_UNLOCK;
     COFDM_LOCK_STATUS eStatus = COFDM_FEC_LOCK;
@@ -272,7 +278,7 @@ MAPI_BOOL MDrv_MStar_ISDBT_Lock(MS_U8 u8DemodIndex,EN_LOCK_STATUS *peLockStatus)
 
     return TRUE;
 }
-MAPI_BOOL MDrv_MStar_ISDBT_Config(RF_CHANNEL_BANDWIDTH BW, MAPI_BOOL bSerialTS, MAPI_BOOL bPalBG, MAPI_BOOL bLPSel)
+MAPI_BOOL MDrv_MSISDBT_Config(RF_CHANNEL_BANDWIDTH BW, MAPI_BOOL bSerialTS, MAPI_BOOL bPalBG, MAPI_BOOL bLPSel)
 {
     BW = BW;
     bSerialTS = bSerialTS;
@@ -282,7 +288,7 @@ MAPI_BOOL MDrv_MStar_ISDBT_Config(RF_CHANNEL_BANDWIDTH BW, MAPI_BOOL bSerialTS, 
 }
 
 
-MAPI_BOOL MDrv_MStar_ISDBT_Serial_Control(MAPI_BOOL bEnable)
+MAPI_BOOL MDrv_MSISDBT_Serial_Control(MAPI_BOOL bEnable)
 {
     MS_U8  u8TsConfigData;
 
@@ -326,28 +332,35 @@ void INTERN_ISDBT_PAD_TS1_Enable(MAPI_BOOL flag)
     }
 }
 
-MS_BOOL MDrv_MStar_ISDBT_Demod_GetSNR(MS_U8 u8DemodIndex, float* pfSNR)
+MS_BOOL MDrv_MSISDBT_Demod_GetSNR(MS_U8 u8DemodIndex, float* pfSNR)
 {
     MS_BOOL bRtn = FALSE;
     bRtn = MDrv_DMD_ISDBT_GetSNR(pfSNR);
     return bRtn;
 }
 
-MS_BOOL MDrv_MStar_ISDBT_Demod_GetBER(MS_U8 u8DemodIndex, float* pfBER)
+MS_BOOL MDrv_MSISDBT_Demod_GetBER(MS_U8 u8DemodIndex, float* pfBER)
 {
     MS_BOOL bRtn = FALSE;
     bRtn = MDrv_DMD_ISDBT_GetPostViterbiBer((EN_ISDBT_Layer)eISDBT_Layer, pfBER);
     return bRtn;
 }
 
-MS_BOOL MDrv_MStar_ISDBT_Demod_GetPWR(MS_U8 u8DemodIndex,MS_S32 *ps32Signal)
+MS_BOOL MDrv_MSISDBT_Demod_GetPWR(MS_U8 u8DemodIndex,MS_S32 *ps32Signal)
 {
     MS_BOOL bRtn = FALSE;
-    bRtn = MDrv_DMD_ISDBT_GetSignalStrength((MS_U16*)ps32Signal);
+    bRtn = MS_ISDBT_INIT_PARAM.pstTunertab->Extension_Function(u8DemodIndex, TUNER_EXT_FUNC_GET_POWER_LEVEL, ps32Signal);
     return bRtn;
 }
 
-MS_BOOL MDrv_MStar_ISDBT_Demod_GetSignalQuality(MS_U8 u8DemodIndex, MS_U16* u16Quality)
+MS_BOOL MDrv_MSISDBT_Demod_GetSSI(MS_U8 u8DemodIndex,MS_U16 *pu16SSI)
+{
+    MS_BOOL bRtn = FALSE;
+    bRtn = MDrv_DMD_ISDBT_GetSignalStrength(pu16SSI);
+    return bRtn;
+}
+
+MS_BOOL MDrv_MSISDBT_Demod_GetSignalQuality(MS_U8 u8DemodIndex, MS_U16* u16Quality)
 {
     FUNCTION_RESULT ret = E_RESULT_SUCCESS;
 
@@ -358,7 +371,30 @@ MS_BOOL MDrv_MStar_ISDBT_Demod_GetSignalQuality(MS_U8 u8DemodIndex, MS_U16* u16Q
     return ret;
 }
 
-MS_BOOL MDrv_MStar_ISDBT_Demod_GetPacketError(MS_U8 u8DemodIndex, MS_U16 *u16PktErr)
+MS_BOOL MDrv_MSISDBT_Demod_GetParam(MS_U8 u8DemodIndex,DEMOD_MS_FE_CARRIER_PARAM* pParam)
+{
+    MS_BOOL bRtn = FALSE;
+    MS_U8 i;
+    sISDBT_MODULATION_MODE stMOD;
+
+    
+    for(i=0;i<3;i++)
+    {
+        bRtn = MDrv_DMD_ISDBT_GetModulationMode((EN_ISDBT_Layer)i, &stMOD);
+        if(bRtn)
+        {
+            memcpy(&pParam->ISDBTParam.stLayerX_Param[i], &stMOD, sizeof(sISDBT_MODULATION_MODE));
+        }
+        else
+        {
+            return bRtn;
+        }
+    }
+    return bRtn;
+}
+
+
+MS_BOOL MDrv_MSISDBT_Demod_GetPacketError(MS_U8 u8DemodIndex, MS_U16 *u16PktErr)
 {
     MS_BOOL bRtn = FALSE;
 
@@ -366,27 +402,27 @@ MS_BOOL MDrv_MStar_ISDBT_Demod_GetPacketError(MS_U8 u8DemodIndex, MS_U16 *u16Pkt
     return bRtn;
 }
 
-MS_BOOL MDrv_MStar_ISDBT_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM* pParam,MS_U32 u32BroadCastType)
+MS_BOOL MDrv_MSISDBT_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM* pParam,MS_U32 u32BroadCastType)
 {
     MS_BOOL bRtn = FALSE;
     bRtn = MDrv_DMD_ISDBT_SetConfig(TRUE);
     return bRtn;
 }
 
-MS_BOOL MDrv_MStar_ISDBT_Demod_Open(MS_U8 u8DemodIndex)
+MS_BOOL MDrv_MSISDBT_Demod_Open(MS_U8 u8DemodIndex)
 {
     MDrv_DMD_PreInit();
     return TRUE;
 }
 
-MS_BOOL MDrv_MStar_ISDBT_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE fuction_type, void *data)
+MS_BOOL MDrv_MSISDBT_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE fuction_type, void *data)
 {
     MS_BOOL bret = TRUE;
 
     switch(fuction_type)
     {
         case DEMOD_EXT_FUNC_OPEN:
-            bret &= MDrv_MStar_ISDBT_Demod_Open(u8DemodIndex);
+            bret &= MDrv_MSISDBT_Demod_Open(u8DemodIndex);
             break;
         case DEMOD_EXT_FUNC_SET_ISDBT_LAYER:
             eISDBT_Layer = *(DEMOD_ISDBT_Layer*)data;
@@ -404,7 +440,7 @@ MS_BOOL MDrv_MStar_ISDBT_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTI
     return bret ;
 }
 
-MS_BOOL MDrv_MStar_ISDBT_Demod_I2C_ByPass(MS_U8 u8DemodIndex,MS_BOOL bOn)
+MS_BOOL MDrv_MSISDBT_Demod_I2C_ByPass(MS_U8 u8DemodIndex,MS_BOOL bOn)
 {
   if(GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_ISDBT).I2CByPassPreSetting != NULL)
   {
@@ -414,24 +450,51 @@ MS_BOOL MDrv_MStar_ISDBT_Demod_I2C_ByPass(MS_U8 u8DemodIndex,MS_BOOL bOn)
       return MDrv_Demod_null_I2C_ByPass(u8DemodIndex,bOn);
 }
 
+#ifdef FE_AUTO_TEST
+MS_BOOL  MDrv_MSISDBT_Demod_ReadReg(MS_U8 u8DemodIndex, MS_U16 RegAddr, MS_U8 *pu8Data)
+{
+    MS_BOOL bret = TRUE;
+    
+    bret = MDrv_DMD_ISDBT_GetReg(RegAddr, pu8Data);
+    return bret;
+}
+
+MS_BOOL MDrv_MSISDBT_Demod_WriteReg(MS_U8 u8DemodIndex, MS_U16 RegAddr, MS_U16 RegData)
+{
+    MS_BOOL bret = TRUE;
+    MS_U8 u8RegData;
+
+    u8RegData = (MS_U8)RegData;
+    bret = MDrv_DMD_ISDBT_SetReg(RegAddr, u8RegData);
+    return bret;
+}
+#endif
+
 
 DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_ISDBT) DDI_DRV_TABLE_ENTRY(demodtab) =
 {
      .name                         = "DEMOD_MSINTERN_ISDBT",
      .data                         = DEMOD_MSINTERN_ISDBT,
-     .init                         = MDrv_MStar_ISDBT_Power_On_Initialization,
-     .GetLock                      = MDrv_MStar_ISDBT_Lock,
-     .GetSNR                       = MDrv_MStar_ISDBT_Demod_GetSNR,
-     .GetBER                       = MDrv_MStar_ISDBT_Demod_GetBER,
-     .GetPWR                       = MDrv_MStar_ISDBT_Demod_GetPWR,
-     .GetQuality                   = MDrv_MStar_ISDBT_Demod_GetSignalQuality,
-     .GetParam                     = MDrv_Demod_null_GetParam,
-     .Restart                      = MDrv_MStar_ISDBT_Demod_Restart,
-     .I2CByPass                    = MDrv_MStar_ISDBT_Demod_I2C_ByPass,
+     .SupportINT                   = FALSE,
+     .init                         = MDrv_MSISDBT_Power_On_Initialization,
+     .GetLock                      = MDrv_MSISDBT_Lock,
+     .GetSNR                       = MDrv_MSISDBT_Demod_GetSNR,
+     .GetBER                       = MDrv_MSISDBT_Demod_GetBER,
+     .GetPWR                       = MDrv_MSISDBT_Demod_GetPWR,
+     .GetSSI                       = MDrv_MSISDBT_Demod_GetSSI,
+     .GetQuality                   = MDrv_MSISDBT_Demod_GetSignalQuality,
+     .GetParam                     = MDrv_MSISDBT_Demod_GetParam,
+     .Restart                      = MDrv_MSISDBT_Demod_Restart,
+     .I2CByPass                    = MDrv_MSISDBT_Demod_I2C_ByPass,
      .I2CByPassPreSetting          = NULL,
-     .Extension_Function           = MDrv_MStar_ISDBT_Extension_Function,
+     .Extension_Function           = MDrv_MSISDBT_Extension_Function,
      .Extension_FunctionPreSetting = NULL,
-     .Get_Packet_Error             = MDrv_MStar_ISDBT_Demod_GetPacketError,     
+     .Get_Packet_Error             = MDrv_MSISDBT_Demod_GetPacketError,     
+     .CheckExist                   = MDrv_Demod_null_CheckExist,
+#ifdef FE_AUTO_TEST
+     .ReadReg                      = MDrv_MSISDBT_Demod_ReadReg,
+     .WriteReg                     = MDrv_MSISDBT_Demod_WriteReg,
+#endif 
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
@@ -454,10 +517,14 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_ISDBT) DDI_DRV_TABLE_EN
      .DiSEqCGetLNBOut              = MDrv_Demod_null_DiSEqC_GetLNBOut,
      .DiSEqCSet22kOnOff            = MDrv_Demod_null_DiSEqC_Set22kOnOff,
      .DiSEqCGet22kOnOff            = MDrv_Demod_null_DiSEqC_Get22kOnOff,
-     .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd
+     .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd,
+     .DiSEqC_GetReply              = MDrv_Demod_null_DiSEqC_GetReply,
+     .GetISIDInfo                  = MDrv_Demod_null_GetVCM_ISID_INFO,
+     .SetISID                      = MDrv_Demod_null_SetVCM_ISID
 #endif
 };
 
+#endif
 #endif
 #undef _INTERN_ISDBT_C_
 

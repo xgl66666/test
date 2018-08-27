@@ -145,6 +145,26 @@ extern "C" {
 
 #define HYDRA_DMD_STATUS_END_ADDR_OFFSET                  0x3FFFC748
 
+#define HYDRA_DSQ0_BASE_ADDR                              0x80040000
+
+#define HYDRA_DSQ_DELAY_REG_OFFSET                        0x4
+#define HYDRA_DSQ0_DELAY_REG                               (HYDRA_DSQ0_BASE_ADDR + HYDRA_DSQ_DELAY_REG_OFFSET)
+
+#define HYDRA_DSQ_START_DELAY_LSBPOS                      0
+#define HYDRA_DSQ_START_DELAY_MASK                        0xFF
+
+#define HYDRA_DSQ_REPLY_DELAY_LSBPOS                      8
+#define HYDRA_DSQ_REPLY_DELAY_MASK                        0x3FF
+
+#define HYDRA_DSQ_ENDMSG_DELAY_LSBPOS                     24
+#define HYDRA_DSQ_ENDMSG_DELAY_MASK                       0x3F
+
+#define HYDRA_DSQ_NEWMSG_DELAY_LSBPOS                     18
+#define HYDRA_DSQ_NEWMSG_DELAY_MASK                       0x3F
+
+// offset between instances of diseqc
+#define HYDRA_DSQ_ID_OFFSET                               0x00010000
+
 // Tuner status address offset from respective tuners's base address
 #define HYDRA_TUNER_DEMOD_ID_ADDR_OFFSET                  0x3FFFCE4C
 #define HYDRA_TUNER_AGC_LOCK_OFFSET                       0x3FFFCE50
@@ -945,6 +965,10 @@ extern "C" {
 #define   xpt_enable_pcr_count     0x90700184,1,1
 
 #define   xcpu_ctrl_003c_reg       0x9072003C,0,4
+
+//Registers for Get_Splitter_Attenuation API                        
+#define   WB_DFE2_DFE_FB_LNA_BO_BASEADDR                         0x905004A8
+#define   AFE_REG_D2A_TA_RFFE_LNA_BO_1P8_BASEADDR                0x90200104
 
 #ifdef __cplusplus
 }

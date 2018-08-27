@@ -1,4 +1,3 @@
-//<MStar Software>
 //******************************************************************************
 // MStar Software
 // Copyright (c) 2010 - 2012 MStar Semiconductor, Inc. All rights reserved.
@@ -165,11 +164,6 @@
 // Local Variables
 //-------------------------------------------------------------------------------------------------
 static MS_S32                       _s32DataReadyEventId[2] = {-1 , -1 };
-
-#if (DEMO_DMX_NEW_ARCHI_TEST == 1)
-static MS_U8                        u8PCRFltStartIdx;
-#endif
-
 static MS_U8                        Data[1024*8];
 
 //-------------------------------------------------------------------------------------------------
@@ -182,11 +176,15 @@ static MS_U8                        Data[1024*8];
 // Constant
 //--------------------------------------------------------------------------------------------------
 #define DMX_DBG             0
-#define INVALID_FILTER_ID   0xFF
-#define INVALID_PID_ID      0x1FFF
 #define DATA_WAIT_TIME      5000
 
 #define EASY_CMD            1
+
+#if (DEMO_DMX_TSO_10_TEST == 1) || (DEMO_DMX_TSO_20_TEST == 1)
+#define TSO_PACKET_LEN_188  188
+#define TSO_PACKET_LEN_192  192
+#define TSO_FILEIN_TIMER    0xA
+#endif
 
 //--------------------------------------------------------------------------------------------------
 // Enumerate
@@ -232,11 +230,18 @@ typedef struct
 
 // Event setting macro : wait data ready event of corresponding filter, use 2 32-bit event group to manage 64 filter event passing.
 #define WAIT_DATA_EVENT(DmxID,Event)   MsOS_WaitEvent(_s32DataReadyEventId[DmxID>>5] , BIT(DmxID) , &Event, E_OR_CLEAR , DATA_WAIT_TIME)
-
+#define BYTESWAP(timestamp)         ((((timestamp)&0x000000FFUL)<<24)|(((timestamp)&0xFF000000UL)>>24)|(((timestamp)&0x00FF0000UL)>>8)|(((timestamp)&0x0000FF00UL)<<8))
 //--------------------------------------------------------------------------------------------------
 // Implementation Parts
 //--------------------------------------------------------------------------------------------------
 static ST_PCR_INFO* stPCR;
+
+// store every tsif's merge stream source id
+static EN_DEMO_DMX_FLT_SOURCEID* eSourceID;
+
+static MS_U32     u32MaxTsifNum;
+static EN_PCR_ENG eMaxPcrEngID;
+
 
 // channel database
 static stFreqPG stChDB;
@@ -249,6 +254,14 @@ static MS_U8 Stream[] =
     {
     #include "../data/vertsp.dat"
 };
+
+#if (DEMO_DMX_TSO_10_TEST == 1) || (DEMO_DMX_TSO_20_TEST == 1)
+// There are 32pkts in tso_demo.dat, the first #8pkts and the last #8pkts are null pkts and the other #16pkts are pid id 0x0000.
+static MS_U8 TSO_Stream[] =
+    {
+    #include "../data/tso_demo.dat"
+};
+#endif
 
 /*********************************************************************  **
 *   Define the Buffer Size and Supported buffer number
@@ -275,7 +288,7 @@ SEC_BUF*      Section_Buf_Addr = (SEC_BUF*)DMX_DEMO_RESERVED_ADDRESS;
 // Local Functions
 //-------------------------------------------------------------------------------------------------
 static void* _Demo_DMX_MemAlloc_Func(MS_U32 u32Size);
-static MS_BOOL _Demo_DMX_MemFree_Func(void *pBuf);
+static MS_BOOL _Demo_DMX_MemFree_Func(void** pBuf);
 
 static MS_U8 _Demo_DMX_toupper(MS_U8 input)
 {
@@ -352,6 +365,26 @@ static DMX_FILTER_TYPE _Demo_DMX_FltTypeMapping(EN_DEMO_DMX_FLT_TYPE eFltType)
         case E_DMX_FLT_TYPE_VID1:
             return DMX_FILTER_TYPE_VIDEO3D;
 
+#if (DEMO_VDEC_NDECODE_TEST == 1)
+        case E_DMX_FLT_TYPE_VID2:
+            return DMX_FILTER_TYPE_VIDEO3;
+
+        case E_DMX_FLT_TYPE_VID3:
+            return DMX_FILTER_TYPE_VIDEO4;
+
+        case E_DMX_FLT_TYPE_VID4:
+            return DMX_FILTER_TYPE_VIDEO5;
+
+        case E_DMX_FLT_TYPE_VID5:
+            return DMX_FILTER_TYPE_VIDEO6;
+
+        case E_DMX_FLT_TYPE_VID6:
+            return DMX_FILTER_TYPE_VIDEO7;
+
+        case E_DMX_FLT_TYPE_VID7:
+            return DMX_FILTER_TYPE_VIDEO8;
+
+#endif
         case E_DMX_FLT_TYPE_AUD0:
             return DMX_FILTER_TYPE_AUDIO;
 
@@ -363,6 +396,12 @@ static DMX_FILTER_TYPE _Demo_DMX_FltTypeMapping(EN_DEMO_DMX_FLT_TYPE eFltType)
 
         case E_DMX_FLT_TYPE_AUD3:
             return DMX_FILTER_TYPE_AUDIO4;
+
+        case E_DMX_FLT_TYPE_AUD4:
+            return DMX_FILTER_TYPE_AUDIO5;
+
+        case E_DMX_FLT_TYPE_AUD5:
+            return DMX_FILTER_TYPE_AUDIO6;
 
         case E_DMX_FLT_TYPE_REC:
             return DMX_FILTER_TYPE_REC;
@@ -416,6 +455,16 @@ static DMX_FLOW_INPUT _Demo_DMX_FlowInputMapping(EN_DEMO_DMX_FLOW_INPUT eDmxFlow
 
         case E_DMX_FLOW_INPUT_EXT_INPUT3_3WIRE:
             return DMX_FLOW_INPUT_EXT_INPUT3_3WIRE;
+
+        case E_DMX_FLOW_INPUT_EXT_INPUT4_3WIRE:
+            return DMX_FLOW_INPUT_EXT_INPUT4_3WIRE;
+
+        case E_DMX_FLOW_INPUT_EXT_INPUT5_3WIRE:
+            return DMX_FLOW_INPUT_EXT_INPUT5_3WIRE;
+
+        case E_DMX_FLOW_INPUT_EXT_INPUT6_3WIRE:
+            return DMX_FLOW_INPUT_EXT_INPUT6_3WIRE;
+
 #endif
         default:
             DemoDmx_Print("Unsopprot DMX FlowInput %d!\n",eDmxFlowInput);
@@ -423,6 +472,7 @@ static DMX_FLOW_INPUT _Demo_DMX_FlowInputMapping(EN_DEMO_DMX_FLOW_INPUT eDmxFlow
     }
 }
 
+#if 0
 static DMX_FILTER_TYPE _Demo_DMX_FltSourceMapping(EN_DEMO_DMX_FLT_SOURCE eFltSource)
 {
     switch ( eFltSource )
@@ -456,34 +506,189 @@ static DMX_FILTER_TYPE _Demo_DMX_FltSourceMapping(EN_DEMO_DMX_FLT_SOURCE eFltSou
             return E_DMX_FLT_SOURCE_INVALID;
     }
 }
+#endif
 
-EN_DEMO_DMX_FLT_SOURCE Demo_DMX_FlowToFltSrcMapping(EN_DEMO_DMX_FLOW eDmxFlow)
+static DMX_FILTER_TYPE _Demo_DMX_FltSourceIDMapping(EN_DEMO_DMX_FLOW eDmxFlow,EN_DEMO_DMX_FLT_SOURCEID eFltSourceID)
+{
+    if(eDmxFlow > E_DMX_FLOW_LIVE3)
+    {
+        // DMX File-in flow doesn't support filter source ID mapping
+        return DMX_FILTER_SOURCEID_0;
+    }
+
+    switch ( eFltSourceID )
+    {
+        case E_DMX_FLT_SOURCEID_0:
+            return DMX_FILTER_SOURCEID_0;
+        case E_DMX_FLT_SOURCEID_1:
+            return DMX_FILTER_SOURCEID_1;
+        case E_DMX_FLT_SOURCEID_2:
+            return DMX_FILTER_SOURCEID_2;
+        case E_DMX_FLT_SOURCEID_3:
+            return DMX_FILTER_SOURCEID_3;
+        case E_DMX_FLT_SOURCEID_4:
+            return DMX_FILTER_SOURCEID_4;
+        case E_DMX_FLT_SOURCEID_5:
+            return DMX_FILTER_SOURCEID_5;
+        case E_DMX_FLT_SOURCEID_6:
+            return DMX_FILTER_SOURCEID_6;
+        case E_DMX_FLT_SOURCEID_7:
+            return DMX_FILTER_SOURCEID_7;
+        default:
+            DemoDmx_Print("Unsupport DMX FltSourceID %d!\n",eFltSourceID);
+            return DMX_FILTER_SOURCEID_0;
+    }
+}
+
+static DMX_FILTER_TYPE _Demo_DMX_PVREngToFilterTypeMapping(EN_DEMO_DMX_PVR_ENG eEng)
+{
+    switch(eEng)
+    {
+        case E_DMX_PVR_EGN0:
+            return DMX_FILTER_TYPE_PVR;
+        case E_DMX_PVR_EGN1:
+            return DMX_FILTER_TYPE_PVR1;
+        case E_DMX_PVR_EGN2:
+            return DMX_FILTER_TYPE_PVR2;
+        case E_DMX_PVR_EGN3:
+            return DMX_FILTER_TYPE_PVR3;
+        default:
+            printf("Invalid PVR Eng for merge stream recording: %d", eEng);
+            return DMX_FILTER_TYPE_PVR;
+    }
+}
+
+#if 0
+static EN_DEMO_DMX_FLT_SOURCE _Demo_DMX_PVRSourceToFltSourceMapping(EN_DEMO_DMX_PVR_SOURCE ePVRSource)
+{
+    switch(ePVRSource)
+    {
+        case E_DMX_PVR_SOURCE_LIVE0:
+            return E_DMX_FLT_SOURCE_LIVE0;
+        case E_DMX_PVR_SOURCE_LIVE1:
+            return E_DMX_FLT_SOURCE_LIVE1;
+        case E_DMX_PVR_SOURCE_LIVE2:
+            return E_DMX_FLT_SOURCE_LIVE2;
+        case E_DMX_PVR_SOURCE_LIVE3:
+            return E_DMX_FLT_SOURCE_LIVE3;
+        default:
+            printf("Invalid PVR Source for merge stream recording: %d", ePVRSource);
+            return E_DMX_FLT_SOURCE_LIVE0;
+    }
+}
+#endif
+
+//------------------------------------------------------------------------------
+/// @brief The sample code for Data callback function for event setting.
+/// @brief Callback function inform user thread the section status.
+/// @brief If in Polling mode, user thread need to polling filter status by themselves.
+/// @param[in] u8DmxId	dmx id
+/// @param[in] enFilterStatus	fileter event status
+/// @return None
+/// @sa
+/// @note
+//------------------------------------------------------------------------------
+
+static void _appDemo_DataCb(MS_U8 u8DmxId, DMX_EVENT enFilterStatus)
+{
+    if(enFilterStatus == DMX_EVENT_DATA_READY)
+    {
+        MsOS_SetEvent(_s32DataReadyEventId[u8DmxId    >>5 ], BIT(u8DmxId));
+    }
+    else if(enFilterStatus == DMX_EVENT_BUF_OVERFLOW)
+    {
+        if(DMX_FILTER_STATUS_OK != MApi_DMX_Stop(u8DmxId))
+        {
+            DemoDmx_Print("[%s][%d] MApi_DMX_Stop failed !\n", __FUNCTION__, __LINE__);
+        }
+        if(DMX_FILTER_STATUS_OK != MApi_DMX_Start(u8DmxId))
+        {
+            DemoDmx_Print("[%s][%d] MApi_DMX_Start failed !\n", __FUNCTION__, __LINE__);
+        }
+    }
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to parse PAT table
+/// @param[in] pu8Buf PAT buffer address
+/// @param[in] BufSize	 PAT buffer size
+/// @sa
+/// @note
+//------------------------------------------------------------------------------
+
+static void _appDemo_Pat_Parse(MS_U8* pu8Buf, MS_U32 BufSize)
+{
+    MS_U16 u16ProgramNumber, u16SectionLength;
+    MS_U8  uSectionNumber, uLastSectionNumber;  // todo: multiple section
+    MS_U8  *pu8SecIter;
+    MS_U32  i;
+    MS_U32 u32NumOfItem;
+    MS_U8  u8PatVerNum;
+    MS_U16 u16ActualTSid;
+    MS_U8* pu8Section= pu8Buf;
+    MS_U8  u8Tid;
+    MS_U16 u16Pid;
+
+
+    // MApi_DMX_Init();
+
+    u8Tid=                      pu8Section[0];
+    u16SectionLength=           (pu8Section[1] & 0x0f ) << 8;
+    u16SectionLength|=          pu8Section[2];
+    u32NumOfItem=               (u16SectionLength - 9)/ 4;
+    u16ActualTSid=              (pu8Section[3]<< 8)| pu8Section[4];
+    u8PatVerNum=                (pu8Section[5]>> 1) & 0x1F;
+    uSectionNumber=             pu8Section[6];
+    uLastSectionNumber=         pu8Section[7];
+    // Make sure multi section number doesn't exceed we can support.
+    //uLastSectionNumber %= MAX_PAT_MULTI_SECTION_NUM;
+
+    printf("================== PAT information =====================\n");
+    printf("table id=                   0x%02x\n", u8Tid);
+    printf("section length=             %d\n", u16SectionLength);
+    printf("number of service=          %ld\n", (long int)u32NumOfItem);
+    printf("Ts Id=                      0x%04x\n", u16ActualTSid);
+    printf("section number=             %d\n", uSectionNumber);
+    printf("section number last=        %d\n", uLastSectionNumber);
+    printf("version number=             %d\n", u8PatVerNum);
+
+    pu8SecIter = pu8Section + 8;
+    for ( i = 0; i < u32NumOfItem; i++ )
+    {
+        u16ProgramNumber =       (pu8SecIter[0]<<8)| pu8SecIter[1];
+        u16Pid =                 ((pu8SecIter[2] & 0x1F)<< 8)| pu8SecIter[3];
+        printf("(program number, PID)= (0x%04x, 0x%04x)\n", u16ProgramNumber, u16Pid);
+        pu8SecIter += 4;
+    }
+}
+
+DMX_FILTER_TYPE Demo_DMX_FlowToFltSrcMapping(EN_DEMO_DMX_FLOW eDmxFlow)
 {
     switch(eDmxFlow)
     {
         case E_DMX_FLOW_LIVE0:
-           return E_DMX_FLT_SOURCE_LIVE0;
+           return DMX_FILTER_SOURCE_TYPE_LIVE;
 
         case E_DMX_FLOW_LIVE1:
-           return E_DMX_FLT_SOURCE_LIVE1;
+           return DMX_FILTER_SOURCE_TYPE_TS1;
 
         case E_DMX_FLOW_LIVE2:
-           return E_DMX_FLT_SOURCE_LIVE2;
+           return DMX_FILTER_SOURCE_TYPE_TS2;
 
         case E_DMX_FLOW_LIVE3:
-           return E_DMX_FLT_SOURCE_LIVE3;
+           return DMX_FILTER_SOURCE_TYPE_TS3;
 
         case E_DMX_FLOW_FILE0:
-           return E_DMX_FLT_SOURCE_FILE0;
+           return DMX_FILTER_SOURCE_TYPE_FILE;
 
         case E_DMX_FLOW_FILE1:
-           return E_DMX_FLT_SOURCE_FILE1;
+           return DMX_FILTER_SOURCE_TYPE_FILE1;
 
         case E_DMX_FLOW_FILE2:
-           return E_DMX_FLT_SOURCE_FILE2;
+           return DMX_FILTER_SOURCE_TYPE_FILE2;
 
         case E_DMX_FLOW_FILE3:
-           return E_DMX_FLT_SOURCE_FILE3;
+           return DMX_FILTER_SOURCE_TYPE_FILE3;
 
         default:
            DemoDmx_Print("Wrong DMX FLOW : %d!\n", eDmxFlow);
@@ -524,37 +729,37 @@ MS_U32 Demo_DMX_FlowToFQEngMapping(EN_DEMO_DMX_FLOW eDmxFlow)
 
 
 
-static DMX_TSIF _Demo_DMX_PVRSrcMapping(EN_DEMO_DMX_PVR_SOURCE ePvrSrc)
+static DMX_TSIF _Demo_DMX_FlowToPvrSrcMapping(EN_DEMO_DMX_FLOW eDmxFlow)
 {
-    switch ( ePvrSrc )
+    switch ( eDmxFlow )
     {
-        case E_DMX_PVR_SOURCE_LIVE0:
+        case E_DMX_FLOW_LIVE0:
             return DMX_TSIF_LIVE0;
 
-        case E_DMX_PVR_SOURCE_LIVE1:
+        case E_DMX_FLOW_LIVE1:
             return DMX_TSIF_LIVE1;
 
-        case E_DMX_PVR_SOURCE_LIVE2:
+        case E_DMX_FLOW_LIVE2:
             return DMX_TSIF_LIVE2;
 
-        case E_DMX_PVR_SOURCE_LIVE3:
+        case E_DMX_FLOW_LIVE3:
             return DMX_TSIF_LIVE3;
 
-        case E_DMX_PVR_SOURCE_FILE0:
+        case E_DMX_FLOW_FILE0:
             return DMX_TSIF_FILE0;
 
-        case E_DMX_PVR_SOURCE_FILE1:
+        case E_DMX_FLOW_FILE1:
             return DMX_TSIF_FILE1;
 
-        case E_DMX_PVR_SOURCE_FILE2:
+        case E_DMX_FLOW_FILE2:
             return DMX_TSIF_FILE2;
 
-        case E_DMX_PVR_SOURCE_FILE3:
+        case E_DMX_FLOW_FILE3:
             return DMX_TSIF_FILE3;
 
         default:
-            DemoDmx_Print("Unsopprot DMX PvrSrc %d!\n",ePvrSrc);
-            return E_DMX_PVR_SOURCE_INVALID;
+            DemoDmx_Print("Unsopprot DMX Flow %d!\n",eDmxFlow);
+            return E_DMX_FLOW_INVALID;
     }
 }
 
@@ -621,6 +826,24 @@ DMX_MMFI_FLTTYPE Demo_DMX_MMFI_FltTypeMapping(EN_DEMO_DMX_FLT_TYPE eFltType)
         case E_DMX_FLT_TYPE_VID1:
             return DMX_MMFI_FLTTYPE_VD3D;
 
+        case E_DMX_FLT_TYPE_VID2:
+            return DMX_MMFI_FLTTYPE_VD3;
+
+        case E_DMX_FLT_TYPE_VID3:
+            return DMX_MMFI_FLTTYPE_VD4;
+
+        case E_DMX_FLT_TYPE_VID4:
+            return DMX_MMFI_FLTTYPE_VD5;
+
+        case E_DMX_FLT_TYPE_VID5:
+            return DMX_MMFI_FLTTYPE_VD6;
+
+        case E_DMX_FLT_TYPE_VID6:
+            return DMX_MMFI_FLTTYPE_VD7;
+
+        case E_DMX_FLT_TYPE_VID7:
+            return DMX_MMFI_FLTTYPE_VD8;
+
         case E_DMX_FLT_TYPE_AUD0:
             return DMX_MMFI_FLTTYPE_AUD;
 
@@ -632,6 +855,12 @@ DMX_MMFI_FLTTYPE Demo_DMX_MMFI_FltTypeMapping(EN_DEMO_DMX_FLT_TYPE eFltType)
 
         case E_DMX_FLT_TYPE_AUD3:
             return DMX_MMFI_FLTTYPE_AUDD;
+
+        case E_DMX_FLT_TYPE_AUD4:
+            return DMX_MMFI_FLTTYPE_AUDE;
+
+        case E_DMX_FLT_TYPE_AUD5:
+            return DMX_MMFI_FLTTYPE_AUDF;
 
         default:
             DemoDmx_Print("Unsopprot DMX FltType %d!\n",eFltType);
@@ -744,8 +973,14 @@ static void _Demo_DMX_DataCb(MS_U8 u8FltId, DMX_EVENT eFilterStatus)
     }
     else if(eFilterStatus == DMX_EVENT_BUF_OVERFLOW)
     {
-        MApi_DMX_Stop(u8FltId);
-        MApi_DMX_Start(u8FltId);
+        if(DMX_FILTER_STATUS_OK != MApi_DMX_Stop(u8FltId))
+        {
+            DemoDmx_Print("[%s][%d] MApi_DMX_Stop failed !\n", __FUNCTION__, __LINE__);
+        }
+        if(DMX_FILTER_STATUS_OK != MApi_DMX_Start(u8FltId))
+        {
+            DemoDmx_Print("[%s][%d] MApi_DMX_Start failed !\n", __FUNCTION__, __LINE__);
+        }
     }
 }
 
@@ -764,8 +999,14 @@ static void _Demo_DMX_DataCb_Type2(MS_U8 u8DmxId, DMX_EVENT enFilterStatus,MS_U3
     }
     else if(enFilterStatus == DMX_EVENT_BUF_OVERFLOW)
     {
-        MApi_DMX_Stop(u8DmxId);
-        MApi_DMX_Start(u8DmxId);
+        if(DMX_FILTER_STATUS_OK != MApi_DMX_Stop(u8DmxId))
+        {
+            DemoDmx_Print("[%s][%d] MApi_DMX_Stop failed !\n", __FUNCTION__, __LINE__);
+        }
+        if(DMX_FILTER_STATUS_OK != MApi_DMX_Start(u8DmxId))
+        {
+            DemoDmx_Print("[%s][%d] MApi_DMX_Start failed !\n", __FUNCTION__, __LINE__);
+        }
         printf("======= BUFFER OVERFLOW =======\n");
     }
 
@@ -773,13 +1014,13 @@ static void _Demo_DMX_DataCb_Type2(MS_U8 u8DmxId, DMX_EVENT enFilterStatus,MS_U3
 
 //------------------------------------------------------------------------------
 /// @brief The sample code to setup a section filter.
-/// @param eDmxFlow \b IN
-/// @param *u32FltId \b IN
-/// @param Pid \b IN match pid
-/// @param bOneShot \b IN oneshot mode/conti mode
-/// @param ipattern \b IN ipattern array
-/// @param imask \b IN mask array
-/// @param inmask \b IN inmask array
+/// @param eDmxFlow     \b IN: EN_DEMO_DMX_FLOW
+/// @param *u32FltId    \b IN
+/// @param Pid          \b IN match pid
+/// @param bOneShot     \b IN oneshot mode/conti mode
+/// @param ipattern     \b IN ipattern array
+/// @param imask        \b IN mask array
+/// @param inmask       \b IN inmask array
 /// @return TRUE: success / FALSE: fail
 /// @sa
 /// @note  Abstraction for filter setup.
@@ -797,6 +1038,7 @@ static MS_BOOL _Demo_DMX_Setup(EN_DEMO_DMX_FLOW eDmxFlow, MS_U32* u32FltId,MS_U3
     DMX_Flt_info                           FltInfo;
     DMX_FILTER_TYPE                        FilterType;
     DMX_FILTER_TYPE                        eFltSrcType;
+    DMX_FILTER_TYPE                        eFltSrcID;
 
     u16Pid = (MS_U16)u32Pid ;
 
@@ -804,9 +1046,10 @@ static MS_BOOL _Demo_DMX_Setup(EN_DEMO_DMX_FLOW eDmxFlow, MS_U32* u32FltId,MS_U3
     memcpy(mask   ,   imask   , sizeof(mask));
     memcpy(nmask  ,   inmask  , sizeof(nmask));
 
-    eFltSrcType = _Demo_DMX_FltSourceMapping(Demo_DMX_FlowToFltSrcMapping(eDmxFlow));
+    eFltSrcType = Demo_DMX_FlowToFltSrcMapping(eDmxFlow);
+    eFltSrcID   = _Demo_DMX_FltSourceIDMapping(eDmxFlow, eSourceID[eDmxFlow]);
 
-    FilterType = DMX_FILTER_TYPE_SECTION | eFltSrcType;
+    FilterType = DMX_FILTER_TYPE_SECTION | eFltSrcType | eFltSrcID;
 
     if (DMX_FILTER_STATUS_OK != MApi_DMX_Open(FilterType, &u8FltIdSect))
     {
@@ -1261,22 +1504,22 @@ static EN_AUDIO_CODEC_TYPE _AudioCodecType_Mapping(EN_SI_AudioFormat eAudioFmt)
     {
         case E_SI_AUD_MPEG :
         case E_SI_AUD_MPEG_AD:
-            return AUDIO_CODEC_MPEG;
+            return DEMO_AUDIO_CODEC_MPEG;
 
         case E_SI_AUD_AC3 :
         case E_SI_AUD_AC3_AD :
-            return AUDIO_CODEC_AC3;
+            return DEMO_AUDIO_CODEC_AC3;
 
         case E_SI_AUD_AC3P :
-            return AUDIO_CODEC_AC3P;
+            return DEMO_AUDIO_CODEC_AC3P;
 
         case E_SI_AUD_MPEG4:
         case E_SI_AUD_AAC:
-            return AUDIO_CODEC_AAC;
+            return DEMO_AUDIO_CODEC_AAC;
 
         default:
             //DemoDmx_Print("Unsopprot Audio Format %ld!\n",eAudioFmt);
-            return AUDIO_CODEC_NONE ;
+            return DEMO_AUDIO_CODEC_NONE ;
     }
 
 }
@@ -1304,7 +1547,7 @@ static void _DumpCh(void)
         {
             if(pstPG->Audio_PG[j].u32PidAudio)
             {
-                printf("[%s][%d]     [AUDIO %ld]\n", __FUNCTION__, __LINE__, j+1);
+                printf("[%s][%d]     [AUDIO %ld]\n", __FUNCTION__, __LINE__, (long int)(j+1));
                 printf("[%s][%d]         audio pid   = 0x%04x\n", __FUNCTION__, __LINE__, (int)pstPG->Audio_PG[j].u32PidAudio);
                 printf("[%s][%d]         audioFmt    = %-12s       Audio Codec Type = %x\n", __FUNCTION__, __LINE__, AudioFmtStr[pstPG->Audio_PG[j].eAudioFmt], _AudioCodecType_Mapping(pstPG->Audio_PG[j].eAudioFmt) );
                 printf("[%s][%d]         a type      = 0x%08x\n", __FUNCTION__, __LINE__, (int)pstPG->Audio_PG[j].u32StreamTypeAudio);
@@ -1424,6 +1667,20 @@ MS_BOOL Demo_DMX_CheckAudioPgExist(st_PG* pstPG, MS_U32 u32PID)
     //not found
     return FALSE;
 }
+
+//------------------------------------------------------------------------------
+/// @Brief the command interface for sample code to reset A/V fifos.
+/// @param[in] pu8AVFltType: FIFO types
+/// @param[in] pu8Rst:       TRUE/FALSE
+/// @return TRUE:  success \n
+/// @return FALSE: fail.
+/// Command: \b dmx_fifo_rst [DMX fifo type] [Rst] \n    EX: dmx_fifo_rst 0 1
+//------------------------------------------------------------------------------
+MS_BOOL Demo_DMX_AVFifo_Reset_CMD(MS_U8 *pu8AVFltType, MS_U8 *pu8Rst)
+{
+    return Demo_DMX_AVFifo_Reset((EN_DEMO_DMX_FLT_TYPE)*pu8AVFltType, *pu8Rst);
+}
+
 //--------------------------------------------------------------------------------------------------
 /// Reset AVFIFO
 /// @param  eAVFltType          \b IN: demux type
@@ -1446,7 +1703,7 @@ MS_BOOL Demo_DMX_AVFifo_Reset(EN_DEMO_DMX_FLT_TYPE eAVFltType, MS_BOOL bRst)
 
 //-------------------------------------------------------------------------------------------------
 /// Open a demux filter and set a demux filter PID
-/// @param  eFltSource \b IN: the filter information to allocate
+/// @param  eDmxFlow   \b IN: EN_DEMO_DMX_FLOW
 //  @param  eFltType   \b IN: the filter information to allocate
 /// @param  pu8FltId   \b OUT: the available demux filer Id
 /// @param  u16Pid     \b IN: PID to set
@@ -1454,10 +1711,10 @@ MS_BOOL Demo_DMX_AVFifo_Reset(EN_DEMO_DMX_FLT_TYPE eAVFltType, MS_BOOL bRst)
 /// @return FALSE - Failure
 /// @note
 //-------------------------------------------------------------------------------------------------
-MS_BOOL Demo_DMX_FltOpen(EN_DEMO_DMX_FLT_SOURCE eFltSource, EN_DEMO_DMX_FLT_TYPE eFltType, MS_U8* pu8FltId, MS_U16 u16Pid)
+MS_BOOL Demo_DMX_FltOpen(EN_DEMO_DMX_FLOW eDmxFlow, EN_DEMO_DMX_FLT_TYPE eFltType, MS_U8* pu8FltId, MS_U16 u16Pid)
 {
 
-    if(TRUE != Demo_DMX_Open(eFltSource, eFltType, pu8FltId))
+    if(TRUE != Demo_DMX_Open(eDmxFlow, eFltType, pu8FltId))
     {
        DemoDmx_Print("[%s][%d]Open Filter Fail !\n", __FUNCTION__, __LINE__);
        return FALSE;
@@ -1487,7 +1744,7 @@ MS_BOOL Demo_DMX_FltOpen(EN_DEMO_DMX_FLT_SOURCE eFltSource, EN_DEMO_DMX_FLT_TYPE
 
 //-------------------------------------------------------------------------------------------------
 /// Open a demux filter
-/// @param  eFltSource \b IN: the filter information to allocate
+/// @param  eDmxFlow   \b IN: EN_DEMO_DMX_FLOW
 //  @param  eFltType   \b IN: the filter information to allocate
 /// @param  pu8FltId   \b OUT: the available demux filer Id
 /// @param  u16Pid     \b IN: PID to set
@@ -1495,12 +1752,16 @@ MS_BOOL Demo_DMX_FltOpen(EN_DEMO_DMX_FLT_SOURCE eFltSource, EN_DEMO_DMX_FLT_TYPE
 /// @return FALSE - Failure
 /// @note
 //-------------------------------------------------------------------------------------------------
-MS_BOOL Demo_DMX_Open(EN_DEMO_DMX_FLT_SOURCE eFltSource, EN_DEMO_DMX_FLT_TYPE eFltType, MS_U8* pu8FltId)
+MS_BOOL Demo_DMX_Open(EN_DEMO_DMX_FLOW eDmxFlow, EN_DEMO_DMX_FLT_TYPE eFltType, MS_U8* pu8FltId)
 {
-    DMX_FILTER_TYPE eDmxFltSource = _Demo_DMX_FltSourceMapping(eFltSource);
+    DMX_FILTER_TYPE FilterType;
+    DMX_FILTER_TYPE eDmxFltSource = Demo_DMX_FlowToFltSrcMapping(eDmxFlow);
     DMX_FILTER_TYPE eDmxFltType   = _Demo_DMX_FltTypeMapping(eFltType);
+    DMX_FILTER_TYPE eDmxFltSrcID  = _Demo_DMX_FltSourceIDMapping(eDmxFlow, eSourceID[eDmxFlow]);
 
-    if(DMX_FILTER_STATUS_OK != MApi_DMX_Open((DMX_FILTER_TYPE)(eDmxFltType|eDmxFltSource), pu8FltId))
+    FilterType = eDmxFltSource | eDmxFltType | eDmxFltSrcID;
+
+    if(DMX_FILTER_STATUS_OK != MApi_DMX_Open(FilterType, pu8FltId))
     {
         DemoDmx_Print("[%s][%d]Open Filter Fail !\n", __FUNCTION__, __LINE__);
        return FALSE;
@@ -1563,19 +1824,23 @@ MS_BOOL Demo_DMX_FltClose(MS_U8 u8FltId)
 
 //-------------------------------------------------------------------------------------------------
 /// Open a demux PCR filter and set a demux PCR filter PID
-/// @param  eFltSource  \b IN: the filter information to allocate
+/// @param  eDmxFlow    \b IN: EN_DEMO_DMX_FLOW
 /// @param  u16Pid      \b IN: PID to set
-/// @param  u8PCREngId \b OUT: the allocated demux PCR Engine Id
+/// @param  u8PCREngId  \b OUT: the allocated demux PCR Engine Id
 /// @return TRUE  - Success
 /// @return FALSE - Failure
 /// @note
 //-------------------------------------------------------------------------------------------------
-MS_BOOL Demo_DMX_PCR_FltOpen(EN_DEMO_DMX_FLT_SOURCE eFltSource, MS_U16 u16Pid,  MS_U8* u8PCREngId)
+MS_BOOL Demo_DMX_PCR_FltOpen(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid, EN_PCR_ENG* ePCREngId)
 {
     MS_U8  u8FltId;
-    DMX_FILTER_TYPE eFltSrc = _Demo_DMX_FltSourceMapping(eFltSource);
+    DMX_FILTER_TYPE FilterType;
+    DMX_FILTER_TYPE eFltSrc   = Demo_DMX_FlowToFltSrcMapping(eDmxFlow);
+    DMX_FILTER_TYPE eFltSrcID = _Demo_DMX_FltSourceIDMapping(eDmxFlow, eSourceID[eDmxFlow]);
 
-    if(DMX_FILTER_STATUS_OK != MApi_DMX_Open((DMX_FILTER_TYPE)(DMX_FILTER_TYPE_PCR|eFltSrc), &u8FltId))
+    FilterType = DMX_FILTER_TYPE_PCR | eFltSrc | eFltSrcID;
+
+    if(DMX_FILTER_STATUS_OK != MApi_DMX_Open(FilterType, &u8FltId))
     {
        DemoDmx_Print("Open PCR Filter Fail !\n");
        return FALSE;
@@ -1597,16 +1862,24 @@ MS_BOOL Demo_DMX_PCR_FltOpen(EN_DEMO_DMX_FLT_SOURCE eFltSource, MS_U16 u16Pid,  
 #endif
 
 #if (DEMO_DMX_NEW_ARCHI_TEST == 1)
-    *u8PCREngId = u8FltId - u8PCRFltStartIdx;
+    MS_U32 u32STCEngID = 0;
+    if (DMX_FILTER_STATUS_OK != MApi_DMX_Pcr_Get_MapSTC(u8FltId, &u32STCEngID))
+    {
+        DemoDmx_Print("Mapping PCR filter %x to STC engine %"DTC_MS_U32_x" Fail !\n", u8FltId, u32STCEngID);
+    }
+    else
+    {
+        *ePCREngId = (EN_PCR_ENG)(u32STCEngID);
+    }
 #else
-    *u8PCREngId = 0;
+    *ePCREngId = E_PCR_ENG0;
 #endif
 
-    stPCR[*u8PCREngId].u8FltId = u8FltId;
+    stPCR[*ePCREngId].u8FltId = u8FltId;
 
     if (DMX_FILTER_STATUS_OK != MApi_DMX_Pid(u8FltId, &u16Pid, TRUE))
     {
-        DemoDmx_Print("Set Pid:%hu to PCR Filter:%u Fail !\n", u16Pid, *u8PCREngId);
+        DemoDmx_Print("Set Pid:%hu to PCR Filter:%u Fail !\n", u16Pid, *ePCREngId);
     }
 
     return TRUE;
@@ -1619,11 +1892,22 @@ MS_BOOL Demo_DMX_PCR_FltOpen(EN_DEMO_DMX_FLT_SOURCE eFltSource, MS_U16 u16Pid,  
 /// @return FALSE - Failure
 /// @note
 //------------------------------------------------------------------------------------------------
-MS_BOOL Demo_DMX_PCR_FltStart(MS_U8 u8PCREngId)
+MS_BOOL Demo_DMX_PCR_FltStart(EN_PCR_ENG ePCREngId)
 {
-    if(DMX_FILTER_STATUS_OK != MApi_DMX_Start(stPCR[u8PCREngId].u8FltId))
+    if( ePCREngId > eMaxPcrEngID)
     {
-        DemoDmx_Print("Start PCR Filter %u Fail !\n", u8PCREngId);
+        DemoDmx_Print("PCR Eng %d  does not exist in this chip !\n", ePCREngId);
+        return FALSE;
+    }
+
+    if( stPCR[ePCREngId].u8FltId == INVALID_FILTER_ID)
+    {
+        return FALSE;
+    }
+
+    if(DMX_FILTER_STATUS_OK != MApi_DMX_Start(stPCR[ePCREngId].u8FltId))
+    {
+        DemoDmx_Print("Start PCR Filter %u Fail !\n", ePCREngId);
         return FALSE;
     }
     return TRUE;
@@ -1636,11 +1920,22 @@ MS_BOOL Demo_DMX_PCR_FltStart(MS_U8 u8PCREngId)
 /// @return FALSE - Failure
 /// @note
 //-------------------------------------------------------------------------------------------------
-MS_BOOL Demo_DMX_PCR_FltStop(MS_U8 u8PCREngId)
+MS_BOOL Demo_DMX_PCR_FltStop(EN_PCR_ENG ePCREngId)
 {
-    if(DMX_FILTER_STATUS_OK != MApi_DMX_Stop(stPCR[u8PCREngId].u8FltId))
+    if( ePCREngId > eMaxPcrEngID)
     {
-        DemoDmx_Print("Stop PCR Filter %u Fail !\n", u8PCREngId);
+        DemoDmx_Print("PCR Eng %d  does not exist in this chip !\n", ePCREngId);
+        return FALSE;
+    }
+
+    if( stPCR[ePCREngId].u8FltId == INVALID_FILTER_ID)
+    {
+        return FALSE;
+    }
+
+    if(DMX_FILTER_STATUS_OK != MApi_DMX_Stop(stPCR[ePCREngId].u8FltId))
+    {
+        DemoDmx_Print("Stop PCR Filter %u Fail !\n", ePCREngId);
         return FALSE;
     }
     return TRUE;
@@ -1653,11 +1948,22 @@ MS_BOOL Demo_DMX_PCR_FltStop(MS_U8 u8PCREngId)
 /// @return FALSE - Failure
 /// @note
 //-------------------------------------------------------------------------------------------------
-MS_BOOL Demo_DMX_PCR_FltClose(MS_U8 u8PCREngId)
+MS_BOOL Demo_DMX_PCR_FltClose(EN_PCR_ENG ePCREngId)
 {
-    if(DMX_FILTER_STATUS_OK != MApi_DMX_Close(stPCR[u8PCREngId].u8FltId))
+    if( ePCREngId > eMaxPcrEngID)
     {
-        DemoDmx_Print("Stop PCR Filter %u Fail !\n", u8PCREngId);
+        DemoDmx_Print("PCR Eng %d  does not exist in this chip !\n", ePCREngId);
+        return FALSE;
+    }
+
+    if( stPCR[ePCREngId].u8FltId == INVALID_FILTER_ID)
+    {
+        return FALSE;
+    }
+
+    if(DMX_FILTER_STATUS_OK != MApi_DMX_Close(stPCR[ePCREngId].u8FltId))
+    {
+        DemoDmx_Print("Stop PCR Filter %u Fail !\n", ePCREngId);
         return FALSE;
     }
     return TRUE;
@@ -1667,10 +1973,10 @@ MS_BOOL Demo_DMX_PCR_FltClose(MS_U8 u8PCREngId)
 //-------------------------------------------------------------------------------------------------
 /// Set Demux Flow
 /// @param eDmxFlow         \b IN: EN_DEMO_DMX_FLOW
-/// @param eDmxFlowInput \b IN: EN_DEMO_DMX_FLOW_INPUT
-/// @param bClkInv            \b IN: TSin options: clock phase inversion
-/// @param bExtSync          \b IN: TSin options: sync by external signal
-/// @param bParallel           \b IN: TSin is parallel interface or serial interface
+/// @param eDmxFlowInput    \b IN: EN_DEMO_DMX_FLOW_INPUT
+/// @param bClkInv          \b IN: TSin options: clock phase inversion
+/// @param bExtSync         \b IN: TSin options: sync by external signal
+/// @param bParallel        \b IN: TSin is parallel interface or serial interface
 /// @return TRUE  - Success
 /// @return FALSE - Failure
 /// @note
@@ -1709,12 +2015,12 @@ MS_BOOL Demo_DMX_FlowSet(EN_DEMO_DMX_FLOW eDmxFlow, EN_DEMO_DMX_FLOW_INPUT eDmxF
 /// @return FALSE - Failure
 /// @note
 //--------------------------------------------------------------------------------------------------
-MS_BOOL Demo_DMX_PVR_FlowSet(EN_DEMO_DMX_PVR_ENG ePvrEng, EN_DEMO_DMX_PVR_SOURCE ePvrSrc, MS_BOOL bDscmb)
+MS_BOOL Demo_DMX_PVR_FlowSet(EN_DEMO_DMX_PVR_ENG ePvrEng, EN_DEMO_DMX_FLOW eDmxFlow, MS_BOOL bDscmb)
 {
 #if (DEMO_DMX_NEW_ARCHI_TEST == 1)
 
     DMX_PVR_ENG eDmxPvrEng = _Demo_DMX_PVREngMapping(ePvrEng);
-    DMX_TSIF    eDmxTSIF   = _Demo_DMX_PVRSrcMapping(ePvrSrc);
+    DMX_TSIF    eDmxTSIF   = _Demo_DMX_FlowToPvrSrcMapping(eDmxFlow);
 
     if(DMX_FILTER_STATUS_OK != MApi_DMX_PVR_FlowSet( eDmxPvrEng, eDmxTSIF, bDscmb))
     {
@@ -1722,6 +2028,29 @@ MS_BOOL Demo_DMX_PVR_FlowSet(EN_DEMO_DMX_PVR_ENG ePvrEng, EN_DEMO_DMX_PVR_SOURCE
         return FALSE;
     }
 #endif
+    return TRUE;
+}
+
+MS_BOOL Demo_DMX_GetAudioStreamInfo(MS_U32 u32ProgIdx, MS_U32 u32AudIdx, st_Audio_PG *pstAudioStreamInfo)
+{
+    if(NULL == pstAudioStreamInfo)
+    {
+        DemoDmx_Print("DMX Get audio stream info Fail !\n");
+        return FALSE;
+    }
+    if(u32ProgIdx >= MAX_PG_IN_PAT_DDI)
+    {
+        DemoDmx_Print("Program index(%"DTC_MS_U32_u") >= maximum program number(%d) !\n", u32ProgIdx, MAX_PG_IN_PAT_DDI);
+        return FALSE;
+    }
+    if(u32AudIdx >= MAX_AUDIO_PG)
+    {
+        DemoDmx_Print("Audio Index(%"DTC_MS_U32_u") >= maximum audio stream number(%d) !\n", u32AudIdx, MAX_AUDIO_PG);
+        return FALSE;
+    }
+
+    memcpy((void *)pstAudioStreamInfo, (void *)&(stChDB.stPgList[u32ProgIdx].Audio_PG[u32AudIdx]), sizeof(st_Audio_PG));
+
     return TRUE;
 }
 
@@ -1765,7 +2094,6 @@ MS_BOOL Demo_DMX_PreInit( void )
 #if (DEMO_DMX_TV_SERIES_TEST)
 MS_BOOL Demo_DMX_Init(void)
 {
-    DMX_FLOW_INPUT inSrc0,inSrc1;
     MS_U32 u32num;
     MS_U32 u32Idx;
 
@@ -1806,14 +2134,26 @@ MS_BOOL Demo_DMX_Init(void)
     MApi_DMX_TEI_RemoveErrorPkt( E_DMX_TEI_REMOVE_AUDIO_PKT, FALSE);
     MApi_DMX_TEI_RemoveErrorPkt( E_DMX_TEI_REMOVE_VIDEO_PKT, FALSE);
 
-    // Get the PCR engine number
+    // Get the PCR Engine number
     MApi_DMX_GetCap(DMX_CAP_VFIFO_NUM, &u32num);
 
-    stPCR = malloc(sizeof(ST_PCR_INFO)*u32num);
+    eMaxPcrEngID = (EN_PCR_ENG)(u32num-1);
+
+    stPCR = _Demo_DMX_MemAlloc_Func(sizeof(ST_PCR_INFO)*u32num);
 
     for( u32Idx=0; u32Idx<u32num; u32Idx++)
     {
         stPCR[u32Idx].u8FltId = INVALID_FILTER_ID;
+    }
+
+    // Get the TSIF number
+    MApi_DMX_GetCap(DMX_CAP_TSIF_NUM, &u32MaxTsifNum);
+
+    eSourceID = _Demo_DMX_MemAlloc_Func(sizeof(MS_U32)*u32MaxTsifNum);
+
+    for( u32Idx=0; u32Idx<u32MaxTsifNum; u32Idx++)
+    {
+        eSourceID[u32Idx] = E_DMX_FLT_SOURCEID_0;
     }
 
     return TRUE ;
@@ -1822,7 +2162,8 @@ MS_BOOL Demo_DMX_Init(void)
 MS_BOOL Demo_DMX_Init(void)
 {
     MS_U32 u32Idx;
-    MS_U32 u32PCREngNum;
+    MS_U32 u32PCREngNum, u32Path;
+    MS_U8  u8SyncByte, u8SrcId, u32SrcIdIdx;
 
     printf("Demo_DMX_Init\n");
 
@@ -1861,15 +2202,65 @@ MS_BOOL Demo_DMX_Init(void)
     // Get the PCR engine number
     MApi_DMX_GetCap(DMX_CAP_VFIFO_NUM, &u32PCREngNum);
 
-#if (DEMO_DMX_NEW_ARCHI_TEST == 1)
-    MApi_DMX_GetCap(DMX_CAP_PCRFLT_START_IDX, &u8PCRFltStartIdx);
-#endif
+    eMaxPcrEngID = (EN_PCR_ENG)(u32PCREngNum-1);
 
-    stPCR = malloc(sizeof(ST_PCR_INFO)*u32PCREngNum);
+    stPCR = _Demo_DMX_MemAlloc_Func(sizeof(ST_PCR_INFO)*u32PCREngNum);
 
     for( u32Idx=0; u32Idx<u32PCREngNum; u32Idx++)
     {
         stPCR[u32Idx].u8FltId = INVALID_FILTER_ID;
+    }
+
+    // Get the TSIF number
+    MApi_DMX_GetCap(DMX_CAP_TSIF_NUM, &u32MaxTsifNum);
+
+    eSourceID = _Demo_DMX_MemAlloc_Func(sizeof(MS_U32)*u32MaxTsifNum);
+
+    for( u32Idx=0; u32Idx<u32MaxTsifNum; u32Idx++)
+    {
+        eSourceID[u32Idx] = E_DMX_FLT_SOURCEID_0;
+    }
+
+    for(u32Path = 0; u32Path < u32MaxTsifNum; ++u32Path)
+    {
+        u8SyncByte = 0x47;
+        u8SrcId = 0;
+
+        // Here we only demo the case that each path with 8 different sync bytes.
+        for(u32SrcIdIdx = E_DMX_FLT_SOURCEID_0; u32SrcIdIdx < E_DMX_FLT_SOURCEID_MAX; ++u32SrcIdIdx, ++u8SyncByte)
+        {
+            switch(u32SrcIdIdx)
+            {
+                case E_DMX_FLT_SOURCEID_0:
+                    u8SrcId = 0;
+                    break;
+                case E_DMX_FLT_SOURCEID_1:
+                    u8SrcId = 1;
+                    break;
+                case E_DMX_FLT_SOURCEID_2:
+                    u8SrcId = 2;
+                    break;
+                case E_DMX_FLT_SOURCEID_3:
+                    u8SrcId = 3;
+                    break;
+                case E_DMX_FLT_SOURCEID_4:
+                    u8SrcId = 4;
+                    break;
+                case E_DMX_FLT_SOURCEID_5:
+                    u8SrcId = 5;
+                    break;
+                case E_DMX_FLT_SOURCEID_6:
+                    u8SrcId = 6;
+                    break;
+                case E_DMX_FLT_SOURCEID_7:
+                    u8SrcId = 7;
+                    break;
+
+            }
+
+          // Arbitrary definition of each path's srcID 0~7 mapping to sync byte 0x47~0x4E.
+          MApi_DMX_MStr_SyncByte(u32Path, u8SrcId, &u8SyncByte, TRUE);
+        }
     }
 
     return TRUE ;
@@ -1883,6 +2274,9 @@ MS_BOOL Demo_DMX_Exit(void)
         DemoDmx_Print("DMX Exit Fail !\n");
         return FALSE;
     }
+
+    _Demo_DMX_MemFree_Func((void**)&stPCR);
+    _Demo_DMX_MemFree_Func((void**)&eSourceID);
 
     MsOS_DeleteEventGroup(_s32DataReadyEventId[0]);
     MsOS_DeleteEventGroup(_s32DataReadyEventId[1]);
@@ -1954,24 +2348,21 @@ MS_BOOL Demo_DMX_PCR(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid)
 {
     MS_U32 u32Idx;
     MS_U32 u32PCR_H=0, u32PCR=0, u32PrePCR=0;
-    MS_U8  u8PCREngId;
-    EN_DEMO_DMX_FLT_SOURCE eFltSrcType;
-
-    eFltSrcType = Demo_DMX_FlowToFltSrcMapping(eDmxFlow);
+    EN_PCR_ENG  ePCREngId = E_PCR_ENG_INVALID;
 
     printf("PCR PID = %hx \n",u16Pid);
 
-    if (TRUE != Demo_DMX_PCR_FltOpen(eFltSrcType, u16Pid, &u8PCREngId))
+    if (TRUE != Demo_DMX_PCR_FltOpen(eDmxFlow, u16Pid, &ePCREngId))
     {
         DemoDmx_Print("Demo_DMX_PCR_FltOpen Failed!\n");
         return false;
     }
     else
     {
-        printf("PCR Eng ID:%u Open Success!\n\n", u8PCREngId);
+        printf("PCR Eng ID:%u Open Success!\n\n", ePCREngId);
     }
 
-    if (TRUE != Demo_DMX_PCR_FltStart(u8PCREngId))
+    if (TRUE != Demo_DMX_PCR_FltStart(ePCREngId))
     {
         DemoDmx_Print("Demo_DMX_PCR_FltStart Failed!\n");
         goto Demo_DMX_PCR_FAIL;
@@ -1981,8 +2372,8 @@ MS_BOOL Demo_DMX_PCR(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid)
 
     for (u32Idx=0; u32Idx<10; u32Idx++)
     {
-        MApi_DMX_Pcr_Get(&u32PCR_H,&u32PCR);
-        printf("PCR Value = %"DTC_MS_U32_x"%08"DTC_MS_U32_x"\n", u32PCR_H, u32PCR);
+        MApi_DMX_Pcr_Eng_Get((MS_U8)ePCREngId,&u32PCR_H,&u32PCR);
+        printf("PCR Eng %d   : Value = %"DTC_MS_U32_x"%08"DTC_MS_U32_x"\n", ePCREngId, u32PCR_H, u32PCR);
 
         if (u32PrePCR > u32PCR)
         {
@@ -1993,14 +2384,14 @@ MS_BOOL Demo_DMX_PCR(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid)
         MsOS_DelayTask(300);
     }
 
-    if (TRUE != Demo_DMX_PCR_FltClose(u8PCREngId))
+    if (TRUE != Demo_DMX_PCR_FltClose(ePCREngId))
     {
         DemoDmx_Print("Demo_DMX_PCR_FltClose Failed!\n");
         return FALSE;
     }
     else
     {
-        printf("PCR Eng ID:%u Close Success!\n", u8PCREngId);
+        printf("PCR Eng ID:%u Close Success!\n", ePCREngId);
     }
 
 
@@ -2009,7 +2400,7 @@ MS_BOOL Demo_DMX_PCR(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid)
 Demo_DMX_PCR_FAIL:
 
     DemoDmx_Print("Demo_DMX_PCR Failed!\n");
-    Demo_DMX_PCR_FltClose(u8PCREngId);
+    Demo_DMX_PCR_FltClose(ePCREngId);
 
     return FALSE;
 
@@ -2116,7 +2507,7 @@ MS_BOOL Demo_DMX_Scan(EN_DEMO_DMX_FLOW eDmxFlow, MS_BOOL bDisableDump)
 
     if(!bDisableDump)
         printf("dmx_copy data ...\n");
-    
+
     _ScanFilterParsePAT(u32FltId);
 
     MApi_DMX_Stop(u32FltId);
@@ -2132,7 +2523,7 @@ MS_BOOL Demo_DMX_Scan(EN_DEMO_DMX_FLOW eDmxFlow, MS_BOOL bDisableDump)
             goto Demo_DMX_Scan_FAIL;
         }
         else
-        {   
+        {
             if(!bDisableDump)
                 printf("DMX Section Filter Start ...  \n");
         }
@@ -2235,9 +2626,10 @@ MS_BOOL Demo_DMX_Sec(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid , MS_U32* pu32Pat0
     MS_U8*                                 pu8BufAddr;
     DMX_FILTER_TYPE                        FilterType;
     DMX_FILTER_TYPE                        eFltSrcType;
+    DMX_FILTER_TYPE                        eFltSrcID;
 
-
-    eFltSrcType = _Demo_DMX_FltSourceMapping(Demo_DMX_FlowToFltSrcMapping(eDmxFlow));
+    eFltSrcType =  Demo_DMX_FlowToFltSrcMapping(eDmxFlow);
+    eFltSrcID   = _Demo_DMX_FltSourceIDMapping(eDmxFlow, eSourceID[eDmxFlow]);
 
     memset(pattern, 0x0, sizeof(pattern));
     memset(mask,    0x0, sizeof(mask));
@@ -2277,7 +2669,7 @@ MS_BOOL Demo_DMX_Sec(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid , MS_U32* pu32Pat0
 
 
     // Set Parameter of Allocate Demux Filter type and input Source type.
-    FilterType = DMX_FILTER_TYPE_SECTION | eFltSrcType;
+    FilterType = DMX_FILTER_TYPE_SECTION | eFltSrcType | eFltSrcID;
 
     // Allocate a Filter and set Filter Basic Type
     if (DMX_FILTER_STATUS_OK != MApi_DMX_Open(FilterType, &DmxIdSect))
@@ -2437,31 +2829,39 @@ MS_BOOL Demo_DMX_Packet(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid)
     MS_U32                                 u32Event;
     MS_U8*                                 pu8BufAddr;
     MS_U32                                 u32Idx;
-    ST_NotifyParam                            Pkt_Param;
+    ST_NotifyParam                         Pkt_Param;
     DMX_FILTER_TYPE                        FilterType;
     DMX_FILTER_TYPE                        eFltSrcType;
+    DMX_FILTER_TYPE                        eFltSrcID;
 
-
-    eFltSrcType = _Demo_DMX_FltSourceMapping(Demo_DMX_FlowToFltSrcMapping(eDmxFlow));
-
+    eFltSrcType = Demo_DMX_FlowToFltSrcMapping(eDmxFlow);
+    eFltSrcID   = _Demo_DMX_FltSourceIDMapping(eDmxFlow, eSourceID[eDmxFlow]);
 
     memset(pattern, 0x0, sizeof(pattern));
     memset(mask,    0x0, sizeof(mask));
     memset(nmask,   0x0, sizeof(nmask));
 
     // Set Parameter of Allocate Demux Filter type and input Source type.
-    FilterType = DMX_FILTER_TYPE_PACKET| eFltSrcType;
+    FilterType = DMX_FILTER_TYPE_PACKET | eFltSrcType | eFltSrcID;
 
     // Allocate a Filter and set Filter Basic Type
     if (DMX_FILTER_STATUS_OK != MApi_DMX_Open(FilterType, &DmxId))
     {
         DemoDmx_Print("[%s] Allocate filter fail \n",__FUNCTION__);
-        goto DMX_PKT_FAIL;
+        MApi_DMX_Close(DmxId);
+        printf("\n[FAIL][%s]\n\n", __FUNCTION__);
+        return FALSE ;
     }
 
     // Here we use pre-defined physical address of reserved section buffer.
     // [Note] The section buffe MUST be continus in physical address space.(for DMA usage)
-    if (!Pes_Buf_Alloc(&u32Idx)) goto DMX_PKT_FAIL;
+    if (!Pes_Buf_Alloc(&u32Idx))
+    {
+        DemoDmx_Print("[%s] Allocate filter fail \n",__FUNCTION__);
+        MApi_DMX_Close(DmxId);
+        printf("\n[FAIL][%s]\n\n", __FUNCTION__);
+        return FALSE ;
+    }
 
     pu8BufAddr = (MS_U8*)Pes_Buf_Addr[u32Idx] ;
 
@@ -2485,7 +2885,10 @@ MS_BOOL Demo_DMX_Packet(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid)
     // Set the pointer of the event CB function into Demux driver
     FltInfo.Info.SectInfo.pType2Notify =    &_Demo_DMX_DataCb_Type2;
 
-    strcpy((char*)Pkt_Param.name,"APP Demo Packet filter Notify parameter test");
+    char PktParamName[] = "APP Demo Packet filter Notify parameter test";
+    strncpy((char*)Pkt_Param.name,PktParamName,sizeof(PktParamName));
+    Pkt_Param.name[sizeof(PktParamName)] = '\0';
+
     Pkt_Param.Counter = 0 ;
 
     FltInfo.Info.SectInfo.Type2NotifyParam1 = (MS_U32)&Pkt_Param;
@@ -2494,14 +2897,18 @@ MS_BOOL Demo_DMX_Packet(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid)
     if (DMX_FILTER_STATUS_OK != MApi_DMX_Info( DmxId, &FltInfo, &FilterType, TRUE))
     {
         DemoDmx_Print("[%s] MApi_DMX_Info fail \n",__FUNCTION__);
-        goto DMX_PKT_FAIL;
+        MApi_DMX_Close(DmxId);
+        printf("\n[FAIL][%s]\n\n", __FUNCTION__);
+        return FALSE ;
     }
 
     // Set Filter PID --> Section PID
     if (DMX_FILTER_STATUS_OK != MApi_DMX_Pid( DmxId, &u16Pid , TRUE))
     {
         DemoDmx_Print("[%s] MApi_DMX_Pid fail \n",__FUNCTION__);
-        goto DMX_PKT_FAIL;
+        MApi_DMX_Close(DmxId);
+        printf("\n[FAIL][%s]\n\n", __FUNCTION__);
+        return FALSE ;
     }
 
     // Set Section Match pattern
@@ -2561,10 +2968,12 @@ MS_BOOL Demo_DMX_Packet(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid)
     return TRUE;
 
     DMX_PKT_FAIL:
+
     MApi_DMX_Close(DmxId);
     printf("\n[FAIL][%s]\n\n", __FUNCTION__);
-
     return FALSE ;
+
+
 }
 
 
@@ -2629,11 +3038,13 @@ MS_BOOL Demo_DMX_PES(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid)
     MS_U32                                 u32Event;
     MS_U8*                                 pu8BufAddr;
     MS_U32                                 u32Idx ;
-    ST_NotifyParam                            Pes_Param;
+    ST_NotifyParam                         Pes_Param;
     DMX_FILTER_TYPE                        FilterType;
     DMX_FILTER_TYPE                        eFltSrcType;
+    DMX_FILTER_TYPE                        eFltSrcID;
 
-    eFltSrcType = _Demo_DMX_FltSourceMapping(Demo_DMX_FlowToFltSrcMapping(eDmxFlow));
+    eFltSrcType = Demo_DMX_FlowToFltSrcMapping(eDmxFlow);
+    eFltSrcID   = _Demo_DMX_FltSourceIDMapping(eDmxFlow, eSourceID[eDmxFlow]);
 
     memset(pattern, 0x0, sizeof(pattern));
     memset(mask,    0x0, sizeof(mask));
@@ -2641,7 +3052,7 @@ MS_BOOL Demo_DMX_PES(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid)
 
 
     // Set Parameter of Allocate Demux Filter type and input Source type.
-    FilterType = DMX_FILTER_TYPE_PES| eFltSrcType;
+    FilterType = DMX_FILTER_TYPE_PES | eFltSrcType | eFltSrcID;
 
     // Allocate a Filter and set Filter Basic Type
     if (DMX_FILTER_STATUS_OK != MApi_DMX_Open(FilterType, &DmxId))
@@ -2649,7 +3060,12 @@ MS_BOOL Demo_DMX_PES(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid)
         DemoDmx_Print("[%s] Allocate filter fail \n",__FUNCTION__);
     }
 
-    if (!Pes_Buf_Alloc(&u32Idx)) goto DMX_PES_FAIL;
+    if (!Pes_Buf_Alloc(&u32Idx))
+    {
+        printf("\n[FAIL][%s]\n\n", __FUNCTION__);
+        MApi_DMX_Close(DmxId);
+        return FALSE ;
+    }
 
     pu8BufAddr = (MS_U8*)Pes_Buf_Addr[u32Idx] ;
 
@@ -2661,8 +3077,9 @@ MS_BOOL Demo_DMX_PES(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid)
     FltInfo.Info.SectInfo.Event        =  DMX_EVENT_DATA_READY | DMX_EVENT_BUF_OVERFLOW | DMX_EVENT_CB_SELF_TYPE2 ;  // DMX_EVENT_DATA_READY
     FltInfo.Info.SectInfo.pType2Notify  =  &_Demo_DMX_DataCb_Type2;
 
-
-    strcpy((char*)Pes_Param.name , "APP Demo Pes filter Notify parameter test");
+    char PesParamName[] = "APP Demo Pes filter Notify parameter test";
+    strncpy((char*)Pes_Param.name , PesParamName, sizeof(PesParamName));
+    Pes_Param.name[sizeof(PesParamName)] = '\0';
     Pes_Param.Counter = 0 ;
     FltInfo.Info.SectInfo.Type2NotifyParam1 = (MS_U32)&Pes_Param;
 
@@ -2876,7 +3293,7 @@ MS_BOOL Demo_DMX_Nmask(EN_DEMO_DMX_FLOW eDmxFlow, MS_U8 *pu8Pat, MS_U8 *pu8Mask,
     MApi_DMX_Close(DmxId);
 
 
-    _Demo_DMX_MemFree_Func(FileinAddr);
+    _Demo_DMX_MemFree_Func((void**)&FileinAddr);
 
     return TRUE ;
 
@@ -2917,7 +3334,12 @@ static MS_BOOL _DMX_REC(void)
     while(1)
     {
 
-        MApi_DMX_Pvr_Eng_WriteGet(eDmxPvrEng,&phyRecordAdr);
+
+        if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_WriteGet(eDmxPvrEng,&phyRecordAdr))
+        {
+            DemoDmx_Print("MApi_DMX_Pvr_Eng_WriteGet fail! (video)\n");
+            return FALSE;
+        }
         if(phyRecordAdr < u32PreRecordAdr)
         {
             u32WaterLevel = (u32RecordBufSize - u32PreRecordAdr)+phyRecordAdr;
@@ -2957,15 +3379,21 @@ static MS_BOOL _DMX_REC(void)
     }
 
     MsFS_Fclose(Fptr);
-    MApi_DMX_Pvr_Eng_Pid_Close(eDmxPvrEng,u8PCR_PVRFltId);
-    MApi_DMX_Pvr_Eng_Pid_Close(eDmxPvrEng,u8Video_PVRFltId);
-    MApi_DMX_Pvr_Eng_Pid_Close(eDmxPvrEng,u8Audio_PVRFltId);
+
+    // Close Video Pid filter
+    MApi_DMX_Stop(u8Video_PVRFltId);
+    MApi_DMX_Close(u8Video_PVRFltId);
+    // Close Audio Pid filter
+    MApi_DMX_Stop(u8Audio_PVRFltId);
+    MApi_DMX_Close(u8Audio_PVRFltId);
+    // Close PCR Pid filter
+    MApi_DMX_Stop(u8PCR_PVRFltId);
+    MApi_DMX_Close(u8PCR_PVRFltId);
+
     MApi_DMX_Pvr_Eng_Stop(eDmxPvrEng);
     MApi_DMX_Pvr_Eng_Close(eDmxPvrEng);
     return TRUE;
 }
-
-
 
 //------------------------------------------------------------------------------
 /// @Brief the command interface for sample code to record a live stream
@@ -2988,28 +3416,28 @@ static MS_BOOL _DMX_REC(void)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_DMX_Record_CMD(MS_U8 *pu8Live, MS_U8 *pu8Eng, MS_U32 *pu32VideoPid,MS_U32 *pu32AudioPid,MS_U32 *pu32PCRPid)
 {
-    EN_DEMO_DMX_PVR_SOURCE ePvrSrc = E_DMX_PVR_SOURCE_INVALID;
-    EN_DEMO_DMX_PVR_ENG    ePvrEng = E_DMX_PVR_ENG_INVALID;
+    EN_DEMO_DMX_FLOW     ePvrFlow = E_DMX_FLOW_INVALID;
+    EN_DEMO_DMX_PVR_ENG  ePvrEng  = E_DMX_PVR_ENG_INVALID;
 
 
     if(_Demo_DMX_strcmp(pu8Live, "LIVE0")==0 )
-        ePvrSrc = E_DMX_PVR_SOURCE_LIVE0;
+        ePvrFlow = E_DMX_FLOW_LIVE0;
     else if(_Demo_DMX_strcmp(pu8Live, "LIVE1")==0 )
-        ePvrSrc = E_DMX_PVR_SOURCE_LIVE1;
+        ePvrFlow = E_DMX_FLOW_LIVE1;
     else if(_Demo_DMX_strcmp(pu8Live, "LIVE2")==0 )
-        ePvrSrc = E_DMX_PVR_SOURCE_LIVE2;
+        ePvrFlow = E_DMX_FLOW_LIVE2;
     else if(_Demo_DMX_strcmp(pu8Live, "LIVE3")==0 )
-        ePvrSrc = E_DMX_PVR_SOURCE_LIVE3;
+        ePvrFlow = E_DMX_FLOW_LIVE3;
     else if(_Demo_DMX_strcmp(pu8Live, "FILE0")==0 )
-        ePvrSrc = E_DMX_PVR_SOURCE_FILE0;
+        ePvrFlow = E_DMX_FLOW_FILE0;
     else if(_Demo_DMX_strcmp(pu8Live, "FILE1")==0 )
-        ePvrSrc = E_DMX_PVR_SOURCE_FILE1;
+        ePvrFlow = E_DMX_FLOW_FILE1;
     else if(_Demo_DMX_strcmp(pu8Live, "FILE2")==0 )
-        ePvrSrc = E_DMX_PVR_SOURCE_FILE2;
+        ePvrFlow = E_DMX_FLOW_FILE2;
     else if(_Demo_DMX_strcmp(pu8Live, "FILE3")==0 )
-        ePvrSrc = E_DMX_PVR_SOURCE_FILE3;
+        ePvrFlow = E_DMX_FLOW_FILE3;
     else
-        ePvrSrc = E_DMX_PVR_SOURCE_INVALID;
+        ePvrFlow = E_DMX_FLOW_INVALID;
 
     if(_Demo_DMX_strcmp(pu8Eng, "ENG0")==0 )
         ePvrEng = E_DMX_PVR_EGN0;
@@ -3023,14 +3451,14 @@ MS_BOOL Demo_DMX_Record_CMD(MS_U8 *pu8Live, MS_U8 *pu8Eng, MS_U32 *pu32VideoPid,
         ePvrEng = E_DMX_PVR_ENG_INVALID;
 
 
-    if(ePvrSrc==E_DMX_PVR_SOURCE_INVALID || ePvrEng==E_DMX_PVR_ENG_INVALID)
+    if(ePvrFlow==E_DMX_FLOW_INVALID || ePvrEng==E_DMX_PVR_ENG_INVALID)
     {
         DemoDmx_Print("Wrong DMX PVR Source and Engine!\n");
         return FALSE;
     }
 
 
-    if( Demo_DMX_Record(ePvrSrc, ePvrEng, *pu32VideoPid, *pu32AudioPid, *pu32PCRPid))
+    if( Demo_DMX_Record(ePvrFlow, ePvrEng, *pu32VideoPid, *pu32AudioPid, *pu32PCRPid))
     {
         DemoDmx_Print("Demo_DMX_Record Success!\n");
         return TRUE;
@@ -3045,8 +3473,8 @@ MS_BOOL Demo_DMX_Record_CMD(MS_U8 *pu8Live, MS_U8 *pu8Eng, MS_U32 *pu32VideoPid,
 
 //------------------------------------------------------------------------------
 /// @Brief the sample code to record a live stream
-/// @param[in] u8Eng    The number of PVR ENG for recording
-/// @param[in] u8Live   The number of LIVE TV for recording
+/// @param[in] eDmxFlow DMX flow
+/// @param[in] ePvrEng  The number of PVR ENG for recording
 /// @param[in] VideoPid Video PID of the current program
 /// @param[in] AudioPid Audio PID of the current program
 /// @param[in] PCRPid   PCR PID of the current program
@@ -3054,16 +3482,14 @@ MS_BOOL Demo_DMX_Record_CMD(MS_U8 *pu8Live, MS_U8 *pu8Eng, MS_U32 *pu32VideoPid,
 /// @note
 //------------------------------------------------------------------------------
 
-MS_BOOL Demo_DMX_Record(EN_DEMO_DMX_PVR_SOURCE ePvrSrc, EN_DEMO_DMX_PVR_ENG ePvrEng, MS_U32 u32VideoPid,MS_U32 u32AudioPid,MS_U32 u32PCRPid)
+MS_BOOL Demo_DMX_Record(EN_DEMO_DMX_FLOW eDmxFlow, EN_DEMO_DMX_PVR_ENG ePvrEng, MS_U32 u32VideoPid,MS_U32 u32AudioPid,MS_U32 u32PCRPid)
 {
-    printf("Input: Video:%"DTC_MS_U32_u" Audio:%"DTC_MS_U32_u" PCR:%"DTC_MS_U32_u" Eng:%d Live:%d\n", u32VideoPid, u32AudioPid, u32PCRPid,ePvrSrc,ePvrEng);
-
-    DMX_TSIF eDmxTSIF;
+    printf("Input: Video:%"DTC_MS_U32_u" Audio:%"DTC_MS_U32_u" PCR:%"DTC_MS_U32_u" Eng:%d Live:%d\n", u32VideoPid, u32AudioPid, u32PCRPid,ePvrEng,eDmxFlow);
 
     void *_pTempDmxRec = _Demo_DMX_MemAlloc_Func (DMX_DOWNLOAD_LEN); //3.375m
     _pDmxRec =  MsOS_MPool_VA2PA((MS_VIRT)_pTempDmxRec);
 
-    eDmxTSIF = _Demo_DMX_PVRSrcMapping(ePvrSrc);
+    DMX_TSIF eDmxTSIF = _Demo_DMX_FlowToPvrSrcMapping(eDmxFlow);
 
     eDmxPvrEng = _Demo_DMX_PVREngMapping(ePvrEng);
 
@@ -3086,18 +3512,73 @@ MS_BOOL Demo_DMX_Record(EN_DEMO_DMX_PVR_SOURCE ePvrSrc, EN_DEMO_DMX_PVR_ENG ePvr
     pvrInfo.pNotify = NULL;
     MApi_DMX_Pvr_Eng_Open(eDmxPvrEng,&pvrInfo);
 
+    MS_U16 u16VideoPid = (MS_U16) u32VideoPid;
+    MS_U16 u16AudioPid = (MS_U16) u32AudioPid;
+    MS_U16 u16PCRPid = (MS_U16) u32PCRPid;
+    DMX_FILTER_TYPE eFilterSource = Demo_DMX_FlowToFltSrcMapping(eDmxFlow);
+    DMX_FILTER_TYPE eFilterPVR = _Demo_DMX_PVREngToFilterTypeMapping(ePvrEng);
+    DMX_FILTER_TYPE eFilterSourceID = _Demo_DMX_FltSourceIDMapping(eDmxFlow, eSourceID[eDmxFlow]);
+    // Open Video Pid filter
 
-    MApi_DMX_Pvr_Eng_Pid_Open(eDmxPvrEng,u32PCRPid,&u8PCR_PVRFltId);
-    MApi_DMX_Pvr_Eng_Pid_Open(eDmxPvrEng,u32AudioPid,&u8Audio_PVRFltId);
-    MApi_DMX_Pvr_Eng_Pid_Open(eDmxPvrEng,u32VideoPid,&u8Video_PVRFltId);
+    if (DMX_FILTER_STATUS_OK != MApi_DMX_Open(eFilterSource|eFilterPVR|eFilterSourceID,&u8Video_PVRFltId))
+    {
+        DemoDmx_Print("MApi_DMX_Open fail! (video)\n");
+        return FALSE;
+    }
+    if (DMX_FILTER_STATUS_OK != MApi_DMX_Pid(u8Video_PVRFltId, &u16VideoPid, TRUE))
+    {
+        DemoDmx_Print("MApi_DMX_Pid! fail! (video)\n");
+        return FALSE;
+    }
+    if (DMX_FILTER_STATUS_OK != MApi_DMX_Start(u8Video_PVRFltId))
+    {
+        DemoDmx_Print("MApi_DMX_Start fail! (video)\n");
+        return FALSE;
+    }
+    // Open Audio Pid filter
+
+    if (DMX_FILTER_STATUS_OK != MApi_DMX_Open(eFilterSource|eFilterPVR|eFilterSourceID,&u8Audio_PVRFltId))
+    {
+        DemoDmx_Print("MApi_DMX_Open fail! (Audio)\n");
+        return FALSE;
+    }
+    if (DMX_FILTER_STATUS_OK != MApi_DMX_Pid(u8Audio_PVRFltId, &u16AudioPid, TRUE))
+    {
+        DemoDmx_Print("MApi_DMX_Open fail! (Audio)\n");
+        return FALSE;
+    }
+    if (DMX_FILTER_STATUS_OK != MApi_DMX_Start(u8Audio_PVRFltId))
+    {
+        DemoDmx_Print("Set MApi_DMX_Start fail! (Audio)\n");
+        return FALSE;
+    }
+    // Open PCR Pid filter
+    if (DMX_FILTER_STATUS_OK != MApi_DMX_Open(eFilterSource|eFilterPVR|eFilterSourceID,&u8PCR_PVRFltId))
+    {
+        DemoDmx_Print("MApi_DMX_Open fail! (PCR)\n");
+        return FALSE;
+    }
+    if (DMX_FILTER_STATUS_OK != MApi_DMX_Pid(u8PCR_PVRFltId, &u16PCRPid, TRUE))
+    {
+        DemoDmx_Print("MApi_DMX_Open fail! (PCR)\n");
+        return FALSE;
+    }
+    if (DMX_FILTER_STATUS_OK != MApi_DMX_Start(u8PCR_PVRFltId))
+    {
+        DemoDmx_Print("Set MApi_DMX_Start fail! (PCR)\n");
+        return FALSE;
+    }
 
     printf("PVRAudioFlt:%d PVRVideoFlt:%d PVRPCRFlt:%d\n",u8Audio_PVRFltId,u8Video_PVRFltId,u8PCR_PVRFltId);
 
-
     MApi_DMX_Pvr_Eng_SetPacketMode(eDmxPvrEng,TRUE);
     MApi_DMX_Pvr_Eng_SetRecordStamp(eDmxPvrEng,0);
-    MApi_DMX_Pvr_Eng_Start(eDmxPvrEng,FALSE);
 
+    if (DMX_FILTER_STATUS_OK != MApi_DMX_Pvr_Eng_Start(eDmxPvrEng,FALSE))
+    {
+        DemoDmx_Print("Set MApi_DMX_Pvr_Eng_Start fail! (PCR)\n");
+        return FALSE;
+    }
 
     if (-1 == MsOS_CreateTask ((TaskEntry) _DMX_REC,
                            (MS_U32)NULL,
@@ -3129,12 +3610,14 @@ MS_BOOL Demo_DMX_TSO(MS_U8* pu8TSOEng, MS_U8* pu8Pad)
     else if(*pu8TSOEng == 1)
         DmxFlow = DMX_FLOW_TSO_PLAYBACK1;
     else
-        DemoDmx_Print("Unsupproted TSO Eng : %d !!\n", *pu8TSOEng);
+        DemoDmx_Print("Unsupported TSO Eng : %d !!\n", *pu8TSOEng);
 
 #if (DEMO_DMX_TSO_10_TEST == 1)
 
     DMX_FLOW_INPUT eSrc = DMX_FLOW_INPUT_DEMOD;
     MS_BOOL bParallel = TRUE;
+    DMX_TSO_OutClk eTsOutClk = E_DMX_TSO_OUTCLK_Dmd;
+    DMX_TSO_OutClkSrc eTsOutClkSrc = E_DMX_TSO_OUTCLKSRC_172M_2N;
 
 #elif (DEMO_DMX_TSO_20_TEST == 1)
 
@@ -3148,11 +3631,15 @@ MS_BOOL Demo_DMX_TSO(MS_U8* pu8TSOEng, MS_U8* pu8Pad)
 
     DMX_FLOW_INPUT eSrc = DMX_FLOW_INPUT_EXT_INPUT0_3WIRE;
     MS_BOOL bParallel = FALSE;
+    DMX_TSO_OutClk eTsOutClk = E_DMX_TSO_OUTCLK_27M;
+    DMX_TSO_OutClkSrc eTsOutClkSrc = E_DMX_TSO_OUTCLKSRC_172M_2N;
 
     #else
 
     DMX_FLOW_INPUT eSrc = DMX_FLOW_INPUT_EXT_INPUT0;
     MS_BOOL bParallel = TRUE;
+    DMX_TSO_OutClk eTsOutClk = E_DMX_TSO_OUTCLK_PTSOOUT;
+    DMX_TSO_OutClkSrc eTsOutClkSrc = E_DMX_TSO_OUTCLKSRC_P_TS0IN;
 
     #endif
 
@@ -3164,16 +3651,204 @@ MS_BOOL Demo_DMX_TSO(MS_U8* pu8TSOEng, MS_U8* pu8Pad)
         return FALSE;
     }
 
+    //align TSO output clk setting with DMX_FlowSet
+    MApi_DMX_TSO_SetOutClk(*pu8TSOEng, eTsOutClk, eTsOutClkSrc, 0x0, TRUE);
+
     if(*pu8Pad == 0)
         MDrv_SYS_SetPadMux(E_TS0_PAD_SET,E_PARALLEL_OUT_TSO);
     else if(*pu8Pad == 1)
         MDrv_SYS_SetPadMux(E_TS1_PAD_SET,E_PARALLEL_OUT_TSO);
     else
-        DemoDmx_Print("Unsupproted Pad : %d !!\n", *pu8Pad);
+        DemoDmx_Print("Unsupported Pad : %d !!\n", *pu8Pad);
 
     return TRUE;
 }
 
+//------------------------------------------------------------------------------
+/// @Brief the sample code for TSO file-in 192 block mode and compare the result with TSP PVR
+/// @param[in] pu8TSOEng           : [0]TSOEng0 / [1]TSOEng1
+/// @param[in] pu8FileInCh         : [0]FileIn0 / [1]Filein1
+/// @param[in] bParallel           : [0]Serial  / [1]Parallel
+/// @param[in] bClkInv             : [0]Clk     / [1]Clk inv.
+/// @param[in] u32TSOFileInCnt     : repeat TSO filein a number of times
+/// @note
+/// @CMD DMX_TSO_FileIn 0 0 1 1 100
+
+//------------------------------------------------------------------------------
+MS_BOOL Demo_DMX_TSO_FileIn(MS_U8 *pu8TSOEng, MS_U8 *pu8FileInCh, MS_BOOL *bParallel, MS_BOOL *bClkInv, MS_U32 *u32TSOFileInCnt)
+{
+    //tso
+    MS_U32 u32TSORecBufSize = 0;
+    DMX_Filein_info tsFileInInfo;
+    DMX_FLOW DmxFlow = DMX_FLOW_NUM;
+    DMX_FLOW_INPUT DmxFlowInput = DMX_FLOW_INPUT_MEM;
+    //pvr
+    DMX_PVR_ENG ePvrEng;
+    DMX_TSIF eTSIF;
+    MS_U8 *u8SendBuf;
+    MS_U8 u8Test_FltId;
+    MS_U8 *pu8RecBuf;
+    MS_U16 u16TestPid = 0x0000;
+    MS_U32 i, j, k;
+    MS_U32 u32SourcePhyAddr;
+    MS_U32 u32IdleSlot = 0;
+    MS_U32 u32SendFileLen = 0;
+    MS_U32 u32NullPktLen = 0;
+    MS_U32 u32ValidPktLen = 0;
+    MS_U32 u32CmpFailCnt = 0;
+    MS_U32 u32WaterLevel = 0;
+    MS_PHY TSORecAdr = 0;
+    MS_PHY RecordWriteAdr = 0;
+    void *_pTempTSORec = NULL;
+
+    if(*pu8TSOEng == 0)
+        DmxFlow = DMX_FLOW_TSO_PLAYBACK;
+    else if(*pu8TSOEng == 1)
+        DmxFlow = DMX_FLOW_TSO_PLAYBACK1;
+    else
+        DemoDmx_Print("Unsupported TSO Eng : %d !!\n", *pu8TSOEng);
+
+    if(*pu8FileInCh == 0)
+        DmxFlowInput = DMX_FLOW_INPUT_MEM;
+    else if(*pu8FileInCh == 1)
+        DmxFlowInput = DMX_FLOW_INPUT_MEM1;
+    else
+        DemoDmx_Print("Unsupported FileIn channel : %d !!\n", *pu8FileInCh);
+
+    #if (DEMO_DMX_TSO_20_TEST == 1)
+    if (DMX_FILTER_STATUS_OK != MApi_DMX_TSO_SVQBuf_Set(*pu8TSOEng, (MS_PHY) MEM_ADR_BY_MIU(TSO_SVQ_BUF_ADR, TSO_SVQ_BUF_MEMORY_TYPE), TSO_SVQ_BUF_LEN))
+    {
+        DemoDmx_Print("Set SVQ buffer fail!\n");
+        return FALSE;
+    }
+    #endif
+
+    if (DMX_FILTER_STATUS_OK!= MApi_DMX_FlowSet(DmxFlow, DmxFlowInput, FALSE, TRUE, *bParallel))
+    {
+        DemoDmx_Print("Switch to mem fail!\n");
+        return FALSE;
+    }
+
+    MApi_DMX_TSO_SetOutClk(*pu8TSOEng, E_DMX_TSO_OUTCLK_DIV2N, E_DMX_TSO_OUTCLKSRC_172M_2N, 0x1, *bClkInv);
+
+    tsFileInInfo.PKT_Mode = DMX_PKTMODE_192;
+    tsFileInInfo.Rate = TSO_FILEIN_TIMER;
+    MApi_DMX_TSO_Filein_Info(*pu8TSOEng, &tsFileInInfo);
+    MApi_DMX_TSO_TimeStampEnable(*pu8TSOEng);
+    MApi_DMX_TSO_BypassFileInTimeStamp(*pu8TSOEng, FALSE);
+
+    // pvr
+    ePvrEng = DMX_PVR_EGN0;
+    eTSIF = DMX_TSIF_LIVE0;
+    u32SourcePhyAddr = (MS_U32)DMX_DEMO_RESERVED_ADDRESS;
+
+    memcpy((void *)MS_PA2KSEG1((MS_U32)u32SourcePhyAddr),TSO_Stream,sizeof(TSO_Stream));
+    u32TSORecBufSize = sizeof(TSO_Stream)/2;
+    u32SendFileLen = sizeof(TSO_Stream);
+    u32NullPktLen = u32SendFileLen/4; // the first #8pkts are null pkts in TSO_Stream
+    u32ValidPktLen = u32SendFileLen/2; // the following #16pkts are pid 0x0000 pkts in TSO_Stream
+
+    MS_S32 s32MstarNonCachedPoolID = INVALID_POOL_ID;
+    Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&s32MstarNonCachedPoolID);
+    u8SendBuf = (MS_U8*)MS_PA2KSEG1((MS_U32)u32SourcePhyAddr);
+
+    _pTempTSORec =  _Demo_DMX_MemAlloc_Func(u32TSORecBufSize);
+    TSORecAdr =  MsOS_MPool_VA2PA((MS_VIRT)_pTempTSORec);
+    RecordWriteAdr = TSORecAdr;
+
+    pu8RecBuf = (MS_U8*)MS_PA2KSEG1(TSORecAdr);
+    u8SendBuf = (MS_U8*)MS_PA2KSEG1((MS_U32)u32SourcePhyAddr + u32NullPktLen);
+
+    MApi_DMX_FlowSet(DMX_FLOW_PLAYBACK, DMX_FLOW_INPUT_TSO, FALSE, TRUE, TRUE);
+    MApi_DMX_PVR_FlowSet(ePvrEng, eTSIF,TRUE);
+
+    //open PVR Eng and PVR Eng pid flts
+    DMX_Pvr_info pvrInfo = {};
+    pvrInfo.pPvrBuf0 = TSORecAdr;
+    pvrInfo.PvrBufSize0 = (u32TSORecBufSize) >> 1;
+    pvrInfo.pPvrBuf1 = (TSORecAdr + ((u32TSORecBufSize) >>1));
+    pvrInfo.PvrBufSize1 = (u32TSORecBufSize) >> 1;
+    pvrInfo.pNotify = NULL;
+
+    DMX_FILTER_TYPE eFilterSource = Demo_DMX_FlowToFltSrcMapping(E_DMX_FLOW_LIVE0);
+    DMX_FILTER_TYPE eFilterPVR = _Demo_DMX_PVREngToFilterTypeMapping(E_DMX_PVR_EGN0);
+    //DMX_FILTER_TYPE eFilterSourceID = _Demo_DMX_FltSourceIDMapping(E_DMX_FLOW_LIVE0, eSourceID[E_DMX_FLOW_LIVE0]); //for merge stream(sync byte) only
+
+    // Open test Pid filter
+    MApi_DMX_Open(eFilterSource|eFilterPVR,&u8Test_FltId);
+    MApi_DMX_Pid(u8Test_FltId, &u16TestPid, TRUE);
+    MApi_DMX_Start(u8Test_FltId);
+
+    // false :188, true:192
+    MApi_DMX_Pvr_Eng_SetPacketMode(ePvrEng,FALSE);
+    MApi_DMX_Pvr_Eng_SetRecordStamp(ePvrEng,0);
+
+    for (j = 0; j < *u32TSOFileInCnt; j++)
+    {
+        u32WaterLevel = 0;
+        MApi_DMX_Pvr_Eng_Open(ePvrEng,&pvrInfo);
+        MApi_DMX_Pvr_Eng_Start(ePvrEng,FALSE);
+
+        //If TSO timestamp was set to 0x0, it will be continued when TSO timestamp is larger than filein timestamp
+        //MApi_DMX_TSO_SetPlaybackTimeStamp(*pu8TSOEng, 0x00000000);
+        MApi_DMX_TSO_SetPlaybackTimeStamp(*pu8TSOEng, 0x00500000);
+        MApi_DMX_TSO_Filein_Start(*pu8TSOEng, (MS_PHYADDR)(u32SourcePhyAddr), u32SendFileLen);
+
+        while(1)
+        {
+            MApi_DMX_Pvr_Eng_WriteGet(ePvrEng,&RecordWriteAdr);
+            u32WaterLevel = RecordWriteAdr - TSORecAdr;
+
+            if (u32WaterLevel >= ((u32ValidPktLen/TSO_PACKET_LEN_192*TSO_PACKET_LEN_188) - TSO_PACKET_LEN_188))
+            {
+                break;
+            }
+        }
+
+        if (u32WaterLevel)
+        {
+            for (i = 0, k = 0; i < u32WaterLevel; i++)
+            {
+                if ((i % TSO_PACKET_LEN_188) == 0)
+                {
+                    k += TSO_PACKET_LEN_192 - TSO_PACKET_LEN_188;
+                }
+                if (u8SendBuf[i + k] != *(MS_U8*)((MS_U32)pu8RecBuf+i))
+                {
+                    u32CmpFailCnt++;
+                }
+            }
+        }
+
+        // check CMDQ idle slot
+        while(1)
+        {
+            MApi_DMX_TSO_Filein_CMDQ_GetEmptyNum(*pu8TSOEng,&u32IdleSlot);
+            if (u32IdleSlot>=5) // check TSO CMDQ idle slot >5
+            {
+                break;
+            }
+        }
+        MApi_DMX_Pvr_Eng_Stop(ePvrEng);
+    }
+
+    if (u32CmpFailCnt == 0)
+    {
+        DemoDmx_Print("\nDMX_TSO_FileIn compare success!\n");
+    }
+    else
+    {
+        DemoDmx_Print("\nDMX_TSO_FileIn compare fail!\n");
+    }
+
+    MApi_DMX_Stop(u8Test_FltId);
+    MApi_DMX_Close(u8Test_FltId);
+    MApi_DMX_TSO_Filein_Stop(*pu8TSOEng);
+    MApi_DMX_Pvr_Eng_Close(ePvrEng);
+    _Demo_DMX_MemFree_Func(&_pTempTSORec);
+
+    return TRUE;
+}
 #endif
 
 #define FILEIN_ALIGN_TO(value, align)  ( ((value) + ((align)-1)) & ~((align)-1) )
@@ -3222,7 +3897,7 @@ MS_BOOL Demo_DMX_MMFI(DMX_MMFI_FLTTYPE MMFI_FltType,MS_U8 PacketMode,MS_U16 Pid,
         goto exit;
     }
 
-    if((fptr = MsFS_Fopen(FileName,"rb")) < 0)
+    if((fptr = MsFS_Fopen(FileName,"rb")) == NULL)
     {
         DemoDmx_Print("MsFS_Open() failed!!\n");
         ret = FALSE;
@@ -3354,7 +4029,7 @@ fail:
 
 #define INVALID_TASK_ID         -1
 
-#define IR_TASK_STACK_SIZE      3072
+
 //We choose FILEIN_UNIT_SIZE 0x34E00 == 216576 == 188*192*6 since
 //1) the file-in size must be align to pktSize that is 188 or 192
 //2) the read size from USB HD is within 128KBytes to 256 KBytes
@@ -3368,6 +4043,54 @@ fail:
 
 //#define DEMO_DMX_MMFI_MAX_ENGNUM 2
 #define DEMO_DMX_MAX_ENGNUM    6
+
+//For IRTask
+#if defined(MSOS_TYPE_ECOS)
+#define IR_TASK_STACK_SIZE      4096
+#elif defined(MSOS_TYPE_LINUX)
+#define IR_TASK_STACK_SIZE 0 //use pthread default stack
+#endif
+
+
+
+static Task_Info _fileInTask[DEMO_DMX_MAX_ENGNUM] = {
+                                                     {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, IR_TASK_STACK_SIZE, "FI0"},
+                                                     {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, IR_TASK_STACK_SIZE, "FI1"},
+                                                     {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, IR_TASK_STACK_SIZE, "FI2"},
+                                                     {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, IR_TASK_STACK_SIZE, "FI3"},
+                                                     {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, IR_TASK_STACK_SIZE, "FI4"},
+                                                     {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, IR_TASK_STACK_SIZE, "FI5"}
+                                                    };
+static Task_Info _readFileTask[DEMO_DMX_MAX_ENGNUM] = {
+                                                       {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, IR_TASK_STACK_SIZE, "RF0"},
+                                                       {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, IR_TASK_STACK_SIZE, "RF1"},
+                                                       {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, IR_TASK_STACK_SIZE, "RF2"},
+                                                       {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, IR_TASK_STACK_SIZE, "RF3"},
+                                                       {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, IR_TASK_STACK_SIZE, "RF4"},
+                                                       {INVALID_TASK_ID, E_TASK_PRI_MEDIUM, NULL, IR_TASK_STACK_SIZE, "RF5"}
+                                                      };
+#if defined(MSOS_TYPE_ECOS)
+static void _Demo_PollingThreadStatus(Task_Info stTaskInfo)
+{
+
+    TaskStatus eTaskStatus;
+    while(1)    {
+        if(!MsOS_GetTaskStatus(&stTaskInfo,&eTaskStatus))
+        {
+            printf("Error!! MsOS_GetTaskStatus() fail!! \n");
+            break;
+        }
+        if(eTaskStatus == E_TASK_NOT_EXIST)
+            break;
+        else
+        {
+            printf("\33[32m[FUNC %s] [LINE %d] Wait for Task#%x %s termination \33[m \n",__FUNCTION__,__LINE__,stTaskInfo.iId,stTaskInfo.szName);
+            MsOS_DelayTask(1);
+        }
+    }
+
+}
+#endif
 
 typedef struct
 {
@@ -3402,7 +4125,7 @@ typedef struct
 {
     MS_BOOL (*IsEngineBusy)(MS_U8);
     DMX_FILTER_STATUS (*GetCMDQEmptyNum)(MS_U8,MS_U32*);
-    DMX_FILTER_STATUS (*EngineStart)(DMX_MMFI_DST,MS_U8,MS_PHYADDR,MS_U32);
+    DMX_FILTER_STATUS (*EngineStart)(DMX_MMFI_DST,DMX_FILEIN_DST,MS_U8,MS_PHYADDR,MS_U32);
 } _DEMO_DMX_FUNCTION_SET;
 
 static _DEMO_DMX_BUF_INFO FileIn_BufInfo[DEMO_DMX_MAX_ENGNUM] = {
@@ -3422,17 +4145,20 @@ static _DEMO_DMX_TASK_INFO FileIn_TaskInfo[DEMO_DMX_MAX_ENGNUM] = {
                                                                    {INVALID_TASK_ID,INVALID_TASK_ID,NULL,NULL,FALSE,FALSE,FALSE,FALSE,E_ENG_NOT_SUPPORT,0}
                                                                   };
 
-inline static DMX_FILTER_STATUS _Demo_DMX_Engine_Start(DMX_MMFI_DST eMMFIDst,MS_U8 u8EngineID,MS_PHYADDR PhyAddr,MS_U32 u32Size)
+inline static DMX_FILTER_STATUS _Demo_DMX_Engine_Start(DMX_MMFI_DST eMMFIDst,DMX_FILEIN_DST eFIDst,MS_U8 u8EngineID,MS_PHYADDR PhyAddr,MS_U32 u32Size)
 {
     DMX_FILTER_STATUS bRet;
 
     if(eMMFIDst != 0) // MMFI
     {
+        if(u8EngineID > 0)
+            eMMFIDst |= DMX_MMFI1_PES_TYPE_MASK;
+
         bRet = MApi_DMX_MMFI_Filein_Start(eMMFIDst,PhyAddr,u32Size);
     }
     else
     {
-        bRet = MApi_DMX_Filein_Eng_Start(u8EngineID,DMX_PES_NO_BYPASS_FIFO,PhyAddr,u32Size);
+        bRet = MApi_DMX_Filein_Eng_Start(u8EngineID,eFIDst,PhyAddr,u32Size);
     }
 
     return bRet;
@@ -3452,12 +4178,21 @@ void* _Demo_DMX_MemAlloc_Func(MS_U32 u32Size)
     return MsOS_AllocateMemory (u32Size, s32NonCachedPoolID);
 }
 
-MS_BOOL _Demo_DMX_MemFree_Func(void *pBuf)
+static MS_BOOL _Demo_DMX_MemFree_Func(void** pBuf)
 {
-    MS_S32 s32NonCachedPoolID = 0;
 
-    Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&s32NonCachedPoolID);
-    return MsOS_FreeMemory(pBuf, s32NonCachedPoolID);
+    if( *pBuf )
+    {
+        MS_S32 s32NonCachedPoolID = 0;
+        Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&s32NonCachedPoolID);
+        MS_BOOL bFreeMem = MsOS_FreeMemory(*pBuf, s32NonCachedPoolID);
+        if( bFreeMem == TRUE)
+        {
+            *pBuf = NULL;
+        }
+        return bFreeMem;
+    }
+    return FALSE;
 }
 
 MS_U32 _Ring_Buffer_Init(TSP_RING_BUFFER *pstRingBuffer, MS_U32 u32BufferNum, MS_U32 u32BufferLength,MS_U8 u8CMDQ_Slot_Num)
@@ -3474,7 +4209,7 @@ MS_U32 _Ring_Buffer_Init(TSP_RING_BUFFER *pstRingBuffer, MS_U32 u32BufferNum, MS
     if(pstRingBuffer->pu32BufferArray == NULL)
     {
         DemoDmx_Print("Memory allocation failed !!\n");
-        goto fail;
+        return FALSE;
     }
 
     pstRingBuffer->pu32SizeArray = _Demo_DMX_MemAlloc_Func(u32BufferNum * sizeof(MS_U32));
@@ -3501,10 +4236,10 @@ MS_U32 _Ring_Buffer_Init(TSP_RING_BUFFER *pstRingBuffer, MS_U32 u32BufferNum, MS
 fail:
     for(i = 0; i < u32BufferNum; i++)
     {
-        _Demo_DMX_MemFree_Func((void*)*(pstRingBuffer->pu32BufferArray + i));
+        _Demo_DMX_MemFree_Func((void**)(pstRingBuffer->pu32BufferArray + i));
     }
-    _Demo_DMX_MemFree_Func(pstRingBuffer->pu32BufferArray);
-    _Demo_DMX_MemFree_Func(pstRingBuffer->pu32SizeArray);
+    _Demo_DMX_MemFree_Func((void**)&pstRingBuffer->pu32BufferArray);
+    _Demo_DMX_MemFree_Func((void**)&pstRingBuffer->pu32SizeArray);
     return FALSE;
 }
 
@@ -3522,11 +4257,11 @@ MS_U32 _Ring_Buffer_Exit(TSP_RING_BUFFER *pstRingBuffer)
 
     for(i = 0; i < pstRingBuffer->u32ArrayNum; i++)
     {
-        _Demo_DMX_MemFree_Func((void*)(*(pstRingBuffer->pu32BufferArray + i)));
+        _Demo_DMX_MemFree_Func((void**)(pstRingBuffer->pu32BufferArray + i));
     }
 
-    _Demo_DMX_MemFree_Func(pstRingBuffer->pu32BufferArray);
-    _Demo_DMX_MemFree_Func(pstRingBuffer->pu32SizeArray);
+    _Demo_DMX_MemFree_Func((void**)&pstRingBuffer->pu32BufferArray);
+    _Demo_DMX_MemFree_Func((void**)&pstRingBuffer->pu32SizeArray);
 
     pstRingBuffer->u32ArrayNum     = 0;
     pstRingBuffer->u32BufferLength = 0;
@@ -3634,7 +4369,7 @@ MS_BOOL _Ring_Buffer_ReadFromBuffer(TSP_RING_BUFFER *pstRingBuffer, MS_U32 *pu32
     }
 }
 
-void _appDemo_ReadFile_task(MS_U32 u32Index)
+void _Demo_ReadFile_task(MS_U32 u32Index)
 {
     MS_BOOL bRet = FALSE;
     MS_U32  u32FileInNum = 0;
@@ -3672,11 +4407,11 @@ void _appDemo_ReadFile_task(MS_U32 u32Index)
             MsOS_DelayTaskUs(50);
         }
     }
-
+    DemoDmx_Print("_Demo_ReadFile_task Exit\n");
     FileIn_TaskInfo[u32Index].bReadFile_Count = FALSE;
 }
 
-void _appDemo_FileIn_task(MS_U32 u32Index)
+void _Demo_FileIn_task(MS_U32 u32Index)
 {
     MS_BOOL bRet = FALSE;
     MS_U32  u32BufferAddr = (MS_U32)NULL;
@@ -3684,38 +4419,98 @@ void _appDemo_FileIn_task(MS_U32 u32Index)
     MS_U32  u32EmptyCmdQSlot;
     MS_U32  u32Residual = 0;
     DMX_MMFI_DST eMMFIDst = 0;
+    DMX_FILEIN_DST eFIDst = 0;
 
 
     DemoDmx_Print("index = %"DTC_MS_U32_u" !!\n", u32Index);
+    DemoDmx_Print("EngId = %u !!\n", FileIn_TaskInfo[u32Index].u8FileIn_EngID);
 
-    if(FileIn_TaskInfo[u32Index].FileIn_EngType == E_ENG_MMFI)
+    if(FileIn_BufInfo[u32Index].eFormat == E_FILE_PES)
     {
-        switch(FileIn_BufInfo[u32Index].eFormat)
+    #if (DEMO_AV_TEST == 1)
+        EN_AV_Device    eAvDev = E_AV_DEVICE_INVALID;
+        ST_AV_Params    stAudioParam, stVideoParam;
+        MS_BOOL         bAudioHit = FALSE, bVideoHit = FALSE;
+
+        memset(&stAudioParam, 0, sizeof(ST_AV_Params));
+        memset(&stVideoParam, 0, sizeof(ST_AV_Params));
+
+        EN_AV_FileIn_Eng_Type eFileinType = (FileIn_TaskInfo[u32Index].FileIn_EngType == E_ENG_MMFI)? E_AV_FileIn_Eng_MMFI : E_AV_FileIn_Eng_FILE;
+
+        for(eAvDev = E_AV_DEVICE_MAIN; eAvDev < E_AV_DEVICE_MAX; eAvDev++)
         {
-            case E_FILE_TS:
-                /*eMMFIDst = DMX_MMFI_PES_APID_BYPASS
-                         | DMX_MMFI_PES_APIDB_BYPASS
-                         | DMX_MMFI_PES_VPID_BYPASS; */
-                eMMFIDst = DMX_MMFI_PES_VPID_BYPASS;
+            Demo_AV_GetAVInfo(&eAvDev, E_AV_GetCmd_AudioInfo, &stAudioParam);
+            Demo_AV_GetAVInfo(&eAvDev, E_AV_GetCmd_VideoInfo, &stVideoParam);
+
+            if((stAudioParam.stFilterType.eEngType == eFileinType) &&
+               (FileIn_TaskInfo[u32Index].u8FileIn_EngID == stAudioParam.stFilterType.u8EngID) &&
+               (stAudioParam.eFIFO_ID != E_DMX_FLT_TYPE_INVALID))
+            {
+                bAudioHit = TRUE;
+            }
+
+            if((stVideoParam.stFilterType.eEngType == eFileinType) &&
+               (FileIn_TaskInfo[u32Index].u8FileIn_EngID == stVideoParam.stFilterType.u8EngID) &&
+               (stVideoParam.eFIFO_ID != E_DMX_FLT_TYPE_INVALID))
+            {
+                bVideoHit = TRUE;
+            }
+
+            if(bAudioHit || bVideoHit) //@NOTE: need mutual exclusion...
+            {
                 break;
-            case E_FILE_PES:
-                eMMFIDst = DMX_MMFI_PES_NO_BYPASS_TS;
+            }
+        }
+
+        if(eAvDev >= E_AV_DEVICE_MAX)
+        {
+            DemoDmx_Print("[%s][%d][FAIL]: eAvDev >= E_AV_DEVICE_MAX !!\n", __FUNCTION__, __LINE__);
+            return;
+        }
+
+        if(bAudioHit && bVideoHit)
+        {
+            DemoDmx_Print("[%s][%d][FAIL]: Fine-in source of audio & video FIFO should be different !!\n", __FUNCTION__, __LINE__);
+            return;
+        }
+
+        switch(eAvDev)
+        {
+            case E_AV_DEVICE_MAIN:
+                if(FileIn_TaskInfo[u32Index].FileIn_EngType == E_ENG_MMFI)
+                    eMMFIDst = (bAudioHit)? DMX_MMFI_PES_PS_AU : DMX_MMFI_PES_PS_VD;
+                else
+                    eFIDst = (bAudioHit)? DMX_PES_AUDIO_FIFO : DMX_PES_VIDEO_FIFO;
                 break;
-            case E_FILE_PS:
-                /*eMMFIDst = DMX_MMFI_PES_PS_AU
-                         | DMX_MMFI_PES_PS_AUB
-                         | DMX_MMFI_PES_PS_VD;*/
-                eMMFIDst = DMX_MMFI_PES_PS_VD;
+            case E_AV_DEVICE_SUB:
+                if(FileIn_TaskInfo[u32Index].FileIn_EngType == E_ENG_MMFI)
+                    eMMFIDst = (bAudioHit)? DMX_MMFI_PES_PS_AUB : DMX_MMFI_PES_PS_V3D;
+                else
+                    eFIDst = (bAudioHit)? DMX_PES_AUDIO2_FIFO : DMX_PES_VIDEO3D_FIFO;
                 break;
             default:
-                DemoDmx_Print("No such format !!\n");
-                break;
+                DemoDmx_Print("[%s][%d] Not support N-DECODE !!\n", __FUNCTION__, __LINE__);
+                return;
         }
 
-        if(FileIn_TaskInfo[u32Index].u8FileIn_EngID == 1) //MMFI #1
-        {
-            eMMFIDst |= DMX_MMFI1_PES_TYPE_MASK;
-        }
+        printf("[%s][%d] eMMFIDst = %x , eFIDst = %x\n", __FUNCTION__, __LINE__, eMMFIDst, eFIDst);
+    #else
+        DemoDmx_Print("[%s][%d] Not support file-in PES mode !!\n", __FUNCTION__, __LINE__);
+        DemoDmx_Print("[%s][%d] Please define DEMO_AV_TEST...\n", __FUNCTION__, __LINE__);
+        return;
+    #endif
+    }
+    else if(FileIn_BufInfo[u32Index].eFormat == E_FILE_TS)
+    {
+        if(FileIn_TaskInfo[u32Index].FileIn_EngType == E_ENG_MMFI)
+            eMMFIDst = DMX_MMFI_PES_NO_BYPASS_TS;
+        else
+            eFIDst = DMX_PES_NO_BYPASS_FIFO;
+    }
+    else
+    {
+        DemoDmx_Print("[%s][%d][FAIL] No such format !!\n", __FUNCTION__, __LINE__);
+        return;
     }
 
     while(FileIn_TaskInfo[u32Index].bFileIn_Enable)
@@ -3736,7 +4531,7 @@ void _appDemo_FileIn_task(MS_U32 u32Index)
                 }
 
                 MsOS_FlushMemory();
-                bRet = stFunctionSet.EngineStart(eMMFIDst,FileIn_TaskInfo[u32Index].u8FileIn_EngID,(MS_PHYADDR)MS_VA2PA(u32BufferAddr), u32BufferSize);
+                bRet = stFunctionSet.EngineStart(eMMFIDst,eFIDst,FileIn_TaskInfo[u32Index].u8FileIn_EngID,(MS_PHYADDR)MS_VA2PA(u32BufferAddr), u32BufferSize);
             }
             else
             {
@@ -3748,23 +4543,19 @@ void _appDemo_FileIn_task(MS_U32 u32Index)
             MsOS_DelayTaskUs(50);
         }
     }
-
+    DemoDmx_Print("_Demo_FileIn_task Exit\n");
     FileIn_TaskInfo[u32Index].bFileIn_Count = FALSE;
 }
 
 inline static EN_DMX_FILEIN_FILE_FORMAT _Demo_DMX_FileIn_Format_Mapping(MS_U8 *pu8Format)
 {
-    if(_Demo_DMX_strcmp(pu8Format, "TS")==0 )      //remove ts header
+    if(_Demo_DMX_strcmp(pu8Format, "TS")==0 ) //input file as TS
     {
         return E_FILE_TS;
     }
-    else if(_Demo_DMX_strcmp(pu8Format, "PES")==0 )//normal
+    else if(_Demo_DMX_strcmp(pu8Format, "PES")==0 ) //input file as PES
     {
         return E_FILE_PES;
-    }
-    else if(_Demo_DMX_strcmp(pu8Format, "PS")==0 ) //PS path
-    {
-        return E_FILE_PS;
     }
     else
     {
@@ -3826,7 +4617,20 @@ inline static MS_U8 is_big_endian(void)
     return e.c[0];
 }
 
-
+//------------------------------------------------------------------------------
+/// @brief Set Filein Start Info : Filein Type, Filein Eng, Filein Name, Filein Format, Filein Packet Mode
+/// @param[in] File-in engine type ("FILE" or "MMFI")
+/// @param[in] File-in engine ID   (MMFI: 0~1 , FILE: 0~3)
+/// @param[in] FileName            (Include mount path)
+/// @param[in] File-in formart     (TS or PES)
+/// @param[in] File-in Packet mode (TS: 188 or 192)
+/// @return TRUE: success.
+/// @return FALSE: Process fail or Invalid input argument.
+/// @sa
+/// @note
+/// Command: \b DMX_FileIn_Start FILE 0 /mnt/sda1/PTS_20060704-1.ts  TS 192 \n
+/// Command: \b DMX_FileIn_Start FILE 1 /root/sda1/mp3.ts            TS 188 \n
+//------------------------------------------------------------------------------
 MS_BOOL Demo_DMX_FileIn_Start(MS_U8 *pu8DmxEngine,MS_U8 *pu8EngineID, const char *ps8FileName, MS_U8 *pu8Format, MS_U8 *pu8PacketMode)
 {
     EN_DMX_FILEIN_FILE_FORMAT eFormat = _Demo_DMX_FileIn_Format_Mapping(pu8Format);
@@ -3835,7 +4639,7 @@ MS_BOOL Demo_DMX_FileIn_Start(MS_U8 *pu8DmxEngine,MS_U8 *pu8EngineID, const char
     MS_BOOL bByPass = TRUE;
     MS_S8 s8Index = 0;
     MS_U32 u32InitPlaybackTimestamp = 0;
-    char s8TaskName[30] = {0};
+    char s8TaskName[16] = {0}; //The task name in MsOS_GetTaskStatus can not exceed 16 bytes
     MS_U8 u8CMDQ_SlotNum = 0;
 
 
@@ -3884,7 +4688,7 @@ MS_BOOL Demo_DMX_FileIn_Start(MS_U8 *pu8DmxEngine,MS_U8 *pu8EngineID, const char
         goto fail;
     }
 
-    if((FileIn_BufInfo[s8Index].FilePointer = MsFS_Fopen(ps8FileName,"rb")) < 0)
+    if((FileIn_BufInfo[s8Index].FilePointer = MsFS_Fopen(ps8FileName,"rb")) ==  NULL)
     {
         DemoDmx_Print("MsFS_Open() fail !!\n");
         goto fail;
@@ -3895,14 +4699,7 @@ MS_BOOL Demo_DMX_FileIn_Start(MS_U8 *pu8DmxEngine,MS_U8 *pu8EngineID, const char
 
         if(!is_big_endian())// little-endian ?
         {
-            MS_U8  i;
-            MS_U32 u32Temp = 0;
-
-            // big-endian -> little-endian
-            for (i = 0; i < sizeof(MS_U32); i++)
-                ((MS_U8*)(&u32Temp))[i] = ((MS_U8*)(&u32InitPlaybackTimestamp))[sizeof(MS_U32) - i - 1];
-
-            u32InitPlaybackTimestamp = u32Temp;
+            u32InitPlaybackTimestamp = BYTESWAP(u32InitPlaybackTimestamp);
         }
     }
 
@@ -3938,38 +4735,39 @@ MS_BOOL Demo_DMX_FileIn_Start(MS_U8 *pu8DmxEngine,MS_U8 *pu8EngineID, const char
 
     if(_Demo_DMX_strcmp(pu8DmxEngine,"FILE")==0) //FileIn
     {
-        if(eFormat != E_FILE_PS)
+        DMX_FLOW FileInFlow;
+        DMX_FILEIN_PATH FileInPath;
+
+        //flowSet of file-in mode
+        switch(*pu8EngineID)
         {
-            DMX_FLOW FileInFlow;
-            DMX_FILEIN_PATH FileInPath;
+            case 0:
+                FileInFlow = DMX_FLOW_PLAYBACK;
+                FileInPath = DMX_FILEIN_TSIF0;
+                break;
+            case 1:
+                FileInFlow = DMX_FLOW_PLAYBACK1;
+                FileInPath = DMX_FILEIN_TSIF1;
+                break;
+            case 2:
+                FileInFlow = DMX_FLOW_PLAYBACK2;
+                FileInPath = DMX_FILEIN_TSIF2;
+                break;
+            case 3:
+                FileInFlow = DMX_FLOW_PLAYBACK3;
+                FileInPath = DMX_FILEIN_TSIF3;
+                break;
+            default:
+                FileInFlow = DMX_FLOW_PLAYBACK;
+                FileInPath = DMX_FILEIN_TSIF0;
+                break;
+        }
 
-            //flowSet of file-in mode
-            switch(*pu8EngineID)
-            {
-                case 0:
-                    FileInFlow = DMX_FLOW_PLAYBACK;
-                    FileInPath = DMX_FILEIN_TSIF0;
-                    break;
-                case 1:
-                    FileInFlow = DMX_FLOW_PLAYBACK1;
-                    FileInPath = DMX_FILEIN_TSIF1;
-                    break;
-                case 2:
-                    FileInFlow = DMX_FLOW_PLAYBACK2;
-                    FileInPath = DMX_FILEIN_TSIF2;
-                    break;
-                case 3:
-                    FileInFlow = DMX_FLOW_PLAYBACK3;
-                    FileInPath = DMX_FILEIN_TSIF3;
-                    break;
-                default:
-                    FileInFlow = DMX_FLOW_PLAYBACK;
-                    FileInPath = DMX_FILEIN_TSIF0;
-                    break;
-            }
+        MApi_DMX_FlowSet(FileInFlow, DMX_FLOW_INPUT_MEM, FALSE, FALSE, TRUE);
+        MApi_DMX_Filein_Eng_Info(FileInPath,&tsFileInInfo);
 
-            MApi_DMX_FlowSet(FileInFlow, DMX_FLOW_INPUT_MEM, FALSE, FALSE, TRUE);
-            MApi_DMX_Filein_Eng_Info(FileInPath,&tsFileInInfo);
+        if(eFormat == E_FILE_TS)
+        {
 
             if(*pu8PacketMode == 192)
             {
@@ -3979,6 +4777,7 @@ MS_BOOL Demo_DMX_FileIn_Start(MS_U8 *pu8DmxEngine,MS_U8 *pu8EngineID, const char
             }
         }
 
+
         FileIn_TaskInfo[s8Index].FileIn_EngType = E_ENG_FILE;
         u8CMDQ_SlotNum = FILE_CMDQ_SLOT_NUM;
 
@@ -3987,7 +4786,7 @@ MS_BOOL Demo_DMX_FileIn_Start(MS_U8 *pu8DmxEngine,MS_U8 *pu8EngineID, const char
     }
     else if(_Demo_DMX_strcmp(pu8DmxEngine,"MMFI")==0) //MMFI
     {
-        if(eFormat != E_FILE_PS)
+        if(eFormat == E_FILE_TS)
         {
             DMX_MMFI_PATH MMFI_Path = (*pu8EngineID == 0)? DMX_MMFI_PATH0 : DMX_MMFI_PATH1;
 
@@ -4029,23 +4828,31 @@ MS_BOOL Demo_DMX_FileIn_Start(MS_U8 *pu8DmxEngine,MS_U8 *pu8EngineID, const char
 #endif
 
     //create task
-    sprintf(s8TaskName,"ReadFileTask_%s_%d",pu8DmxEngine,*pu8EngineID);
+    snprintf(s8TaskName,sizeof(s8TaskName),"RF_%s_%d",pu8DmxEngine,*pu8EngineID);
     printf("create Task: %s !!\n",s8TaskName);
-    FileIn_TaskInfo[s8Index].ReadFileStack = _Demo_DMX_MemAlloc_Func(IR_TASK_STACK_SIZE);
-    if(FileIn_TaskInfo[s8Index].ReadFileStack == NULL)
-    {
-        DemoDmx_Print("Allocate ReadFile Stack fail !!\n");
-        goto fail;
+    if(IR_TASK_STACK_SIZE){
+        FileIn_TaskInfo[s8Index].ReadFileStack = _Demo_DMX_MemAlloc_Func(IR_TASK_STACK_SIZE);
+        if(FileIn_TaskInfo[s8Index].ReadFileStack == NULL)
+        {
+            DemoDmx_Print("Allocate ReadFile Stack fail !!\n");
+            goto fail;
+        }
     }
     FileIn_TaskInfo[s8Index].bReadFile_Enable  = TRUE;
     FileIn_TaskInfo[s8Index].bReadFile_Count   = TRUE;
-    FileIn_TaskInfo[s8Index].s32ReadFileTaskId = MsOS_CreateTask((TaskEntry)_appDemo_ReadFile_task,
+    FileIn_TaskInfo[s8Index].s32ReadFileTaskId = MsOS_CreateTask((TaskEntry)_Demo_ReadFile_task,
                                                                  s8Index,
                                                                  E_TASK_PRI_MEDIUM,
                                                                  TRUE,
                                                                  FileIn_TaskInfo[s8Index].ReadFileStack,
                                                                  IR_TASK_STACK_SIZE,
                                                                  s8TaskName);
+
+    _readFileTask[s8Index].iId = FileIn_TaskInfo[s8Index].s32ReadFileTaskId;
+    snprintf(_readFileTask[s8Index].szName,sizeof(s8TaskName),"%s",s8TaskName);
+
+
+
     if(FileIn_TaskInfo[s8Index].s32ReadFileTaskId == INVALID_TASK_ID)
     {
         FileIn_TaskInfo[s8Index].bReadFile_Enable = FALSE;
@@ -4056,23 +4863,29 @@ MS_BOOL Demo_DMX_FileIn_Start(MS_U8 *pu8DmxEngine,MS_U8 *pu8EngineID, const char
 
     MsOS_DelayTask(5);
 
-    sprintf(s8TaskName,"FileInTask_%s_%d",pu8DmxEngine,*pu8EngineID);
+    snprintf(s8TaskName,sizeof(s8TaskName),"FI_%s_%d",pu8DmxEngine,*pu8EngineID);
     printf("create Task: %s !!\n",s8TaskName);
-    FileIn_TaskInfo[s8Index].FileInStack = _Demo_DMX_MemAlloc_Func(IR_TASK_STACK_SIZE);
-    if(FileIn_TaskInfo[s8Index].FileInStack == NULL)
-    {
-        DemoDmx_Print("Allocate FileIn Stack fail !!\n");
-        goto fail;
+    if(IR_TASK_STACK_SIZE){
+        FileIn_TaskInfo[s8Index].FileInStack = _Demo_DMX_MemAlloc_Func(IR_TASK_STACK_SIZE);
+        if(FileIn_TaskInfo[s8Index].FileInStack == NULL)
+        {
+            DemoDmx_Print("Allocate FileIn Stack fail !!\n");
+            goto fail;
+        }
     }
     FileIn_TaskInfo[s8Index].bFileIn_Enable   = TRUE;
     FileIn_TaskInfo[s8Index].bFileIn_Count    = TRUE;
-    FileIn_TaskInfo[s8Index].s32FileInTaskId  = MsOS_CreateTask((TaskEntry)_appDemo_FileIn_task,
+    FileIn_TaskInfo[s8Index].s32FileInTaskId  = MsOS_CreateTask((TaskEntry)_Demo_FileIn_task,
                                                                 s8Index,
                                                                 E_TASK_PRI_MEDIUM,
                                                                 TRUE,
                                                                 FileIn_TaskInfo[s8Index].FileInStack,
                                                                 IR_TASK_STACK_SIZE,
                                                                 s8TaskName);
+
+    _fileInTask[s8Index].iId = FileIn_TaskInfo[s8Index].s32ReadFileTaskId;
+
+    snprintf(_fileInTask[s8Index].szName,sizeof(s8TaskName),"%s",s8TaskName);
 
     if(FileIn_TaskInfo[s8Index].s32FileInTaskId == INVALID_TASK_ID)
     {
@@ -4087,6 +4900,17 @@ fail:
     return FALSE;
 }
 
+//------------------------------------------------------------------------------
+/// @brief Set Filein Stop Info : Filein Type, Filein Eng
+/// @param[in] File-in engine type ("FILE" or "MMFI")
+/// @param[in] File-in engine ID   (MMFI: 0~1 , FILE: 0~3)
+/// @return TRUE: success.
+/// @return FALSE: Process fail or Invalid input argument.
+/// @sa
+/// @note
+/// Command: \b DMX_FileIn_Stop FILE 0 \n
+/// Command: \b DMX_FileIn_Stop MMFI 1 \n
+//------------------------------------------------------------------------------
 MS_BOOL Demo_DMX_FileIn_Stop(MS_U8 *pu8DmxEngine,MS_U8 *pu8EngineID)
 {
     EN_DMX_FILEIN_ENG_TYPE eEngType;
@@ -4126,8 +4950,13 @@ MS_BOOL Demo_DMX_FileIn_Stop(MS_U8 *pu8DmxEngine,MS_U8 *pu8EngineID)
         {
             MsOS_DelayTask(1);
         }
+#if defined(MSOS_TYPE_ECOS)
 
-        MsOS_DeleteTask(FileIn_TaskInfo[s8Index].s32FileInTaskId);
+        _Demo_PollingThreadStatus(_fileInTask[s8Index]);
+
+#endif
+        _fileInTask[s8Index].iId = INVALID_TASK_ID;
+
         FileIn_TaskInfo[s8Index].s32FileInTaskId = INVALID_TASK_ID;
     }
 
@@ -4139,8 +4968,14 @@ MS_BOOL Demo_DMX_FileIn_Stop(MS_U8 *pu8DmxEngine,MS_U8 *pu8EngineID)
         {
             MsOS_DelayTask(1);
         }
+#if defined(MSOS_TYPE_ECOS)
 
-        MsOS_DeleteTask(FileIn_TaskInfo[s8Index].s32ReadFileTaskId);
+        _Demo_PollingThreadStatus(_readFileTask[s8Index]);
+
+
+#endif
+        _readFileTask[s8Index].iId = INVALID_TASK_ID;
+
         FileIn_TaskInfo[s8Index].s32ReadFileTaskId = INVALID_TASK_ID;
     }
 
@@ -4161,11 +4996,152 @@ MS_BOOL Demo_DMX_FileIn_Stop(MS_U8 *pu8DmxEngine,MS_U8 *pu8EngineID)
     FileIn_BufInfo[s8Index].eFormat = E_FILE_NOT_SUPPORT;
     FileIn_BufInfo[s8Index].u32FileSize = -1;
     FileIn_BufInfo[s8Index].u8PacketSize = -1;
-    _Demo_DMX_MemFree_Func(FileIn_TaskInfo[s8Index].ReadFileStack);
-    _Demo_DMX_MemFree_Func(FileIn_TaskInfo[s8Index].FileInStack);
+    _Demo_DMX_MemFree_Func(&FileIn_TaskInfo[s8Index].ReadFileStack);
+    _Demo_DMX_MemFree_Func(&FileIn_TaskInfo[s8Index].FileInStack);
+    DemoDmx_Print("Demo_DMX_FileIn_Stop Exit\n");
     return TRUE;
 }
 
+//------------------------------------------------------------------------------
+/// @brief The sample code to parse PAT for test demux
+/// @return TRUE: success / FALSE: fail
+/// @sa appDemo_Dmx_Pmt , appDemo_Dmx_Scan , appDemo_Dmx_Sec
+/// @note
+/// Command: \b demux_pat [pid]\n
+//------------------------------------------------------------------------------
+MS_BOOL appDemo_Dmx_Pat(void)
+{
+    MS_U32                                 u32Event;
+    MS_U8                                 *pu8Read;
+    MS_U8                                 *pu8Write;
+    MS_U8                                  DmxIdSect;
+    MS_U8                                  pattern[16];
+    MS_U8                                  mask[16];
+    MS_U8                                  nmask[16];
+    DMX_Flt_info                           FltInfo;
+    MS_U8                                 *pu8BufAddr;
+    MS_U16                                 u16PID;
+    DMX_FILTER_TYPE                        FilterType;
+
+
+    // Set Parameter of Allocatcation Demux Filter type and input Source type.
+    FilterType = DMX_FILTER_TYPE_SECTION | DMX_FILTER_SOURCE_TYPE_LIVE;
+
+    // Allocate a Filter and set Filter Basic Type
+    if (DMX_FILTER_STATUS_OK != MApi_DMX_Open(FilterType, &DmxIdSect))
+    {
+        DemoDmx_Print("[%s] Allocate filter fail \n",__FUNCTION__);
+    }
+
+    // Here we use pre-defined physical address
+    // [Note] The section buffer MUST be continus in physical address space.(for DMA usage)
+    pu8BufAddr = (MS_U8*)Section_Buf_Addr[DmxIdSect];
+
+    //MsOS_PA2KSEG1 : transfer physical address to virtual address.
+    memset((MS_U8*)MsOS_PA2KSEG1((MS_U32)pu8BufAddr), 0 , SECTION_BUFFER_SIZE);
+
+    // Transfer Virtual Address to Phisical Hardware Address
+    // Section buffer is structed as ring buffer, keep 4 pointer of start,end ,read and write.
+    FltInfo.Info.SectInfo.SectBufAddr = (MS_U32)pu8BufAddr ;
+    DemoDmx_Print("Physical Address = %08lx\n" ,(long unsigned int)FltInfo.Info.SectInfo.SectBufAddr);
+    // Set buffer size
+    FltInfo.Info.SectInfo.SectBufSize =     SECTION_BUFFER_SIZE;
+    DemoDmx_Print("Size = %08lx\n" ,(long unsigned int)FltInfo.Info.SectInfo.SectBufSize);
+
+
+    // We only need one section of PAT so we choose "DMX_SECT_MODE_ONESHOT" instead of "DMX_SECT_MODE_CONTI"
+    FltInfo.Info.SectInfo.SectMode    =     (DMX_SECT_MODE_ONESHOT| DMX_SECT_MODE_CRCCHK);
+
+    // <DMX_EVENT_DATA_READY/DMX_EVENT_BUF_OVERFLOW>
+    // Event trigger condition for driver, Driver will call ap's callback  < CallBack Mode >
+    // Cause We set SectMode as "DMX_SECT_MODE_ONESHOT" , we don't need to worry about Overflow event.
+    // The Default event setting is Polling mode, but for performance consideration, Callback mode is recommended.
+    FltInfo.Info.SectInfo.Event       =     DMX_EVENT_DATA_READY | DMX_EVENT_CB_SELF   | DMX_EVENT_BUF_OVERFLOW ;
+
+    // Set the pointer of the event CB function into Demux driver
+    FltInfo.Info.SectInfo.pNotify     =    _appDemo_DataCb;
+
+    // Set Advanced Filter infomation
+    if (DMX_FILTER_STATUS_OK != MApi_DMX_Info( DmxIdSect, &FltInfo, &FilterType, TRUE))
+    {
+        DemoDmx_Print("[%s] MApi_DMX_Info fail \n",__FUNCTION__);
+        goto DMX_PAT_FAIL;
+    }
+
+    // Set Filter PID --> PAT PID = 0x0
+    u16PID = 0x0 ;
+    if (DMX_FILTER_STATUS_OK != MApi_DMX_Pid( DmxIdSect , &u16PID , TRUE))
+    {
+        DemoDmx_Print("[%s] MApi_DMX_Pid fail \n",__FUNCTION__);
+        goto DMX_PAT_FAIL;
+    }
+
+    // Set Section Match pattern
+    // The Match pattern is used for Getting specific section
+    // Pattern[16] =  Pattern for match
+    // Mask[16]    =  Match Mask : set 1 for match / 0 for ignore
+    memset(pattern, 0x0, sizeof(pattern));
+    memset(mask,    0x0, sizeof(mask));
+    memset(nmask,   0x0, sizeof(nmask));
+    pattern[0]=     0x00 ;
+    mask[0]=        0xFF ;
+    MApi_DMX_SectPatternSet(DmxIdSect, pattern, mask, nmask, 16);
+
+    // Reset Section filter and section Buffer status;
+    MApi_DMX_SectReset(DmxIdSect);
+
+    // Start Filter and record section into Section Buffer.
+    if (DMX_FILTER_STATUS_OK!= MApi_DMX_Start(DmxIdSect))
+    {
+        DemoDmx_Print("enable section filter fail\n");
+        goto DMX_PAT_FAIL;
+    }
+
+    // Wait event until TSP driver call callback function
+    // Wait event "_appDemo_Pat_Ready"
+    // (Data Ready)-->TSP driver-->(callback)-->_appDemo_PatCb-->(SetEvent"_appDemo_Pat_Ready")
+    //             -->contitue execution.
+    WAIT_DATA_EVENT(DmxIdSect,u32Event);
+
+    if (!u32Event)
+    {
+        goto DMX_PAT_FAIL;
+    }
+
+    // Get Buffer Read Pointer.
+    MApi_DMX_SectReadGet(DmxIdSect, (MS_PHY*)(&pu8Read));
+    DemoDmx_Print("Read pointer = 0x%08lx\n", (long unsigned int)pu8Read);
+
+
+    // Get Buffer Write Pointer.
+    // Note : We can get Hw section Buffer data with "MApi_DMX_CopyData", by copying data into a
+    //        local data buffer[recomended] ==> dmx_pmt.
+    //        But here we just pass pointers of seciton buffer into Pat parse function.
+    //        Buffer wrap condition is considered when calling function MApi_DMX_CopyData.
+    MApi_DMX_SectWriteGet(DmxIdSect, (MS_PHY*)(&pu8Write));
+    DemoDmx_Print("Write pointer = 0x%08lx\n", (long unsigned int)pu8Write);
+
+    if (pu8Write == pu8Read)
+    {
+        goto DMX_PAT_FAIL;
+    }
+    _appDemo_Pat_Parse((MS_U8*)MsOS_PA2KSEG1((MS_U32)pu8Read), pu8Write- pu8Read);
+
+    _ScanFilterParsePAT(DmxIdSect);
+
+    // Stop Filter
+    MApi_DMX_Stop(DmxIdSect);
+
+    // Free Filter.
+    MApi_DMX_Close(DmxIdSect);
+
+    return TRUE;
+
+DMX_PAT_FAIL:
+    MApi_DMX_Close(DmxIdSect);
+    return FALSE;
+
+}
 
 //------------------------------------------------------------------------------
 /// @brief The help function for demo demux app
@@ -4257,6 +5233,108 @@ MS_BOOL Demo_DMX_Help(void)
     printf("***********************End of Demux function List*************************\n");
     return TRUE;
 }
+
+MS_BOOL Demo_DMX_SetSrcID(EN_DEMO_DMX_FLOW eDmxFlow, EN_DEMO_DMX_FLT_SOURCEID eDmxFltSourceID)
+{
+    if(eDmxFlow < u32MaxTsifNum)
+    {
+        eSourceID[eDmxFlow] = eDmxFltSourceID;
+        return TRUE;
+    }
+    else
+    {
+        printf("Flow %d doesn't support setting source id\n", eDmxFlow);
+        return FALSE;
+    }
+}
+
+EN_DEMO_DMX_FLT_SOURCEID Demo_DMX_GetSrcID(EN_DEMO_DMX_FLOW eDmxFlow)
+{
+    if(eDmxFlow < u32MaxTsifNum)
+    {
+        return eSourceID[eDmxFlow];
+    }
+    else
+    {
+        printf("[ERROR] Invalid Flow %d\n", eDmxFlow);
+        return E_DMX_FLT_SOURCEID_0;
+    }
+}
+//------------------------------------------------------------------------------
+/// @Brief the command interface for sample code to set src id of specific flow
+/// @param[in] peDmxFlow
+///                  0: LIVE0
+///                  1: LIVE1
+/// @param[in] peDmxFltSourceID
+/// @return TRUE: success
+/// @return FALSE: fail
+/// @sa
+/// Command: DMX_SetSrcID 0 1
+//------------------------------------------------------------------------------
+MS_BOOL Demo_DMX_SetSrcID_CMD(EN_DEMO_DMX_FLOW *peDmxFlow, EN_DEMO_DMX_FLT_SOURCEID *peDmxFltSourceID)
+{
+    return Demo_DMX_SetSrcID(*peDmxFlow, *peDmxFltSourceID);
+}
+//------------------------------------------------------------------------------
+/// @Brief the command interface for sample code to get src id of specific flow
+/// @param[in] peDmxFlow
+///                  0: LIVE0
+///                  1: LIVE1
+/// @return TRUE: success, print out src id
+/// @return FALSE: fail
+/// @sa
+/// Command: DMX_GetSrcID 0
+//------------------------------------------------------------------------------
+MS_BOOL Demo_DMX_GetSrcID_CMD(EN_DEMO_DMX_FLOW *peDmxFlow)
+{
+    printf("Current source id for Flow %d is %d\n", *peDmxFlow, Demo_DMX_GetSrcID(*peDmxFlow));
+    return TRUE;
+}
+//------------------------------------------------------------------------------
+/// @Brief the command interface for sample code to set packet mode of specific flow
+/// @param[in] peDmxFlow
+///                  0: LIVE0
+///                  1: LIVE1
+/// @param[in] pu32PktMode
+///                  0 ~ 5: for file-in, not support
+///                  6: DMX_PKTMODE_MERG188   (CI+1.4)
+///                  7: DMX_PKTMODE_MERG192   (ATS)
+///                  8: DMX_PKTMODE_MERG200   (OpenCable)
+///                  9: DMX_PKTMODE_MXL192    (MXL 192 mode)
+///                  10:DMX_PKTMODE_MXL196    (MXL 196 mode)
+///                  11:DMX_PKTMODE_MXL200    (MXL 200 mode)
+/// @return TRUE: success\n
+/// @return FALSE: fail
+/// @sa
+/// Command: DMX_SetPktMode 0 11
+//------------------------------------------------------------------------------
+MS_BOOL Demo_DMX_SetPktMode(EN_DEMO_DMX_FLOW *peDmxFlow, MS_U32 *pu32PktMode)
+{
+    if(*peDmxFlow <= E_DMX_FLOW_LIVE3 && *pu32PktMode <= 11 && *pu32PktMode >= 6)
+    {
+        if(MApi_DMX_SetPacketMode(_Demo_DMX_FlowMapping(*peDmxFlow), *pu32PktMode) == DMX_FILTER_STATUS_NOT_SUPPORT)
+        {
+            printf("[ERROR] Unsupport packet mode %"DTC_MS_U32_u"\n", *pu32PktMode);
+            return FALSE;
+        }
+        return TRUE;
+    }
+    else
+    {
+        printf("[ERROR] Unsupport packet Mode %"DTC_MS_U32_u"\n", *pu32PktMode);
+        return FALSE;
+    }
+}
+
+
+#ifdef FE_AUTO_TEST
+MS_BOOL appDemo_Dmx_GetFreqPG(stFreqPG **ppEntry)
+{
+    *ppEntry = &stChDB;
+    return TRUE;
+}
+#endif //#ifdef FE_AUTO_TEST
+
 #endif
 
 

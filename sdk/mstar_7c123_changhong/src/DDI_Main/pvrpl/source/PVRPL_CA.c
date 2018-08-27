@@ -107,18 +107,31 @@
 #include "drvAESDMA.h"
 #include "drvDSCMB.h"
 #include "MsOS.h"
-#include "drvCIPHER.h"
 #include "drvDTC.h"
 
 
-#define ENABLE_AESDMA (1)
-#if ENABLE_AESDMA
-#define AESDMA_KEY_LENGTH   (4)
-#define AESDMA_TIMEOUT  (500)  //ms
-#define AESDMA_BYTES_PER_MS (51200) // 50 * 1024 bytes
+#define ENABLE_2ND_ENCRYPTION           1
+
+#if ENABLE_2ND_ENCRYPTION
+
+#define PVR_AESDMA_SPEED_TEST   0
+
+#define AESDMA_TIMEOUT          500  //ms
+#define PVR_PA2VA_CACHED        0
+#define INVALID_MUTEX_ID        -1
+#define AESDMA_BYTES_PER_MS     51200 // 50 * 1024 bytes
 #define PVR_AES_ALIGNMENT_LEN   (16)
-#define PVR_KEYLADDER   (1)
-#endif
+
+#define AESDMA_KEY_LENGTH       4
+#define PVR_KEYLADDER           1
+#define DEFAULT_AESDMA_KEY1     0x4D535450
+#define DEFAULT_AESDMA_KEY2     0x56523039
+#define DEFAULT_AESDMA_KEY3     0x32313731
+#define DEFAULT_AESDMA_KEY4     0x36303036
+
+
+//Event Global const
+#define PVRPL_EVENT_WAIT_FOREVER 0xffffffff
 
 #define ASSERT(_x_)                                                                         \
     do  {                                                                                   \
@@ -129,32 +142,48 @@
         }                                                                                   \
     } while (0)
 
-#ifndef NARGA_CAVID
-#define NARGA_CAVID    (0x02)
+// Debug level
+static MS_U32  _u32PVRPLCADbgLevel = PVRPLCA_DBG_ERR;
+
+#define PVRPL_CA_DBGMSG(_level, msg, args...)       {if(_u32PVRPLCADbgLevel >= (_level)) printf("[%s][%d] " msg, __FUNCTION__, __LINE__, ## args);}
+#define MOD_NAME                                    PVR
+
+#if defined(HB_ERR)
+    #define PVRPL_CA_DBGMSG_ERR(msg, args...)       HB_ERR(msg, ##args)
+#else
+    #define PVRPL_CA_DBGMSG_ERR(msg, args...)       PVRPL_CA_DBGMSG(PVRPLCA_DBG_ERR, msg, ##args)
 #endif
 
-#define PVRPL_CA_DBGMSG(_level,_f) {if(_u32PVRPLCADbgLevel >= (_level)) (_f);}
+#if defined(HB_INFO)
+    #define PVRPL_CA_DBGMSG_INFO(msg, args...)      HB_INFO(msg, ##args)
+#else
+    #define PVRPL_CA_DBGMSG_INFO(msg, args...)      PVRPL_CA_DBGMSG(PVRPLCA_DBG_INFO, msg, ##args)
+#endif
+
+#if defined(HB_TRACE)
+    #define PVRPL_CA_DBGMSG_TRACE(msg, args...)     HB_TRACE(msg, ##args)
+#else
+    #define PVRPL_CA_DBGMSG_TRACE(msg, args...)     PVRPL_CA_DBGMSG(PVRPLCA_DBG_TRACE, msg, ##args)
+#endif
+
+#if defined(HB_DBG)
+    #define PVRPL_CA_DBGMSG_DEBUG(msg, args...)     HB_DBG(msg, ##args)
+#else
+    #define PVRPL_CA_DBGMSG_DEBUG(msg, args...)     PVRPL_CA_DBGMSG(PVRPLCA_DBG_FUNC, msg, ##args)
+#endif
+
+//mutex for PVR_SYS_FUNC
+static MS_S32 m_SysFuncMutex    = INVALID_MUTEX_ID;
+static MS_BOOL b_SysInit        = FALSE;
 
 
-static MS_U32  _u32PVRPLCADbgLevel = PVRPLCA_DBG_ERR;
-static MS_BOOL _gbPVRPLCAInit = FALSE;
-static MS_S32 m_AESDMAMutex = -1;
+static MS_S32 m_AESDMAMutex     = INVALID_MUTEX_ID;
 
-#if ENABLE_AESDMA
 typedef struct AESDMAKeyInfo
 {
     PVRPL_ENCRYPTION_TYPE enType;
     MS_U32 u32Key[AESDMA_KEY_LENGTH];
 }KeyInfo;
-
-typedef struct
-{
-    MS_BOOL bDescrypt;
-    MS_U32 u32PhyAddr;
-    MS_U32 u32Length;
-    MS_U32 u32CipherKey[AESDMA_KEY_LENGTH]; // for USER MODE
-    MS_U32 return_Val;
-}ST_CIPHER_R2R_START;
 
 //static MS_U32 u32AESDMAKeySet[EN_PVRPL_ENCRYPTION_AESDMA_NUM][AESDMA_KEY_LENGTH];
 static KeyInfo stKeyInfo[DYNAMIC_KEY_MAX] = // @NOTE DynamicKey Default DYNAMIC_KEY_MAX = 0
@@ -185,192 +214,51 @@ static KeyInfo stKeyInfo[DYNAMIC_KEY_MAX] = // @NOTE DynamicKey Default DYNAMIC_
 };
 
 
+
 static MS_BOOL _CALock(void);
 static MS_BOOL _CAUnlock(void);
-static DSCMB_KLDst _GetDSCMBKeyLadderDstByCipherId(MS_U32 u32CipherId);
-static MS_BOOL _KeyLadder(MS_U32 u32CipherId);
-static MS_BOOL _Cipher_R2R_Start(ST_CIPHER_R2R_START *pstCipherR2RData);
-#endif
+static PVRPL_CA_STATUS _PVRPL_SetKey(PVRPL_AESDMA_INFO *stAESDMAInfo);
 
-
-#if (ENABLE_AESDMA)
-static MS_BOOL _CALock(void)
-{
-    return MsOS_ObtainMutex(m_AESDMAMutex, MSOS_WAIT_FOREVER);
-}
-
-static MS_BOOL _CAUnlock(void)
-{
-    return MsOS_ReleaseMutex(m_AESDMAMutex);
-}
-
-static DSCMB_KLDst _GetDSCMBKeyLadderDstByCipherId(MS_U32 u32CipherId)
-{
-    switch(u32CipherId)
-    {
-        case 0:                                 {return E_DSCMB_KL_DST_DMA_SK0;}
-        case 1:                                 {return E_DSCMB_KL_DST_DMA_SK1;}
-        case 2:                                 {return E_DSCMB_KL_DST_DMA_SK2;}
-        case 3:                                 {return E_DSCMB_KL_DST_DMA_SK3;}
-        default:
-        {
-            PVRPL_CA_DBGMSG(PVRPLCA_DBG_ERR, printf("[%s][%d] Warning: u32CipherId(%lu) undefined, using E_DSCMB_KL_DST_DMA_SK0 instead!!\n", __FUNCTION__, __LINE__, (unsigned long)u32CipherId));
-            return E_DSCMB_KL_DST_DMA_SK0;
-        }
-    }
-}
-
-static MS_BOOL _KeyLadder(MS_U32 u32CipherId)
-{
-    MS_U8  u8KLInputKey[48]={0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f, \
-                            0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,0x28,0x29,0x2a,0x2b,0x2c,0x2d,0x2e,0x2f,\
-                            0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x3a,0x3b,0x3c,0x3d,0x3e,0x3f};
-    DSCMB_KL_Status KL_Status = 0;
-
-    DSCMB_KLCfg_All KLConfigAll = {
-        .eAlgo = E_DSCMB_KL_TDES,
-        .eSrc = E_DSCMB_KL_SRC_SECRET_4,//KLSrc,
-        .eDst = E_DSCMB_KL_DST_DMA_SK0,
-        .eOutsize = E_DSCMB_KL_128_BITS,
-        .eKeyType = 0,
-        .u32Level = 3,
-        .u32EngID = 0,
-        .u32DscID = 0,
-        .u8KeyACPU = 0,
-        .pu8KeyKLIn = u8KLInputKey,
-        .bDecrypt = TRUE,
-        .bInverse = FALSE,
-        .eKLSel = E_DSCMB_KL_SEL_CW,
-        .u32CAVid = NARGA_CAVID, //Nagra CAVID
-    };
-    KLConfigAll.eDst = _GetDSCMBKeyLadderDstByCipherId(u32CipherId);
-    if(FALSE == MDrv_DSCMB2_KLadder_AtomicExec(&KLConfigAll , NULL, &KL_Status ))
-    {
-        PVRPL_CA_DBGMSG(PVRPLCA_DBG_ERR, printf("\033[1;31m""Key Ladder: Fail!!! 0x%x""\033[m\n",(unsigned int)KL_Status));
-        return FALSE;
-    }
-
-    return TRUE;
-}
-
-static MS_BOOL _Cipher_R2R_Start(ST_CIPHER_R2R_START *pstCipherR2RData)
-{
-    MS_U32 u32DelayTimeMS = (pstCipherR2RData->u32Length / AESDMA_BYTES_PER_MS);
-    MS_U32 u32CurrTime = 0;
-    MS_U32 u32CipherId = 0;
-    MS_U32 u32CmdId = 0;
-    MS_U32 u32Exception = 0;
-    DRV_CIPHER_RET enRet = DRV_CIPHER_FAIL;
-    DRV_CIPHER_DMACFG stCfg = {
-        .stAlgo.eMainAlgo = E_CIPHER_MAIN_TDES,
-        .stAlgo.eSubAlgo = E_CIPHER_SUB_ECB,
-        .stAlgo.eResAlgo = E_CIPHER_RES_CLR,
-        .stAlgo.eSBAlgo = E_CIPHER_SB_CLR,
-        .stKey.eKeySrc = E_CIPHER_KSRC_KL,
-        .stKey.u8KeyIdx = 0,
-        //Set read buffer
-        .stInput.u32Addr = pstCipherR2RData->u32PhyAddr,
-        .stInput.u32Size = pstCipherR2RData->u32Length,
-        //Set write buffer
-        .stOutput.u32Addr = pstCipherR2RData->u32PhyAddr,
-        .stOutput.u32Size = pstCipherR2RData->u32Length,
-        //Set encrypt/descrypt
-        .bDecrypt = pstCipherR2RData->bDescrypt,
-        .u32CAVid = NARGA_CAVID, //Nagra CAVID
-    };
-
-    enRet = MDrv_CIPHER_Alloc(&u32CipherId);
-    if(DRV_CIPHER_OK != enRet)
-    {
-        printf("[%s][%d] Allocate Cipher slot failed(%lu)!!\n", __FUNCTION__, __LINE__,  (unsigned long)enRet);
-        return FALSE;
-    }
-
-    stCfg.stKey.u8KeyIdx = (MS_U8)u32CipherId;
-    if(0x0 == pstCipherR2RData->u32CipherKey[0])
-    {
-        _KeyLadder(u32CipherId);
-    }
-    else
-    {
-        stCfg.stKey.eKeySrc = E_CIPHER_KSRC_CPU;
-        stCfg.stKey.u8KeyLen = (MS_U8)sizeof(pstCipherR2RData->u32CipherKey);
-        stCfg.stKey.pu8KeyData = (MS_U8 *)pstCipherR2RData->u32CipherKey;
-    }
-
-    enRet = MDrv_CIPHER_DMAConfigure(u32CipherId, stCfg);
-    if(DRV_CIPHER_OK != enRet)
-    {
-        PVRPL_CA_DBGMSG(PVRPLCA_DBG_ERR, printf("[%s][%d] Cipher DMA configure failed(%lu)!!!\n", __FUNCTION__, __LINE__, (unsigned long) enRet));
-        return FALSE;
-    }
-
-    enRet = MDrv_CIPHER_DMAStart(u32CipherId, &u32CmdId);
-    if(DRV_CIPHER_OK != enRet)
-    {
-        PVRPL_CA_DBGMSG(PVRPLCA_DBG_ERR, printf("[%s][%d] Cipher DMA start failed(%lu)!!!\n", __FUNCTION__, __LINE__,  (unsigned long)enRet));
-        return FALSE;
-    }
-
-    if (u32DelayTimeMS > 0)
-    {
-        MsOS_DelayTask(u32DelayTimeMS);
-    }
-
-    u32CurrTime = MsOS_GetSystemTime();
-    while(TRUE != MDrv_CIPHER_IsDMADone(u32CmdId, &u32Exception))
-    {
-        if(AESDMA_TIMEOUT < (MsOS_GetSystemTime()-u32CurrTime))//Cipher process timeout
-        {
-            PVRPL_CA_DBGMSG(PVRPLCA_DBG_ERR, printf("[%s][%d]!!!!!!!!!!!!!!!!!!!!!!!!! Cipher process timeout(%u) !!!!!!!!!!!!!!!!!!!!!!!!!\n", __FUNCTION__, __LINE__, AESDMA_TIMEOUT));
-            break;
-        }
-        MsOS_DelayTask(10);
-    }
-    enRet = MDrv_CIPHER_Free(u32CipherId);
-    if(DRV_CIPHER_OK != enRet)
-    {
-        PVRPL_CA_DBGMSG(PVRPLCA_DBG_ERR, printf("[%s][%d] Free Cipher slot(%lu) failed(%lu)!!\n", __FUNCTION__, __LINE__,  (unsigned long)u32CipherId,  (unsigned long)enRet));
-        return FALSE;
-    }
-
-    return TRUE;
-}
-#endif // #if (ENABLE_AESDMA)
 
 PVRPL_CA_STATUS PVRPL_CAInit(PVRPL_ENCRYPTDECRYPT_INFO *sCurEncryptDecryptInfo)
 {
-    if(_gbPVRPLCAInit == TRUE)
+
+    if(b_SysInit == TRUE)
     {
         return PVRPL_CA_STATUS_OK;
     }
 
-#if ENABLE_AESDMA
-    MDrv_CIPHER_Init();
+    MS_PHY PHYmiu0addr = 0;
+    MS_PHY PHYmiu1addr = 0x20000000;
+    //Init AES DMA, this SHOULD be set properly with MMAP.
+    MDrv_AESDMA_Init(PHYmiu0addr, PHYmiu1addr, 2);
 
     MS_U8 i = 0;
     for(i=0; i< DYNAMIC_KEY_MAX; i++)
     {
-        PVRPL_CA_DBGMSG(PVRPLCA_DBG_TRACE,printf("[%d][%d],(%"DTC_MS_U32_u", %"DTC_MS_U32_u", %"DTC_MS_U32_u", %"DTC_MS_U32_u")]\n", i, stKeyInfo[i].enType, stKeyInfo[i].u32Key[0], stKeyInfo[i].u32Key[1], stKeyInfo[i].u32Key[2], stKeyInfo[i].u32Key[3]));
+        PVRPL_CA_DBGMSG_TRACE("[%d][%d],(%"DTC_MS_U32_u", %"DTC_MS_U32_u", %"DTC_MS_U32_u", %"DTC_MS_U32_u")]\n", i, stKeyInfo[i].enType, stKeyInfo[i].u32Key[0], stKeyInfo[i].u32Key[1], stKeyInfo[i].u32Key[2], stKeyInfo[i].u32Key[3]);
     }
 
-    m_AESDMAMutex = MsOS_CreateMutex(E_MSOS_FIFO, (char*)"AESDMAMutex", MSOS_PROCESS_SHARED);
-    MS_ASSERT(-1 != m_AESDMAMutex);
-#endif
+    m_AESDMAMutex = MsOS_CreateMutex(E_MSOS_FIFO, (char*)"CaAESDMAMutex", MSOS_PROCESS_SHARED);
+    MS_ASSERT(-1!=m_AESDMAMutex);
 
-    _gbPVRPLCAInit = TRUE;
-    PVRPL_CA_DBGMSG(PVRPLCA_DBG_NONE,printf("CA init, (Path:Mode:Idx) (%x:%x:%x)\n",sCurEncryptDecryptInfo->u8PathIdx,(MAPI_U8)GET_PVR_PATH_MODE(sCurEncryptDecryptInfo->u8PathIdx),(MAPI_U8)GET_PVR_PATH_IDX(sCurEncryptDecryptInfo->u8PathIdx)));
+
+    m_SysFuncMutex = MsOS_CreateMutex(E_MSOS_FIFO, (char*)"CaPVRSysFuncMutex", MSOS_PROCESS_SHARED);
+    MS_ASSERT(-1!=m_SysFuncMutex);
+
+    b_SysInit = TRUE;
+    PVRPL_CA_DBGMSG_ERR("CA init, (Path:Mode:Idx) (%u:%u:%u)\n",sCurEncryptDecryptInfo->u8PathIdx,(MAPI_U8)GET_PVR_PATH_MODE(sCurEncryptDecryptInfo->u8PathIdx),(MAPI_U8)GET_PVR_PATH_IDX(sCurEncryptDecryptInfo->u8PathIdx));
     return PVRPL_CA_STATUS_OK;
+}
+
+MS_U32 PVRPL_GetCABufLength(void)
+{
+    return (MS_U32)AESDAM_BUF_LENGTH;
 }
 
 PVRPL_CA_STATUS PVRPL_CAEncryptDecrypt(PVRPL_ENCRYPTDECRYPT_INFO *sCurEncryptDecryptInfo, MS_U32 u32Address, MS_U32 u32Length,
             PVRPL_AESDMA_Mode eMode, PVRPL_AESDMA_INFO *stAESDMAInfo, void * pParam)
 {
-    ST_CIPHER_R2R_START stCipherR2RData = {};
-    MS_U32 u32AESPhyAddr;
-    MS_U32 u32AESVirAddr;
-    MS_BOOL bDescrypt = (eMode == EN_PVRPL_ENCRYPTION)?FALSE:TRUE;
-
     if (FALSE == sCurEncryptDecryptInfo->bEnable)//AESDMA Disable
     {
         return PVRPL_CA_STATUS_OK;
@@ -378,62 +266,224 @@ PVRPL_CA_STATUS PVRPL_CAEncryptDecrypt(PVRPL_ENCRYPTDECRYPT_INFO *sCurEncryptDec
     ASSERT(EN_PVRPL_ENCRYPTION_NONE < stAESDMAInfo->enEncryptType);
     ASSERT(EN_PVRPL_ENCRYPTION_AESDMA_NUM > stAESDMAInfo->enEncryptType);
 
+    MS_BOOL bDescrypt=FALSE;
+    MS_U32 u32CurrTime = 0;
+
+    MS_U32 u32AESPhyAddr;
+    MS_U32 u32AESVirAddr;
+    MS_U32 u32DelayTimeMS = (u32Length / AESDMA_BYTES_PER_MS);
+
+
 #if 0//for aesdma debug using
-    printf("[%s:%d]eMode : %u\n",__FUNCTION__,__LINE__,eMode);
-    printf("[%s:%d]u32AESDMAKeySet[%u]\n",__FUNCTION__,__LINE__,stAESDMAInfo->enEncryptType);
+    PVRPL_CA_DBGMSG_ERR("eMode : %u\n", eMode);
+    PVRPL_CA_DBGMSG_ERR("u32AESDMAKeySet[%u]\n", stAESDMAInfo->enEncryptType);
     MS_U8 index=0;
     for(index=0;index<AESDMA_KEY_LENGTH;index++)
-        printf(" 0x%08lX ",stAESDMAInfo->unKeySet.u32AESDMAKey[index]);
-    printf("============================================================================\n");
+        PVRPL_CA_DBGMSG_ERR(" 0x%08lX ",stAESDMAInfo->unKeySet.u32AESDMAKey[index]);
+    PVRPL_CA_DBGMSG_ERR("============================================================================\n");
 #endif
+
+    _CALock();
+
+    bDescrypt=(eMode == EN_PVRPL_ENCRYPTION)?FALSE:TRUE;
 
     u32AESPhyAddr = u32Address;
     PVRPL_PA2VA(u32AESPhyAddr, &u32AESVirAddr);
+    //Init AES DMA
+    //MDrv_AESDMA_Init(0, 0, 1);
+
+    //Reset AES DMA
+    MDrv_AESDMA_Reset();
 
     //Min. byte limitation (16X)
     if((u32Length <PVR_AES_ALIGNMENT_LEN) || (u32Length%PVR_AES_ALIGNMENT_LEN !=0) || (u32AESPhyAddr%PVR_AES_ALIGNMENT_LEN!=0))
     {
-        PVRPL_CA_DBGMSG(PVRPLCA_DBG_ERR, printf("[PVR] Error: AES Write Buffer %"DTC_MS_U32_x",%"DTC_MS_U32_x" is invalid in mode %d. \n",u32AESPhyAddr,u32Length,eMode));
+        PVRPL_CA_DBGMSG_ERR("[PVR] Error: AES Write Buffer %"DTC_MS_U32_x",%"DTC_MS_U32_x" is invalid in mode %d. \n",u32AESPhyAddr,u32Length,eMode);
         u32Length = 0;
-        return PVRPL_CA_STATUS_ERROR;
-    }
-
-    stCipherR2RData.bDescrypt = bDescrypt;
-    stCipherR2RData.u32PhyAddr = u32AESPhyAddr;
-    stCipherR2RData.u32Length = u32Length;
-    switch(stAESDMAInfo->enEncryptType)
-    {
-#if PVR_KEYLADDER
-        case EN_PVRPL_ENCRYPTION_SMARTCARD:
-            stCipherR2RData.u32CipherKey[0]=0x0;
-            break;
-#endif
-        case EN_PVRPL_ENCRYPTION_DYNAMICKEY:
-            memcpy(stCipherR2RData.u32CipherKey, stKeyInfo[stAESDMAInfo->unKeySet.u32KeyIdx].u32Key, AESDMA_KEY_LENGTH);
-            break;
-        default:
-            memcpy(stCipherR2RData.u32CipherKey, stAESDMAInfo->unKeySet.u32AESDMAKey, AESDMA_KEY_LENGTH);
-            break;
-    }
-
-    _CALock();
-    PVRPL_MemoryFlush(u32AESVirAddr, u32Length);
-     if(TRUE != _Cipher_R2R_Start(&stCipherR2RData))
-    {
-        PVRPL_CA_DBGMSG(PVRPLCA_DBG_ERR, printf("\033[1;31m[%s][%d] Do cipher encrypt/decrypt with keyladder failed!!\033[m\n", __FUNCTION__, __LINE__));
         _CAUnlock();
         return PVRPL_CA_STATUS_ERROR;
     }
+
+#if PVR_KEYLADDER
+    if( (EN_PVRPL_ENCRYPTION_SMARTCARD == stAESDMAInfo->enEncryptType))
+    {
+        MS_U8 u8KLInputKey[48]={0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f,
+                                0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,0x28,0x29,0x2a,0x2b,0x2c,0x2d,0x2e,0x2f,
+                                0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x3a,0x3b,0x3c,0x3d,0x3e,0x3f};
+        MS_U8 key[16] = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF};
+        DSCMB_KL_Status KL_Status = 0;
+        MS_U8 ACPU_Out[16] = {0x00};
+
+        DSCMB_KLCfg_All KLConfigAll =
+        {
+            .eAlgo = E_DSCMB_KL_AES,
+            .eSrc = E_DSCMB_KL_SRC_ACPU,
+            .eDst = E_DSCMB_KL_DST_DMA_AES,
+            .eOutsize = E_DSCMB_KL_128_BITS,
+            .eKeyType = 0,  // Don't care when dst is Crypto DMA
+            .u32Level = 3,
+            .u32EngID = 0,  //Set to zero in STB chip, Don't care when dst is Crypto DMA
+            .u32DscID = 0,  // Don't care when dst is Crypto DMA
+            .u8KeyACPU = key,
+            .pu8KeyKLIn = u8KLInputKey,
+            .bDecrypt = TRUE,
+            .bInverse = FALSE,
+            .eKLSel   = E_DSCMB_KL_SEL_DEFAULT,
+            // For CIPHE key source from KL and set to Secrete key (eSrc = E_DEMO_KL_SRC_SECRET_1 ~E_DEMO_KL_SRC_SECRET_4),
+            // the CAVID in Secrete key need equal to CIPHER and KL
+            .u32CAVid = 0xF, //CA vender ID , 0xF: engineering sample (security LV: the most loosely)
+        };
+
+        // Key Ladder
+        if(MDrv_DSCMB2_KLadder_AtomicExec(&KLConfigAll, ACPU_Out, &KL_Status) == FALSE)
+        {
+            PVRPL_CA_DBGMSG_ERR("Key Ladder: Fail!!! Status = 0x%x\n", (unsigned int)KL_Status);
+            _CAUnlock();
+            return PVRPL_CA_STATUS_ERROR;
+        }
+    }
+#endif
+
+    PVRPL_MemoryFlush(u32AESVirAddr, u32Length);
+
+    //Set read/write buffer
+    MS_PHY PHYAESPhyAddr = (MS_PHY)u32AESPhyAddr;
+    MDrv_AESDMA_SetFileInOut(PHYAESPhyAddr, u32Length, PHYAESPhyAddr, PHYAESPhyAddr+u32Length-1);
+
+    //Set key. @NOTE KEYLADDER do not need to set key
+    _PVRPL_SetKey(stAESDMAInfo);
+
+    //Set encrypt/descrypt
+    MDrv_AESDMA_SelEng(E_DRVAESDMA_CIPHER_ECB, bDescrypt);
+
+    //Start to act
+    MDrv_AESDMA_Start(TRUE);
+
+    if (u32DelayTimeMS > 0)
+    {
+        MsOS_DelayTask(u32DelayTimeMS);
+    }
+
+    u32CurrTime = MsOS_GetSystemTime();
+    while(MDrv_AESDMA_IsFinished() != DRVAESDMA_OK)
+    {
+        if((MsOS_GetSystemTime()-u32CurrTime)>AESDMA_TIMEOUT)//aesdma process timeout
+        {
+            PVRPL_CA_DBGMSG_ERR("!!!!!!!!!!!!!!!!!!!!!!!!! aesdma process timeout !!!!!!!!!!!!!!!!!!!!!!!!!\n");
+            break;
+        }
+        MsOS_DelayTask(10);
+    }
+
     PVRPL_MemoryFlush(u32AESVirAddr, u32Length);
     _CAUnlock();
+
+#if PVR_AESDMA_SPEED_TEST
+    PVRPL_CA_DBGMSG_ERR("============= AESDMA Speed test =============\n");
+
+    for(MS_U8 u8Count = 0; u8Count < 4; ++u8Count)
+    {
+        //Init AES DMA
+        //MDrv_AESDMA_Init(0, 0, 1);
+
+        //Reset AES DMA
+        MDrv_AESDMA_Reset();
+
+        //Min. byte limitation (16X)
+        if(u32Length < 16)
+        {
+            break;
+        }
+
+        //Set read/write buffer
+        MDrv_AESDMA_SetFileInOut(PHYAESPhyAddr, u32Length, PHYAESPhyAddr, PHYAESPhyAddr+u32Length-1);
+
+        if(eMode == EN_PVRPL_ENCRYPT)
+        {
+            //Set key.
+            MDrv_AESDMA_SetKey(u32EncpAESDMAKey);
+            //Start to encrypt
+            MDrv_AESDMA_SelEng(E_DRVAESDMA_CIPHER_ECB, TRUE);
+            MDrv_AESDMA_Start(TRUE);
+        }
+        else
+        {
+            //Set key.
+            MDrv_AESDMA_SetKey(u32DecpAESDMAKey);
+            //Start to decrypt
+            MDrv_AESDMA_SelEng(E_DRVAESDMA_CIPHER_ECB, FALSE);
+            MDrv_AESDMA_Start(TRUE);
+        }
+
+        MS_U32 _time0 = MsOS_GetSystemTime();
+        MS_U16 u16Index = 0;
+        for (u16Index = 0; u16Index < 65535; u16Index++)
+        {
+            if (DRVAESDMA_OK == MDrv_AESDMA_IsFinished())
+                break;
+        }
+
+        MS_U32 _time1 = MsOS_GetSystemTime();
+        PVRPL_CA_DBGMSG_ERR("delta = %"DTC_MS_U32_u", length = %"DTC_MS_U32_u", u16Index = %u\n", _time1 - _time0, u32Length, u16Index);
+        u32Length /= 2;
+    }
+    PVRPL_CA_DBGMSG_ERR("=============================================\n");
+    _CAUnlock();
+#endif /*PVR_AESDMA_SPEED_TEST*/
+    return PVRPL_CA_STATUS_OK;
+}
+
+PVRPL_CA_STATUS _PVRPL_SetKey(PVRPL_AESDMA_INFO *stAESDMAInfo)
+{
+    MS_U32 u32KeyIdx = 0; // for Default/USER usage
+#if PVR_KEYLADDER
+    //Set key.
+    if(EN_PVRPL_ENCRYPTION_USER == stAESDMAInfo->enEncryptType)
+    {
+        stKeyInfo[u32KeyIdx].enType =  stAESDMAInfo->enEncryptType;
+        memset(stKeyInfo[u32KeyIdx].u32Key, 0, sizeof(stKeyInfo[u32KeyIdx].u32Key));
+        memcpy(stKeyInfo[u32KeyIdx].u32Key, stAESDMAInfo->unKeySet.u32AESDMAKey, sizeof(stAESDMAInfo->unKeySet.u32AESDMAKey));
+    }
+    else if(EN_PVRPL_ENCRYPTION_DYNAMICKEY == stAESDMAInfo->enEncryptType)
+    {
+        u32KeyIdx = stAESDMAInfo->unKeySet.u32KeyIdx;
+    }
+
+    PVRPL_CA_DBGMSG_TRACE("\033[1;36m=== Idx:%"DTC_MS_U32_u", Type:%d, Key:{0x%"DTC_MS_U32_x",0x%"DTC_MS_U32_x",0x%"DTC_MS_U32_x",0x%"DTC_MS_U32_x"} ===\n\033[m",
+        u32KeyIdx, stKeyInfo[u32KeyIdx].enType,
+        stKeyInfo[u32KeyIdx].u32Key[0], stKeyInfo[u32KeyIdx].u32Key[1], stKeyInfo[u32KeyIdx].u32Key[2], stKeyInfo[u32KeyIdx].u32Key[3]);
+
+    switch(stKeyInfo[u32KeyIdx].enType)
+    {
+        case EN_PVRPL_ENCRYPTION_SMARTCARD:
+            MDrv_AESDMA_SetKey(NULL);
+            break;
+        case  EN_PVRPL_ENCRYPTION_DYNAMICKEY:
+            MDrv_AESDMA_SetKey(stKeyInfo[u32KeyIdx].u32Key);
+            break;
+        default:
+            MDrv_AESDMA_SetKey(stKeyInfo[u32KeyIdx].u32Key);
+            break;
+    }
+
+#else
+    MDrv_AESDMA_SetKey(stKeyInfo[u32KeyIdx].u32Key);
+#endif
 
     return PVRPL_CA_STATUS_OK;
 }
 
-MS_U32 PVRPL_GetCABufLength(void)
+static MS_BOOL _CALock(void)
 {
-    return (MS_U32)AESDMA_BUF_LENGTH;
+    MsOS_ObtainMutex(m_AESDMAMutex,MSOS_WAIT_FOREVER);
+
+    return MDrv_AESDMA_Lock();
 }
 
+static MS_BOOL _CAUnlock(void)
+{
+    MsOS_ReleaseMutex(m_AESDMAMutex);
 
-
+    return MDrv_AESDMA_Unlock();
+}
+#endif

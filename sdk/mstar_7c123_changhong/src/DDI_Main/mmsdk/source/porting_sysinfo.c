@@ -3,15 +3,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
 #include "HbCommon.h"
 #include "porting_sysinfo.h"
 #include "porting_cusinfo.h"
 
-#ifdef MS_DEBUG
-#define PT_SYS_DBG(x) x
-#else
-#define PT_SYS_DBG(x)
-#endif
+#define PT_SYS_ERR(fmt, arg...) PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_ERR, fmt"\n", ##arg);
+#define PT_SYS_DBG(fmt, arg...) PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_DBG, fmt"\n", ##arg);
 
 #define MAX_WINDOW_NUM 4
 
@@ -29,6 +27,10 @@ MS_U32 gu32VQBuffer = 0;
 MS_U32 gu32VQSize = 0;
 static AUDIO_DEC_ID geAudDecID = AU_DEC_INVALID;
 static MMSDK_U8 u8AVPWindowOrder[MAX_WINDOW_NUM] = {0, 1, 2, 3};
+static MMSDK_BOOL bIsSetWindowByUser[MAX_WINDOW_NUM] = {FALSE, FALSE, FALSE, FALSE};
+static EN_MMSDK_DBG_LEVEL _gePortingDBGLevel = E_MMSDK_DBG_LEVEL_ERR;
+static MMSDK_BOOL _gbStepDbg = FALSE;
+static MMSDK_BOOL _gbStepNextFrame = FALSE;
 
 PT_SYS_CUS_FunPtr gstSysCusFunPtr = {NULL};
 PT_SYS_SubRnd_FunPtr gstSysSubRndFunPtr = {NULL};
@@ -43,8 +45,8 @@ static void _DumpCustInfo(void)
     for (i = 0; i < PT_CUS_INFO_SIZE; i++)
     {
         if (i%8 == 0)
-            PT_SYS_DBG(printf("\n"));
-        PT_SYS_DBG(printf("0x%02x,", u8Customer_info[i]));
+            PT_SYS_DBG("\n");
+        PT_SYS_DBG("0x%02x,", u8Customer_info[i]);
 
     }
 
@@ -55,17 +57,17 @@ static void _DumpHashKey(void)
 {
     MMSDK_U8 i = 0;
 
-    PT_SYS_DBG(printf("****** Hash_Key: ******\n"));
+    PT_SYS_DBG("****** Hash_Key: ******\n");
 
     for (i = 0; i < PT_CUS_HASH_SIZE; i++)
     {
         if (i%8 == 0)
-            PT_SYS_DBG(printf("\n"));
-        PT_SYS_DBG(printf("0x%02x,", u8Customer_hash[i]));
+            PT_SYS_DBG("\n");
+        PT_SYS_DBG("0x%02x,", u8Customer_hash[i]);
 
     }
 
-    PT_SYS_DBG(printf("\n"));
+    PT_SYS_DBG("\n");
 }
 #endif
 
@@ -74,7 +76,7 @@ MMSDK_BOOL PT_SYS_SetCusInfo(MMSDK_U8 *pu8CusInfo, MMSDK_U8 *pu8CusHash)
 
     if ((pu8CusInfo == NULL) || (pu8CusHash == NULL))
     {
-        PT_SYS_DBG(printf("[%s] Fail. Invalid Src Info\n", __FUNCTION__));
+        PT_SYS_DBG("[%s] Fail. Invalid Src Info\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -88,7 +90,7 @@ MMSDK_BOOL PT_SYS_GetCusInfo(MMSDK_U8 *pu8Info, MMSDK_U8 pu8CusInfoSize)
 {
     if (pu8Info == NULL)
     {
-        PT_SYS_DBG(printf("[%s] Fail. Invalid Src Info\n", __FUNCTION__));
+        PT_SYS_DBG("[%s] Fail. Invalid Src Info\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -101,7 +103,7 @@ MMSDK_BOOL PT_SYS_GetHashKey(MMSDK_U8 *pu8Key, MMSDK_U8 pu8HashKeySize)
 {
     if (pu8Key == NULL)
     {
-        PT_SYS_DBG(printf("[%s] Fail. Invalid Src Info\n", __FUNCTION__));
+        PT_SYS_DBG("[%s] Fail. Invalid Src Info\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -121,7 +123,7 @@ MMSDK_BOOL PT_SYS_GetDRMID(MMSDK_U16 *pu16CusDRMID)
 {
     if (pu16CusDRMID == NULL)
     {
-        PT_SYS_DBG(printf("[%s] Fail. Invalid Src Info\n", __FUNCTION__));
+        PT_SYS_DBG("[%s] Fail. Invalid Src Info\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -160,7 +162,7 @@ MMSDK_BOOL PT_SYS_ReadFromDB(ST_MMSDK_DIVXDRM_INFO *pstDRMInfo)
 {
     if ((pstDRMInfo == NULL) || (PT_SYS_DB.pSysReadDB == NULL))
     {
-        PT_SYS_DBG(printf("[%s] Fail. Invalid Src Info\n", __FUNCTION__));
+        PT_SYS_DBG("[%s] Fail. Invalid Src Info\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -173,7 +175,7 @@ MMSDK_BOOL PT_SYS_WriteToDB(ST_MMSDK_DIVXDRM_INFO *pstDRMInfo)
 {
     if ((pstDRMInfo == NULL) || (PT_SYS_DB.pSysWriteDB == NULL))
     {
-        PT_SYS_DBG(printf("[%s] Fail. Invalid Src Info\n", __FUNCTION__));
+        PT_SYS_DBG("[%s] Fail. Invalid Src Info\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -202,7 +204,7 @@ MMSDK_BOOL PT_SYS_SetMmapInfo(PT_SYS_MmapInfo *stMmapInfo, ST_MMSDK_MMAP_INFO *s
 {
     if (stMmapInfo == NULL)
     {
-        PT_SYS_DBG(printf("[%s] Fail. Invalid Src Info\n", __FUNCTION__));
+        PT_SYS_DBG("[%s] Fail. Invalid Src Info\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -215,7 +217,7 @@ MMSDK_BOOL  PT_SYS_GetMIUInfo(ST_MMSDK_MMAP_INFO* pInfo)
 {
     if (pInfo == NULL)
     {
-        PT_SYS_DBG(printf("[%s] Fail. Invalid Src Info\n", __FUNCTION__));
+        PT_SYS_DBG("[%s] Fail. Invalid Src Info\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -228,7 +230,7 @@ MMSDK_U32 PT_SYS_GetMmapInfo(ST_MMSDK_BUF_INFO* pstMemInfo, EN_MMSDK_BUF_ID eBuf
 {
     ST_MMSDK_BUF_INFO *stMemInfo = NULL;
 
-    PT_SYS_DBG(printf("Enter. PT_SYS_GetMmapInfo (%d)\n", eBufferID));
+    PT_SYS_DBG("Enter. PT_SYS_GetMmapInfo (%d)\n", eBufferID);
     switch(eBufferID)
     {
         case E_MMSDK_BUF_PHOTO_DISPLAY:
@@ -348,7 +350,7 @@ MMSDK_U32 PT_SYS_GetMmapInfo(ST_MMSDK_BUF_INFO* pstMemInfo, EN_MMSDK_BUF_ID eBuf
         case E_MMSDK_BUF_SUBTITLE_FONT_TABLE:
         case E_MMSDK_BUF_VDPLAYER_LOADCODE:
         default:
-            PT_SYS_DBG(printf("[Error] wrong eBufferID id %d\n", eBufferID));
+            PT_SYS_ERR("[Error] wrong eBufferID id %d\n", eBufferID);
             return 0;
     }
 
@@ -381,7 +383,7 @@ MMSDK_BOOL PT_SYS_SetAudDecID(AUDIO_DEC_ID eAudDecID)
 {
     if(eAudDecID >= AU_DEC_MAX)
     {
-        PT_SYS_DBG(printf("[%s] Fail. Invalid input argument\n", __FUNCTION__));
+        PT_SYS_DBG("[%s] Fail. Invalid input argument\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -393,7 +395,7 @@ MMSDK_BOOL PT_SYS_GetAudDecID(AUDIO_DEC_ID *peAudDecID)
 {
     if(peAudDecID == NULL)
     {
-        PT_SYS_DBG(printf("[%s] Fail. Invalid input argument\n", __FUNCTION__));
+        PT_SYS_DBG("[%s] Fail. Invalid input argument\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -452,6 +454,21 @@ MMSDK_BOOL PT_SYS_SetSubtitleRndFunPtr(PT_SYS_SubRnd_FunPtr *pstSubRndFunPtr)
     }
 }
 
+MMSDK_U32 PT_SYS_PrintLog(EN_MMSDK_DBG_LEVEL eLogDebugLevel, const char *pu8Log, ...)
+{
+    if (eLogDebugLevel > _gePortingDBGLevel)    return FALSE;
+
+    char str[256] = "";
+    va_list ap;
+    va_start(ap, pu8Log);
+
+    vsnprintf(str, sizeof(str), pu8Log, ap);
+    printf("%s", str);
+
+    va_end(ap);
+    return TRUE;
+}
+
 MMSDK_BOOL PT_SYS_SetGraphicDisplayFlag(MMSDK_BOOL bEnable)
 {
     gbEnGraphicDisplay = bEnable;
@@ -494,6 +511,32 @@ MMSDK_U8 PT_SYS_GetAVPZOrder(MMSDK_U8 u8WinID)
     return u8AVPWindowOrder[u8WinID];
 }
 
+MMSDK_BOOL PT_SYS_SetFlagResizeWindowByUser(MMSDK_U8 u8WinID, MMSDK_BOOL bFlag)
+{
+    bIsSetWindowByUser[u8WinID] = bFlag;
+    return TRUE;
+}
+
+MMSDK_BOOL PT_SYS_GetFlagResizeWindowByUser(MMSDK_U8 u8WinID)
+{
+    return bIsSetWindowByUser[u8WinID];
+}
+
+
+MMSDK_BOOL PT_SYS_SetDebugLevel(EN_MMSDK_DBG_LEVEL eDBGLevel)
+{
+    _gePortingDBGLevel = eDBGLevel;
+    return TRUE;
+}
+
+EN_MMSDK_DBG_LEVEL PT_SYS_GetDebugLevel(void)
+{
+    return _gePortingDBGLevel;
+}
+
+
+
+
 MMSDK_BOOL PT_SYS_SetMMPhotoPath(MMSDK_U8 u8Path)
 {
     gu8DrawPhotoPath = u8Path;
@@ -503,4 +546,38 @@ MMSDK_BOOL PT_SYS_SetMMPhotoPath(MMSDK_U8 u8Path)
 MMSDK_U8 PT_SYS_GetMMPhotoPath(void)
 {
     return gu8DrawPhotoPath;
+}
+
+MMSDK_BOOL PT_SYS_SetOptions(MMSDK_U8 u8WinID, EN_PT_SYS_OPTION eSysOption, void* param)
+{
+    switch (eSysOption)
+    {
+        case E_PT_SYS_STEP_DBG:
+            _gbStepDbg = *(MMSDK_BOOL*)param;
+            break;
+        case E_PT_SYS_STEP_NEXTFRAME:
+            _gbStepNextFrame = *(MMSDK_BOOL*)param;
+            break;
+        default:
+            break;
+    }
+
+    return TRUE;
+}
+
+MMSDK_BOOL PT_SYS_GetOptions(MMSDK_U8 u8WinID, EN_PT_SYS_OPTION eSysOption, void* param)
+{
+    switch (eSysOption)
+    {
+        case E_PT_SYS_STEP_DBG:
+            *((MMSDK_BOOL*)(param)) = _gbStepDbg;
+            break;
+        case E_PT_SYS_STEP_NEXTFRAME:
+            *((MMSDK_BOOL*)(param)) = _gbStepNextFrame;
+            break;
+        default:
+            break;
+    }
+
+    return TRUE;
 }

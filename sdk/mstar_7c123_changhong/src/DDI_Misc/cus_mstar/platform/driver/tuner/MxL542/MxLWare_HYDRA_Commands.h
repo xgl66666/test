@@ -27,6 +27,7 @@
 
 #include "MaxLinearDataTypes.h"
 #include "MxLWare_HYDRA_DeviceApi.h"
+#include "MxLWare_HYDRA_DiseqcFskApi.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,6 +38,10 @@ extern "C" {
 *****************************************************************************************/
 #define MXL_HYDRA_MIN_BUFF_REQUIRED    128
 #define MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN ((MXL_HYDRA_OEM_MAX_BLOCK_WRITE_LENGTH) > (MXL_HYDRA_MIN_BUFF_REQUIRED) ? (MXL_HYDRA_OEM_MAX_BLOCK_WRITE_LENGTH):(MXL_HYDRA_MIN_BUFF_REQUIRED))
+#define MXL_HYDRA_MIN_TIME_IN_SECS 5 //for compile warning
+#define MXL_HYDRA_MAX_TIME_IN_SECS 65530 /*0xFFFF*/
+#define MXL_HYDRA_MIN_PID 1
+#define MXL_HYDRA_MAX_PID 8190 /*Ox1FFE*/
 
 /************************************************************************************
        Enums
@@ -131,6 +136,9 @@ typedef enum
   MXL_HYDRA_XPT_CHANNEL_UPDATE_CMD = 78, 
   MXL_HYDRA_RSSI_MONITOR_CMD = 79,
 
+  // -- New DISEQC command
+  MXL_HYDRA_DISEQC_CFG_TXRX_MSG_CMD = 80,
+
   MXL_HYDRA_LAST_FW_CMD    
 
 } MXL_HYDRA_HOST_CMD_ID_E;
@@ -159,27 +167,6 @@ typedef struct
   UINT8 tunerId;
   UINT8 enable;
 } MxL_HYDRA_TUNER_CMD;
-
-// Demod Para for Channel Tune
-typedef struct
-{
-  UINT32 tunerIndex;
-
-  UINT32 demodIndex;
-
-  UINT32 frequencyInHz;     // Frequency
-
-  UINT32 standard;          // one of MXL_HYDRA_BCAST_STD_E
-  UINT32 spectrumInversion; // Input : Spectrum inversion.
-  UINT32 rollOff;           /* rollOff (alpha) factor */
-  UINT32 symbolRateInHz;    /* Symbol rate */
-  UINT32 pilots;            /* TRUE = pilots enabled */
-  UINT32 modulationScheme;  // Input : Modulation Scheme is one of MXL_HYDRA_MODULATION_E
-  UINT32 fecCodeRate;       // Input : Forward error correction rate. Is one of MXL_HYDRA_FEC_E
-
-  UINT32 maxCarrierOffsetInMHz; // Maximum carrier freq offset in MHz. Same as freqSearchRangeKHz, but in unit of MHz.
-
-} MXL_HYDRA_DEMOD_PARAM_T;
 
 typedef struct
 {
@@ -216,12 +203,13 @@ typedef enum
   MXL_HYDRA_SKU_TYPE_541 = 0x0A,
   MXL_HYDRA_SKU_TYPE_568 = 0x0B,
   MXL_HYDRA_SKU_TYPE_542 = 0x0C,
-  MXL_HYDRA_SKU_TYPE_MAX = 0x0D,
+  MXL_HYDRA_SKU_TYPE_532 = 0x0D,
+  MXL_HYDRA_SKU_TYPE_MAX = 0x0E,
 } MXL_HYDRA_SKU_TYPE_E;
 
 typedef struct
 {
-  MXL_HYDRA_SKU_TYPE_E skuType;
+  UINT32 skuType;           // MXL_HYDRA_SKU_TYPE_E
 } MXL_HYDRA_SKU_COMMAND_T;
 
 typedef struct
@@ -240,17 +228,26 @@ typedef struct
 
 typedef struct
 {
-  MXL_HYDRA_TUNER_ID_E tunerId;
-  MXL_BOOL_E enable;
+  UINT32 diseqcId;
+  UINT32 nbyte;
+  UINT8  bufMsg[MXL_HYDRA_DISEQC_MAX_PKT_SIZE];
+  UINT32 toneBurst;
+} MXL_HYDRA_DISEQC_TX_MSG_CMD_T;
+
+typedef struct
+{
+  UINT32 tunerId;         // MXL_HYDRA_TUNER_ID_E
+  UINT32 enable;          // MXL_BOOL_E
   SINT32 adcRssiThreshold;
 } MXL_HYDRA_RSSI_MONITOR_INFO_T;
 
 typedef struct
 {
-  MXL_HYDRA_WAKE_ON_PID_T wakeOnPid;
-  UINT32 pidSearchTimeInMsecs;
-  UINT32 demodSleepTimeInMsecs;
-  MXL_BOOL_E enable;
+  MXL_HYDRA_DEMOD_PARAM_T demodChanCfg;
+  UINT32 interruptLockFail;  // MXL_BOOL_E
+  UINT32 awakeTimeInSeconds;
+  UINT32 sleepTimeInSeconds;
+  UINT32 magicPid;
 } MXL_HYDRA_BROADCAST_WAKEUP_CFG_T;
 
 #ifdef __cplusplus

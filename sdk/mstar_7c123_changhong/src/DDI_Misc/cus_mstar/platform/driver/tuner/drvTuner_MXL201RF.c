@@ -75,10 +75,16 @@
 //
 //******************************************************************************
 //<MStar Software>
-
+#ifdef MSOS_TYPE_LINUX_KERNEL
+#include <linux/string.h>
+#include <linux/fs.h>
+#include <linux/vmalloc.h>
+#include <linux/err.h>
+#include <asm/uaccess.h>
+#else
 #include <stdio.h>
 #include <string.h>
-
+#endif
 #include "error.h"
 #include "MsCommon.h"
 #include "Board.h"

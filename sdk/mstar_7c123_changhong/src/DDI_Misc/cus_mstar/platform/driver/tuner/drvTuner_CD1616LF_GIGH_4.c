@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -108,7 +108,7 @@
 #include "drvIIC.h"
 #include "drvTuner.h"
 
-#if IF_THIS_DEMOD_INUSE(TUNER_PHILIPS_CD1616LF_GIGH_4)
+#if IF_THIS_TUNER_INUSE(TUNER_PHILIPS_CD1616LF_GIGH_4)
 
 //-------------------------------------------------------------------------------------------------
 //  Driver Compiler Options

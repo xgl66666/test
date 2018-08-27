@@ -95,6 +95,25 @@
 #ifndef _DEMO_OS_H_
 #define _DEMO_OS_H_
 
+#if (DEMO_ZUI_TEST == 1)
+#define INVALID_TASK_ID     -1
+#define INVALID_MUTEX_ID    -1
+#define INVALID_SEM_ID      -1
+#define INVALID_EVENT_ID    -1
+#define INVALID_MEMPOOL_ID  -1
+
+
+typedef struct _USBTestArgs
+{
+    char *pMountPath;
+    MS_U32 u32BlockSize;
+    MS_U32 u32Iteration;
+} USBTestArgs, *pUSBTestArgs;
+
+
+extern void _USB_Test_Clear_Cache();
+extern MS_U32 _USB_Test_Approximate(MS_U32 u32Numerator, MS_U32 u32Denominator);
+#endif
 MS_BOOL Demo_OS_Test(MS_U32* u32TestCase, MS_U32 *Reserved0);
 
 MS_BOOL Demo_USB_Test(char *pMountPath, MS_U32* u32BlockSizeInKB, MS_U32* u32Iteration, MS_U32* bParallel);

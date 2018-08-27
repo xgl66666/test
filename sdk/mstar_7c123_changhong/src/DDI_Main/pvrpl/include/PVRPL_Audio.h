@@ -158,32 +158,41 @@ typedef enum
 {
     AUDIO_APP_ES_PLAY = 0,
     AUDIO_APP_DTV,
+    AUDIO_APP_DTV_AM,
     AUDIO_APP_DTV_AD,
+    AUDIO_APP_DTV_AD_1PID,
     AUDIO_APP_ATV_FMTX,
     AUDIO_APP_ATV_BTSC,
-
+    AUDIO_APP_HDMI_RX,
     AUDIO_APP_ALL
 }EN_AUDIO_APP_TYPE;
-
 
 typedef struct
 {
     EN_AUDIO_CPL_DEC_ID     eDecID;
 
-    MS_S16                  s16ASpeed;
+    MS_S32                  s32ASpeed;
     PVR_PATH                u8PathIdx;
     MS_BOOL                 bAInit;
 
     MS_BOOL bMonitorSyncStatus;
     MS_U32 u32StartSyncTime;
+    EN_PVRPL_AVSYNC_MODE eAVSyncMode;
 }PVRPL_AUDIO_DEC_INFO;
 //--------------------------------------------------------
 
+#define PVRPL_ACODEC_TYPE MS_U32
+#define PVRPL_ACODEC_MPEG 0x1
+#define PVRPL_ACODEC_AC3  0x2
+#define PVRPL_ACODEC_AC3P 0x3
+#define PVRPL_ACODEC_AAC  0x4
+#define PVRPL_ACODEC_DRA  0x5
+
 // Audio Module
-PVRPL_AUDIO_STATUS PVRPL_Audio_Init(PVRPL_AUDIO_DEC_INFO *AudioInfo,MS_U32 u32ACodec,MS_U8 u8STCEng,void *pAudioID);
+PVRPL_AUDIO_STATUS PVRPL_Audio_Init(PVRPL_AUDIO_DEC_INFO *AudioInfo,PVRPL_ACODEC_TYPE u32ACodec,MS_U8 u8STCEng,void *pAudioID);
 PVRPL_AUDIO_STATUS PVRPL_Audio_GetInfoWithPARAU64(PVRPL_AUDIO_DEC_INFO *AudioInfo, EN_AUDIO_CPL_INFO eAudioCmd, MS_U64 *u64pmtr, void* structure);
 PVRPL_AUDIO_STATUS PVRPL_Audio_GetInfoWithPARAU32(PVRPL_AUDIO_DEC_INFO *AudioInfo, EN_AUDIO_CPL_INFO eAudioCmd, MS_U32 *u32pmtr, void* structure);
-PVRPL_AUDIO_STATUS PVRPL_Audio_SetSpeed(PVRPL_AUDIO_DEC_INFO *AudioInfo, MS_S16 speed);
+PVRPL_AUDIO_STATUS PVRPL_Audio_SetSpeed(PVRPL_AUDIO_DEC_INFO *AudioInfo, MS_S32 s32Speed);
 PVRPL_AUDIO_STATUS PVRPL_Audio_Play(PVRPL_AUDIO_DEC_INFO *AudioInfo);
 PVRPL_AUDIO_STATUS PVRPL_Audio_SetMute(PVRPL_AUDIO_DEC_INFO *AudioInfo,MS_U8 u8PathID, MS_BOOL bMute);
 PVRPL_AUDIO_STATUS PVRPL_Audio_FlushData(PVRPL_AUDIO_DEC_INFO *AudioInfo);

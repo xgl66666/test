@@ -102,25 +102,24 @@
 //-------------------------------------------------------------------------------------------------
 //  Include Files
 //-------------------------------------------------------------------------------------------------
+#ifdef __KERNEL__
+#include <linux/string.h>
+#else
 #include <string.h>
-#include "MsCommon.h"
-#include "HbCommon.h"
-//#include "Board.h"
-//#include "drvTuner.h"
-//#include "drvDemod.h"
+#endif
 #include "drvIIC.h"
 #include "drvHWI2C.h"
 #include "drvGPIO.h"
 #include "drvDTC.h"
-//#if MS_DVBS_INUSE
+#ifndef __KERNEL__
 #include "math.h"
-//#include "drvDish.h"
-//#endif
+#endif
 #include "apiDigiTuner.h"
 #include "MsCommon.h"
 #if defined(KGC_USE_ON_CHIP_MSB1237) && (KGC_USE_ON_CHIP_MSB1237 == 1)
 #include "drvMMIO.h"
 #endif
+
 //-------------------------------------------------------------------------------------------------
 //  Local Defines
 //-------------------------------------------------------------------------------------------------
@@ -137,13 +136,13 @@
 #define FHO_ENABLE_MODE         FALSE
 
 #define ENTRY()                                                         \
-    if (HB_ObtainMutex(_s32MutexId, TUNER_MUTEX_TIMEOUT) == FALSE)    \
+    if (MsOS_ObtainMutex(_s32MutexId, TUNER_MUTEX_TIMEOUT) == FALSE)    \
     {   FE_ERR(("%s: Obtain mutex failed.\n", __FUNCTION__));              \
         return FALSE;                                                   \
     }
 
 #define RETURN(_ret)                                                    \
-    { HB_ReleaseMutex(_s32MutexId);                                     \
+    { MsOS_ReleaseMutex(_s32MutexId);                                     \
       return _ret; }
 
 #if MS_DVBS_INUSE
@@ -169,23 +168,83 @@ static MS_S32 gs32FENonCachedPoolID = INVALID_POOL_ID;
 //--------------------------------------------------------------------------------------------------
 //  Global Variables
 //--------------------------------------------------------------------------------------------------
+//#if MS_DVBS_INUSE
+//extern MS_U16 MApi_DB_DFT_GetPCNBySatIDAndFreq(MS_U8 u8SatId,MS_U32 u32Freq,MS_U8 u8Poraly);
+//struct drv_dishtab_entry *drv_dishtab = NULL;
+//struct drv_dishtab_entry *drv_dishtab_end = NULL;
+//#endif
 #if MS_DVBS_INUSE
-extern MS_U16 MApi_DB_DFT_GetPCNBySatIDAndFreq(MS_U8 u8SatId,MS_U32 u32Freq,MS_U8 u8Poraly);
-struct drv_dishtab_entry *drv_dishtab = NULL;
-struct drv_dishtab_entry *drv_dishtab_end = NULL;
+extern struct drv_dishtab_entry dish_entry_DISH_A8293;
+extern struct drv_dishtab_entry dish_entry_DISH_A8296;
+extern struct drv_dishtab_entry dish_entry_DISH_A8297;
+extern struct drv_dishtab_entry dish_entry_DISH_A8304;
+extern struct drv_dishtab_entry dish_entry_DISH_A8302;
+#endif
+extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
+extern DRV_TUNER_TABLE_TYPE GET_TUNER_ENTRY_NODE(TUNER_NULL);
+#if  defined(CHIP_KRONUS)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBT);
+#elif defined(CHIP_KAISERIN)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+#elif defined(CHIP_KAISER)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC_DUAL);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSATSC_C);
+#elif defined(CHIP_KAPPA)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBT);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_ISDBT);
+#elif defined(CHIP_KRITI)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBT2);
+#elif defined(CHIP_K5AP)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBT2);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_ISDBT);
+#elif defined(CHIP_KELTIC)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKELTIC_ATSC);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBS);
+#elif defined(CHIP_KENYA)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKENYA_DVBC);
+#elif defined(CHIP_KERES) || defined(CHIP_KIRIN) || defined(CHIP_K1C)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKERES_ATSC);
+#elif defined(CHIP_KRIS)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBS);
+#elif defined(CHIP_KRATOS)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBS);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+#elif defined(CHIP_KIWI)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_ISDBT);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBT);
+#elif defined(CHIP_KAYLA)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBS);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKERES_ATSC);
+#elif defined(CHIP_MASERATI) || defined(CHIP_MACAN)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBS);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+#elif defined(CHIP_K6LITE)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC_DUAL);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBS);
+#elif defined(CHIP_K5TN)
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_ISDBT);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBS);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBT2);
+    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKERES_ATSC);
 #endif
 //-------------------------------------------------------------------------------------------------
 //  Local Variables
 //-------------------------------------------------------------------------------------------------
+static MS_FE_BOARD_INFO stBoardInfo = {0, NULL};
+static MS_BOOL bBD_INFO_RDY = FALSE;
 EXT_DMD_INFO* pu16ExtDMD_Info = NULL;
 DEV_FRONTEND_TYPE** pFETabAddr = NULL;
 MS_U8* _pu8Init = NULL;
 MS_FE_CARRIER_PARAM* _ptunerParam = NULL;
-MS_U32 FE_Reset_Pin[MAX_FRONTEND_NUM]= {};
-static MS_BOOL FE_Load_Reset_Pin = FALSE;
 static MS_BOOL FE_Detect_Done = FALSE;
-static MS_U32 u32ch_acc[MAX_FRONTEND_NUM] = {0};
-//static MS_U16 u16Demod_on_I2C[4] = {0,0,0,0};
+static MS_U32* pu32ch_acc = NULL;
 static MS_U32 DefaultBroadcastType = BROADCAST_TYPE_NOT_SEETING;
 static EN_FRONTEND_DETECT_MODE eDetect_Mode = DETECT_MODE_NOT_SETTING;
 
@@ -198,13 +257,173 @@ static MS_BOOL bIsHiLOF = FALSE;
 #if MS_DVBT2_INUSE
 static MS_U8    T2PlpID = 0xFF;
 #endif
-
+static fpDemodCB fpCB[16] = {0};
 //-------------------------------------------------------------------------------------------------
 //  Debug Functions
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 //  Local Functions
 //-------------------------------------------------------------------------------------------------
+static MS_U32 get_ch_acc(MS_U8 u8Dev_Idx)
+{
+    MS_U32 u32ch_acc;
+    if(pu32ch_acc == NULL)
+        return 0;
+
+    u32ch_acc = *(pu32ch_acc + u8Dev_Idx);
+    return u32ch_acc;
+}
+
+static void set_ch_acc(MS_U8 u8Dev_Idx, MS_U32 u32value)
+{
+    if(pu32ch_acc == NULL)
+        return;
+
+    *(pu32ch_acc + u8Dev_Idx) = u32value;
+    return;
+}
+
+static DRV_DEMOD_TABLE_TYPE* _DigiTuner_get_INTERN_DMD(MS_U32 u32demodtype)
+{
+    switch(u32demodtype)
+    {
+        case DEMOD_MSINTERN_DVBS:
+            #if IS_THIS_DEMOD_PICKED(DEMOD_MSINTERN_DVBS)
+               #if defined(CHIP_KELTIC)||defined(CHIP_KRATOS) || defined(CHIP_KAYLA)||\
+                   defined(CHIP_KRIS)|| defined(CHIP_K6LITE) || defined(CHIP_K5TN)
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBS);
+               #endif
+            #else
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
+            #endif
+            break;
+
+        case DEMOD_MSINTERN_DVBC:
+            #if IS_THIS_DEMOD_PICKED(DEMOD_MSINTERN_DVBC)
+                #if  defined(CHIP_KRONUS) || defined(CHIP_KERES) || defined(CHIP_KIRIN) || defined(CHIP_KRATOS) || defined(CHIP_KIWI) ||\
+                     defined(CHIP_KAISERIN) || defined(CHIP_KAPPA) || defined(CHIP_KELTIC) || defined(CHIP_KAYLA) || defined(CHIP_MASERATI) ||\
+                     defined(CHIP_MACAN) || defined(CHIP_K5TN) || defined(CHIP_K1C)
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+                #endif
+            #else
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
+            #endif
+            break;
+
+        case DEMOD_MSINTERN_DVBC_DUAL:
+           #if IS_THIS_DEMOD_PICKED(DEMOD_MSINTERN_DVBC_DUAL)
+               #if defined(CHIP_KAISER) || defined(CHIP_K6LITE)
+               return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC_DUAL);
+               #endif
+           #else
+               return & GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
+           #endif
+            break;
+
+        case DEMOD_MSINTERN_DVBT:
+            #if IS_THIS_DEMOD_PICKED(DEMOD_MSINTERN_DVBT)
+                #if  defined(CHIP_KRONUS) || defined(CHIP_KAPPA) || defined(CHIP_KIWI)
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBT);
+                #endif
+            #else
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
+            #endif
+            break;
+        case DEMOD_MSINTERN_DVBT2:
+            #if IS_THIS_DEMOD_PICKED(DEMOD_MSINTERN_DVBT2)
+                #if defined(CHIP_KRITI) || defined(CHIP_K5TN) || defined(CHIP_K5AP)
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBT2);
+                #endif
+            #else
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
+            #endif
+                break;
+
+        case DEMOD_MSINTERN_ISDBT:
+            #if IS_THIS_DEMOD_PICKED(DEMOD_MSINTERN_ISDBT)
+                #if  defined(CHIP_KAPPA) || defined(CHIP_KIWI) || defined(CHIP_K5TN) || defined(CHIP_K5AP)
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_ISDBT);
+                #endif
+            #else
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
+            #endif
+                break;
+
+        case DEMOD_MSKERES_ATSC:
+            #if IS_THIS_DEMOD_PICKED(DEMOD_MSKERES_ATSC)
+                #if defined(CHIP_KERES) || defined(CHIP_KIRIN) || defined(CHIP_K5TN)||defined(CHIP_KAYLA) || defined(CHIP_K1C)
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_MSKERES_ATSC);
+                #endif
+            #else
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
+            #endif
+                break;
+
+        case DEMOD_MSKELTIC_ATSC:
+            #if IS_THIS_DEMOD_PICKED(DEMOD_MSKELTIC_ATSC)
+                #if defined(CHIP_KELTIC)
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_MSKELTIC_ATSC);
+                #endif
+            #else
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
+            #endif
+                break;
+
+         case DEMOD_MSKENYA_DVBC:
+            #if IS_THIS_DEMOD_PICKED(DEMOD_MSKENYA_DVBC)
+                #if defined(CHIP_KENYA)
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_MSKENYA_DVBC);
+                #endif
+            #else
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
+            #endif
+                break;
+
+         case DEMOD_MSATSC_C:
+            #if IS_THIS_DEMOD_PICKED(DEMOD_MSATSC_C)
+                #if defined(CHIP_KAISER)
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_MSATSC_C);
+                #endif
+            #else
+                return & GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
+            #endif
+                break;
+        default:
+            break;
+    }
+    return & GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
+}
+
+static MS_BOOL _DigiTuner_IsSingleChipFrontend(MS_U32 u32TunerData, MS_U32* pu32DemodData)
+{
+   MS_BOOL bRet = FALSE;
+
+   switch(u32TunerData)
+   {
+       case TUNER_MXL254:
+           bRet = TRUE;
+           *pu32DemodData = DEMOD_MXL254;
+           break;
+       case TUNER_MXL542:
+           bRet = TRUE;
+           *pu32DemodData = DEMOD_MXL542;
+           break;
+
+       case TUNER_MXL683:
+           bRet = TRUE;
+           *pu32DemodData = DEMOD_MXL683;
+           break;
+       case TUNER_MSR1742:
+           bRet = TRUE;
+           *pu32DemodData = DEMOD_MSR1742;
+           break;
+       default:
+           break;
+   }
+
+   return bRet;
+}
+
 static MS_BOOL _DigiTuner_Conflit_Check(MS_U8 u8I2C_Idx, MS_U32 u32DMDType, MS_U8 u8SlaveID)
 {
     MS_U8 i;
@@ -212,20 +431,20 @@ static MS_BOOL _DigiTuner_Conflit_Check(MS_U8 u8I2C_Idx, MS_U32 u32DMDType, MS_U
     if(NULL == pu16ExtDMD_Info)
         return FALSE;
 
-    for(i=0; i< MAX_FRONTEND_NUM; i++)
+    for(i=0; i< stBoardInfo.u8MaxFENum; i++)
     {
         pu16Info = pu16ExtDMD_Info + i;
         if(pu16Info->bExist)
         {
             if(pu16Info->u8I2C_Port == u8I2C_Idx)
             {
-                printf("== DMD Conflit Check: On the same I2C bus\n");
+                FE_DBG(("== DMD/Tuner Conflit Check: On the same I2C bus\n"));
                 if(pu16Info->u32DMD_TYPE == u32DMDType)
                 {
-                    printf("== DMD Conflit Check: Hit same Demod Type\n");
+                    FE_DBG(("== DMD/Tuner Conflit Check: Hit same Demod/Tuner Type\n"));
                     if(pu16Info->u8SlaveID== u8SlaveID)
                     {
-                        printf("== DMD Conflit Check: Hit same slave ID\n");
+                        FE_DBG(("== DMD/Tuner Conflit Check: Hit same slave ID\n"));
                         return TRUE;
                     }
                 }
@@ -233,7 +452,7 @@ static MS_BOOL _DigiTuner_Conflit_Check(MS_U8 u8I2C_Idx, MS_U32 u32DMDType, MS_U
         }
     }
 
-    for(i=0; i<= MAX_FRONTEND_NUM; i++)
+    for(i=0; i<= stBoardInfo.u8MaxFENum; i++)
     {
         pu16Info = pu16ExtDMD_Info + i;
         if(pu16Info->bExist == FALSE)
@@ -249,10 +468,10 @@ static MS_U8 _DigiTuner_MaxFEIdx(void)
 {
     MS_U8 u8tmp = 0, IIC_Idx;
 
-    for(IIC_Idx=0; IIC_Idx< MAX_FRONTEND_NUM; IIC_Idx++)
+    for(IIC_Idx=0; IIC_Idx< stBoardInfo.u8MaxFENum; IIC_Idx++)
     {
-        if(u8tmp < u32ch_acc[IIC_Idx])
-            u8tmp = u32ch_acc[IIC_Idx];
+        if(u8tmp < get_ch_acc(IIC_Idx))
+            u8tmp = get_ch_acc(IIC_Idx);
     }
 
     if(u8tmp != 0)
@@ -266,18 +485,22 @@ static MS_U8 _DigiTuner_FEIdx2DevChanIdx(MS_U8 drv_frontend_index)
     MS_U8 u8Dev_Idx;
     MS_U8 ch_cnt = 0;
 
-    for(u8Dev_Idx = 0; u8Dev_Idx< MAX_FRONTEND_NUM; u8Dev_Idx++)
+    for(u8Dev_Idx = 0; u8Dev_Idx< stBoardInfo.u8MaxFENum; u8Dev_Idx++)
     {
-        if(drv_frontend_index < u32ch_acc[u8Dev_Idx])
+        if(drv_frontend_index < get_ch_acc(u8Dev_Idx))
             break;
+    }
+    if(u8Dev_Idx == stBoardInfo.u8MaxFENum)
+    {
+        return drv_frontend_index;
     }
 
     if(!u8Dev_Idx)
         return drv_frontend_index;
     else
     {
-        ch_cnt = u32ch_acc[u8Dev_Idx] - u32ch_acc[u8Dev_Idx - 1];
-        return drv_frontend_index - u32ch_acc[u8Dev_Idx - 1] +  ch_cnt* u8Dev_Idx;
+        ch_cnt = get_ch_acc(u8Dev_Idx)- get_ch_acc(u8Dev_Idx - 1);
+        return drv_frontend_index - get_ch_acc(u8Dev_Idx - 1) +  ch_cnt* u8Dev_Idx;
     }
 }
 
@@ -285,14 +508,14 @@ static MS_U8 _DigiTuner_FEIdx2DevIdx(MS_U8 drv_frontend_index)
 {
     MS_U8 u8Dev_Idx;
 
-    for(u8Dev_Idx = 0; u8Dev_Idx< MAX_FRONTEND_NUM; u8Dev_Idx++)
+    for(u8Dev_Idx = 0; u8Dev_Idx< stBoardInfo.u8MaxFENum; u8Dev_Idx++)
     {
-        if(drv_frontend_index < u32ch_acc[u8Dev_Idx])
+        if(drv_frontend_index < get_ch_acc(u8Dev_Idx))
             break;
     }
 
-    if(u8Dev_Idx == MAX_FRONTEND_NUM)
-        return (MAX_FRONTEND_NUM - 1);
+    if(u8Dev_Idx == stBoardInfo.u8MaxFENum)
+        return (stBoardInfo.u8MaxFENum - 1);
     else
         return u8Dev_Idx;
 }
@@ -309,6 +532,349 @@ static MS_BOOL _DigiTuner_CheckFEtab_Exist(MS_U8 drv_frontend_index)
 
     return TRUE;
 }
+
+#if defined(USER_SET_BOARD_INFO) && (USER_SET_BOARD_INFO == 1)
+#else
+static MS_BOOL _DigiTuner_fill_board_info(void)
+{
+    MS_U8 i;
+    MS_FE_CONNECTOR_CONFIG* pConfig = NULL;
+
+    FE_DBG(("== Get Board Info.==\n"));
+    if(INVALID_POOL_ID == gs32FECachedPoolID)
+    {
+        FE_ERR(("INVALID_POOL_ID !!!\n"));
+        return FALSE;
+    }
+
+#ifndef MAX_FRONTEND_NUM
+    FE_ERR(("NO FRONTEND ?? \n"));
+    return FALSE;
+#else
+    stBoardInfo.u8MaxFENum = MAX_FRONTEND_NUM;
+    if(INVALID_POOL_ID == gs32FECachedPoolID)
+    {
+        FE_ERR(("INVALID_POOL_ID !!!\n"));
+        return FALSE;
+    }
+
+    if(pu32ch_acc == NULL)
+    {
+        pu32ch_acc = (MS_U32*)MsOS_AllocateMemory(sizeof(MS_U32)*stBoardInfo.u8MaxFENum, gs32FECachedPoolID);
+        if(pu32ch_acc == NULL)
+            return FALSE;
+        else
+        {
+           memset(pu32ch_acc, 0, sizeof(MS_U32)*stBoardInfo.u8MaxFENum);
+        }
+    }
+
+#endif
+    if(stBoardInfo.pstConConfig == NULL)
+    {
+       stBoardInfo.pstConConfig = (MS_FE_CONNECTOR_CONFIG*)MsOS_AllocateMemory(sizeof(MS_FE_CONNECTOR_CONFIG) * stBoardInfo.u8MaxFENum, gs32FECachedPoolID);
+    }
+
+    for(i=0;i<stBoardInfo.u8MaxFENum;i++)
+    {
+        pConfig = stBoardInfo.pstConConfig + i;
+
+        #ifdef TS_CLK_INV
+        pConfig->stDMDCon.bTSClkInverse = (MS_BOOL)TS_CLK_INV;
+        #else
+        pConfig->stDMDCon.bTSClkInverse = TRUE;
+        #endif
+
+        #ifdef TS_PARALLEL_OUTPUT
+        pConfig->stDMDCon.bTSIsParallel = (MS_BOOL)TS_PARALLEL_OUTPUT;
+        #else
+        pConfig->stDMDCon.bTSIsParallel = TRUE;
+        #endif
+
+         #ifdef MXL542_TS_CLK_PHASE
+        pConfig->stDMDCon.u32TSClkPhase  = (MS_U32)MXL542_TS_CLK_PHASE;
+        #else
+        pConfig->stDMDCon.u32TSClkPhase = 0;
+        #endif
+
+        pConfig->stDMDCon.bTS_3Wire_Mode = TRUE;
+        pConfig->bINTDMD_Scan_1st = FALSE;
+
+        //MSPI load external demod FW
+        #if defined(SUPPORT_MSPI_LOAD_CODE) && (SUPPORT_MSPI_LOAD_CODE == 1)
+        pConfig->stDMDCon.bSupportMSPILoad = TRUE;
+        #if defined(MSPI_PATH_DETECT) && (MSPI_PATH_DETECT == 1)
+        pConfig->stDMDCon.bEnMSPIPathDet = TRUE;
+        #else
+        pConfig->stDMDCon.bEnMSPIPathDet = FALSE;
+        #endif
+        #else
+        pConfig->stDMDCon.bSupportMSPILoad = FALSE;
+        pConfig->stDMDCon.bEnMSPIPathDet = FALSE;
+        #endif
+
+        switch(i)
+        {
+            case 0:
+                #ifdef FRONTEND_TUNER_PORT0
+                pConfig->stDMDCon.eI2C_PORT = (MS_IIC_PORT)FRONTEND_TUNER_PORT0;
+                pConfig->stTUNCon.eI2C_PORT = (MS_IIC_PORT)FRONTEND_TUNER_PORT0;
+                #else
+                pConfig->stDMDCon.eI2C_PORT = (MS_IIC_PORT)E_MS_IIC_PORT_NOSUP;
+                pConfig->stTUNCon.eI2C_PORT = (MS_IIC_PORT)E_MS_IIC_PORT_NOSUP;
+                #endif
+
+                #ifdef GPIO_FE_RST
+                pConfig->stDMDCon.u32HW_ResetPin = (MS_U32)GPIO_FE_RST;
+                pConfig->stTUNCon.u32HW_ResetPin = (MS_U32)GPIO_FE_RST;
+                #else
+                pConfig->stDMDCon.u32HW_ResetPin = (MS_U32)NOT_DEFINE;
+                pConfig->stTUNCon.u32HW_ResetPin = (MS_U32)NOT_DEFINE;
+                #endif
+
+                // for the chip have MCP demod,modify reset pin as GPIO_DEMOD_RST
+                // assuem 1st reset pin (for tuner) MUST be corresponding to MCP demod
+                #ifdef GPIO_DEMOD_RST
+                pConfig->stDMDCon.u32HW_ResetPin = (MS_U32)GPIO_DEMOD_RST;
+                #endif
+
+                #ifdef DISH_TYPE
+                pConfig->u8LNBCtrlType = (MS_U8)DISH_TYPE;
+                #else
+                pConfig->u8LNBCtrlType = (MS_U8)NOT_DEFINE;
+                #endif
+
+                #ifdef DISH_IIC_PORT
+                pConfig->stLNBCon.eI2C_PORT= (MS_IIC_PORT)DISH_IIC_PORT;
+                #elif defined(FRONTEND_TUNER_PORT0)
+                pConfig->stLNBCon.eI2C_PORT= (MS_IIC_PORT)FRONTEND_TUNER_PORT0;
+                #else
+                pConfig->stLNBCon.eI2C_PORT = (MS_IIC_PORT)E_MS_IIC_PORT_NOSUP;
+                #endif
+
+                #ifdef DISEQC_TXRX_SWITCH
+                pConfig->stDMDCon.u32TxRxSwitchPin = (MS_U32)DISEQC_TXRX_SWITCH;
+                #else
+                pConfig->stDMDCon.u32TxRxSwitchPin = (MS_U32)NOT_DEFINE;
+                #endif
+
+                #ifdef DISEQC_RX_LOW_EN
+                pConfig->stDMDCon.bDiSeqcRXLowEn= (MS_BOOL)DISEQC_RX_LOW_EN;
+                #else
+                pConfig->stDMDCon.bDiSeqcRXLowEn = TRUE;
+                #endif
+
+                #ifdef FRONTEND_TUNER_PORT0_INT
+                pConfig->stDMDCon.u32TSVLDInterrupt = (MS_U32)FRONTEND_TUNER_PORT0_INT;
+                #else
+                pConfig->stDMDCon.u32TSVLDInterrupt = (MS_U32)NOT_DEFINE;
+                #endif
+
+                #ifdef FRONTEND_PORT0_WO_EXT_DEMOD
+                pConfig->bWO_EXT_DMD = TRUE;
+                #else
+                pConfig->bWO_EXT_DMD = FALSE;
+                #endif
+                break;
+
+             case 1:
+                #ifdef FRONTEND_TUNER_PORT1
+                pConfig->stDMDCon.eI2C_PORT = (MS_IIC_PORT)FRONTEND_TUNER_PORT1;
+                pConfig->stTUNCon.eI2C_PORT = (MS_IIC_PORT)FRONTEND_TUNER_PORT1;
+                #else
+                pConfig->stDMDCon.eI2C_PORT = (MS_IIC_PORT)E_MS_IIC_PORT_NOSUP;
+                pConfig->stTUNCon.eI2C_PORT = (MS_IIC_PORT)E_MS_IIC_PORT_NOSUP;
+                #endif
+
+                #ifdef GPIO_FE_RST1
+                pConfig->stDMDCon.u32HW_ResetPin = (MS_U32)GPIO_FE_RST1;
+                pConfig->stTUNCon.u32HW_ResetPin = (MS_U32)GPIO_FE_RST1;
+                #else
+                pConfig->stDMDCon.u32HW_ResetPin = (MS_U32)NOT_DEFINE;
+                pConfig->stTUNCon.u32HW_ResetPin = (MS_U32)NOT_DEFINE;
+                #endif
+
+                #ifdef DISH_TYPE1
+                pConfig->u8LNBCtrlType = (MS_U8)DISH_TYPE1;
+                #else
+                pConfig->u8LNBCtrlType = (MS_U8)NOT_DEFINE;
+                #endif
+
+                #ifdef DISH_IIC_PORT1
+                pConfig->stLNBCon.eI2C_PORT = (MS_IIC_PORT)DISH_IIC_PORT1;
+                #elif defined(FRONTEND_TUNER_PORT1)
+                pConfig->stLNBCon.eI2C_PORT= (MS_IIC_PORT)FRONTEND_TUNER_PORT1;
+                #else
+                pConfig->stLNBCon.eI2C_PORT = (MS_IIC_PORT)E_MS_IIC_PORT_NOSUP;
+                #endif
+
+                #ifdef DISEQC_TXRX_SWITCH1
+                pConfig->stDMDCon.u32TxRxSwitchPin = (MS_U32)DISEQC_TXRX_SWITCH1;
+                #else
+                pConfig->stDMDCon.u32TxRxSwitchPin = (MS_U32)NOT_DEFINE;
+                #endif
+
+                #ifdef DISEQC_RX_LOW_EN1
+                pConfig->stDMDCon.bDiSeqcRXLowEn= (MS_BOOL)DISEQC_RX_LOW_EN1;
+                #else
+                pConfig->stDMDCon.bDiSeqcRXLowEn = TRUE;
+                #endif
+
+                #ifdef FRONTEND_TUNER_PORT1_INT
+                pConfig->stDMDCon.u32TSVLDInterrupt = (MS_U32)FRONTEND_TUNER_PORT1_INT;
+                #else
+                pConfig->stDMDCon.u32TSVLDInterrupt = (MS_U32)NOT_DEFINE;
+                #endif
+
+                #ifdef FRONTEND_PORT1_WO_EXT_DEMOD
+                pConfig->bWO_EXT_DMD = TRUE;
+                #else
+                pConfig->bWO_EXT_DMD = FALSE;
+                #endif
+                break;
+
+
+              case 2:
+                #ifdef FRONTEND_TUNER_PORT2
+                pConfig->stDMDCon.eI2C_PORT = (MS_IIC_PORT)FRONTEND_TUNER_PORT2;
+                pConfig->stTUNCon.eI2C_PORT = (MS_IIC_PORT)FRONTEND_TUNER_PORT2;
+                #else
+                pConfig->stDMDCon.eI2C_PORT = (MS_IIC_PORT)E_MS_IIC_PORT_NOSUP;
+                pConfig->stTUNCon.eI2C_PORT = (MS_IIC_PORT)E_MS_IIC_PORT_NOSUP;
+                #endif
+
+                #ifdef GPIO_FE_RST2
+                pConfig->stDMDCon.u32HW_ResetPin = (MS_U32)GPIO_FE_RST2;
+                pConfig->stTUNCon.u32HW_ResetPin = (MS_U32)GPIO_FE_RST2;
+                #else
+                pConfig->stDMDCon.u32HW_ResetPin = (MS_U32)NOT_DEFINE;
+                pConfig->stTUNCon.u32HW_ResetPin = (MS_U32)NOT_DEFINE;
+                #endif
+
+                #ifdef DISH_TYPE2
+                pConfig->u8LNBCtrlType = (MS_U8)DISH_TYPE2;
+                #else
+                pConfig->u8LNBCtrlType = (MS_U8)NOT_DEFINE;
+                #endif
+
+                #ifdef DISH_IIC_PORT2
+                pConfig->stLNBCon.eI2C_PORT = (MS_IIC_PORT)DISH_IIC_PORT2;
+                #elif defined(FRONTEND_TUNER_PORT2)
+                pConfig->stLNBCon.eI2C_PORT= (MS_IIC_PORT)FRONTEND_TUNER_PORT2;
+                #else
+                pConfig->stLNBCon.eI2C_PORT = (MS_IIC_PORT)E_MS_IIC_PORT_NOSUP;
+                #endif
+
+                #ifdef DISEQC_TXRX_SWITCH2
+                pConfig->stDMDCon.u32TxRxSwitchPin = (MS_U32)DISEQC_TXRX_SWITCH2;
+                #else
+                pConfig->stDMDCon.u32TxRxSwitchPin = (MS_U32)NOT_DEFINE;
+                #endif
+
+                #ifdef DISEQC_RX_LOW_EN2
+                pConfig->stDMDCon.bDiSeqcRXLowEn= (MS_BOOL)DISEQC_RX_LOW_EN2;
+                #else
+                pConfig->stDMDCon.bDiSeqcRXLowEn = TRUE;
+                #endif
+
+                #ifdef FRONTEND_TUNER_PORT2_INT
+                pConfig->stDMDCon.u32TSVLDInterrupt = (MS_U32)FRONTEND_TUNER_PORT2_INT;
+                #else
+                pConfig->stDMDCon.u32TSVLDInterrupt = (MS_U32)NOT_DEFINE;
+                #endif
+
+                #ifdef FRONTEND_PORT2_WO_EXT_DEMOD
+                pConfig->bWO_EXT_DMD = TRUE;
+                #else
+                pConfig->bWO_EXT_DMD = FALSE;
+                #endif
+                break;
+
+              case 3:
+                #ifdef FRONTEND_TUNER_PORT3
+                pConfig->stDMDCon.eI2C_PORT = (MS_IIC_PORT)FRONTEND_TUNER_PORT3;
+                pConfig->stTUNCon.eI2C_PORT = (MS_IIC_PORT)FRONTEND_TUNER_PORT3;
+                #else
+                pConfig->stDMDCon.eI2C_PORT = (MS_IIC_PORT)E_MS_IIC_PORT_NOSUP;
+                pConfig->stTUNCon.eI2C_PORT = (MS_IIC_PORT)E_MS_IIC_PORT_NOSUP;
+                #endif
+
+                #ifdef GPIO_FE_RST3
+                pConfig->stDMDCon.u32HW_ResetPin = (MS_U32)GPIO_FE_RST3;
+                pConfig->stTUNCon.u32HW_ResetPin = (MS_U32)GPIO_FE_RST3;
+                #else
+                pConfig->stDMDCon.u32HW_ResetPin = (MS_U32)NOT_DEFINE;
+                pConfig->stTUNCon.u32HW_ResetPin = (MS_U32)NOT_DEFINE;
+                #endif
+
+                #ifdef DISH_TYPE3
+                pConfig->u8LNBCtrlType = (MS_U8)DISH_TYPE3;
+                #else
+                pConfig->u8LNBCtrlType = (MS_U8)NOT_DEFINE;
+                #endif
+
+                #ifdef DISH_IIC_PORT3
+                pConfig->stLNBCon.eI2C_PORT = (MS_IIC_PORT)DISH_IIC_PORT3;
+                #elif defined(FRONTEND_TUNER_PORT3)
+                pConfig->stLNBCon.eI2C_PORT= (MS_IIC_PORT)FRONTEND_TUNER_PORT3;
+                #else
+                pConfig->stLNBCon.eI2C_PORT = (MS_IIC_PORT)E_MS_IIC_PORT_NOSUP;
+                #endif
+
+                #ifdef DISEQC_TXRX_SWITCH3
+                pConfig->stDMDCon.u32TxRxSwitchPin = (MS_U32)DISEQC_TXRX_SWITCH3;
+                #else
+                pConfig->stDMDCon.u32TxRxSwitchPin = (MS_U32)NOT_DEFINE;
+                #endif
+
+                #ifdef DISEQC_RX_LOW_EN3
+                pConfig->stDMDCon.bDiSeqcRXLowEn= (MS_BOOL)DISEQC_RX_LOW_EN3;
+                #else
+                pConfig->stDMDCon.bDiSeqcRXLowEn = TRUE;
+                #endif
+
+
+                #ifdef FRONTEND_TUNER_PORT3_INT
+                pConfig->stDMDCon.u32TSVLDInterrupt = (MS_U32)FRONTEND_TUNER_PORT3_INT;
+                #else
+                pConfig->stDMDCon.u32TSVLDInterrupt = (MS_U32)NOT_DEFINE;
+                #endif
+
+                #ifdef FRONTEND_PORT3_WO_EXT_DEMOD
+                pConfig->bWO_EXT_DMD = TRUE;
+                #else
+                pConfig->bWO_EXT_DMD = FALSE;
+                #endif
+                break;
+
+                default:
+                FE_MSG(("Warning: Assume Max. FE number is less than 4\n"));
+                break;
+        }
+    }
+
+    bBD_INFO_RDY = TRUE;
+    return TRUE;
+
+}
+#endif
+
+static MS_BOOL _DigiTuner_BoardInfoReady(void)
+{
+#if defined(USER_SET_BOARD_INFO) && (USER_SET_BOARD_INFO == 1)
+    if(!bBD_INFO_RDY)
+    {
+        FE_ERR(("Missing Board Information !!!\n"));
+    }
+    return bBD_INFO_RDY;
+#else
+    if(!bBD_INFO_RDY)
+       _DigiTuner_fill_board_info();
+
+    return TRUE;
+#endif
+}
+
 static void _DigiTuner_ReleaseFETab(void)
 {
     DEV_FRONTEND_TYPE* pFETab = NULL;
@@ -344,8 +910,8 @@ static void _DigiTuner_ReleaseFETab(void)
         _pstSATParam = NULL;
     }
 #endif
-    for(u8IICIdx = 0; u8IICIdx < MAX_FRONTEND_NUM; u8IICIdx++)
-        u32ch_acc[u8IICIdx] = 0;
+    for(u8IICIdx = 0; u8IICIdx < stBoardInfo.u8MaxFENum; u8IICIdx++)
+        set_ch_acc(u8IICIdx, 0);
 }
 
 
@@ -375,6 +941,22 @@ static MS_BOOL _DigiTuner_Satellite_Set22K(MS_U8 drv_frontend_index, MS_BOOL b22
             pSATParam->e22KOnOff = EN_22K_OFF;
         bRet = pFETab->dishtab->Set22k(u8Idx,EN_LNB22K_TYPE_OFF);
     }
+    return bRet;
+}
+
+static MS_BOOL _DigiTuner_Satellite_Get22K(MS_U8 drv_frontend_index, MS_BOOL* pb22KOn)
+{
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevIdx(drv_frontend_index);
+    MS_BOOL bRet = TRUE;
+    DEV_FRONTEND_TYPE* pFETab;
+
+    if(FALSE == _DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        return FALSE;
+
+    pFETab = *(pFETabAddr + drv_frontend_index);
+
+    bRet = pFETab->demodtab->DiSEqCGet22kOnOff(u8Idx,pb22KOn);
+
     return bRet;
 }
 
@@ -476,14 +1058,14 @@ static MS_BOOL _DigiTuner_DiSEqC_SendCmd(MS_U8 drv_frontend_index, MS_U8* pCmd,M
 #endif
 
     if ((u32DMD_TYPE != DEMOD_MSB131X) && (u32DMD_TYPE != DEMOD_MSB124X) && (u32DMD_TYPE != DEMOD_MSB1245) &&\
-            (u32DMD_TYPE != DEMOD_MSKRATOS_DVBS) && (u32DMD_TYPE != DEMOD_MSKRIS_DVBS) && (u32DMD_TYPE != DEMOD_MSKELTIC_DVBS))
+            (u32DMD_TYPE != DEMOD_MSINTERN_DVBS))
     {
         _DigiTuner_Satellite_Set22K(drv_frontend_index, FALSE);
     }
 
     bRet = pFETab->dishtab->SendCmd(u8Idx, pCmd,u8CmdSize);
     if ((u32DMD_TYPE != DEMOD_MSB131X) && (u32DMD_TYPE != DEMOD_MSB124X) && (u32DMD_TYPE != DEMOD_MSB1245) &&\
-            (u32DMD_TYPE != DEMOD_MSKRATOS_DVBS) && (u32DMD_TYPE != DEMOD_MSKRIS_DVBS) && (u32DMD_TYPE != DEMOD_MSKELTIC_DVBS))
+            (u32DMD_TYPE != DEMOD_MSINTERN_DVBS))
     {
         if(pSATParam->e22KOnOff == EN_22K_ON
                 ||(pSATParam->e22KOnOff == EN_22K_AUTO && bIsHiLOF))
@@ -874,6 +1456,7 @@ static  MS_BOOL  _DigiTuner_CalculateIF(MS_U8 drv_frontend_index,MS_SAT_PARAM *p
     MS_BOOL bret=TRUE;
     MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
     DEV_FRONTEND_TYPE* pFETab;
+    MS_BOOL bFreqIsRF = TRUE;
 
     if(FALSE == _DigiTuner_CheckFEtab_Exist(drv_frontend_index))
         return FALSE;
@@ -882,8 +1465,14 @@ static  MS_BOOL  _DigiTuner_CalculateIF(MS_U8 drv_frontend_index,MS_SAT_PARAM *p
 
     s32Freq = pParam->u32Frequency;
 
-     if(pSATParam->u16LoLOF <MAX_C_LOF_FREQ)  // c band
-     {
+    if((s32Freq >= MIN_IF_FREQ) && (s32Freq <= MAX_IF_FREQ))
+    {
+        FE_DBG(("Input frequency is IF already\n"));
+        bIsHiLOF = pSATParam->bIsHiLOF;
+        bFreqIsRF = FALSE;
+    }
+    else if(pSATParam->u16LoLOF <MAX_C_LOF_FREQ)  // c band
+    {
          if(pSATParam->u16LoLOF == pSATParam->u16HiLOF)
          {
              bIsHiLOF = FALSE;
@@ -911,7 +1500,7 @@ static  MS_BOOL  _DigiTuner_CalculateIF(MS_U8 drv_frontend_index,MS_SAT_PARAM *p
              }
          }
     }
-    else // ku band
+    else// ku band
     {
         stParam.u16HiLOF = pSATParam->u16HiLOF;
         stParam.u16LoLOF = pSATParam->u16LoLOF;
@@ -920,13 +1509,20 @@ static  MS_BOOL  _DigiTuner_CalculateIF(MS_U8 drv_frontend_index,MS_SAT_PARAM *p
         bret = pFETab->tunertab->Extension_Function(u8Idx,TUNER_EXT_FUNC_DECIDE_LNB_LO,&stParam);
     }
 
-    if(bret)
+
+    if(bret & bFreqIsRF)
     {
         if(bIsHiLOF)
             pdmdParam->u32Frequency = abs(s32Freq - pSATParam->u16HiLOF) ;
         else
             pdmdParam->u32Frequency = abs(s32Freq - pSATParam->u16LoLOF) ;
     }
+    else
+    {
+        pdmdParam->u32Frequency = (MS_U32)s32Freq;
+    }
+
+
     return bret;
 #endif
 }
@@ -1234,6 +1830,9 @@ static char* MApi_XthScanTunerName(MS_U32 U32Index)
     case TUNER_MXL608:
         return "TUNER_MXL608" ;
         break;
+    case TUNER_MXL661:
+        return "TUNER_MXL661" ;
+        break;
     case TUNER_TDA18250A:
         return "TUNER_TDA18250A" ;
         break;
@@ -1336,6 +1935,9 @@ DRV_DEMOD_TABLE_TYPE* MApi_get_InternalDemodtab_entry(MS_U8 drv_frontend_index)
 {
     DEV_FRONTEND_TYPE* pFETab;
     MS_U32 dvb_type = BROADCAST_TYPE_NOT_SEETING;
+    DRV_DEMOD_TABLE_TYPE* pDemodTab[5] = {NULL};
+    MS_U8 u8DMDCnt = 0, i;
+    MS_U32 u32SearchedDemod = DEMOD_NULL;
 
     if(pFETabAddr != NULL)
     {
@@ -1345,244 +1947,299 @@ DRV_DEMOD_TABLE_TYPE* MApi_get_InternalDemodtab_entry(MS_U8 drv_frontend_index)
             dvb_type = pFETab->dvb_type;
         }
     }
-    //else
-    //{
-    //    if(!FE_Detect_Done)
-    //         dvb_type = DefaultBroadcastType;
-    //}
+    else
+    {
+        if(!FE_Detect_Done)
+             dvb_type = DefaultBroadcastType;
+    }
 
 #if  defined(CHIP_KRONUS)
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBT);
-    if(!FE_Detect_Done)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+    u8DMDCnt = 2;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBC);
+    pDemodTab[1] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBT);
 #elif defined(CHIP_KAISERIN)
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
-    //extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKAISERIN_DVBT);
-    if(!FE_Detect_Done)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+    u8DMDCnt = 1;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBC);
 #elif defined(CHIP_KAISER)
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKAISER_DVBC);
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSATSC_C);
-    if(!FE_Detect_Done)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSKAISER_DVBC);
+    u8DMDCnt = 2;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBC_DUAL);
+    pDemodTab[1] = _DigiTuner_get_INTERN_DMD(DEMOD_MSATSC_C);
 #elif defined(CHIP_KAPPA)
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBT);
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_ISDBT);
-    if(!FE_Detect_Done)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+    u8DMDCnt = 3;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBC);
+    pDemodTab[1] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBT);
+    pDemodTab[2] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_ISDBT);
 #elif defined(CHIP_KRITI)
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKRITI_DVBT2);
-    if(!FE_Detect_Done)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSKRITI_DVBT2);
+    u8DMDCnt = 1;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBT2);
+#elif defined(CHIP_K5AP)
+    u8DMDCnt = 2;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBT2);
+    pDemodTab[1] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_ISDBT);
 #elif defined(CHIP_KELTIC)
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKELTIC_ATSC);
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKELTIC_DVBS);
-    if(!FE_Detect_Done)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+    u8DMDCnt = 3;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBC);
+    pDemodTab[1] = _DigiTuner_get_INTERN_DMD(DEMOD_MSKELTIC_ATSC);
+    pDemodTab[2] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBS);
 #elif defined(CHIP_KENYA)
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKENYA_DVBC);
-    if(!FE_Detect_Done)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSKENYA_DVBC);
-#elif defined(CHIP_KERES) || defined(CHIP_KIRIN)
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKERES_ATSC);
-    if(!FE_Detect_Done)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+    u8DMDCnt = 1;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSKENYA_DVBC);
+#elif defined(CHIP_KERES) || defined(CHIP_KIRIN)|| defined(CHIP_K1C)
+    u8DMDCnt = 2;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBC);
+    pDemodTab[1] = _DigiTuner_get_INTERN_DMD(DEMOD_MSKERES_ATSC);
 #elif defined(CHIP_KRIS)
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKRIS_DVBS);
-    if(!FE_Detect_Done)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSKRIS_DVBS);
+    u8DMDCnt = 1;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBS);
 #elif defined(CHIP_KRATOS)
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKRATOS_DVBS);
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
-    if(!FE_Detect_Done)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+    u8DMDCnt = 2;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBS);
+    pDemodTab[1] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBC);
 #elif defined(CHIP_KIWI)
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_ISDBT);
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBT);
-    if(!FE_Detect_Done)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
+    u8DMDCnt = 3;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_ISDBT);
+    pDemodTab[1] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBC);
+    pDemodTab[2] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBT);
+#elif defined(CHIP_MASERATI) || defined(CHIP_MACAN)
+    u8DMDCnt = 2;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBS);
+    pDemodTab[1] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBC);
+#elif defined(CHIP_KAYLA)
+    u8DMDCnt = 3;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBS);
+    pDemodTab[1] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBC);
+    pDemodTab[2] = _DigiTuner_get_INTERN_DMD(DEMOD_MSKERES_ATSC);
+#elif defined(CHIP_K6LITE)
+    u8DMDCnt = 2;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBS);
+    pDemodTab[1] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBC_DUAL);
+#elif defined(CHIP_K5TN)
+    u8DMDCnt = 5;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBC);
+    pDemodTab[1] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_ISDBT);
+    pDemodTab[2] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBS);
+    pDemodTab[3] = _DigiTuner_get_INTERN_DMD(DEMOD_MSINTERN_DVBT2);
+    pDemodTab[4] = _DigiTuner_get_INTERN_DMD(DEMOD_MSKERES_ATSC);
+#else
+    u8DMDCnt = 1;
+    pDemodTab[0] = _DigiTuner_get_INTERN_DMD(DEMOD_NULL); // to avoid compile warning
 #endif
 
-    extern DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
+
+    if((!FE_Detect_Done) && (dvb_type == BROADCAST_TYPE_NOT_SEETING))
+    {
+        for(i=0;i<u8DMDCnt;i++)
+        {
+           if(pDemodTab[i] != NULL)
+           {
+             if(pDemodTab[i]->data != DEMOD_NULL)
+                return pDemodTab[i];
+           }
+        }
+        return & GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
+    }
 
     switch(dvb_type)
     {
-    case DVBC:
-    {
-#if  defined(CHIP_KRONUS) || defined(CHIP_KERES) || defined(CHIP_KIRIN) || defined(CHIP_KRATOS) || defined(CHIP_KIWI) ||\
-     defined(CHIP_KAISERIN) || defined(CHIP_KAPPA) || defined(CHIP_KELTIC)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBC);
-#elif defined(CHIP_KAISER)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSKAISER_DVBC);
-#elif defined(CHIP_KENYA)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSKENYA_DVBC);
-#endif
+        case DVBC:
+    #if  defined(CHIP_KRONUS) || defined(CHIP_KERES) || defined(CHIP_KIRIN) || defined(CHIP_KRATOS) || defined(CHIP_KIWI) ||\
+         defined(CHIP_KAISERIN) || defined(CHIP_KAPPA) || defined(CHIP_KELTIC) || defined(CHIP_KAYLA) || defined(CHIP_MASERATI) ||\
+         defined(CHIP_MACAN) || defined(CHIP_K5TN) || defined(CHIP_K1C)
+           u32SearchedDemod = DEMOD_MSINTERN_DVBC;
+    #elif defined(CHIP_KAISER) || defined(CHIP_K6LITE)
+           u32SearchedDemod = DEMOD_MSINTERN_DVBC_DUAL;
+    #elif defined(CHIP_KENYA)
+           u32SearchedDemod = DEMOD_MSKENYA_DVBC;
+    #endif
+           break;
+
+        case DVBT:
+        case DVBT2:
+    #if  defined(CHIP_KRONUS) || defined(CHIP_KAPPA) || defined(CHIP_KIWI)
+           u32SearchedDemod = DEMOD_MSINTERN_DVBT;
+    #elif defined(CHIP_KRITI) || defined(CHIP_K5TN) || defined(CHIP_K5AP)
+           u32SearchedDemod = DEMOD_MSINTERN_DVBT2;
+    #endif
+           break;
+
+        case ISDBT:
+        {
+    #if  defined(CHIP_KAPPA) || defined(CHIP_KIWI) || defined(CHIP_K5TN) || defined(CHIP_K5AP)
+           u32SearchedDemod = DEMOD_MSINTERN_ISDBT;
+    #endif
+            break;
+        }
+
+        case ATSC:
+        {
+            break;
+        }
+
+        case J83B:
+    #if defined(CHIP_KELTIC)
+           u32SearchedDemod = DEMOD_MSKELTIC_ATSC;   // Keltic with ATSC_C (J83B) internal only
+    #elif defined(CHIP_KAISER)
+           u32SearchedDemod = DEMOD_MSATSC_C;
+    #elif defined(CHIP_KERES) || defined(CHIP_KIRIN) || defined(CHIP_K5TN) || defined(CHIP_KAYLA) || defined(CHIP_K1C)
+           u32SearchedDemod = DEMOD_MSKERES_ATSC;
+    #endif
+           break;
+
+        case DVBS:
+        case DVBS2:
+    #if defined(CHIP_KELTIC)||defined(CHIP_KRATOS) || defined(CHIP_KAYLA)||\
+        defined(CHIP_KRIS)|| defined(CHIP_K6LITE) || defined(CHIP_K5TN)
+            u32SearchedDemod = DEMOD_MSINTERN_DVBS;
+    #endif
+            break;
+
+    case ATV_PAL:
+    case ATV_SECAM_L_PRIME:
+    case ATV_NTSC:
+    #if defined(CHIP_MACAN)
+        u32SearchedDemod = DEMOD_MSINTERN_DVBC;//Just avoid to return DEMOD_NULL for ATV
+    #endif
         break;
+        default  :
+            break;
     }
 
-    case DVBT:
-    case DVBT2:
+    if(u32SearchedDemod != DEMOD_NULL)
     {
-#if  defined(CHIP_KRONUS) || defined(CHIP_KAPPA) || defined(CHIP_KIWI)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_DVBT);
-#elif defined(CHIP_KRITI)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSKRITI_DVBT2);
-#endif
-        break;
+        for(i=0;i<u8DMDCnt;i++)
+        {
+           if(pDemodTab[i] != NULL)
+           {
+             if(pDemodTab[i]->data == u32SearchedDemod)
+                return pDemodTab[i];
+           }
+        }
     }
 
-    case ISDBT:
-    {
-#if  defined(CHIP_KAPPA) || defined(CHIP_KIWI)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSINTERN_ISDBT);
-#endif
-        break;
-    }
-
-    case ATSC:
-    {
-        break;
-    }
-
-    case J83B:
-    {
-#if defined(CHIP_KELTIC)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSKELTIC_ATSC);   // Keltic with ATSC_C (J83B) internal only
-#elif defined(CHIP_KAISER)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSATSC_C);
-#elif defined(CHIP_KERES) || defined(CHIP_KIRIN)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSKERES_ATSC);
-#endif
-        break;
-    }
-    case DVBS:
-    case DVBS2:
-    {
-#if defined(CHIP_KELTIC)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSKELTIC_DVBS);
-#elif defined(CHIP_KRIS)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSKRIS_DVBS);
-#elif defined(CHIP_KRATOS)
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_MSKRATOS_DVBS);
-#endif
-        break;
-    }
-
-    default  :
-    {
-        FE_DBG(("no corresponding internal demod\n"));
-        FE_DBG(("(broadcast type = 0x%"DTC_MS_U32_x")\n", dvb_type));
-        return & GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
-    }
-    }
+    FE_DBG(("no corresponding internal demod\n"));
+    FE_DBG(("(broadcast type = 0x%"DTC_MS_U32_x")\n", dvb_type));
     return & GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
 }
 
-DRV_DEMOD_TABLE_TYPE* MApi_get_Demodtab_entry(MS_U8 IIC_index, DEV_FRONTEND_TYPE* pFEtab)
+DRV_DEMOD_TABLE_TYPE* MApi_get_Demodtab_entry(MS_U8 IIC_index, DEV_FRONTEND_TYPE* pFEtab, MS_BOOL bScanExt)
 {
     MS_U32 i = 0;
-    HWI2C_PORT hwi2c_port;
+    MS_IIC_PORT i2c_port;
     MS_U8 u8Idx, u8SlaveID;
+    MS_BOOL bWO_Ext_Demod;
+    MS_FE_CONNECTOR_CONFIG* pstCon = NULL;
+    DEMOD_EXT_FUNCTION_PARAM stData;
 
-    hwi2c_port = getI2CPort(IIC_index);
-    if (hwi2c_port < E_HWI2C_PORT_1)
-        u8Idx = 0;
-    else if (hwi2c_port < E_HWI2C_PORT_2)
-        u8Idx = 1;
-    else if (hwi2c_port < E_HWI2C_PORT_3)
-        u8Idx = 2;
+    pstCon = stBoardInfo.pstConConfig + IIC_index;
+    i2c_port = pstCon->stDMDCon.eI2C_PORT;
+    bWO_Ext_Demod = pstCon->bWO_EXT_DMD;
+
+    if(bWO_Ext_Demod && bScanExt)
+    {
+       pFEtab->eInExTernalPath = FE_INTERNAL;
+       return &GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
+    }
+
+    if((int)i2c_port < (int)E_MS_IIC_SW_PORT_0)//hw i2c
+    {
+       u8Idx = (MS_U8)i2c_port/8;
+    }
+    else if((int)i2c_port < (int)E_MS_IIC_PORT_NOSUP)//sw i2c
+    {
+       u8Idx = E_MS_IIC_SW_PORT_0/8 + (i2c_port - E_MS_IIC_SW_PORT_0);
+    }
     else
     {
         pFEtab->eInExTernalPath = FE_INTERNAL;
-        return  MApi_get_InternalDemodtab_entry(IIC_index);
+        return &GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
     }
 
-    while(i < DEMOD_SCAN_NUMBER)
+    if(bScanExt)
     {
-        if((gp_demod_entry[i])->CheckExist(IIC_index, &u8SlaveID))
+        if(DEMOD_SCAN_NUMBER > 0)
         {
-            if(!_DigiTuner_Conflit_Check(u8Idx, (gp_demod_entry[i])->data, u8SlaveID)) // FALSE: no conflit condition
+            while(i < DEMOD_SCAN_NUMBER)
             {
-                pFEtab->eInExTernalPath = FE_EXTERNAL;
-                return gp_demod_entry[i];
+                stData.u32Param1 = stBoardInfo.u8MaxFENum;
+                stData.pParam = &pstCon->stDMDCon;
+                gp_demod_entry[i]->Extension_Function(IIC_index, DEMOD_EXT_FUNC_SET_CON_INFO, &stData);
+                //DEMOD_EXT_FUNC_SET_RESET_PIN cmd will be removed when all demod could get
+                //connector info by DEMOD_EXT_FUNC_SET_CON_INFO cmd
+                gp_demod_entry[i]->Extension_Function(IIC_index, DEMOD_EXT_FUNC_SET_RESET_PIN, &pstCon->stDMDCon.u32HW_ResetPin);
+                if((gp_demod_entry[i])->CheckExist(IIC_index, &u8SlaveID))
+                {
+                    if(!_DigiTuner_Conflit_Check(u8Idx, (gp_demod_entry[i])->data, u8SlaveID)) // FALSE: no conflit condition
+                    {
+                        pFEtab->eInExTernalPath = FE_EXTERNAL;
+                        return gp_demod_entry[i];
+                    }
+                }
+
+                i++;
             }
         }
-
-        i++;
+        pFEtab->eInExTernalPath = FE_INTERNAL;
+        return &GET_DEMOD_ENTRY_NODE(DEMOD_NULL);
     }
-
-    //MApi_Frontend_SetInExteralPath(IIC_index,FE_INTERNAL, pFEtab);
-    pFEtab->eInExTernalPath = FE_INTERNAL;
-    return  MApi_get_InternalDemodtab_entry(IIC_index);
+    else
+    {
+        //MApi_Frontend_SetInExteralPath(IIC_index,FE_INTERNAL, pFEtab);
+        pFEtab->eInExTernalPath = FE_INTERNAL;
+        return  MApi_get_InternalDemodtab_entry(IIC_index);
+    }
 }
 
 DRV_TUNER_TABLE_TYPE* MApi_get_Tunertab_entry(MS_U8 IIC_index, MS_BOOL* bExist, MS_U32* pu32Ch_Cnt, DEV_FRONTEND_TYPE* pFEtab)
 {
-    extern DRV_TUNER_TABLE_TYPE GET_TUNER_ENTRY_NODE(TUNER_NULL);
     MS_U32 i = 0;
     MS_U32 tmp;
+    MS_U32 u32DemodData = 0;
+    MS_U8 u8Idx, u8SlaveID = 0;
+    MS_BOOL bUnderTest = FALSE;
+    TUNER_EXT_FUNCTION_PARAM stData;
+    MS_FE_CONNECTOR_CONFIG* pstCon = NULL;
+    MS_IIC_PORT i2c_port;
+
+    pstCon = stBoardInfo.pstConConfig + IIC_index;
+    i2c_port = pstCon->stTUNCon.eI2C_PORT;
+
+    if((int)i2c_port < (int)E_MS_IIC_SW_PORT_0)//hw i2c
+    {
+       u8Idx = (MS_U8)i2c_port/8;
+    }
+    else if((int)i2c_port < (int)E_MS_IIC_PORT_NOSUP)//sw i2c
+    {
+       u8Idx = E_MS_IIC_SW_PORT_0/8 + (i2c_port - E_MS_IIC_SW_PORT_0);
+    }
+    else
+    {
+        return &GET_TUNER_ENTRY_NODE(TUNER_NULL);
+    }
+
 
     tmp = *pu32Ch_Cnt;
     *bExist = TRUE;
 
     while(i < TUNER_SCAN_NUMBER)
     {
-        // Patch for MXL254
-        // Note: TUNER_MXL254 tuner and DEMOD_MXL254 demod MSUT be a pair
-        if(gp_tuner_entry[i]->data == TUNER_MXL254)
-        {
-            if(pFEtab->demodtab->data == DEMOD_MXL254)
-            {
-                //Do tuner check exist just for some initial setting
-                (gp_tuner_entry[i])->CheckExist(IIC_index, pu32Ch_Cnt);
-                return gp_tuner_entry[i];
-            }
-            else
-            {
-                i++;
-                continue;
-            }
-        }//End of patch for MXL254
+        stData.u32Param1 = stBoardInfo.u8MaxFENum;
+        stData.pParam = &pstCon->stTUNCon;
+        (gp_tuner_entry[i])->Extension_Function(IIC_index, TUNER_EXT_FUNC_SET_CON_INFO, &stData);
 
-        // Patch for MXL542
-        // Note: TUNER_MXL254 tuner and DEMOD_MXL254 demod MSUT be a pair
-        if(gp_tuner_entry[i]->data == TUNER_MXL542)
+        if(_DigiTuner_IsSingleChipFrontend(gp_tuner_entry[i]->data, &u32DemodData))
         {
-            if(pFEtab->demodtab->data == DEMOD_MXL542)
-            {
-                //Do tuner check exist just for some initial setting
-                (gp_tuner_entry[i])->CheckExist(IIC_index, pu32Ch_Cnt);
-                return gp_tuner_entry[i];
-            }
-            else
-            {
-                i++;
-                continue;
-            }
-        }//End of patch for MXL542
-
-
-        // Patch for MSR1742
-        // Note: TUNER_MSR1742 tuner and DEMOD_MSR1742 demod MSUT be a pair
-        if(gp_tuner_entry[i]->data == TUNER_MSR1742)
-        {
-            if(pFEtab->demodtab->data == DEMOD_MSR1742)
-            {
-                //Do tuner check exist just for some initial setting
-                (gp_tuner_entry[i])->CheckExist(IIC_index, pu32Ch_Cnt);
-                return gp_tuner_entry[i];
-            }
-            else
-            {
-                i++;
-                continue;
-            }
-        }//End of patch for MSR1742
+          if(pFEtab->demodtab->data == u32DemodData)
+          {
+              //Do tuner check exist just for some initial setting
+              (gp_tuner_entry[i])->CheckExist(IIC_index, pu32Ch_Cnt);
+              return gp_tuner_entry[i];
+          }
+          else
+          {
+              i++;
+              continue;
+          }
+        }
 
         pFEtab->demodtab->Extension_Function(IIC_index, DEMOD_EXT_FUNC_FINALIZE, NULL);
         if(pFEtab->demodtab->Extension_FunctionPreSetting != NULL)
@@ -1590,6 +2247,8 @@ DRV_TUNER_TABLE_TYPE* MApi_get_Tunertab_entry(MS_U8 IIC_index, MS_BOOL* bExist, 
         MApi_Demod_HWReset(IIC_index);
         if(pFEtab->eInExTernalPath == FE_EXTERNAL)
         {
+            bUnderTest = TRUE;
+            (gp_tuner_entry[i])->Extension_Function(IIC_index, TUNER_EXT_FUNC_UNDER_EXT_DMD_TEST, &bUnderTest);
             if( (gp_tuner_entry[i])->CheckExist(IIC_index, pu32Ch_Cnt) )
             {
                 *pu32Ch_Cnt = tmp;
@@ -1597,6 +2256,8 @@ DRV_TUNER_TABLE_TYPE* MApi_get_Tunertab_entry(MS_U8 IIC_index, MS_BOOL* bExist, 
             else
             {
                 pFEtab->demodtab->I2CByPass(IIC_index,TRUE);
+                bUnderTest = FALSE;
+                (gp_tuner_entry[i])->Extension_Function(IIC_index, TUNER_EXT_FUNC_UNDER_EXT_DMD_TEST, &bUnderTest);
                 if( (gp_tuner_entry[i])->CheckExist(IIC_index, pu32Ch_Cnt))
                 {
                     pFEtab->demodtab->I2CByPass(IIC_index,FALSE);
@@ -1610,8 +2271,20 @@ DRV_TUNER_TABLE_TYPE* MApi_get_Tunertab_entry(MS_U8 IIC_index, MS_BOOL* bExist, 
             pFEtab->demodtab->I2CByPass(IIC_index,TRUE);
             if( (gp_tuner_entry[i])->CheckExist(IIC_index, pu32Ch_Cnt))
             {
-                pFEtab->demodtab->I2CByPass(IIC_index,FALSE);
-                return gp_tuner_entry[i];
+                (gp_tuner_entry[i])->Extension_Function(IIC_index, TUNER_EXT_FUNC_GET_SLAVE_ID, &u8SlaveID);
+                if(u8SlaveID != 0) //tuner driver support getting I2C slave ID
+                {
+                    if(!_DigiTuner_Conflit_Check(u8Idx, (gp_tuner_entry[i])->data + TUNER_TYPE, u8SlaveID)) // FALSE: no conflit condition
+                    {
+                        pFEtab->demodtab->I2CByPass(IIC_index,FALSE);
+                        return gp_tuner_entry[i];
+                    }
+                }
+                else // tuner driver not suuport getting I2C slave ID, give up checking if the same device detected
+                {
+                    pFEtab->demodtab->I2CByPass(IIC_index,FALSE);
+                    return gp_tuner_entry[i];
+                }
             }
             pFEtab->demodtab->I2CByPass(IIC_index,FALSE);
         }
@@ -1628,85 +2301,45 @@ DRV_TUNER_TABLE_TYPE* MApi_get_Tunertab_entry(MS_U8 IIC_index, MS_BOOL* bExist, 
 #if MS_DVBS_INUSE
 static struct drv_dishtab_entry *MApi_get_Dishtab_entry(MS_U8 IIC_index)
 {
-    struct drv_dishtab_entry *dishtab_entry[MAX_FRONTEND_NUM] = {0};
+    MS_FE_CONNECTOR_CONFIG* pstCon = NULL;
+    struct drv_dishtab_entry *pstdishtab_entry = NULL;
 
-#if (DISH_TYPE == DISH_A8293) || \
-    (defined(DISH_TYPE1) && (DISH_TYPE1 == DISH_A8293)) || \
-    (defined(DISH_TYPE2) && (DISH_TYPE2 == DISH_A8293)) || \
-    (defined(DISH_TYPE3) && (DISH_TYPE3 == DISH_A8293))
-    extern struct drv_dishtab_entry dish_entry_DISH_A8293;
-#endif
+    pstCon = stBoardInfo.pstConConfig + IIC_index;
 
-#if (DISH_TYPE == DISH_A8296) || \
-    (defined(DISH_TYPE1) && (DISH_TYPE1 == DISH_A8296)) || \
-    (defined(DISH_TYPE2) && (DISH_TYPE2 == DISH_A8296)) || \
-    (defined(DISH_TYPE3) && (DISH_TYPE3 == DISH_A8296))
-    extern struct drv_dishtab_entry dish_entry_DISH_A8296;
-#endif
+    switch(pstCon->u8LNBCtrlType)
+    {
+       case DISH_A8293:
+            pstdishtab_entry = &dish_entry_DISH_A8293;
+            break;
 
-#if (DISH_TYPE == DISH_A8304) || \
-    (defined(DISH_TYPE1) && (DISH_TYPE1 == DISH_A8304)) || \
-    (defined(DISH_TYPE2) && (DISH_TYPE2 == DISH_A8304)) || \
-    (defined(DISH_TYPE3) && (DISH_TYPE3 == DISH_A8304))
-    extern struct drv_dishtab_entry dish_entry_DISH_A8304;
-#endif
+       case DISH_A8296:
+            pstdishtab_entry = &dish_entry_DISH_A8296;
+            break;
 
-#if (DISH_TYPE == DISH_A8297) || \
-    (defined(DISH_TYPE1) && (DISH_TYPE1 == DISH_A8297)) || \
-    (defined(DISH_TYPE2) && (DISH_TYPE2 == DISH_A8297)) || \
-    (defined(DISH_TYPE3) && (DISH_TYPE3 == DISH_A8297))
-    extern struct drv_dishtab_entry dish_entry_DISH_A8297;
-#endif
+        case DISH_A8297:
+            pstdishtab_entry = &dish_entry_DISH_A8297;
+            break;
 
+        case DISH_A8304:
+            pstdishtab_entry = &dish_entry_DISH_A8304;
+            break;
 
-#if(DISH_TYPE == DISH_A8293)
-    dishtab_entry[0] = &dish_entry_DISH_A8293;
-#elif(DISH_TYPE == DISH_A8296)
-    dishtab_entry[0] = &dish_entry_DISH_A8296;
-#elif(DISH_TYPE == DISH_A8304)
-    dishtab_entry[0] = &dish_entry_DISH_A8304;
-#elif(DISH_TYPE == DISH_A8297)
-    dishtab_entry[0] = &dish_entry_DISH_A8297;
-#endif
+        case DISH_A8302:
+            pstdishtab_entry = &dish_entry_DISH_A8302;
+            break;
 
-#if(defined(DISH_TYPE1) && (DISH_TYPE1 == DISH_A8293) && (MAX_FRONTEND_NUM > 1))
-    dishtab_entry[1] = &dish_entry_DISH_A8293;
-#elif(defined(DISH_TYPE1) && (DISH_TYPE1 == DISH_A8296) && (MAX_FRONTEND_NUM > 1))
-    dishtab_entry[1] = &dish_entry_DISH_A8296;
-#elif(defined(DISH_TYPE1) && (DISH_TYPE1 == DISH_A8304) && (MAX_FRONTEND_NUM > 1))
-    dishtab_entry[1] = &dish_entry_DISH_A8304;
-#elif(defined(DISH_TYPE1) && (DISH_TYPE1 == DISH_A8297) && (MAX_FRONTEND_NUM > 1))
-    dishtab_entry[1] = &dish_entry_DISH_A8297;
-#else
-    FE_DBG(("LNB control IC on I2C%x not set\n", IIC_index));
-#endif
-
-#if(defined(DISH_TYPE2) && (DISH_TYPE2 == DISH_A8293) && (MAX_FRONTEND_NUM > 2))
-    dishtab_entry[2] = &dish_entry_DISH_A8293;
-#elif(defined(DISH_TYPE2) && (DISH_TYPE2 == DISH_A8296) && (MAX_FRONTEND_NUM > 2))
-    dishtab_entry[2] = &dish_entry_DISH_A8296;
-#elif(defined(DISH_TYPE2) && (DISH_TYPE2 == DISH_A8304) && (MAX_FRONTEND_NUM > 2))
-    dishtab_entry[2] = &dish_entry_DISH_A8304;
-#elif(defined(DISH_TYPE2) && (DISH_TYPE2 == DISH_A8297) && (MAX_FRONTEND_NUM > 2))
-    dishtab_entry[2] = &dish_entry_DISH_A8297;
-#else
-    FE_DBG(("LNB control IC on I2C%x not set\n", IIC_index));
-#endif
-
-
-#if(defined(DISH_TYPE3) && (DISH_TYPE3 == DISH_A8293) && (MAX_FRONTEND_NUM > 3))
-    dishtab_entry[3] = &dish_entry_DISH_A8293;
-#elif(defined(DISH_TYPE3) && (DISH_TYPE3 == DISH_A8296) && (MAX_FRONTEND_NUM > 3))
-    dishtab_entry[3] = &dish_entry_DISH_A8296;
-#elif(defined(DISH_TYPE3) && (DISH_TYPE3 == DISH_A8304) && (MAX_FRONTEND_NUM > 3))
-    dishtab_entry[3] = &dish_entry_DISH_A8304;
-#elif(defined(DISH_TYPE2) && (DISH_TYPE2 == DISH_A8297) && (MAX_FRONTEND_NUM > 3))
-    dishtab_entry[2] = &dish_entry_DISH_A8297;
-#else
-    FE_DBG(("LNB control IC on I2C%x not set\n", IIC_index));
-#endif
-
-    return dishtab_entry[IIC_index];
+        default:
+            break;
+    }
+    if(pstdishtab_entry != NULL)
+    {
+        FE_DBG(("LNB IC: %s\n", pstdishtab_entry->name));
+    }
+    else
+    {
+        FE_DBG(("LNB IC: NOT Set\n"));
+    }
+    return pstdishtab_entry;
 }
 #endif
 
@@ -1774,39 +2407,6 @@ static MS_U32 MApi_get_dmx_input_path(MS_U8 drv_frontend_index)
     return u32dmx_input_path;
 }
 
-/*
-static MS_U32 MApi_get_dvb_type(MS_U8 drv_frontend_index)
-{
-    MS_U32 u32dvb_type = 0;
-
-    switch(drv_frontend_index)
-    {
-        case 0:
-            u32dvb_type = MS_DVB_TYPE_SEL;
-        break;
-
-        case 1:
-            u32dvb_type = MS_DVB_TYPE_SEL1;
-        break;
-
-        case 2:
-            u32dvb_type = MS_DVB_TYPE_SEL2;
-        break;
-
-        case 3:
-            u32dvb_type = MS_DVB_TYPE_SEL3;
-        break;
-
-        default:
-            u32dvb_type = MS_DVB_TYPE_SEL;
-        break;
-
-    }
-
-    return u32dvb_type;
-}
-*/
-
 //-------------------------------------------------------------------------------------------------
 /// Initialize digital tuner
 /// @param eFE                      \b IN: Frontend id
@@ -1814,13 +2414,13 @@ static MS_U32 MApi_get_dvb_type(MS_U8 drv_frontend_index)
 /// @return FALSE: Failure
 //-------------------------------------------------------------------------------------------------
 
-static MS_BOOL MApi_Demod_lookup(MS_U8 IIC_index, DEV_FRONTEND_TYPE* pFEtab)
+static MS_BOOL MApi_Demod_lookup(MS_U8 IIC_index, DEV_FRONTEND_TYPE* pFEtab, MS_BOOL bScanExt)
 {
 
     if(NULL == pFEtab)
         return FALSE;
 
-    pFEtab->demodtab = MApi_get_Demodtab_entry(IIC_index, pFEtab);
+    pFEtab->demodtab = MApi_get_Demodtab_entry(IIC_index, pFEtab, bScanExt);
     FE_DBG(("[FE] Scanned demod device = %s\n",pFEtab->demodtab->name));
     return TRUE;
 }
@@ -1871,18 +2471,11 @@ MS_BOOL MApi_DigiTuner_DeInit(MS_U8 drv_frontend_index)
     DEV_FRONTEND_TYPE* pFETab;
     MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
 
+
     if((NULL == _pu8Init) || (FALSE == _DigiTuner_CheckFEtab_Exist(drv_frontend_index)))
         return FALSE;
 
     pFETab = *(pFETabAddr + drv_frontend_index);
-    //if(*(_pu8Init + drv_frontend_index) == 0)
-    //    return TRUE;
-
-    //if(_s32MutexId!=-1)
-    //{
-    //    MsOS_DeleteMutex(_s32MutexId);
-    //    _s32MutexId=-1;
-    //}
 
     if (pFETab->demodtab->Extension_Function(u8Idx, DEMOD_EXT_FUNC_FINALIZE, NULL) == FALSE)
         return FALSE;
@@ -1900,14 +2493,21 @@ MS_BOOL MApi_Frontend_SetTunerDemod(MS_U8 IIc_index,MS_U32 u32ScanTunerIndex, MS
 {
     DEV_FRONTEND_TYPE FETab;
     MS_U8 u8FEIdx = 0,i;
-    MS_U32 u32FEIdx_Cnt[MAX_FRONTEND_NUM], u32FEIdx_Cnt_Cur;
+    MS_U32 u32FEIdx_Cnt_Cur;
+    MS_U32* pu32FEIdx_Cnt = NULL;
     // signed char shift = 0, FEIdxMax = 0;
     DEV_FRONTEND_TYPE* u32NewpFETabAddr[16];
     DEV_FRONTEND_TYPE* pFETab = NULL;
     MS_U8 u8SlaveID;
-    HWI2C_PORT hwi2c_port;
+    MS_IIC_PORT i2c_port;
+    MS_FE_CONNECTOR_CONFIG* pstCon = NULL;
+    DEMOD_EXT_FUNCTION_PARAM stDMDData;
+    TUNER_EXT_FUNCTION_PARAM stTUNData;
 
+    if(!_DigiTuner_BoardInfoReady())
+        return FALSE;
 
+    memset(&FETab, 0x00, sizeof(DEV_FRONTEND_TYPE));
     if(INVALID_POOL_ID == gs32FECachedPoolID)
     {
         FE_ERR(("INVALID_POOL_ID !!!\n"));
@@ -1917,13 +2517,7 @@ MS_BOOL MApi_Frontend_SetTunerDemod(MS_U8 IIc_index,MS_U32 u32ScanTunerIndex, MS
     if(eDetect_Mode != USER_DEFINE)
         return FALSE;
 
-    if(!FE_Load_Reset_Pin)
-    {
-        MApi_Frontend_LoadResetPin();
-        FE_Load_Reset_Pin = TRUE;
-    }
-
-    if(IIc_index >= MAX_FRONTEND_NUM)
+    if(IIc_index >= stBoardInfo.u8MaxFENum)
     {
         FE_ERR(("INVALID_IIC_INDEX !!!\n"));
         return FALSE;
@@ -1935,16 +2529,20 @@ MS_BOOL MApi_Frontend_SetTunerDemod(MS_U8 IIc_index,MS_U32 u32ScanTunerIndex, MS
         return TRUE;
     }
 
+    pu32FEIdx_Cnt = (MS_U32*)MsOS_AllocateMemory(sizeof(MS_U32)*stBoardInfo.u8MaxFENum, gs32FECachedPoolID);
     FE_DBG(("### %x %x %x\n", (MS_U8)IIc_index, (MS_U8)u32ScanTunerIndex, (MS_U8)u32ScanDemodIndex));
-    hwi2c_port = getI2CPort(IIc_index);
-    MDrv_IIC_Init(hwi2c_port);
+    pstCon = stBoardInfo.pstConConfig + IIc_index;
+    i2c_port = pstCon->stDMDCon.eI2C_PORT;
+    MDrv_IIC_Init(i2c_port);
+    i2c_port = pstCon->stTUNCon.eI2C_PORT;
+    MDrv_IIC_Init(i2c_port);
     // get current FE index of each I2C port
-    for(i=0; i< MAX_FRONTEND_NUM; i++)
+    for(i=0; i< stBoardInfo.u8MaxFENum; i++)
     {
         if(!i)
-            u32FEIdx_Cnt[i] = u32ch_acc[i];
+            *(pu32FEIdx_Cnt + i) = get_ch_acc(i);
         else
-            u32FEIdx_Cnt[i] = u32ch_acc[i] - u32ch_acc[i-1];
+            *(pu32FEIdx_Cnt + i) = get_ch_acc(i) - get_ch_acc(i-1);
     }
 
     // First Set, create max possible RF channel count: 16
@@ -2019,14 +2617,21 @@ MS_BOOL MApi_Frontend_SetTunerDemod(MS_U8 IIc_index,MS_U32 u32ScanTunerIndex, MS
         FETab.demodtab = gp_demod_entry[u32ScanDemodIndex];
     }
 
+    stDMDData.u32Param1 = stBoardInfo.u8MaxFENum;
+    stDMDData.pParam = &pstCon->stDMDCon;
+    FETab.demodtab->Extension_Function(IIc_index, DEMOD_EXT_FUNC_SET_CON_INFO, &stDMDData);
+
     MApi_Demod_HWReset(IIc_index);
     // Do check exist for some setting or parameters set during check exist flow
     // External demod only
-    if(u32ScanDemodIndex < DEMOD_SCAN_NUMBER)
+    if(DEMOD_SCAN_NUMBER > 0)
     {
-        if(!FETab.demodtab->CheckExist(IIc_index, &u8SlaveID))
+        if(u32ScanDemodIndex < DEMOD_SCAN_NUMBER)
         {
-            FE_ERR(("WARNING!!! DEMOD check exist FAIL\n"));
+            if(!FETab.demodtab->CheckExist(IIc_index, &u8SlaveID))
+            {
+                FE_ERR(("WARNING!!! DEMOD check exist FAIL\n"));
+            }
         }
     }
 
@@ -2037,6 +2642,11 @@ MS_BOOL MApi_Frontend_SetTunerDemod(MS_U8 IIc_index,MS_U32 u32ScanTunerIndex, MS
         return FALSE;
     }
 
+
+    stTUNData.u32Param1 = stBoardInfo.u8MaxFENum;
+    stTUNData.pParam = &pstCon->stTUNCon;
+    FETab.tunertab->Extension_Function(IIc_index, DEMOD_EXT_FUNC_SET_CON_INFO, &stTUNData);
+    FETab.tunertab->Extension_Function(IIc_index, DEMOD_EXT_FUNC_SET_RESET_PIN, &pstCon->stDMDCon.u32HW_ResetPin);
 
     // Do check exist for getting channel number
     u32FEIdx_Cnt_Cur = 0;
@@ -2052,7 +2662,7 @@ MS_BOOL MApi_Frontend_SetTunerDemod(MS_U8 IIc_index,MS_U32 u32ScanTunerIndex, MS
         else
         {
             FETab.demodtab->I2CByPass(IIc_index,TRUE);
-            if( FETab.tunertab->CheckExist(IIc_index, &u32FEIdx_Cnt_Cur))
+            if(!FETab.tunertab->CheckExist(IIc_index, &u32FEIdx_Cnt_Cur))
             {
                 FE_ERR(("WARNING!!! TUNER check exist FAIL\n"));
                 FETab.demodtab->I2CByPass(IIc_index,FALSE);
@@ -2063,7 +2673,7 @@ MS_BOOL MApi_Frontend_SetTunerDemod(MS_U8 IIc_index,MS_U32 u32ScanTunerIndex, MS
     else
     {
         FETab.demodtab->I2CByPass(IIc_index,TRUE);
-        if(FETab.tunertab->CheckExist(IIc_index, &u32FEIdx_Cnt_Cur))
+        if(!FETab.tunertab->CheckExist(IIc_index, &u32FEIdx_Cnt_Cur))
         {
             FE_ERR(("WARNING!!! TUNER check exist FAIL\n"));
             FETab.demodtab->I2CByPass(IIc_index,FALSE);
@@ -2082,7 +2692,7 @@ MS_BOOL MApi_Frontend_SetTunerDemod(MS_U8 IIc_index,MS_U32 u32ScanTunerIndex, MS
     if(IIc_index == 0)
         u8FEIdx = 0;
     else
-        u8FEIdx = u32ch_acc[IIc_index-1];
+        u8FEIdx = get_ch_acc(IIc_index-1);
 
     MApi_Demod_HWReset(IIc_index);
     for(i=u8FEIdx; i<(u8FEIdx + u32FEIdx_Cnt_Cur); i++)
@@ -2094,15 +2704,13 @@ MS_BOOL MApi_Frontend_SetTunerDemod(MS_U8 IIc_index,MS_U32 u32ScanTunerIndex, MS
         pFETab->demodtab->Extension_Function(i, DEMOD_EXT_FUNC_FINALIZE, NULL);
     }
 
-
-
-    u32FEIdx_Cnt[IIc_index] = u32FEIdx_Cnt_Cur;
-    for(i=0; i<MAX_FRONTEND_NUM; i++)
+    *(pu32FEIdx_Cnt + IIc_index) = u32FEIdx_Cnt_Cur;
+    for(i=0; i<stBoardInfo.u8MaxFENum; i++)
     {
         if(!i)
-            u32ch_acc[i] = u32FEIdx_Cnt[i];
+            set_ch_acc(i, *(pu32FEIdx_Cnt + i));
         else
-            u32ch_acc[i] = u32FEIdx_Cnt[i] + u32FEIdx_Cnt[i-1];
+            set_ch_acc(i, (*(pu32FEIdx_Cnt+i)) + (*(pu32FEIdx_Cnt+i-1)));
     }
 
     //FE_DBG(("_DigiTuner_MaxFEIdx() = %x\n", _DigiTuner_MaxFEIdx());
@@ -2111,6 +2719,7 @@ MS_BOOL MApi_Frontend_SetTunerDemod(MS_U8 IIc_index,MS_U32 u32ScanTunerIndex, MS
     {
         for(i=u8FEIdx; i<= _DigiTuner_MaxFEIdx(); i++)
         {
+            // coverity[uninit_use]
             *(pFETabAddr + i) = u32NewpFETabAddr[i];
             FE_DBG((" *(pFETabAddr + %d) = %"DTC_MS_U32_x", u32NewpFETabAddr[%d] = %"DTC_MS_U32_x"\n", i, (MS_U32)(*(pFETabAddr + i)), i, (MS_U32)u32NewpFETabAddr[i]));
         }
@@ -2168,6 +2777,10 @@ MS_BOOL MApi_Frontend_SetBroadcastType(MS_U8 drv_frontend_index,MS_U32 u32Broadc
     FE_MSG((" 0x%x -> J83B\n",J83B));
     FE_MSG((" 0x%x -> DTMB\n",DTMB));
     FE_MSG((" 0x%x -> DVBS2\n",DVBS2));
+    FE_MSG((" 0x%x -> DSS\n",DSS));
+    FE_MSG((" 0x%x -> ATV_PAL\n",ATV_PAL));
+    FE_MSG((" 0x%x -> ATV_SECAM_L_PRIME\n",ATV_SECAM_L_PRIME));
+    FE_MSG((" 0x%x -> ATV_NTSC\n",ATV_NTSC));
     FE_MSG(("========================== End Broadcast Type List =======================\n"));
 
     if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
@@ -2184,6 +2797,24 @@ MS_BOOL MApi_Frontend_SetBroadcastType(MS_U8 drv_frontend_index,MS_U32 u32Broadc
 
     return TRUE;
 }
+
+MS_BOOL MApi_Frontend_GetBroadcastType(MS_U8 drv_frontend_index,MS_U32* pu32BroadcastType)
+{
+    DEV_FRONTEND_TYPE* pFETab;
+
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+    {
+        return FALSE;
+    }
+    else
+    {
+        pFETab = *(pFETabAddr + drv_frontend_index);
+        *pu32BroadcastType = pFETab->dvb_type;
+    }
+
+    return TRUE;
+}
+
 
 MS_U32 MApi_GetDmxInputPath(MS_U8 drv_frontend_index)
 {
@@ -2204,7 +2835,7 @@ MS_BOOL MApi_Frontend_InExteralPath_Arrange(EN_IN_EX_TERNAL_PATH eInExTernalPath
     // set DMX input path
     if(eInExTernalPath == FE_EXTERNAL)
     {
-        switch(u8DMX_extDMD_Cnt)
+        switch(u8DMX_extDMD_Cnt%4)
         {
         case 0:
 #ifdef DMX_EXTERNAL_PATH_0
@@ -2233,7 +2864,7 @@ MS_BOOL MApi_Frontend_InExteralPath_Arrange(EN_IN_EX_TERNAL_PATH eInExTernalPath
             break;
 #endif
         default:
-            return FALSE;
+            break;
         }
         u8DMX_extDMD_Cnt++;
     }
@@ -2250,7 +2881,7 @@ MS_BOOL MApi_Frontend_InExteralPath_Arrange(EN_IN_EX_TERNAL_PATH eInExTernalPath
             break;
 #endif
         default:
-            return FALSE;
+            break;
         }
         u8DMX_intDMD_Cnt++;
     }
@@ -2310,26 +2941,25 @@ MS_BOOL MApi_Frontend_SetInExteralPath(MS_U8 IIC_index,EN_IN_EX_TERNAL_PATH eInE
 
 MS_BOOL MApi_DigiTuner_Init(MS_U8 drv_frontend_index)
 {
-    HWI2C_PORT hwi2c_port;
+    MS_IIC_PORT i2c_port;
     DEMOD_MS_INIT_PARAM Demod_Init_Param = {NULL};
     TUNER_MS_INIT_PARAM Tuner_Init_Param = {NULL};
 #if(MS_DVBS_INUSE == 1)
     DISH_MS_INIT_PARAM Dish_Init_Param = {NULL};
+    MS_BOOL bDiSeqc_Tx22K_Off = FALSE;
 #endif
     MS_U8 u8Idx = 0;
     DEV_FRONTEND_TYPE* pFETab = NULL;
+    MS_FE_CONNECTOR_CONFIG* pCon = NULL;
+
+    if(!_DigiTuner_BoardInfoReady())
+        return FALSE;
 
     if(NULL != pFETabAddr)
     {
         if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))//detected forntend index < request index
             return FALSE;
         pFETab = *(pFETabAddr + drv_frontend_index);
-    }
-
-    if(!FE_Load_Reset_Pin)
-    {
-        MApi_Frontend_LoadResetPin();
-        FE_Load_Reset_Pin = TRUE;
     }
 
     if(_pu8Init != NULL)
@@ -2344,7 +2974,7 @@ MS_BOOL MApi_DigiTuner_Init(MS_U8 drv_frontend_index)
     }
 
     if(((pFETab == NULL) && (DefaultBroadcastType == BROADCAST_TYPE_NOT_SEETING)) ||\
-            ((pFETab != NULL) && (pFETab->dvb_type== BROADCAST_TYPE_NOT_SEETING)))
+          ((pFETab != NULL) && (pFETab->dvb_type== BROADCAST_TYPE_NOT_SEETING)))
     {
         FE_MSG(("Please set the broadcast type by using cmd: FE_SetBroadcastType arg0\n"));
         return FALSE;
@@ -2368,6 +2998,10 @@ MS_BOOL MApi_DigiTuner_Init(MS_U8 drv_frontend_index)
         MApi_DigiTuner_Frontend_List_Show();
         if((drv_frontend_index > _DigiTuner_MaxFEIdx()) || (_DigiTuner_MaxFEIdx() == FEIndex_NONE))//detected forntend index < request index
             return FALSE;
+
+        if((pFETabAddr == NULL) || (_pu8Init == NULL))
+            return FALSE;
+
         pFETab =  *(pFETabAddr + drv_frontend_index);
         pFETab->dvb_type = DefaultBroadcastType;
     }
@@ -2376,10 +3010,15 @@ MS_BOOL MApi_DigiTuner_Init(MS_U8 drv_frontend_index)
         FE_Detect_Done = TRUE;
     }
 
-    pFETab->dmx_input_path = MApi_get_dmx_input_path(_DigiTuner_FEIdx2DevIdx(drv_frontend_index));
-    hwi2c_port = getI2CPort(_DigiTuner_FEIdx2DevIdx(drv_frontend_index));
-    MDrv_IIC_Init(hwi2c_port);
+    if(pFETab == NULL)
+        return FALSE;
 
+    pFETab->dmx_input_path = MApi_get_dmx_input_path(_DigiTuner_FEIdx2DevIdx(drv_frontend_index));
+    pCon = stBoardInfo.pstConConfig + _DigiTuner_FEIdx2DevIdx(drv_frontend_index);
+    i2c_port = pCon->stDMDCon.eI2C_PORT;
+    MDrv_IIC_Init(i2c_port);
+    i2c_port = pCon->stTUNCon.eI2C_PORT;
+    MDrv_IIC_Init(i2c_port);
 
     if(pFETab->eInExTernalPath == FE_INTERNAL)
     {
@@ -2394,31 +3033,6 @@ MS_BOOL MApi_DigiTuner_Init(MS_U8 drv_frontend_index)
 
     u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
     FE_DBG(("Idex of demod/tuner mapping from drv_frontend_index = %x\n", u8Idx));
-#if(MS_DVBS_INUSE == 1)
-    if((pFETab->dvb_type == DVBS) ||\
-        (pFETab->dvb_type == DVBS2) ||\
-       (pFETab->tunertab->data == TUNER_R848) ||\
-       (pFETab->demodtab->data == DEMOD_MSB124X))
-    {
-        pFETab->dishtab = MApi_get_Dishtab_entry(_DigiTuner_FEIdx2DevIdx(drv_frontend_index));
-        if(pFETab->dishtab != NULL)
-        {
-            hwi2c_port = getDishI2CPort(_DigiTuner_FEIdx2DevIdx(drv_frontend_index));
-            MDrv_IIC_Init(hwi2c_port);
-            Dish_Init_Param.pstDemodtab = pFETab->demodtab;
-            if(pFETab->dishtab->Init(_DigiTuner_FEIdx2DevIdx(drv_frontend_index),&Dish_Init_Param) == FALSE)
-            {
-                FE_ERR(("%s: Init Dish fail\n", __FUNCTION__));
-            }
-        }
-    }
-
-
-#if DISABLE_SENT_SAME_DISEQC_CMD
-     memset(pFETab->u8DiseqcCmd, 0x00, MAX_DISEQC_CMD_SIZE);
-#endif
-
-#endif
 
     //If KGC using on-chip msb1237,
     //It should close IQ control to enhance signal quility
@@ -2446,7 +3060,15 @@ MS_BOOL MApi_DigiTuner_Init(MS_U8 drv_frontend_index)
 
     Demod_Init_Param.pstTunertab= pFETab->tunertab;
     Demod_Init_Param.u32DmxInputPath = pFETab->dmx_input_path;
+    Demod_Init_Param.fpCB = fpCB[drv_frontend_index];
+    Demod_Init_Param.u8FrontendIndex= drv_frontend_index;
     Tuner_Init_Param.pCur_Broadcast_type= &(pFETab->dvb_type);
+    Tuner_Init_Param.pstDemodtab = pFETab->demodtab;
+#if(MS_DVBS_INUSE == 1)
+    Tuner_Init_Param.pstDishtab = MApi_get_Dishtab_entry(_DigiTuner_FEIdx2DevIdx(drv_frontend_index));
+#endif
+    memcpy(&Demod_Init_Param.stDMDCon, &pCon->stDMDCon, sizeof(DEMOD_CON_CONFIG));
+    memcpy(&Tuner_Init_Param.stTUNCon, &pCon->stTUNCon, sizeof(TUNER_CON_CONFIG));
 
     if (pFETab->demodtab->init(u8Idx, &Demod_Init_Param) == FALSE)
     {
@@ -2483,10 +3105,60 @@ MS_BOOL MApi_DigiTuner_Init(MS_U8 drv_frontend_index)
         FE_DBG(("MDrv_Demod_Open ok \n"));
     }
 
+#if(MS_DVBS_INUSE == 1)
+        if((pFETab->dvb_type == DVBS) ||\
+            (pFETab->dvb_type == DVBS2) ||\
+           (pFETab->tunertab->data == TUNER_R848) ||\
+           (pFETab->demodtab->data == DEMOD_MSB124X))
+        {
+            pFETab->dishtab = MApi_get_Dishtab_entry(_DigiTuner_FEIdx2DevIdx(drv_frontend_index));
+            if(pFETab->dishtab != NULL)
+            {
+                //i2c_port = getDishI2CPort(_DigiTuner_FEIdx2DevIdx(drv_frontend_index));
+                //MDrv_IIC_Init(i2c_port);
+                Dish_Init_Param.pstDemodtab = pFETab->demodtab;
+                Dish_Init_Param.stLNBCon.eI2C_PORT = pCon->stLNBCon.eI2C_PORT;
+                i2c_port = pCon->stLNBCon.eI2C_PORT;
+                MDrv_IIC_Init(i2c_port);
+                if(pFETab->dishtab->Init(_DigiTuner_FEIdx2DevIdx(drv_frontend_index),&Dish_Init_Param) == FALSE)
+                {
+                    FE_ERR(("%s: Init Dish fail\n", __FUNCTION__));
+                }
+
+                if((pFETab->dishtab->data == DISH_A8304) || (pFETab->dishtab->data == DISH_A8297)
+                 || (pFETab->dishtab->data == DISH_A8302))
+                {
+                   FE_DBG(("Set DVBS Demod DiSeqc 22K to envelope mode\n"));
+                   bDiSeqc_Tx22K_Off = TRUE;
+                   pFETab->demodtab->Extension_Function(u8Idx, DEMOD_EXT_FUNC_SET_DISEQC_TX_22K_OFF, &bDiSeqc_Tx22K_Off);
+                }
+            }
+        }
+
+#if DISABLE_SENT_SAME_DISEQC_CMD
+         memset(pFETab->u8DiseqcCmd, 0x00, MAX_DISEQC_CMD_SIZE);
+#endif
+
+#endif
     *(_pu8Init + drv_frontend_index) = 1;
+
     return TRUE;
 }
 
+
+MS_BOOL MApi_DigiTuner_SetDMDCallBack(MS_U8 drv_frontend_index, fpDemodCB fp)
+{
+    DEV_FRONTEND_TYPE* pFETab;
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+
+    fpCB[drv_frontend_index] = fp;
+    if(_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+    {
+        pFETab = *(pFETabAddr + drv_frontend_index);
+        pFETab->demodtab->Extension_Function(u8Idx,DEMOD_EXT_FUNC_SET_INTERRUPT_CALLBACK,fp);
+    }
+    return TRUE;
+}
 
 //-------------------------------------------------------------------------------------------------
 /// Power on,off digital tuner
@@ -2500,13 +3172,21 @@ MS_BOOL MApi_DigiTuner_PowerOnOff(MS_U8 drv_frontend_index, MS_BOOL bEnPower)
 {
     MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
     DEV_FRONTEND_TYPE* pFETab;
+    MS_U8 u8DevIdx = _DigiTuner_FEIdx2DevIdx(drv_frontend_index);
+    MS_GPIO_NUM gpio_fe_rst_num;
+    MS_FE_CONNECTOR_CONFIG* pstCon = NULL;
+
 
     ENTRY();
+    if(!_DigiTuner_BoardInfoReady())
+        RETURN(FALSE);
+
     if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
     {
         RETURN(FALSE);
     }
 
+    pstCon = stBoardInfo.pstConConfig + u8DevIdx;
     pFETab = *(pFETabAddr + drv_frontend_index);
 
     if((pFETab->demodtab == NULL) || (pFETab->tunertab == NULL) )
@@ -2528,6 +3208,16 @@ MS_BOOL MApi_DigiTuner_PowerOnOff(MS_U8 drv_frontend_index, MS_BOOL bEnPower)
     pFETab->tunertab->Extension_Function(u8Idx,TUNER_EXT_FUNC_POWER_ON_OFF,&bEnPower);
     pFETab->demodtab->I2CByPass(u8Idx,FALSE);
     pFETab->demodtab->Extension_Function(u8Idx,DEMOD_EXT_FUNC_POWER_ON_OFF,&bEnPower);
+
+    gpio_fe_rst_num = (MS_GPIO_NUM)(pstCon->stDMDCon.u32HW_ResetPin);
+
+    if(bEnPower)
+        mdrv_gpio_set_high(gpio_fe_rst_num);
+    else
+    {
+        printf("FE RST output low...\n");
+        mdrv_gpio_set_low(gpio_fe_rst_num);
+    }
 
     RETURN(TRUE);
 }
@@ -2619,6 +3309,8 @@ MS_BOOL MApi_DigiTuner_Tune2RfCh_DVBS(MS_U8 drv_frontend_index, MS_SAT_PARAM *pS
 
         dmdParam.SatParam.u32SymbolRate = pParam->SatParam.u16SymbolRate | (pParam->SatParam.u16ExtSymbolRate << 16);
         dmdParam.SatParam.u32SymbolRate *= 1000;
+        dmdParam.SatParam.u8VCM_IS_ID = pParam->SatParam.u8VCM_IS_ID;
+        dmdParam.SatParam.u8VCM_MODE = (MS_U8)pParam->SatParam.eVCM_MODE;
     }
     else
     {
@@ -2735,11 +3427,14 @@ MS_BOOL MApi_DigiTuner_Tune2RfCh(MS_U8 drv_frontend_index, MS_FE_CARRIER_PARAM *
     MS_U32 u32TunerType;
 #endif
     MS_U32 u32frontendtype;
-    MS_U32 u32Timeout;
+    //MS_U32 u32Timeout;
     MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
     DEV_FRONTEND_TYPE* pFETab;
     MS_FE_CARRIER_PARAM* ptunerParam;
-    MS_U8 u8CAB_TunerBW = TUNER_BW_MODE_8MHZ;
+    DEMOD_MS_FE_CARRIER_PARAM dmdParam;
+    MS_U8 u8BW=0;
+
+    memset(&dmdParam, 0x0, sizeof(DEMOD_MS_FE_CARRIER_PARAM));
 
     ENTRY();
 
@@ -2769,18 +3464,53 @@ MS_BOOL MApi_DigiTuner_Tune2RfCh(MS_U8 drv_frontend_index, MS_FE_CARRIER_PARAM *
 
     memcpy(ptunerParam, pParam, sizeof(MS_FE_CARRIER_PARAM)); //Must move here
 
-    if( (u32frontendtype == DVBC) || (u32frontendtype == J83B))
+   //set tuner
+    pFETab->demodtab->I2CByPass(u8Idx,TRUE);
+    dmdParam.u32Frequency = pParam->u32Frequency;
+    switch(u32frontendtype)
+    {
+       case DVBC:
+            u8BW = (MS_U8)(pParam->CabParam.eBandWidth);
+            break;
+       case DVBT:
+       case DVBT2:
+       case ATSC:
+            u8BW = (MS_U8)(pParam->TerParam.eBandWidth);
+            break;
+       case ISDBT:
+            u8BW = (MS_U8)(pParam->ISDBTParam.eBandWidth);
+            break;
+       case J83B:
+            u8BW = (MS_U8)(pParam->J83BParam.eBandWidth);
+            break;
+       case DTMB:
+            u8BW = (MS_U8)(pParam->DTMBParam.eBandWidth);
+            break;
+       default:
+            break;
+    }
+
+    if(pFETab->tunertab->SetTuner(u8Idx,pParam->u32Frequency,u8BW)==FALSE)
+    {
+        pFETab->demodtab->I2CByPass(u8Idx,FALSE);
+        FE_ERR(("%s:set tuner  failed.\n", __FUNCTION__));
+        RETURN(FALSE);
+    }
+    else
+    {
+        pFETab->demodtab->I2CByPass(u8Idx,FALSE);
+        FE_DBG(("%s:set tuner ok \n", __FUNCTION__));
+    }
+
+   //set demod
+    if(u32frontendtype == DVBC)
     {
         Demod_Mode dmdMode;
-        DEMOD_MS_FE_CARRIER_PARAM dmdParam;
-
         memset(&dmdMode, 0x0, sizeof(Demod_Mode));
-        memset(&dmdParam, 0x0, sizeof(DEMOD_MS_FE_CARRIER_PARAM));
 
         dmdMode.fptTunerSet     = FALSE;
 
         pFETab->demodtab->Extension_Function(u8Idx,DEMOD_EXT_FUNC_SET_MODE,&dmdMode);
-
         dmdParam.CabParam.eConstellation = pParam->CabParam.eConstellation;
         dmdParam.CabParam.u16SymbolRate = pParam->CabParam.u16SymbolRate;
         dmdParam.CabParam.eIQMode = pParam->CabParam.eIQMode;
@@ -2789,37 +3519,7 @@ MS_BOOL MApi_DigiTuner_Tune2RfCh(MS_U8 drv_frontend_index, MS_FE_CARRIER_PARAM *
         dmdParam.CabParam.eBandWidth  = pParam->CabParam.eBandWidth;
 #endif
 #endif
-        dmdParam.u32Frequency  = pParam->u32Frequency;
-
-        pFETab->demodtab->I2CByPass(u8Idx,TRUE);
-        switch(pParam->CabParam.eBandWidth)
-        {
-        case DEMOD_CAB_BW_6M:
-            u8CAB_TunerBW = TUNER_BW_MODE_6MHZ;
-            break;
-        case DEMOD_CAB_BW_7M:
-            u8CAB_TunerBW = TUNER_BW_MODE_7MHZ;
-            break;
-        case DEMOD_CAB_BW_8M:
-        default:
-            u8CAB_TunerBW = TUNER_BW_MODE_8MHZ;
-            break;
-
-        }
-        if (pFETab->tunertab->SetTuner(u8Idx,pParam->u32Frequency, u8CAB_TunerBW)==FALSE)
-        {
-            FE_ERR(("%s: Set frequency failed.\n", __FUNCTION__));
-            pFETab->demodtab->I2CByPass(u8Idx,FALSE);
-            RETURN(FALSE);
-        }
-        else
-        {
-            pFETab->demodtab->I2CByPass(u8Idx,FALSE);
-            FE_DBG(("%s:set tuner ok \n", __FUNCTION__));
-        }
-
-
-
+       #if 0
         u32Timeout = MsOS_GetSystemTime();
         while (pFETab->demodtab->Restart(u8Idx,&dmdParam,pFETab->dvb_type) != TRUE)
         {
@@ -2829,14 +3529,10 @@ MS_BOOL MApi_DigiTuner_Tune2RfCh(MS_U8 drv_frontend_index, MS_FE_CARRIER_PARAM *
                 RETURN(FALSE);
             }
         }
-
+       #endif
     }
-    else
+    else if( (u32frontendtype == DVBT) || (u32frontendtype == DVBT2))
     {
-        DEMOD_MS_FE_CARRIER_PARAM    dmdParam;
-
-        memset(&dmdParam, 0x0, sizeof(DEMOD_MS_FE_CARRIER_PARAM));
-        dmdParam.u32Frequency         = pParam->u32Frequency;
         dmdParam.TerParam.eBandWidth  = pParam->TerParam.eBandWidth;//u16BandWidth / 1000;
         dmdParam.TerParam.u8PlpID     = pParam->TerParam.u8PlpID;
 #ifdef DDI_MISC_INUSE
@@ -2845,27 +3541,15 @@ MS_BOOL MApi_DigiTuner_Tune2RfCh(MS_U8 drv_frontend_index, MS_FE_CARRIER_PARAM *
 #endif
         dmdParam.TerParam.u8ScanType  = pParam->TerParam.u8ScanType;
 #endif
-
-        pFETab->demodtab->I2CByPass(u8Idx,TRUE);
-
-        if(pFETab->tunertab->SetTuner(u8Idx,pParam->u32Frequency,pParam->TerParam.eBandWidth)==FALSE)
-        {
-            pFETab->demodtab->I2CByPass(u8Idx,FALSE);
-            FE_ERR(("%s:set tuner  failed.\n", __FUNCTION__));
-            RETURN(FALSE);
-        }
-        else
-        {
-            pFETab->demodtab->I2CByPass(u8Idx,FALSE);
-            FE_DBG(("%s:set tuner ok \n", __FUNCTION__));
-        }
-
-        if (pFETab->demodtab->Restart(u8Idx,&dmdParam,pFETab->dvb_type) == FALSE)
-        {
-            FE_ERR(("%s: Demod restart failed.\n", __FUNCTION__));
-            RETURN(FALSE);
-        }
     }
+
+
+    if (pFETab->demodtab->Restart(u8Idx,&dmdParam,pFETab->dvb_type) == FALSE)
+    {
+        FE_ERR(("%s: Demod restart failed.\n", __FUNCTION__));
+        RETURN(FALSE);
+    }
+
     FE_DBG(("Tune 2 RF ok!\n"));
     RETURN(TRUE);
 }
@@ -2902,6 +3586,11 @@ MS_BOOL MApi_DigiTuner_GetMaxLockTime(MS_U8 drv_frontend_index, EN_FE_TUNE_MODE 
         u32AutoTuneTimeOut = 2300;
         u32ManTuneTimeOut = 2300;
     }
+    else if(u32DemodType == DEMOD_MSB1238)
+    {
+        u32AutoTuneTimeOut = 2000;
+        u32ManTuneTimeOut = 1000;
+    }
     else
     {
         u32AutoTuneTimeOut = 2000;
@@ -2911,7 +3600,7 @@ MS_BOOL MApi_DigiTuner_GetMaxLockTime(MS_U8 drv_frontend_index, EN_FE_TUNE_MODE 
 #if MS_DVBT2_INUSE
     if(u32DemodType ==DEMOD_MSB1236C ||
             (u32DemodType == DEMOD_MSB124X && (pFETab->dvb_type == DVBT || pFETab->dvb_type == DVBT2)) ||
-            u32DemodType == DEMOD_MSKRITI_DVBT2)
+            u32DemodType == DEMOD_MSINTERN_DVBT2)
         if (E_DEMOD_TYPE_T == pFETab->demodtab->GetCurrentDemodType(u8Idx))
         {
             *u32LockTime = TUNE_T_TIMEOUT;
@@ -3024,6 +3713,10 @@ MS_BOOL MApi_DigiTuner_GetFlameSyncLock(MS_U8 drv_frontend_index, EN_LOCK_STATUS
 //-------------------------------------------------------------------------------------------------
 MS_BOOL MApi_DigiTuner_GetSNR(MS_U8 drv_frontend_index, MS_U16* pu16SNR)
 {
+#ifdef __KERNEL__
+    ENTRY();
+    RETURN(TRUE);
+#else
     float fSNR;
     MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
     DEV_FRONTEND_TYPE* pFETab;
@@ -3044,9 +3737,10 @@ MS_BOOL MApi_DigiTuner_GetSNR(MS_U8 drv_frontend_index, MS_U16* pu16SNR)
         FE_ERR(("FAIL to Get SNR\n"));
         fSNR = 0;
     }
-    FE_DBG(("%s: %f dB\n", __FUNCTION__, fSNR));
+    //FE_DBG(("%s: %f dB\n", __FUNCTION__, fSNR));
     *pu16SNR = (MS_U16)(fSNR);
     RETURN(TRUE);
+#endif
 }
 
 
@@ -3056,7 +3750,11 @@ MS_BOOL MApi_DigiTuner_GetSNR(MS_U8 drv_frontend_index, MS_U16* pu16SNR)
 /// @return TRUE:  Success
 /// @return FALSE: Fail
 //-------------------------------------------------------------------------------------------------
+#ifdef __KERNEL__
+MS_BOOL MApi_DigiTuner_GetBER(MS_U8 drv_frontend_index, MS_S32 *ps32fltBER)
+#else
 MS_BOOL MApi_DigiTuner_GetBER(MS_U8 drv_frontend_index, float *pfltBER)
+#endif
 {
     MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
     DEV_FRONTEND_TYPE* pFETab;
@@ -3073,8 +3771,13 @@ MS_BOOL MApi_DigiTuner_GetBER(MS_U8 drv_frontend_index, float *pfltBER)
         RETURN(FALSE);
     }
 
+#ifdef __KERNEL__
+    pFETab->demodtab->GetBER(u8Idx,ps32fltBER);
+    FE_DBG(("%s: %ld\n", __FUNCTION__, *ps32fltBER));
+#else
     pFETab->demodtab->GetBER(u8Idx,pfltBER);
-    FE_DBG(("%s: %8.3e\n", __FUNCTION__, *pfltBER));
+    //FE_DBG(("%s: %8.3e\n", __FUNCTION__, *pfltBER));
+#endif
     RETURN(TRUE);
 }
 
@@ -3107,18 +3810,40 @@ MS_BOOL MApi_DigiTuner_GetPWR(MS_U8 drv_frontend_index, MS_S16* ps16PWR)
         RETURN(FALSE);
     }
     *ps16PWR = (MS_S16)(s32PWR);
-    FE_DBG(("%s: %d dBm", __FUNCTION__, *ps16PWR));
-#if 1 // byKOR, added
-    if (pFETab->tunertab->Extension_Function(u8Idx, TUNER_EXT_FUNC_GET_POWER_LEVEL, &s32PWR) == FALSE)
-    {
-        RETURN(FALSE);
-	}
-    *ps16PWR = (MS_S16)(s32PWR);
-    FE_DBG((" ==> Total(RF+IF): %d dBuV\n", *ps16PWR));
-#endif
+    //FE_DBG(("%s: %d dBm\n", __FUNCTION__, *ps16PWR));
     RETURN(TRUE);
 }
 
+//-------------------------------------------------------------------------------------------------
+/// Get signal strength indicator (SSI)
+/// @param pu16SSI                   \b OUT: Signal power strength
+/// @return TRUE:  Success
+/// @return FALSE: Fail
+//-------------------------------------------------------------------------------------------------
+MS_BOOL MApi_DigiTuner_GetSSI(MS_U8 drv_frontend_index, MS_U16* pu16SSI)
+{
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    DEV_FRONTEND_TYPE* pFETab;
+
+    ENTRY();
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        RETURN(FALSE);
+
+    pFETab = *(pFETabAddr + drv_frontend_index);
+
+    if((pFETab->demodtab == NULL) || (pFETab->tunertab == NULL) )
+    {
+        RETURN(FALSE);
+    }
+
+    if (pFETab->demodtab->GetSSI(u8Idx,pu16SSI) == FALSE)
+    {
+        RETURN(FALSE);
+    }
+
+    //FE_DBG(("%s: %d (0~100)\n", __FUNCTION__, *pu16SSI));
+    RETURN(TRUE);
+}
 
 //-------------------------------------------------------------------------------------------------
 /// Get tuner Signal Power Strength
@@ -3148,7 +3873,7 @@ MS_BOOL MApi_DigiTuner_GetSignalQuality(MS_U8 drv_frontend_index, MS_U16* pu16qu
         RETURN(FALSE);
     }
 
-    FE_DBG(("%s: %d (0 ~ 100)\n", __FUNCTION__, *pu16quality));
+    //FE_DBG(("%s: %d (0 ~ 100)\n", __FUNCTION__, *pu16quality));
     RETURN(TRUE);
 }
 
@@ -3158,9 +3883,10 @@ MS_BOOL MApi_DigiTuner_GetSignalQuality(MS_U8 drv_frontend_index, MS_U16* pu16qu
 /// @return TRUE:  Success
 /// @return FALSE: Fail
 //-------------------------------------------------------------------------------------------------
-MS_BOOL MApi_DigiTuner_GetPWRFromTuner(MS_U8 drv_frontend_index, float* pfPWR)
+#ifdef __KERNEL__
+MS_BOOL MApi_DigiTuner_GetPWRFromTuner(MS_U8 drv_frontend_index, MS_S32* ps32PWR)
 {
-    float fPowerLevel = 0;
+    int PowerLevel = 0;
     MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
     DEV_FRONTEND_TYPE* pFETab;
 
@@ -3177,17 +3903,59 @@ MS_BOOL MApi_DigiTuner_GetPWRFromTuner(MS_U8 drv_frontend_index, float* pfPWR)
 
     pFETab->demodtab->I2CByPass(u8Idx,TRUE);
     // get from tuner
-    if(pFETab->tunertab->Extension_Function(u8Idx, TUNER_EXT_FUNC_GET_POWER_LEVEL, &fPowerLevel) == FALSE)
+    if(pFETab->tunertab->Extension_Function(u8Idx, TUNER_EXT_FUNC_GET_POWER_LEVEL, &PowerLevel) == FALSE)
     {
         pFETab->demodtab->I2CByPass(u8Idx,FALSE);
         RETURN(FALSE);
     }
     pFETab->demodtab->I2CByPass(u8Idx,FALSE);
-    *pfPWR = fPowerLevel;
-    FE_DBG(("%s: %lf dBm\n", __FUNCTION__, fPowerLevel));
+
+    //if(pFETab->tunertab->data == TUNER_RT710)//depend on unit of tuner driver defined
+    //    *pfPWR = (float)(PowerLevel/1000);
+    //else
+    *ps32PWR = (MS_S32)PowerLevel;
+
+    FE_DBG(("%s: %ld dBm\n", __FUNCTION__, *ps32PWR));
     RETURN(TRUE);
 }
 
+#else
+MS_BOOL MApi_DigiTuner_GetPWRFromTuner(MS_U8 drv_frontend_index, float* pfPWR)
+{
+    int PowerLevel = 0;
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    DEV_FRONTEND_TYPE* pFETab;
+
+    ENTRY();
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        RETURN(FALSE);
+
+    pFETab = *(pFETabAddr + drv_frontend_index);
+
+    if((pFETab->demodtab == NULL) || (pFETab->tunertab == NULL) )
+    {
+        RETURN(FALSE);
+    }
+
+    pFETab->demodtab->I2CByPass(u8Idx,TRUE);
+    // get from tuner
+    if(pFETab->tunertab->Extension_Function(u8Idx, TUNER_EXT_FUNC_GET_POWER_LEVEL, &PowerLevel) == FALSE)
+    {
+        pFETab->demodtab->I2CByPass(u8Idx,FALSE);
+        RETURN(FALSE);
+    }
+    pFETab->demodtab->I2CByPass(u8Idx,FALSE);
+
+    //if(pFETab->tunertab->data == TUNER_RT710)//depend on unit of tuner driver defined
+    //    *pfPWR = (float)(PowerLevel/1000);
+    //else
+    *pfPWR = (float)PowerLevel;
+
+    FE_DBG(("%s: %5.2f dBm\n", __FUNCTION__, *pfPWR));
+    RETURN(TRUE);
+}
+
+#endif
 //-------------------------------------------------------------------------------------------------
 /// Get packet error
 /// @param RegData                   \b OUT: packet error
@@ -3212,7 +3980,7 @@ MS_BOOL MApi_DigiTuner_Get_Packet_Error(MS_U8 drv_frontend_index, MS_U16 *RegDat
     }
 
     bRet = pFETab->demodtab->Get_Packet_Error(u8Idx, RegData);
-    FE_DBG(("%s: Packet_Error %x \n", __FUNCTION__, *RegData));
+    //FE_DBG(("%s: Packet_Error %x \n", __FUNCTION__, *RegData));
     RETURN(bRet);
 
 }
@@ -3262,8 +4030,13 @@ MS_BOOL MApi_DigiTuner_GetTPSInfo(MS_U8 drv_frontend_index, MS_FE_CARRIER_PARAM*
         pParam->CabParam.eConstellation = (EN_CAB_CONSTEL_TYPE)dmdParam.CabParam.eConstellation;
         pParam->CabParam.eIQMode        = (EN_CAB_IQ_MODE)dmdParam.CabParam.eIQMode;
         pParam->CabParam.u8TapAssign    = dmdParam.CabParam.u8TapAssign;
+#ifdef __KERNEL__
+        pParam->CabParam.s64CFO         = dmdParam.CabParam.s64CFO;
+#else
         pParam->CabParam.fCFO           = dmdParam.CabParam.fCFO;
+#endif
         pParam->CabParam.u8TuneFreqOffset = dmdParam.CabParam.u8TuneFreqOffset;
+        pParam->CabParam.u16SymbolRate = dmdParam.CabParam.u16SymbolRate;
     }
     else if((pFETab->dvb_type == DVBT) || (pFETab->dvb_type == DVBT2))
     {
@@ -3276,13 +4049,60 @@ MS_BOOL MApi_DigiTuner_GetTPSInfo(MS_U8 drv_frontend_index, MS_FE_CARRIER_PARAM*
     }
     else if(pFETab->dvb_type == DVBS || pFETab->dvb_type == DVBS2)
     {
+        pParam->SatParam.bIs_DVBS2      =  dmdParam.SatParam.bIsDVBS2;
         pParam->SatParam.eConstellation = (EN_SAT_CONSTEL_TYPE)dmdParam.SatParam.eConstellation;
         pParam->SatParam.eCodeRate      = (EN_CONV_CODE_RATE_TYPE)dmdParam.SatParam.eCodeRate;
         pParam->SatParam.eRollOff       = (EN_SAT_ROLL_OFF_TYPE)dmdParam.SatParam.eRollOff;
+        pParam->SatParam.eIQ_Mode       = (EN_SAT_IQ_MODE)dmdParam.SatParam.eIQ_Mode;
+#ifdef __KERNEL__
+        pParam->CabParam.s64CFO         = dmdParam.CabParam.s64CFO;
+#else
         pParam->SatParam.fCFO           = dmdParam.SatParam.fCFO;
+#endif
+    }
+    else if(pFETab->dvb_type == ISDBT)
+    {
+        memcpy(&pParam->ISDBTParam.stLayerX_Param, &dmdParam.ISDBTParam.stLayerX_Param, sizeof(DEMOD_MS_ISDBT_CARRIER_PARAM));
+    }
+    else if(pFETab->dvb_type == J83B)
+    {
+        pParam->J83BParam.eJ83BConstellation = dmdParam.J83BParam.eJ83BConstellation;
+    }
+    else if(pFETab->dvb_type == DTMB)
+    {
+        memcpy(&pParam->DTMBParam.stMOD, &dmdParam.DTMBParam.stMOD, sizeof(DEMOD_MS_DTMB_CARRIER_PARAM));
     }
 
     RETURN(TRUE);
+}
+
+//-------------------------------------------------------------------------------------------------
+/// Get Bit Rate
+/// @param eFE                      \b IN: Frontend id
+/// @param pstParam                 \b OUT: TPS carrier parameters
+/// @return TRUE:  Success
+/// @return FALSE: Fail
+//-------------------------------------------------------------------------------------------------
+MS_BOOL MApi_DigiTuner_GetTSBitRate(MS_U8 drv_frontend_index, MS_U16* pu16TsBitRate)
+{
+    MS_BOOL bRet = FALSE;
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    DEV_FRONTEND_TYPE* pFETab;
+
+    ENTRY();
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        RETURN(FALSE);
+
+    pFETab = *(pFETabAddr + drv_frontend_index);
+
+    if((pFETab->demodtab == NULL) || (pFETab->tunertab == NULL) )
+    {
+        RETURN(FALSE);
+    }
+
+    bRet = pFETab->demodtab->Extension_Function(u8Idx,DEMOD_EXT_FUNC_GET_BIT_RATE,pu16TsBitRate);
+    FE_DBG(("%s: TS Bit Rate %d Kbit/s\n", __FUNCTION__, *(int*)pu16TsBitRate));
+    RETURN(bRet);
 }
 
 MS_BOOL MApi_DigiTuner_Loop_Through_On(MS_U8 drv_frontend_index, MS_BOOL bOn)
@@ -3390,37 +4210,6 @@ MS_BOOL MApi_DigiTuner_Wake_Up(MS_U8 drv_frontend_index)
     RETURN(TRUE);
 }
 
-MS_BOOL MApi_Frontend_LoadResetPin(void)
-{
-    MS_U8 u8Port_Idx;
-
-    for(u8Port_Idx=0; u8Port_Idx< MAX_FRONTEND_NUM; u8Port_Idx++)
-    {
-        switch(u8Port_Idx)
-        {
-        case 0:
-            FE_Reset_Pin[u8Port_Idx] = GPIO_FE_RST;
-            break;
-#if (MAX_FRONTEND_NUM > 1)
-        case 1:
-            FE_Reset_Pin[u8Port_Idx] = GPIO_FE_RST1;
-            break;
-#endif
-#if (MAX_FRONTEND_NUM > 2)
-        case 2:
-            FE_Reset_Pin[u8Port_Idx] = GPIO_FE_RST2;
-            break;
-#endif
-#if (MAX_FRONTEND_NUM > 3)
-        case 3:
-            FE_Reset_Pin[u8Port_Idx] = GPIO_FE_RST3;
-            break;
-#endif
-        }
-    }
-    return TRUE;
-}
-
 //------------------------------------------------------
 // function callback by  demod layer
 //
@@ -3428,31 +4217,34 @@ MS_BOOL MApi_Frontend_LoadResetPin(void)
 //demod  reset pin
 void MApi_Demod_HWReset(MS_U8 u8Port_Idx)
 {
-    MS_U32 gpio_fe_rst_num = 0;
+    MS_U32 gpio_dmd_rst_num = 0;
+    MS_U32 gpio_tun_rst_num = 0;
     MS_U8 i,u8FEIdx, u8FE1stIdx = 0;
     DEV_FRONTEND_TYPE* pFETab;
+    MS_FE_CONNECTOR_CONFIG* pstCon = NULL;
 
-    if(!FE_Load_Reset_Pin)
+    if(!_DigiTuner_BoardInfoReady())
+        return;
+
+    pstCon = stBoardInfo.pstConConfig + u8Port_Idx;
+    gpio_dmd_rst_num = pstCon->stDMDCon.u32HW_ResetPin;//FE_Reset_Pin[u8Port_Idx];
+    gpio_tun_rst_num = pstCon->stTUNCon.u32HW_ResetPin;
+
+    FE_DBG(("%s: Pin %d\n", __FUNCTION__, (int)gpio_dmd_rst_num));
+    for(i=0; i< stBoardInfo.u8MaxFENum; i++)
     {
-        MApi_Frontend_LoadResetPin();
-        FE_Load_Reset_Pin = TRUE;
-    }
-
-    gpio_fe_rst_num = FE_Reset_Pin[u8Port_Idx];
-
-    FE_DBG(("%s: Pin %d\n", __FUNCTION__, (int)gpio_fe_rst_num));
-    for(i=0; i< MAX_FRONTEND_NUM; i++)
-    {
-        if(gpio_fe_rst_num == FE_Reset_Pin[i])
+        pstCon = stBoardInfo.pstConConfig + i;
+        if((gpio_dmd_rst_num == pstCon->stDMDCon.u32HW_ResetPin)||\
+            gpio_tun_rst_num == pstCon->stTUNCon.u32HW_ResetPin)
         {
             if(FE_Detect_Done)
             {
                 if(i)
                 {
-                    u8FE1stIdx = u32ch_acc[i-1];
+                    u8FE1stIdx = get_ch_acc(i-1);
                 }
 
-                for(u8FEIdx=u8FE1stIdx; u8FEIdx<u32ch_acc[i]; u8FEIdx++)
+                for(u8FEIdx=u8FE1stIdx; u8FEIdx<get_ch_acc(i); u8FEIdx++)
                 {
                     pFETab = *(pFETabAddr + u8FEIdx);
                     pFETab->bReset = TRUE;       // record that HW reset is done in when multipule FEs share this reset pin
@@ -3462,11 +4254,14 @@ void MApi_Demod_HWReset(MS_U8 u8Port_Idx)
 
         }
     }
-    mdrv_gpio_set_high(gpio_fe_rst_num);
+    mdrv_gpio_set_high(gpio_dmd_rst_num);
+    mdrv_gpio_set_high(gpio_tun_rst_num);
     MsOS_DelayTask(5);
-    mdrv_gpio_set_low(gpio_fe_rst_num);
+    mdrv_gpio_set_low(gpio_dmd_rst_num);
+    mdrv_gpio_set_low(gpio_tun_rst_num);
     MsOS_DelayTask(10);
-    mdrv_gpio_set_high(gpio_fe_rst_num);
+    mdrv_gpio_set_high(gpio_dmd_rst_num);
+    mdrv_gpio_set_high(gpio_tun_rst_num);
     MsOS_DelayTask(5);
 
 }
@@ -3736,6 +4531,14 @@ MS_BOOL MApi_DigiTuner_Satellite_Set22K(MS_U8 drv_frontend_index, MS_BOOL b22KOn
     RETURN(bRet);
 }
 
+MS_BOOL MApi_DigiTuner_Satellite_Get22K(MS_U8 drv_frontend_index, MS_BOOL* pb22KOn)
+{
+    MS_BOOL bRet = TRUE;
+    ENTRY();
+    bRet = _DigiTuner_Satellite_Get22K(drv_frontend_index, pb22KOn);
+    RETURN(bRet);
+}
+
 MS_BOOL MApi_DigiTuner_Satellite_SetLNBPower(MS_U8 drv_frontend_index, MS_EN_LNBPWR_ONOFF enLNBPowe,MS_U8 u8Polarity,MS_BOOL bPorInvert)
 {
     MS_BOOL bRet = TRUE;
@@ -3758,6 +4561,7 @@ MS_BOOL MApi_DigiTuner_Satellite_Set22K_Ext(MS_U8 drv_frontend_index, MS_BOOL b2
     MS_BOOL bRet = TRUE;
     MS_U8 u8Idx = _DigiTuner_FEIdx2DevIdx(drv_frontend_index);
     DEV_FRONTEND_TYPE* pFETab;
+    EN_CABLE_SELECT eCable_Sel;
 
     if(FALSE == _DigiTuner_CheckFEtab_Exist(drv_frontend_index))
         return FALSE;
@@ -3765,8 +4569,10 @@ MS_BOOL MApi_DigiTuner_Satellite_Set22K_Ext(MS_U8 drv_frontend_index, MS_BOOL b2
     pFETab = *(pFETabAddr + drv_frontend_index);
 
     ENTRY();
-    bRet = pFETab->dishtab->SetCable(u8Idx, eCableID);
-    bRet = _DigiTuner_Satellite_Set22K(drv_frontend_index, b22KOn);
+    bRet &= pFETab->dishtab->SetCable(u8Idx, eCableID);
+    eCable_Sel = eCableID;
+    bRet &= pFETab->tunertab->Extension_Function(u8Idx, TUNER_EXT_FUNC_SET_CABLE_INDEX, &eCable_Sel);
+    bRet &= _DigiTuner_Satellite_Set22K(drv_frontend_index, b22KOn);
     RETURN(bRet);
 }
 
@@ -3782,8 +4588,8 @@ MS_BOOL MApi_DigiTuner_Satellite_SetLNBPower_Ext(MS_U8 drv_frontend_index, MS_EN
     pFETab = *(pFETabAddr + drv_frontend_index);
 
     ENTRY();
-    bRet = pFETab->dishtab->SetCable(u8Idx, eCableID);
-    bRet = _DigiTuner_SetLNBPower(drv_frontend_index, enLNBPowe,u8Polarity,bPorInvert);
+    bRet &= pFETab->dishtab->SetCable(u8Idx, eCableID);
+    bRet &= _DigiTuner_SetLNBPower(drv_frontend_index, enLNBPowe,u8Polarity,bPorInvert);
     RETURN(bRet);
 }
 
@@ -3792,6 +4598,7 @@ MS_BOOL MApi_DigiTuner_Satellite_Set22KTone_Ext(MS_U8 drv_frontend_index, MS_U32
     MS_BOOL bRet = TRUE;
     MS_U8 u8Idx = _DigiTuner_FEIdx2DevIdx(drv_frontend_index);
     DEV_FRONTEND_TYPE* pFETab;
+    EN_CABLE_SELECT eCable_Sel;
 
     if(FALSE == _DigiTuner_CheckFEtab_Exist(drv_frontend_index))
         return FALSE;
@@ -3799,8 +4606,10 @@ MS_BOOL MApi_DigiTuner_Satellite_Set22KTone_Ext(MS_U8 drv_frontend_index, MS_U32
     pFETab = *(pFETabAddr + drv_frontend_index);
 
     ENTRY();
-    bRet = pFETab->dishtab->SetCable(u8Idx, eCableID);
-    bRet = _DigiTuner_Satellite_Set22KTone(drv_frontend_index, (EN_TONEBURST_TYPE)u32ToneType);
+    bRet &= pFETab->dishtab->SetCable(u8Idx, eCableID);
+    eCable_Sel = eCableID;
+    bRet &= pFETab->tunertab->Extension_Function(u8Idx, TUNER_EXT_FUNC_SET_CABLE_INDEX, &eCable_Sel);
+    bRet &= _DigiTuner_Satellite_Set22KTone(drv_frontend_index, (EN_TONEBURST_TYPE)u32ToneType);
     RETURN(bRet);
 }
 #endif
@@ -4042,6 +4851,24 @@ MS_BOOL MApi_DigiTuner_DiSEqC_SendCommand(MS_U8 drv_frontend_index, MS_U8* pCmd,
     RETURN(bRet);
 }
 
+
+MS_BOOL MApi_DigiTuner_DiSEqC_GetReply(MS_U8 drv_frontend_index, DISEQC_RX_MSG* pstRxMSG)
+{
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    MS_BOOL bRet = TRUE;
+    DEV_FRONTEND_TYPE* pFETab;
+
+    ENTRY();
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        RETURN(FALSE);
+
+    pFETab = *(pFETabAddr + drv_frontend_index);
+    bRet &= pFETab->demodtab->DiSEqC_GetReply(u8Idx, pstRxMSG);
+
+    RETURN(bRet);
+}
+
+
 //u8Port PORT1~PORT4
 //u8SubPort  H/L-LOF     V
 MS_BOOL MApi_DigiTuner_DiSEqC_SwitchPort(MS_U8 drv_frontend_index, MS_U8 u8Port,MS_BOOL bUnCommited)
@@ -4114,6 +4941,7 @@ MS_BOOL MApi_DigiTuner_DiSEqC_SwitchPort_Ext(MS_U8 drv_frontend_index, MS_U8 u8P
     MS_FE_CARRIER_PARAM* pTunerParam = NULL;
     MS_U8 u8SubPort = 0;
     DEV_FRONTEND_TYPE* pFETab;
+    EN_CABLE_SELECT eCable_Sel;
 
     if(FALSE == _DigiTuner_CheckFEtab_Exist(drv_frontend_index))
         return FALSE;
@@ -4126,6 +4954,8 @@ MS_BOOL MApi_DigiTuner_DiSEqC_SwitchPort_Ext(MS_U8 drv_frontend_index, MS_U8 u8P
     pTunerParam = _ptunerParam + drv_frontend_index;
     pstSATParam = _pstSATParam + drv_frontend_index;
     bRet &= pFETab->dishtab->SetCable(_DigiTuner_FEIdx2DevIdx(drv_frontend_index), eCableID);
+    eCable_Sel = eCableID;
+    bRet &= pFETab->tunertab->Extension_Function(_DigiTuner_FEIdx2DevIdx(drv_frontend_index), TUNER_EXT_FUNC_SET_CABLE_INDEX, &eCable_Sel);
 
     if(pstSATParam->e22KOnOff == EN_22K_ON ||(pstSATParam->e22KOnOff == EN_22K_AUTO && bIsHiLOF))
     {
@@ -4339,62 +5169,94 @@ MS_BOOL MApi_DigiTuner_IsNeedCheckCurrent(void)
 #endif
     return TRUE;
 }
+
+MS_BOOL MApi_DigiTuner_GetVCM_ISID_INFO(MS_U8 drv_frontend_index, MS_U8* pu8IS_ID, MS_U8* pu8Table)
+{
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    MS_BOOL ret;
+    DEV_FRONTEND_TYPE* pFETab;
+
+    ENTRY();
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        RETURN(FALSE);
+
+    pFETab = *(pFETabAddr + drv_frontend_index);
+
+    ret = pFETab->demodtab->GetISIDInfo(u8Idx, pu8IS_ID, pu8Table);
+    RETURN(ret);
+}
+
+MS_BOOL MApi_DigiTuner_SetVCM_ISID(MS_U8 drv_frontend_index, MS_U8 u8IS_ID)
+{
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    MS_BOOL ret;
+    DEV_FRONTEND_TYPE* pFETab;
+
+    ENTRY();
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        RETURN(FALSE);
+
+    pFETab = *(pFETabAddr + drv_frontend_index);
+
+    ret = pFETab->demodtab->SetISID(u8Idx, u8IS_ID);
+    RETURN(ret);
+}
+
+
 #endif
 MS_BOOL MApi_DigiTuner_Frontend_List_Show(void)
 {
     MS_U8 u8FE_Idx = 0, u8I2C_Port_Number = 0;
     DEV_FRONTEND_TYPE* pFETab;
     MS_BOOL bret = TRUE;
-    HWI2C_PORT hwi2c_port;
+    MS_IIC_PORT i2c_port;
     MS_BOOL bIsMCP = FALSE;
     const char* cMCP="(MCP)";
     const char* cEXT="(EXT)";
-    char* cDMD_NAME = (char *)MsOS_AllocateMemory(20, gs32FECachedPoolID);
+    char* cDMD_NAME = (char *)MsOS_AllocateMemory(30, gs32FECachedPoolID);
+    MS_FE_CONNECTOR_CONFIG* pstCon = NULL;
 
     if((!FE_Detect_Done) && (eDetect_Mode != USER_DEFINE))
     {
-        if(!FE_Load_Reset_Pin)
-        {
-            MApi_Frontend_LoadResetPin();
-            FE_Load_Reset_Pin = TRUE;
-        }
         bret &= MApi_DigiTuner_Frontend_Scan();
     }
 
-    FE_MSG(("===================================================================================================\n"));
+    FE_MSG(("=====================================================================================================\n"));
     while(_DigiTuner_CheckFEtab_Exist(u8FE_Idx))
     {
         pFETab = *(pFETabAddr + u8FE_Idx);
-        hwi2c_port = getI2CPort(_DigiTuner_FEIdx2DevIdx(u8FE_Idx));
-        if (hwi2c_port < E_HWI2C_PORT_1)
-        {
-            u8I2C_Port_Number = 0;
-        }
-        else if (hwi2c_port < E_HWI2C_PORT_2)
-        {
-            u8I2C_Port_Number = 1;
-        }
+        pstCon = stBoardInfo.pstConConfig + _DigiTuner_FEIdx2DevIdx(u8FE_Idx);
+        i2c_port = pstCon->stDMDCon.eI2C_PORT;
 
-        strcpy(cDMD_NAME, pFETab->demodtab->name);
+        strncpy(cDMD_NAME, pFETab->demodtab->name, 25);
         if((pFETab->demodtab->data == DEMOD_MSB1245) || ((pFETab->demodtab->data == DEMOD_MSB124X)))
         {
             pFETab->demodtab->Extension_Function(_DigiTuner_FEIdx2DevIdx(u8FE_Idx), DEMOD_EXT_FUNC_GET_PACKGE_INFO, &bIsMCP);
             if(bIsMCP)
             {
-                cDMD_NAME = strcat((char*)cDMD_NAME, cMCP);
+                cDMD_NAME = strncat((char*)cDMD_NAME, cMCP, strlen(cMCP));
             }
             else
             {
-                cDMD_NAME = strcat((char*)cDMD_NAME, cEXT);
+                cDMD_NAME = strncat((char*)cDMD_NAME, cEXT, strlen(cEXT));
             }
         }
 
-        FE_MSG(("[FrontEnd_Index %d]  Demod: %-25sTuner: %-25sI2C_Port:I2C%d\n", (int)u8FE_Idx,(char*)cDMD_NAME, pFETab->tunertab->name,(int)u8I2C_Port_Number));
+        if((int)i2c_port < (int)E_MS_IIC_SW_PORT_0)
+        {
+            u8I2C_Port_Number = (MS_U8)i2c_port/8;
+            FE_MSG(("[FrontEnd_Index %d]  Demod: %-25sTuner: %-25sI2C_Port:HW_I2C%d\n", (int)u8FE_Idx,(char*)cDMD_NAME, pFETab->tunertab->name,(int)u8I2C_Port_Number));
+        }
+        else if((int)i2c_port < (int)E_MS_IIC_PORT_NOSUP)//sw i2c
+        {
+            u8I2C_Port_Number = E_MS_IIC_SW_PORT_0/8 + (i2c_port - E_MS_IIC_SW_PORT_0);
+            FE_MSG(("[FrontEnd_Index %d]  Demod: %-25sTuner: %-25sI2C_Port:SW_I2C%d\n", (int)u8FE_Idx,(char*)cDMD_NAME, pFETab->tunertab->name,(int)u8I2C_Port_Number));
+        }
         u8FE_Idx++;
     }
     if(!u8FE_Idx)
         FE_MSG(("NO Frontend !!\n"));
-    FE_MSG(("===================================================================================================\n"));
+    FE_MSG(("=====================================================================================================\n"));
     MsOS_FreeMemory(cDMD_NAME, gs32FECachedPoolID);
     return bret;
 
@@ -4404,10 +5266,14 @@ MS_BOOL MApi_DigiTuner_Frontend_Scan(void)
 {
     MS_U8 u8Port_Idx = 0,u8FE_Idx = 0,j;
     MS_U32 u32ch_cnt = 0;
-    HWI2C_PORT hwi2c_port;
+    MS_IIC_PORT i2c_port;
     DEV_FRONTEND_TYPE* p1stFEtab = NULL;
     DEV_FRONTEND_TYPE* pPreFEtab = NULL;
     DEV_FRONTEND_TYPE* pCurFEtab = NULL;
+    MS_FE_CONNECTOR_CONFIG* pstCon = NULL;
+    MS_U8 u8DMDScanOrder = 0;
+    MS_BOOL bScanExt=FALSE;
+    MS_U8 u8I2C_Cnt_Max;
 
     if(INVALID_POOL_ID == gs32FECachedPoolID)
     {
@@ -4415,17 +5281,24 @@ MS_BOOL MApi_DigiTuner_Frontend_Scan(void)
         return FALSE;
     }
 
-    pu16ExtDMD_Info = (EXT_DMD_INFO*)MsOS_AllocateMemory(sizeof(EXT_DMD_INFO) * MAX_FRONTEND_NUM, gs32FECachedPoolID);
+    if(!_DigiTuner_BoardInfoReady())
+        return FALSE;
+
+    u8I2C_Cnt_Max = (MS_U8)((E_MS_IIC_SW_PORT_0/8) + (E_MS_IIC_SW_PORT_MAX - E_MS_IIC_SW_PORT_0));
+
+    pu16ExtDMD_Info = (EXT_DMD_INFO*)MsOS_AllocateMemory(sizeof(EXT_DMD_INFO) * u8I2C_Cnt_Max, gs32FECachedPoolID);
     if(NULL == pu16ExtDMD_Info)
         return FALSE;
     else
-        memset(pu16ExtDMD_Info, 0x00, sizeof(EXT_DMD_INFO)*MAX_FRONTEND_NUM);
+        memset(pu16ExtDMD_Info, 0x00, sizeof(EXT_DMD_INFO)*u8I2C_Cnt_Max);
 
-    for(u8Port_Idx=0; u8Port_Idx < MAX_FRONTEND_NUM; u8Port_Idx++)
+    for(u8Port_Idx=0; u8Port_Idx < stBoardInfo.u8MaxFENum; u8Port_Idx++)
     {
-
-        hwi2c_port = getI2CPort(u8Port_Idx);
-        MDrv_IIC_Init(hwi2c_port);
+        pstCon = stBoardInfo.pstConConfig + u8Port_Idx;
+        i2c_port = pstCon->stDMDCon.eI2C_PORT;
+        MDrv_IIC_Init(i2c_port);
+        i2c_port = pstCon->stTUNCon.eI2C_PORT;
+        MDrv_IIC_Init(i2c_port);
         MApi_Demod_HWReset(u8Port_Idx);
 
         pCurFEtab = (DEV_FRONTEND_TYPE*)MsOS_AllocateMemory(sizeof(DEV_FRONTEND_TYPE), gs32FECachedPoolID);
@@ -4437,34 +5310,48 @@ MS_BOOL MApi_DigiTuner_Frontend_Scan(void)
         pCurFEtab->dvb_type = DefaultBroadcastType;
         // demod detect
         if(u8Port_Idx != 0)
-            u8FE_Idx = u32ch_acc[u8Port_Idx - 1];
+        {
+            u8FE_Idx = get_ch_acc(u8Port_Idx - 1);
+            set_ch_acc(u8Port_Idx, get_ch_acc(u8Port_Idx - 1));
+        }
 
-        MApi_Demod_lookup(u8Port_Idx,pCurFEtab);
-        if(pCurFEtab->demodtab->data == DEMOD_NULL)
+
+        for(u8DMDScanOrder=0; u8DMDScanOrder<2; u8DMDScanOrder++)
+        {
+       #ifndef INTERNAL_DEMOD_SCAN_1ST
+            bScanExt = (MS_BOOL)((u8DMDScanOrder + 1)%2);
+       #else
+            bScanExt = (MS_BOOL)u8DMDScanOrder;
+       #endif
+            MApi_Demod_lookup(u8Port_Idx,pCurFEtab, bScanExt);
+
+            if((pCurFEtab->demodtab->data == DEMOD_NULL) && (u8DMDScanOrder == 0))
+            {
+                continue;
+            }
+
+            if(pCurFEtab->demodtab->data == DEMOD_NULL)
+            {
+                pCurFEtab->tunertab = &GET_TUNER_ENTRY_NODE(TUNER_NULL);
+                FE_DBG(("NO any demod found\n"));
+                break;
+            }
+
+            MApi_Tuner_lookup(u8Port_Idx, pCurFEtab,(pu32ch_acc + u8Port_Idx));
+            if(pCurFEtab->tunertab->data != TUNER_NULL)
+                break;
+        }
+
+
+        if((pCurFEtab->tunertab->data == TUNER_NULL) || (pCurFEtab->demodtab->data == DEMOD_NULL))
         {
             MsOS_FreeMemory(pCurFEtab, gs32FECachedPoolID);
             pCurFEtab = NULL;
-            if(u8Port_Idx !=0)
-                u32ch_acc[u8Port_Idx] = u32ch_acc[u8Port_Idx - 1];
             continue;
         }
 
         pCurFEtab->bReset = FALSE;//will do HW reset before its initialze and set this flag as TRUE
-        MApi_Tuner_lookup(u8Port_Idx, pCurFEtab,&u32ch_acc[u8Port_Idx]);//FALSE ==> no tuner is found
-        if(pCurFEtab->tunertab->data == TUNER_NULL)
-        {
-            MsOS_FreeMemory(pCurFEtab, gs32FECachedPoolID);
-            pCurFEtab = NULL;
-            if(u8Port_Idx != 0)
-                u32ch_acc[u8Port_Idx] = u32ch_acc[u8Port_Idx - 1];
-            continue;
-        }
 
-
-        if(u8Port_Idx != 0)
-        {
-            u32ch_acc[u8Port_Idx] += u32ch_acc[u8Port_Idx - 1];
-        }
 
         //Link to previous FETab
         if(NULL == p1stFEtab)
@@ -4474,12 +5361,14 @@ MS_BOOL MApi_DigiTuner_Frontend_Scan(void)
 
         // set DMX input path
         if(FALSE == MApi_Frontend_InExteralPath_Arrange(pCurFEtab->eInExTernalPath, pCurFEtab))
-            return FALSE;
+        {
+            FE_ERR(("Warning: Set default DMX path ERROR!!!\n"));
+        }
 
         pPreFEtab = pCurFEtab;
 
         //Wide band tuner duplicate frontend table
-        for(u8FE_Idx++ ; u8FE_Idx < u32ch_acc[u8Port_Idx] ; u8FE_Idx++)
+        for(u8FE_Idx++ ; u8FE_Idx < get_ch_acc(u8Port_Idx) ; u8FE_Idx++)
         {
             pCurFEtab = (DEV_FRONTEND_TYPE*)MsOS_AllocateMemory(sizeof(DEV_FRONTEND_TYPE), gs32FECachedPoolID);
             if(NULL == pCurFEtab)
@@ -4552,6 +5441,39 @@ MS_BOOL MApi_DigiTuner_GetFEtab(MS_U8 drv_frontend_index, DEV_FRONTEND_TYPE** pF
     RETURN(TRUE);
 }
 
+MS_BOOL MApi_DigiTuner_GetDemodName(MS_U8 drv_frontend_index, char* name)
+{
+    DEV_FRONTEND_TYPE* pFETab = NULL;
+
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        return FALSE;
+    pFETab = *(pFETabAddr + drv_frontend_index);
+    strcpy(name, pFETab->demodtab->name);
+    return TRUE;
+}
+
+MS_BOOL MApi_DigiTuner_GetTunerName(MS_U8 drv_frontend_index, char* name)
+{
+    DEV_FRONTEND_TYPE* pFETab = NULL;
+
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        return FALSE;
+    pFETab = *(pFETabAddr + drv_frontend_index);
+    strcpy(name, pFETab->tunertab->name);
+    return TRUE;
+}
+
+MS_BOOL MApi_DigiTuner_DemodSupportINT(MS_U8 drv_frontend_index)
+{
+    DEV_FRONTEND_TYPE* pFETab = NULL;
+
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        return FALSE;
+
+    pFETab = *(pFETabAddr + drv_frontend_index);
+    return pFETab->demodtab->SupportINT;
+}
+
 MS_BOOL MApi_DigiTuner_Set_MemPool(E_DDI_FE_SYSPOOLID eSYSPOOL,MS_S32 s32PoolID)
 {
     if (eSYSPOOL == E_DDI_FE_POOL_SYS_CACHE)
@@ -4588,6 +5510,10 @@ MS_BOOL MApi_DigiTuner_SetPowerState(EN_POWER_MODE emod)
             pFETab = *(pFETabAddr + u8FEIdx);
             pFETab->bReset = FALSE;
         }
+        for(u8FEIdx = 0; u8FEIdx <= u8FEIdxMax; u8FEIdx++)
+        {
+            bret &= MApi_DigiTuner_PowerOnOff(u8FEIdx, FALSE);
+        }
 
         if(_s32MutexId!=-1)
         {
@@ -4596,7 +5522,7 @@ MS_BOOL MApi_DigiTuner_SetPowerState(EN_POWER_MODE emod)
         }
         break;
     case  E_POWER_RESUME:
-        for(u8Port_Idx=0; u8Port_Idx < MAX_FRONTEND_NUM; u8Port_Idx++)
+        for(u8Port_Idx=0; u8Port_Idx < stBoardInfo.u8MaxFENum; u8Port_Idx++)
         {
             MApi_Demod_HWReset(u8Port_Idx);
         }
@@ -4609,28 +5535,10 @@ MS_BOOL MApi_DigiTuner_SetPowerState(EN_POWER_MODE emod)
 
 MS_BOOL MApi_DigiTuner_GetTunerParam(MS_U8 drv_frontend_index,MS_FE_CARRIER_PARAM* pParam)
 {
-    MS_FE_CARRIER_PARAM* pCurParam = NULL;
-    DEV_FRONTEND_TYPE* pFETab = NULL;
-    MS_BOOL bret = TRUE;
-    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
-
-    if((NULL == _ptunerParam)||(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index)))
-    {
-        FE_DBG(("Get Tuner Parameter pointer FAIL!!\n"));
-        return FALSE;
-    }
-
-    ENTRY();
-
-    pCurParam = _ptunerParam + drv_frontend_index;
-    pFETab = *(pFETabAddr + drv_frontend_index);
-    pFETab->demodtab->GetParam(u8Idx, (DEMOD_MS_FE_CARRIER_PARAM*)pCurParam);
-
-    memcpy(pParam, pCurParam, sizeof(MS_FE_CARRIER_PARAM));
-    RETURN(bret);
+    return MApi_DigiTuner_GetTPSInfo(drv_frontend_index, pParam);
 }
 
-MS_BOOL MApi_DigiTuner_SetISDBTLayer(MS_U8 drv_frontend_index,DEMOD_ISDBT_Layer eISDBT_Layer)
+MS_BOOL MApi_DigiTuner_SetISDBTLayer(MS_U8 drv_frontend_index,EN_ISDBT_Layer eISDBT_Layer)
 {
     DEV_FRONTEND_TYPE* pFETab = NULL;
     MS_BOOL bret = TRUE;
@@ -4646,7 +5554,7 @@ MS_BOOL MApi_DigiTuner_SetISDBTLayer(MS_U8 drv_frontend_index,DEMOD_ISDBT_Layer 
     ENTRY();
 
     pFETab = *(pFETabAddr + drv_frontend_index);
-    eLayer = eISDBT_Layer;
+    eLayer = (DEMOD_ISDBT_Layer)eISDBT_Layer;
 
     if(pFETab->dvb_type == ISDBT)
     {
@@ -4673,11 +5581,12 @@ MS_BOOL MApi_DigiTuner_FEIdx_to_DevIdx(MS_U8 drv_frontend_index, MS_U8* pu8DevId
     return TRUE;
 }
 
-MS_BOOL MApi_DigiTuner_SetDMD_PIDFilter(MS_U8 drv_frontend_index, DEMOD_PID_FILTER* pstPIDFlt)
+MS_BOOL MApi_DigiTuner_SetDMD_PIDFilter(MS_U8 drv_frontend_index, MS_FE_PID_FILTER* pstPIDFlt)
 {
     MS_BOOL bret;
     DEV_FRONTEND_TYPE* pFETab = NULL;
     MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    DEMOD_PID_FILTER* pstDMD_PIDFlt = NULL;
 
     if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
     {
@@ -4687,14 +5596,30 @@ MS_BOOL MApi_DigiTuner_SetDMD_PIDFilter(MS_U8 drv_frontend_index, DEMOD_PID_FILT
     ENTRY();
 
     pFETab = *(pFETabAddr + drv_frontend_index);
-
-    bret = pFETab->demodtab->Extension_Function(u8Idx, DEMOD_EXT_FUNC_SET_PID_FILTER, pstPIDFlt);
+    pstDMD_PIDFlt = (DEMOD_PID_FILTER*)pstPIDFlt;
+    bret = pFETab->demodtab->Extension_Function(u8Idx, DEMOD_EXT_FUNC_SET_PID_FILTER, pstDMD_PIDFlt);
 
     RETURN(bret);
 }
 
 
-#ifdef DDI_MISC_INUSE
+MS_BOOL MApi_DigiTuner_GetCellID(MS_U8 drv_frontend_index,MS_U16* pu16CellID)
+{
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    DEV_FRONTEND_TYPE* pFETab;
+    MS_BOOL bRet = FALSE;
+
+    ENTRY();
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        RETURN(bRet);
+
+    pFETab = *(pFETabAddr + drv_frontend_index);
+    bRet = pFETab->demodtab->Extension_Function(u8Idx, DEMOD_EXT_FUNC_GET_T_T2_CELL_ID, pu16CellID);
+
+    RETURN(bRet);
+}
+
+//#ifdef DDI_MISC_INUSE
 #ifdef FE_AUTO_TEST
 //-------------------------------------------------------------------------------------------------
 /// Get Demod Read Reg
@@ -4766,7 +5691,7 @@ MS_BOOL MApi_DigiTuner_Reset(MS_U8 drv_frontend_index, DEMOD_MS_FE_CARRIER_PARAM
     dmdParam.SatParam.u32SymbolRate = pParam->SatParam.u32SymbolRate;
 
     u32DemodType = pFETab->demodtab->data;
-    if(u32DemodType == DEMOD_MSKELTIC_DVBS || (u32DemodType == DEMOD_MSKRIS_DVBS) || (u32DemodType == DEMOD_MSKRATOS_DVBS))
+    if(u32DemodType == DEMOD_MSINTERN_DVBS)
     {
         if (pFETab->tunertab->SetFreqS2(u8Idx, pParam->u32Frequency, pParam->SatParam.u32SymbolRate) == FALSE)
         {
@@ -4785,7 +5710,7 @@ MS_BOOL MApi_DigiTuner_Reset(MS_U8 drv_frontend_index, DEMOD_MS_FE_CARRIER_PARAM
 }
 
 #endif
-#endif
+//#endif
 
 #if MS_DVBT2_INUSE
 void MApi_DigiTuner_CtrlResetDJBFlag(MS_U8 drv_frontend_index, MS_U8 Ctrl)
@@ -4928,6 +5853,193 @@ MS_U8 MApi_DigiTuner_Get_Current_Plp_Id(void)
 
 #endif //#if MS_DVBT2_INUSE
 
+#if MS_ATV_INUSE //APIs for ATV
+MS_BOOL MApi_DigiTuner_SetTunerInScanMode(MS_U8 drv_frontend_index, MS_BOOL bSetScanMode)
+{
+    MS_BOOL bRet = FALSE;
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    DEV_FRONTEND_TYPE* pFETab;
+
+    ENTRY();
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        RETURN(bRet);
+
+    pFETab = *(pFETabAddr + drv_frontend_index);
+    bRet = pFETab->tunertab->Extension_Function(u8Idx, TUNER_EXT_RUNC_SET_TUNER_IN_SCAN_MODE, &bSetScanMode);
+
+    RETURN(bRet);
+}
+
+MS_BOOL MApi_DigiTuner_GetTunerFreqStep(MS_U8 drv_frontend_index, EN_ATV_FREQ_STEP* peFreqStep)
+{
+    MS_BOOL bRet = FALSE;
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    DEV_FRONTEND_TYPE* pFETab;
+    TUNER_EN_FREQ_STEP* pTunerFreqStep = NULL;
+
+    ENTRY();
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        RETURN(bRet);
+
+    pFETab = *(pFETabAddr + drv_frontend_index);
+    pTunerFreqStep = (TUNER_EN_FREQ_STEP*)peFreqStep;
+    bRet = pFETab->tunertab->Extension_Function(u8Idx, TUNER_EXT_FUNC_GET_FREQ_STEP, pTunerFreqStep);
+
+    RETURN(bRet);
+}
+
+MS_BOOL MApi_DigiTuner_GetTunerIF(MS_U8 drv_frontend_index, MS_U32* pu32IF)
+{
+    MS_BOOL bRet = FALSE;
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    DEV_FRONTEND_TYPE* pFETab;
+
+    ENTRY();
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        RETURN(bRet);
+
+    pFETab = *(pFETabAddr + drv_frontend_index);
+    bRet = pFETab->tunertab->GetTunerIF(u8Idx, pu32IF);
+
+    RETURN(bRet);
+}
+
+MS_BOOL MApi_DigiTuner_GetTunerType(MS_U8 drv_frontend_index, MS_U8* pu8Type)
+{
+    MS_BOOL bRet = FALSE;
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    DEV_FRONTEND_TYPE* pFETab;
+
+    ENTRY();
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        RETURN(bRet);
+
+    pFETab = *(pFETabAddr + drv_frontend_index);
+    bRet = pFETab->tunertab->Extension_Function(u8Idx, TUNER_EXT_FUNC_GET_TUNER_TYPE, pu8Type);
+
+    RETURN(bRet);
+}
+
+MS_BOOL MApi_DigiTuner_GetVIFNotchSOSFilter(MS_U8 drv_frontend_index, MS_U32 u32SoundSYS, MS_U32 u32DataLength, MS_U16* pu16FilterData)
+{
+    MS_BOOL bRet = FALSE;
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    DEV_FRONTEND_TYPE* pFETab;
+    TUNER_EXT_FUNCTION_PARAM stParam;
+
+    ENTRY();
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        RETURN(bRet);
+
+    stParam.u32Param1 = u32SoundSYS;
+    stParam.u32Param2 = u32DataLength;
+    stParam.pParam = pu16FilterData;
+    pFETab = *(pFETabAddr + drv_frontend_index);
+    bRet = pFETab->tunertab->Extension_Function(u8Idx, TUNER_EXT_FUNC_GET_VIF_NOTCH_SOSFILTER, &stParam);
+
+    RETURN(bRet);
+}
+
+MS_BOOL MApi_DigiTuner_GetPeakingParam(MS_U8 drv_frontend_index, MS_U32 u32Band, MS_U32 u32IF, MS_U16* pu16FilterData)
+{
+    MS_BOOL bRet = FALSE;
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    DEV_FRONTEND_TYPE* pFETab;
+    TUNER_EXT_FUNCTION_PARAM stParam;
+
+    ENTRY();
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        RETURN(bRet);
+
+    stParam.u32Param1 = u32Band;
+    stParam.u32Param2 = u32IF;
+    stParam.pParam = pu16FilterData;
+    pFETab = *(pFETabAddr + drv_frontend_index);
+    bRet = pFETab->tunertab->Extension_Function(u8Idx, TUNER_EXT_FUNC_GET_PEAKING_PARAMETER, &stParam);
+
+    RETURN(bRet);
+}
+
+MS_BOOL MApi_DigiTuner_GetVIFCarrierRecovery(MS_U8 drv_frontend_index, MS_ATV_VIF_CARRIER_RECOVERY* pstVIFCR)
+{
+    MS_BOOL bRet = FALSE;
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    DEV_FRONTEND_TYPE* pFETab;
+    DEMOD_VIF_CARRIER_RECOVERY* pstCR;
+
+    ENTRY();
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        RETURN(bRet);
+
+    pstCR = (DEMOD_VIF_CARRIER_RECOVERY*)pstVIFCR;
+    pFETab = *(pFETabAddr + drv_frontend_index);
+    bRet = pFETab->tunertab->Extension_Function(u8Idx, TUNER_EXT_FUNC_GET_VIF_CR, pstCR);
+
+    RETURN(bRet);
+}
+
+MS_BOOL MApi_DigiTuner_GetTunerFreqBoundary(MS_U8 drv_frontend_index, EN_ATV_RF_BOUNDARY_TYPE eType, MS_U32* pu32Freq)
+{
+    MS_BOOL bRet = FALSE;
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    DEV_FRONTEND_TYPE* pFETab;
+    TUNER_EXT_FUNCTION_PARAM stParam;
+
+    ENTRY();
+    if(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index))
+        RETURN(bRet);
+
+    stParam.u32Param1 = eType;
+    stParam.u32Param2 = 0;
+    stParam.pParam = pu32Freq;
+    pFETab = *(pFETabAddr + drv_frontend_index);
+    bRet = pFETab->tunertab->Extension_Function(u8Idx, TUNER_EXT_FUNC_GET_ATV_RF_BOUNDARY, &stParam);
+
+    RETURN(bRet);
+}
+
+MS_BOOL MApi_DigiTuner_Tune2ATVRfCh(MS_U8 drv_frontend_index, MS_FE_CARRIER_PARAM *pParam)
+{
+    MS_U8 u8Idx = _DigiTuner_FEIdx2DevChanIdx(drv_frontend_index);
+    DEV_FRONTEND_TYPE* pFETab;
+    MS_FE_CARRIER_PARAM* ptunerParam;
+    TUNER_EN_RFBAND eBand;
+    MS_U8 u8OtherMode;
+
+    ENTRY();
+
+    if((NULL == _ptunerParam)||(!_DigiTuner_CheckFEtab_Exist(drv_frontend_index)))
+        RETURN(FALSE);
+
+    if ( !MApi_DigiTuner_Get_FE_InitStatus(drv_frontend_index))
+    {
+        RETURN(FALSE);
+    }
+
+    pFETab = *(pFETabAddr + drv_frontend_index);
+    ptunerParam = _ptunerParam + drv_frontend_index;
+
+    memcpy(ptunerParam, pParam, sizeof(MS_FE_CARRIER_PARAM)); //Must move here
+    eBand = (TUNER_EN_RFBAND)pParam->ATVParam.eRFBand;
+    u8OtherMode = (MS_U8)pParam->ATVParam.eAtvAudioStandard;
+    //set tuner
+    if(pFETab->tunertab->SetATVTuner(u8Idx,pParam->u32Frequency,eBand, u8OtherMode)==FALSE)
+    {
+            pFETab->demodtab->I2CByPass(u8Idx,FALSE);
+            FE_ERR(("%s:set tuner  failed.\n", __FUNCTION__));
+            RETURN(FALSE);
+    }
+    else
+    {
+            FE_DBG(("%s:set tuner ok \n", __FUNCTION__));
+    }
+
+
+     FE_DBG(("Tune 2 RF ok!\n"));
+     RETURN(TRUE);
+}
+#endif //#if MS_ATV_INUSE
+
 #ifdef DDI_MISC_INUSE
 #if (DDI_MISC_INUSE==1)
 
@@ -4941,14 +6053,14 @@ void MApi_DigiTuner_Wakeup(MS_U8 drv_frontend_index)
     MS_SAT_PARAM * psatParam = _pstSATParam + drv_frontend_index;
 #endif
 
-    MS_U32 u32frontendtype;
+
 
     MApi_Demod_HWReset(_DigiTuner_FEIdx2DevIdx(drv_frontend_index));
     MS_FE_CARRIER_PARAM* pParam = _ptunerParam + drv_frontend_index;
     MApi_DigiTuner_Init(drv_frontend_index);
 
-    u32frontendtype = MApi_DigiTuner_GetFrontendType(drv_frontend_index);
 #if(MS_DVBS_INUSE == 1)
+    MS_U32 u32frontendtype = MApi_DigiTuner_GetFrontendType(drv_frontend_index);
     if (u32frontendtype == DVBS || u32frontendtype == DVBS2)
     {
         MApi_DigiTuner_Tune2RfCh_DVBS(drv_frontend_index, psatParam, pParam, FE_TUNE_AUTO);
@@ -4964,4 +6076,197 @@ void MApi_DigiTuner_Wakeup(MS_U8 drv_frontend_index)
 
 #endif //#if DDI_MISC_INUSE
 #endif //#ifdef DDI_MISC_INUSE
+
+#if defined(USER_SET_BOARD_INFO) && (USER_SET_BOARD_INFO == 1)
+MS_BOOL MApi_DigiTuner_SetBoardInfo(MS_FE_BOARD_INFO stInfo)
+{
+    if(INVALID_POOL_ID == gs32FECachedPoolID)
+    {
+        FE_ERR(("INVALID_POOL_ID !!!\n"));
+        return FALSE;
+    }
+
+    if(stInfo.u8MaxFENum == 0)
+    {
+        FE_ERR(("Max Frontend Number = 0 !!!\n"));
+        return FALSE;
+    }
+    else
+    {
+        stBoardInfo.u8MaxFENum = stInfo.u8MaxFENum;
+        if(pu32ch_acc == NULL)
+        {
+            pu32ch_acc = (MS_U32*)MsOS_AllocateMemory(sizeof(MS_U32)*stInfo.u8MaxFENum, gs32FECachedPoolID);
+            if(pu32ch_acc == NULL)
+                return FALSE;
+            else
+            {
+               memset(pu32ch_acc, 0, sizeof(MS_U32)*stInfo.u8MaxFENum);
+            }
+        }
+
+        if(stBoardInfo.pstConConfig == NULL)
+        {
+            stBoardInfo.pstConConfig = (MS_FE_CONNECTOR_CONFIG*)MsOS_AllocateMemory(sizeof(MS_FE_CONNECTOR_CONFIG) * stInfo.u8MaxFENum, gs32FECachedPoolID);
+        }
+
+        if(stBoardInfo.pstConConfig != NULL)
+        {
+            memcpy(stBoardInfo.pstConConfig, stInfo.pstConConfig, sizeof(MS_FE_CONNECTOR_CONFIG)*stInfo.u8MaxFENum);
+        }
+        else
+        {
+            return FALSE;
+        }
+    }
+    bBD_INFO_RDY = TRUE;
+    return TRUE;
+}
+#endif
+#ifdef MSOS_TYPE_LINUX_KERNEL
+#include <linux/module.h>   // for EXPORT_SYMBOL
+MODULE_LICENSE("LGPL");
+EXPORT_SYMBOL(MApi_DigiTuner_Set_MemPool);
+EXPORT_SYMBOL(MApi_DigiTuner_GetFEtab);
+EXPORT_SYMBOL(MApi_DigiTuner_GetMaxFEIdx);
+EXPORT_SYMBOL(MApi_Frontend_SetTunerDemod);
+EXPORT_SYMBOL(MApi_Frontend_SetDetectMode);
+EXPORT_SYMBOL(MApi_Frontend_SetBroadcastType);
+EXPORT_SYMBOL(MApi_Frontend_SetInExteralPath);
+EXPORT_SYMBOL(MApi_Frontend_InExteralPath_Arrange);
+EXPORT_SYMBOL(MApi_Demod_HWReset);
+EXPORT_SYMBOL(MApi_DigiTuner_Get_FE_InitStatus);
+EXPORT_SYMBOL(MApi_PrintDemodTypes);
+EXPORT_SYMBOL(MApi_PrintTunerTypes);
+EXPORT_SYMBOL(MApi_GetDmxInputPath);
+
+EXPORT_SYMBOL(MApi_DigiTuner_Frontend_Scan);
+EXPORT_SYMBOL(MApi_DigiTuner_Frontend_List_Show);
+EXPORT_SYMBOL(MApi_DigiTuner_GetFrontendType);
+EXPORT_SYMBOL(MApi_DigiTuner_ReInit);
+EXPORT_SYMBOL(MApi_DigiTuner_DeInit);
+
+
+EXPORT_SYMBOL(MApi_DigiTuner_Init);
+EXPORT_SYMBOL(MApi_DigiTuner_SetDMDCallBack);
+#if MS_DVBS_INUSE
+EXPORT_SYMBOL(MApi_DigiTuner_Tune2RfCh_DVBS);
+#ifdef SUPPORT_DUAL_LNB
+EXPORT_SYMBOL(MApi_DigiTuner_Tune2RfCh_DVBS_Ext);
+#endif
+#endif
+
+EXPORT_SYMBOL(MApi_DigiTuner_Tune2RfCh);
+EXPORT_SYMBOL(MApi_DigiTuner_GetMaxLockTime);
+EXPORT_SYMBOL(MApi_DigiTuner_PowerOnOff);
+EXPORT_SYMBOL(MApi_DigiTuner_GetTPSInfo);
+EXPORT_SYMBOL(MApi_DigiTuner_GetLock);
+EXPORT_SYMBOL(MApi_DigiTuner_GetPreLock);
+EXPORT_SYMBOL(MApi_DigiTuner_GetFlameSyncLock);
+EXPORT_SYMBOL(MApi_DigiTuner_GetSNR);
+EXPORT_SYMBOL(MApi_DigiTuner_GetPWR);
+EXPORT_SYMBOL(MApi_DigiTuner_GetSSI);
+EXPORT_SYMBOL(MApi_DigiTuner_GetSignalQuality);
+
+EXPORT_SYMBOL(MApi_DigiTuner_GetPWRFromTuner);
+EXPORT_SYMBOL(MApi_DigiTuner_GetBER);
+
+EXPORT_SYMBOL(MApi_DigiTuner_Get_Packet_Error);
+EXPORT_SYMBOL(MApi_DigiTuner_Loop_Through_On);
+EXPORT_SYMBOL(MApi_DigiTuner_Stand_By);
+EXPORT_SYMBOL(MApi_DigiTuner_Wake_Up);
+
+
+#if (MS_DVBT2_INUSE == 1)
+EXPORT_SYMBOL(MApi_DigiTuner_GetCurrentDemodType);
+
+EXPORT_SYMBOL(MApi_DigiTuner_SetCurrentDemodType);
+EXPORT_SYMBOL(MApi_DigiTuner_SetPlpGroupID);
+EXPORT_SYMBOL(MApi_DigiTuner_GetPlpGroupID);
+EXPORT_SYMBOL(MApi_DigiTuner_GetPlpBitMap);
+#endif
+
+
+
+#if MS_DVBS_INUSE
+EXPORT_SYMBOL(MApi_DigiTuner_ForceRetune);
+EXPORT_SYMBOL(MApi_DigiTuner_GetCurrentLOF);
+EXPORT_SYMBOL(MApi_DigiTuner_getCurRFSignalSNR_Persent);
+EXPORT_SYMBOL(MApi_DigiTuner_GetRollOff);
+EXPORT_SYMBOL(MApi_DigiTuner_GetRFOffset);
+EXPORT_SYMBOL(MApi_DigiTuner_Satellite_Set22K);
+EXPORT_SYMBOL(MApi_DigiTuner_Satellite_Set22KTone);
+EXPORT_SYMBOL(MApi_DigiTuner_Satellite_SetLNBPower);
+
+#ifdef SUPPORT_DUAL_LNB
+EXPORT_SYMBOL(MApi_DigiTuner_Satellite_Set22K_Ext);
+EXPORT_SYMBOL(MApi_DigiTuner_Satellite_SetLNBPower_Ext);
+EXPORT_SYMBOL(MApi_DigiTuner_Satellite_Set22KTone_Ext);
+#endif
+
+EXPORT_SYMBOL(MApi_DigiTuner_BlindScan_Start);
+EXPORT_SYMBOL(MApi_DigiTuner_BlindScan_NextFreq);
+EXPORT_SYMBOL(MApi_DigiTuner_BlindScan_WaitCurFeqFinished);
+EXPORT_SYMBOL(MApi_DigiTuner_BlindScan_GetChannel);
+EXPORT_SYMBOL(MApi_DigiTuner_BlindScan_Cancel);
+EXPORT_SYMBOL(MApi_DigiTuner_BlindScan_End);
+EXPORT_SYMBOL(MApi_DigiTuner_BlindScan_GetCurrentFreq);
+EXPORT_SYMBOL(MApi_DigiTuner_Demod_ClearStatus);
+EXPORT_SYMBOL(MApi_DigiTuner_IsOverCurrent);
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_SendCommand);
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_SwitchPort);
+#ifdef SUPPORT_DUAL_LNB
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_SwitchPort_Ext);
+#endif
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_Reset);
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_SetEastLimit);
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_SetWestLimit);
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_DisableLimit);
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_GoReferencePoint);
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_GoSatPos);
+
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_SaveSatPos);
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_MotorConinuteEast);
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_MotorConinuteWest);
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_MotorStepEast);
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_MotorStepWest);
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_HaltMotor);
+EXPORT_SYMBOL(MApi_DigiTuner_DiSEqC_GotoX);
+EXPORT_SYMBOL(MApi_DigiTuner_IsNeedCheckCurrent);
+#endif
+
+#if MS_DVBT2_INUSE
+EXPORT_SYMBOL(MApi_DigiTuner_SetT2Reset);
+EXPORT_SYMBOL(MApi_DigiTuner_SetT2Restart);
+EXPORT_SYMBOL(MApi_DigiTuner_CtrlResetDJBFlag);
+EXPORT_SYMBOL(MApi_DigiTuner_T2MI_Restart);
+EXPORT_SYMBOL(MApi_DigiTuner_InitParameter);
+EXPORT_SYMBOL(MApi_DigiTuner_GetPlpIDList);
+EXPORT_SYMBOL(MApi_DigiTuner_GetNextPlpID);
+EXPORT_SYMBOL(MApi_DigiTuner_SetScanTypeStatus);
+EXPORT_SYMBOL(MApi_DigiTuner_GetScanTypeStatus);
+EXPORT_SYMBOL(MApi_DigiTuner_Get_Current_Plp_Id);
+#endif
+
+#ifdef DDI_MISC_INUSE
+#ifdef FE_AUTO_TEST
+EXPORT_SYMBOL(MApi_DigiTuner_ReadReg);
+EXPORT_SYMBOL(MApi_DigiTuner_WriteReg);
+EXPORT_SYMBOL(MApi_DigiTuner_Reset);
+#endif
+#if (DDI_MISC_INUSE == 1)
+#if (BOOT_TYPE == BOOT_TYPE_FAST)
+EXPORT_SYMBOL(MApi_DigiTuner_Wakeup);
+#endif
+#endif //#if DDI_MISC_INUSE
+#endif //#ifdef DDI_MISC_INUSE
+
+EXPORT_SYMBOL(MApi_DigiTuner_SetPowerState);
+EXPORT_SYMBOL(MApi_DigiTuner_GetTunerParam);
+EXPORT_SYMBOL(MApi_DigiTuner_SetISDBTLayer);
+EXPORT_SYMBOL(MApi_DigiTuner_FEIdx_to_DevIdx);
+EXPORT_SYMBOL(MApi_DigiTuner_Set_DMD_BUFFER);
+EXPORT_SYMBOL(MApi_DigiTuner_SetDMD_PIDFilter);
+EXPORT_SYMBOL(MApi_DigiTuner_GetTSBitRate);
+#endif  // #ifdef MSOS_TYPE_LINUX_KERNEL
 

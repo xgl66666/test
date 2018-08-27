@@ -97,9 +97,10 @@ INTERFACE void MSB1237_FWVERSION(void);
 INTERFACE MS_BOOL MSB1237_VSBCheckLock(void);
 void MSB1237_Demod_1237_SetMode(MS_U8 u8demod_type);
 MS_U8 MSB1237_Demod_1237_GetMode(void);
-MS_BOOL MSB1237_I2C_CH_Reset(MS_U8 ch_num,MS_BOOL enable);
-MS_U8 MSB1237_I2C_WriteByte(MS_U16 u16SlaveAddr, MS_U32 u32Addr, MS_U8 u8Data);
-MS_U8 MSB1237_I2C_ReadByte(MS_U16 u16SlaveAddr, MS_U32 u32Addr, MS_U8 *pu8Data);
+MS_BOOL MSB1237_I2C_CH_Reset(MS_U8 u8DemodIndex,MS_U8 ch_num,MS_BOOL enable);
+MS_U8 MSB1237_I2C_WriteByte(MS_U8 u8DemodIndex,MS_U16 u16SlaveAddr, MS_U32 u32Addr, MS_U8 u8Data);
+MS_U8 MSB1237_I2C_ReadByte(MS_U8 u8DemodIndex,MS_U16 u16SlaveAddr, MS_U32 u32Addr, MS_U8 *pu8Data);
+MS_BOOL MSB1237_Demod_I2C_ByPass(MS_U8 u8DemodIndex, MS_BOOL bEnable);
 
 //INTERFACE void MSB1237_FWVERSION(void);
 #undef INTERFACE

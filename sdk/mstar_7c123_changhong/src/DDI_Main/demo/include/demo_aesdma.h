@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -100,8 +100,13 @@
 
 typedef enum
 {
-    E_DEMO_AESDMA_MODE_ECB,
-    E_DEMO_AESDMA_MODE_CBC,
+    E_DEMO_AESDMA_MODE_AES_ECB,
+    E_DEMO_AESDMA_MODE_AES_CBC,
+    E_DEMO_AESDMA_MODE_AES_CTR,
+    E_DEMO_AESDMA_MODE_DES_ECB,
+    E_DEMO_AESDMA_MODE_DES_CBC,
+    E_DEMO_AESDMA_MODE_TDES_ECB,
+    E_DEMO_AESDMA_MODE_TDES_CBC,
 
 }EN_AESDMA_MODE;
 

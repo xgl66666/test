@@ -99,5 +99,6 @@
 MS_BOOL Demo_eCos_CPUUsage(MS_U16* pu16Period);
 MS_BOOL Demo_eCos_CPULoad(void);
 MS_BOOL Demo_eCos_CPULoad_OFF(void);
+MS_BOOL Demo_eCos_show_cpu_average_load(MS_U16* on);
 
 #endif

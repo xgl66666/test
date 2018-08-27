@@ -184,8 +184,8 @@ typedef struct
 
 typedef struct
 {
-  MXL_BOOL_E clearInputStats;   // 1 Â– clear input stats , 0 Â– donÂ’t clear
-  MXL_BOOL_E clearOutputStats;  // 1 Â– Clear output stats, 0 Â– donÂ’t clear
+  MXL_BOOL_E clearInputStats;   // 1 – clear input stats , 0 – don’t clear
+  MXL_BOOL_E clearOutputStats;  // 1 – Clear output stats, 0 – don’t clear
 } MXL_HYDRA_CB_CLEAR_STATS_T;
 
 typedef struct

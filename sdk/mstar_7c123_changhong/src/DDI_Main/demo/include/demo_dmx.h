@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -130,6 +130,9 @@ typedef enum
     E_DMX_FLOW_INPUT_EXT_INPUT1_3WIRE,
     E_DMX_FLOW_INPUT_EXT_INPUT2_3WIRE,
     E_DMX_FLOW_INPUT_EXT_INPUT3_3WIRE,
+    E_DMX_FLOW_INPUT_EXT_INPUT4_3WIRE,
+    E_DMX_FLOW_INPUT_EXT_INPUT5_3WIRE,
+    E_DMX_FLOW_INPUT_EXT_INPUT6_3WIRE,
     E_DMX_FLOW_INPUT_INVALID,
 
 } EN_DEMO_DMX_FLOW_INPUT;
@@ -137,11 +140,19 @@ typedef enum
 typedef enum
 {
     E_DMX_FLT_TYPE_VID0,      ///< DMX video filter type
-    E_DMX_FLT_TYPE_VID1,      ///< DMX V3D filter type
+    E_DMX_FLT_TYPE_VID1,      ///< DMX V3D(video 2) filter type
+    E_DMX_FLT_TYPE_VID2,      ///< DMX video 3 filter type
+    E_DMX_FLT_TYPE_VID3,      ///< DMX video 4 filter type
+    E_DMX_FLT_TYPE_VID4,      ///< DMX video 5 filter type
+    E_DMX_FLT_TYPE_VID5,      ///< DMX video 6 filter type
+    E_DMX_FLT_TYPE_VID6,      ///< DMX video 7 filter type
+    E_DMX_FLT_TYPE_VID7,      ///< DMX video 8 filter type
     E_DMX_FLT_TYPE_AUD0,      ///< DMX audio filter type
     E_DMX_FLT_TYPE_AUD1,      ///< DMX audio 2 filter type
     E_DMX_FLT_TYPE_AUD2,      ///< DMX audio 3 filter type
     E_DMX_FLT_TYPE_AUD3,      ///< DMX audio 4 filter type
+    E_DMX_FLT_TYPE_AUD4,      ///< DMX audio 5 filter type
+    E_DMX_FLT_TYPE_AUD5,      ///< DMX audio 6 filter type
     E_DMX_FLT_TYPE_REC,       ///< DMX record filter type no destination needs to be set
     E_DMX_FLT_TYPE_INVALID,
 
@@ -149,31 +160,16 @@ typedef enum
 
 typedef enum
 {
-    E_DMX_FLT_SOURCE_LIVE0,    ///< DMX live stream filter source
-    E_DMX_FLT_SOURCE_LIVE1,    ///< DMX live stream filter source 1
-    E_DMX_FLT_SOURCE_LIVE2,    ///< DMX live stream filter source 2
-    E_DMX_FLT_SOURCE_LIVE3,    ///< DMX live stream filter source 3
-    E_DMX_FLT_SOURCE_FILE0,    ///< DMX file in filter type
-    E_DMX_FLT_SOURCE_FILE1,    ///< DMX file1 source from TS1
-    E_DMX_FLT_SOURCE_FILE2,    ///< DMX file1 source from TS2
-    E_DMX_FLT_SOURCE_FILE3,    ///< DMX file1 source from TS3
-    E_DMX_FLT_SOURCE_INVALID,
-
-}EN_DEMO_DMX_FLT_SOURCE;
-
-typedef enum
-{
-    E_DMX_PVR_SOURCE_LIVE0,
-    E_DMX_PVR_SOURCE_LIVE1,
-    E_DMX_PVR_SOURCE_LIVE2,
-    E_DMX_PVR_SOURCE_LIVE3,
-    E_DMX_PVR_SOURCE_FILE0,
-    E_DMX_PVR_SOURCE_FILE1,
-    E_DMX_PVR_SOURCE_FILE2,
-    E_DMX_PVR_SOURCE_FILE3,
-    E_DMX_PVR_SOURCE_INVALID,
-
-} EN_DEMO_DMX_PVR_SOURCE;
+    E_DMX_FLT_SOURCEID_0,
+    E_DMX_FLT_SOURCEID_1,
+    E_DMX_FLT_SOURCEID_2,
+    E_DMX_FLT_SOURCEID_3,
+    E_DMX_FLT_SOURCEID_4,
+    E_DMX_FLT_SOURCEID_5,
+    E_DMX_FLT_SOURCEID_6,
+    E_DMX_FLT_SOURCEID_7,
+    E_DMX_FLT_SOURCEID_MAX,
+}EN_DEMO_DMX_FLT_SOURCEID;
 
 typedef enum
 {
@@ -215,7 +211,9 @@ typedef enum
 {
     E_PCR_ENG0                     = 0x00,
     E_PCR_ENG1                     = 0x01,
-    E_PCR_ENG_INVALID,
+    E_PCR_ENG2                     = 0x02,
+    E_PCR_ENG3                     = 0x03,
+    E_PCR_ENG_INVALID              = 0xFF,
 
 } EN_PCR_ENG;
 
@@ -224,7 +222,6 @@ typedef enum
 {
     E_FILE_TS                      = 0x00,
     E_FILE_PES                     = 0x01,
-    E_FILE_PS                      = 0x02,
     E_FILE_NOT_SUPPORT             = 0xFF
 } EN_DMX_FILEIN_FILE_FORMAT;
 
@@ -238,7 +235,7 @@ typedef enum
 //--------------------------------------------------------------------------------------------------
 // Structure Define
 //--------------------------------------------------------------------------------------------------
-#define MAX_PG_IN_PAT_DDI   64//sync with HB , max support up to 64 program
+#define MAX_PG_IN_PAT_DDI   64 // sync with HB , max support up to 64 program
 #define MAX_AUDIO_PG        64 // maximum 64 audio ES per program
 
 typedef struct
@@ -279,9 +276,9 @@ typedef struct
 
 typedef enum
 {
-    E_SI_DESC_TAG_ISO_639_LANG     = 0x0A,
-    E_SI_DESC_TAG_EXTENSION        = 0x7F,
-    E_SI_DESC_TAG_STREAM_ID        = 0x52,
+    E_SI_DESC_TAG_ISO_639_LANG      = 0x0A,
+    E_SI_DESC_TAG_EXTENSION         = 0x7F,
+    E_SI_DESC_TAG_STREAM_ID         = 0x52,
     E_SI_DESC_TAG_AC3               = 0x6A,
     E_SI_DESC_TAG_E_AC3             = 0x7A,
 }EN_SI_DescriptorTag;
@@ -293,17 +290,19 @@ MS_BOOL Demo_DMX_PreInit(void);
 MS_BOOL Demo_DMX_Init(void);
 MS_BOOL Demo_DMX_Exit(void);
 MS_BOOL Demo_DMX_FlowSet(EN_DEMO_DMX_FLOW eDmxFlow, EN_DEMO_DMX_FLOW_INPUT eDmxFlowInput, MS_BOOL bClkInv, MS_BOOL bExtSync, MS_BOOL bParallel);
-MS_BOOL Demo_DMX_PVR_FlowSet(EN_DEMO_DMX_PVR_ENG ePvrEng, EN_DEMO_DMX_PVR_SOURCE ePvrSrc, MS_BOOL bDscmb);
-MS_BOOL Demo_DMX_FltOpen(EN_DEMO_DMX_FLT_SOURCE eFltSource, EN_DEMO_DMX_FLT_TYPE eFltType, MS_U8* pu8FltId, MS_U16 u16Pid);
-MS_BOOL Demo_DMX_Open(EN_DEMO_DMX_FLT_SOURCE eFltSource, EN_DEMO_DMX_FLT_TYPE eFltType, MS_U8* pu8FltId);
-MS_BOOL Demo_DMX_PCR_FltOpen(EN_DEMO_DMX_FLT_SOURCE eFltSource, MS_U16 u16Pid, MS_U8* u8PCREngId);
-MS_BOOL Demo_DMX_PCR_FltStart(MS_U8 u8PCREngId);
-MS_BOOL Demo_DMX_PCR_FltStop(MS_U8 u8PCREngId);
-MS_BOOL Demo_DMX_PCR_FltClose(MS_U8 u8PCREngId);
+MS_BOOL Demo_DMX_PVR_FlowSet(EN_DEMO_DMX_PVR_ENG ePvrEng, EN_DEMO_DMX_FLOW eDmxFlow, MS_BOOL bDscmb);
+MS_BOOL Demo_DMX_FltOpen(EN_DEMO_DMX_FLOW eDmxFlow, EN_DEMO_DMX_FLT_TYPE eFltType, MS_U8* pu8FltId, MS_U16 u16Pid);
+MS_BOOL Demo_DMX_Open(EN_DEMO_DMX_FLOW eDmxFlow, EN_DEMO_DMX_FLT_TYPE eFltType, MS_U8* pu8FltId);
+MS_BOOL Demo_DMX_PCR_FltOpen(EN_DEMO_DMX_FLOW eDmxFlow, MS_U16 u16Pid, EN_PCR_ENG* ePCREngId);
+MS_BOOL Demo_DMX_PCR_FltStart(EN_PCR_ENG ePCREngId);
+MS_BOOL Demo_DMX_PCR_FltStop(EN_PCR_ENG ePCREngId);
+MS_BOOL Demo_DMX_PCR_FltClose(EN_PCR_ENG ePCREngId);
+MS_BOOL Demo_DMX_AVFifo_Reset_CMD(MS_U8 *pu8AVFltType, MS_U8 *pu8Rst);
 MS_BOOL Demo_DMX_AVFifo_Reset(EN_DEMO_DMX_FLT_TYPE eAVFltType, MS_BOOL bRst);
 MS_BOOL Demo_DMX_GetProgramInfo(st_PG** ppstPG, MS_U32* pu32PgNum);
+MS_BOOL Demo_DMX_GetAudioStreamInfo(MS_U32 u32ProgIdx, MS_U32 u32AudIdx, st_Audio_PG *pstAudioStreamInfo);
 DMX_MMFI_FLTTYPE Demo_DMX_MMFI_FltTypeMapping(EN_DEMO_DMX_FLT_TYPE eFltType);
-EN_DEMO_DMX_FLT_SOURCE Demo_DMX_FlowToFltSrcMapping(EN_DEMO_DMX_FLOW eDmxFlow);
+DMX_FILTER_TYPE Demo_DMX_FlowToFltSrcMapping(EN_DEMO_DMX_FLOW eDmxFlow);
 MS_U32 Demo_DMX_FlowToFQEngMapping(EN_DEMO_DMX_FLOW eDmxFlow);
 MS_BOOL Demo_DMX_CheckAudioPgExist(st_PG* pstPG, MS_U32 u32PID);
 
@@ -326,13 +325,23 @@ MS_BOOL Demo_DMX_Nmask(EN_DEMO_DMX_FLOW eDmxFlow, MS_U8 *pu8Pat, MS_U8 *pu8Mask,
 //MS_BOOL appDemo_DmxFileIn_Start(char* srcFileName, MS_U32 pktSize);
 //MS_BOOL appDemo_DmxFileIn_Stop(void);
 MS_BOOL Demo_DMX_Record_CMD(MS_U8 *pu8Live, MS_U8 *pu8Eng, MS_U32 *pu32VideoPid,MS_U32 *pu32AudioPid,MS_U32 *pu32PCRPid);
-MS_BOOL Demo_DMX_Record(EN_DEMO_DMX_PVR_SOURCE ePvrSrc, EN_DEMO_DMX_PVR_ENG ePvrEng, MS_U32 u32VideoPid,MS_U32 u32AudioPid,MS_U32 u32PCRPid);
+MS_BOOL Demo_DMX_Record(EN_DEMO_DMX_FLOW eDmxFlow, EN_DEMO_DMX_PVR_ENG ePvrEng, MS_U32 u32VideoPid,MS_U32 u32AudioPid,MS_U32 u32PCRPid);
 
 MS_BOOL Demo_DMX_TSO(MS_U8* pu8TSOEng, MS_U8* pu8Pad);
+MS_BOOL Demo_DMX_TSO_FileIn(MS_U8 *pu8TSOEng, MS_U8 *pu8FileInCh, MS_BOOL *bParallel, MS_BOOL *bClkInv, MS_U32 *u32TSOFileInCnt);
 MS_BOOL Demo_DMX_MMFI_CMD(MS_U8 *pu8MMFIEng,MS_U8 *FltType,MS_U8 *PacketMode,MS_U16 *Pid,const char *FileName);
 MS_BOOL Demo_DMX_FileIn_Start(MS_U8 *pu8DmxEngine,MS_U8 *EngineNum, const char *FileName, MS_U8 *Format, MS_U8 *PacketMode);
 MS_BOOL Demo_DMX_FileIn_Stop(MS_U8 *pu8DmxEngine,MS_U8 *EngineNum);
 MS_BOOL Demo_DMX_Help(void);
+
+MS_BOOL Demo_DMX_SetSrcID_CMD(EN_DEMO_DMX_FLOW *peDmxFlow, EN_DEMO_DMX_FLT_SOURCEID *peDmxFltSourceID);
+MS_BOOL Demo_DMX_GetSrcID_CMD(EN_DEMO_DMX_FLOW *peDmxFlow);
+MS_BOOL Demo_DMX_SetSrcID(EN_DEMO_DMX_FLOW eDmxFlow, EN_DEMO_DMX_FLT_SOURCEID eDmxFltSourceID);
+EN_DEMO_DMX_FLT_SOURCEID Demo_DMX_GetSrcID(EN_DEMO_DMX_FLOW eDmxFlow);
+MS_BOOL Demo_DMX_SetPktMode(EN_DEMO_DMX_FLOW *peDmxFlow, MS_U32 *pu32PktMode);
+
+MS_BOOL appDemo_Dmx_Pat(void);
+
 #if 0
 #if (DEMO_DSCMB_TEST == 1)
 MS_BOOL Demo_DSCMB_ConnectFlt_CallBack( MS_BOOL (*func)(MS_U32, MS_U32));

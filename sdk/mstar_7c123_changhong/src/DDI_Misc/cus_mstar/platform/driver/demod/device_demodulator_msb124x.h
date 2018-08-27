@@ -96,6 +96,29 @@
 #ifndef _MSB124X_H
 #define _MSB124X_H
 
+//interrupt usage
+#define MSB124X_EVT_MASK      0x0F
+#define MSB124X_EVT_PORT0INT       (1<<0)
+#define MSB124X_EVT_PORT1INT       (1<<1)
+#define MSB124X_EVT_PORT2INT       (1<<2)
+#define MSB124X_EVT_PORT3INT       (1<<3)
+
+#define MSB124X_EVT_TASK_STACK_SIZE 4096
+
+// timer for callback handling
+#if defined(FRONTEND_TUNER_PORT0_INT)||defined(FRONTEND_TUNER_PORT1_INT)||\
+    defined(FRONTEND_TUNER_PORT2_INT)||defined(FRONTEND_TUNER_PORT4_INT)
+#define MSB124X_TIMER_EN 1
+#else
+#define MSB124X_TIMER_EN 0
+#endif
+
+#if MSB124X_TIMER_EN
+#define MSB124X_STATUS_CHK_PERIOD  1000
+#define MSB124X_LOCK_TIMEOUT  6000
+#endif
+
+#define MSB124X_RST_PIN_NOT_SET     9999
 
 /*@ <Include> @*/
 //#include "MsBoard.h"
@@ -117,17 +140,6 @@ typedef struct
     MS_U32 channel_frequency_khz;
     E_ICE_NETWORK_TYPE  network_type;
 } ICE_TuneToParams;
-
-typedef struct
-{
-    MS_U8 u8SlaveID;
-    MS_BOOL bInUse;
-}SLAVE_ID_USAGE;
-
-typedef struct
-{
-  SLAVE_ID_USAGE stID_Tbl[5]; // slave ID list may need to enlarge, must be larger than size of MSB124X_possible_slave_ID
-}SLAVE_ID_TBL;
 
 typedef enum
 {
@@ -694,7 +706,6 @@ typedef struct
     float                  cn_ref;
 } S_DVBT2_SQI_CN_NORDIGP1;
 
-typedef void (*fpSPIPAD_En)(MS_BOOL bOnOff);
 
 #if ((!defined(SUPPORT_MULTI_DEMOD)) || (defined(SUPPORT_MULTI_DEMOD) && (SUPPORT_MULTI_DEMOD == 0)))
 #define MDrv_DMD_MSB124X_Init_EX(x, y, z)  MDrv_DMD_MSB124X_Init(y, z)
@@ -709,7 +720,9 @@ typedef void (*fpSPIPAD_En)(MS_BOOL bOnOff);
 #define MDrv_DMD_MSB124X_Power_On_Initialization_EX(x) MDrv_DMD_MSB124X_Power_On_Initialization()
 #define MDrv_DMD_MSB1245_LoadDSPCodeToSram_EX(x) MDrv_DMD_MSB1245_LoadDSPCodeToSram()
 #endif
-
+DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB124X) DDI_DRV_TABLE_ENTRY(demodtab);
+MS_BOOL MSB124X_Demod_GetLock(MS_U8 u8DemodIndex, EN_LOCK_STATUS *peLockStatus);
+MS_BOOL MSB124X_IIC_Bypass_Mode(MS_U8 u8DemodIndex, MS_BOOL enable);
 /////////////// CONSTANT /////////////////
 
 

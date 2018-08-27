@@ -184,11 +184,11 @@ typedef enum
 typedef struct
 {
     MS_U8                          u8PathID;
-    MS_S16                         s16Speed;
+    MS_S32                         s32Speed;
     EN_VIDEO_CPL_DECODE_TYPE       enDecodeType;
     EN_VIDEO_CPL_DATA_TYPE         enDataType;
 } POOL_VDEC_CURR_INFO;
- 
+
 MS_U32 Pool_GetMIUAddress(PVRPL_MIU enMiuID);
 
 //Porting Layer Record
@@ -204,7 +204,7 @@ DMX_FILTER_TYPE Pool_GetVFifoType(MS_U8 u8PathID);
 
 //Porting Layer Video
 void Pool_SetMVOP(MS_U8 u8PathID,MS_BOOL bSet);
-void Pool_SetVideoCurrCmdSetting(MS_U8 u8PathID, MS_S16 speed, EN_VIDEO_CPL_DECODE_TYPE enDecodeType, EN_VIDEO_CPL_DATA_TYPE enDataType);
+void Pool_SetVideoCurrCmdSetting(MS_U8 u8PathID, MS_S32 s32Speed, EN_VIDEO_CPL_DECODE_TYPE enDecodeType, EN_VIDEO_CPL_DATA_TYPE enDataType);
 VDEC_StreamId* Pool_GetVideoID(MS_U8 u8PathID);
 VDEC_EX_Stream Pool_GetStreamType(MS_U8 u8PathID);
 POOL_VDEC_CURR_INFO* Pool_GetVideoCurrCmdSetting(MS_U8 u8PathID);

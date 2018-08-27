@@ -4,7 +4,7 @@
 
 //----------------------------------------------------------//
 //                   Define                                 //
-//v2.5h Multi Tuner//
+//				v2.6 Multi Tuner							//
 //----------------------------------------------------------//
 /*
 Internal xtal cap is 10pF for all tuner.
@@ -19,18 +19,21 @@ Do Xtal check function
 #define FOR_KOREA_CTMR  FALSE
 #define FOR_TDA10024    0
 
-#define VERSION   "R848_GUI_v2.5I_Multi_Tuner"
+#define VERSION   "R848_GUI_v2.6F_Multi_Tuner"
 
 //R848 only support 16MHz(16000), 24MHz(24000), 27MHz(27000)
 #define R848_Xtal	 16000     
 
+//If multi-tuner application, please set TRUE.
+//If single-tuner application, please set FALSE, default
+#define R848_MULTI_TUNER_APPLICATION    TRUE    //if(multi-tuner application & tuner1 clk out to tuner2 and tuner3...), set to TRUE
+
 
 //If the multi-tuner applications, do not care this set.
-//#define R848_SHARE_XTAL_OUT    FALSE     //self-oscillation  ()
+//If single-tuner application, please select clock output is TRUE or FALSE
+#define R848_SHARE_XTAL_OUT    FALSE     //self-oscillation  (), default
 //#define R848_SHARE_XTAL_OUT    TRUE     //share Xtal, ext clk connect to XTAL_OUT
 
-//If the multi-tuner applications, please set TRUE.
-#define R848_TUNER1_CLK_OUT      FALSE    //if(multi-tuner application & tuner1 clk out to tuner2 and tuner3...), set to TRUE
 
 #define R848_REG_NUM         40
 #define R848_TF_HIGH_NUM  8  

@@ -88,8 +88,13 @@ reverse engineering and compiling of the contents of MStar Confidential
 Information is unlawful and strictly prohibited. MStar hereby reserves the
 rights to any and all damages, losses, costs and expenses resulting therefrom.
  **********************************************************************/
-
+#ifdef MSOS_TYPE_LINUX_KERNEL
+#include <linux/string.h>
+#include <linux/slab.h>
+#else
+#include <string.h>
 #include <math.h>
+#endif
 #include "MsCommon.h"
 #include "drvIIC.h"
 #include "MsOS.h"
@@ -98,7 +103,6 @@ rights to any and all damages, losses, costs and expenses resulting therefrom.
 #include "drvDemod.h"
 #include "drvDemodNull.h"
 #include "drvGPIO.h"
-#include <string.h>
 #ifdef DDI_MISC_INUSE
 #include "SysBsp.h"
 #endif
@@ -174,7 +178,6 @@ extern MS_U8 MSB124X_LIB[];
 
 #define MSB124X_MAX_FLASH_ON_RETRY_NUM 3
 #define COFDMDMD_MUTEX_TIMEOUT       (2000)
-#define MSB124X_MAX_IIC_PORT_CNT    4 // I2C0~3
 
 //DVBS
 #define MSB124X_DEMOD_WAIT_TIMEOUT    (6000)
@@ -376,11 +379,13 @@ typedef struct
     MS_BOOL tNoChannelFlag;
     MS_U32    u32LockTime;
 #endif
+    MS_BOOL bDiSeqc_Tx22K_Off;
+    int RstPin;
 } MDvr_CofdmDmd_CONFIG;
 
 
 MDvr_CofdmDmd_CONFIG* pstMSB124X = NULL;
-SLAVE_ID_TBL* pstMSB124X_slave_ID_TBL = NULL;
+SLAVE_ID_USAGE* pstMSB124X_slave_ID_TBL = NULL;
 
 static SLAVE_ID_USAGE MSB124X_possible_slave_ID[3] =
 {
@@ -419,9 +424,19 @@ static MDvr_CofdmDmd_CONFIG MSB124X_Init =
     FALSE,
     FALSE,
     FALSE,
-    0
+    0,
 #endif
+    FALSE,
+    MSB124X_RST_PIN_NOT_SET
 };
+
+//interrupt usage
+static MS_U8  u8StackBuffer[MSB124X_EVT_TASK_STACK_SIZE];
+static MS_S32 _s32DmdEventTaskId = -1;
+static MS_S32 _s32DmdEventId = -1;
+static MS_U32 u32Events;
+static MS_U8 u8TS_VLD_cnt = 0;
+
 
 const S_RFAGC_SSI MSB124X_RFAGC_SSI[] =
 {
@@ -723,11 +738,189 @@ static MS_BOOL _MSB124X_GetReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 *pu8Dat
 MS_BOOL MSB124X_DiSEqC_Init(MS_U8 u8DemodIndex);
 #endif
 
+#if MSB124X_TIMER_EN
+static MS_BOOL _mdrv_dmd_msb124x_get_IntNum(MS_U8 u8DemodIndex, InterruptNum* pIntNum);
+static MS_S32* ps32msb124x_TimerID = NULL;
+static void _mdrv_dmd_msb124x_timer_cb(MS_U32 u32StTimer, MS_U32 u32TimerID)
+{
+    MDvr_CofdmDmd_CONFIG *pMSB124X = NULL;
+    EN_LOCK_STATUS eLockStatus = E_DEMOD_UNLOCK;
+    InterruptNum IntNum;
+    MS_U8 i;
+    MS_S32* ps32TimerID = NULL;
+
+    for(i = 0; i<MAX_FRONTEND_NUM; i++)
+    {
+       ps32TimerID = ps32msb124x_TimerID + i;
+       if(*ps32TimerID == (MS_S32)u32TimerID)
+       {
+         MSB124X_Demod_GetLock(i, &eLockStatus);
+         if(pstMSB124X != NULL)
+         {
+            pMSB124X = (pstMSB124X+ i);
+            if((pMSB124X->MSB124X_InitParam.fpCB != NULL) && (eLockStatus != E_DEMOD_LOCK))
+            {
+                pMSB124X->MSB124X_InitParam.fpCB(pMSB124X->MSB124X_InitParam.u8FrontendIndex,2);
+                MsOS_StopTimer (*ps32TimerID);
+                if(_mdrv_dmd_msb124x_get_IntNum(i, &IntNum))
+                {
+                    u8TS_VLD_cnt = 0;
+                    MsOS_EnableInterrupt(IntNum);
+                }
+            }
+         }
+         break;
+       }
+    }
+}
+#endif
+
+static MS_BOOL _mdrv_dmd_msb124x_get_IntNum(MS_U8 u8DemodIndex, InterruptNum* pIntNum)
+{
+    MS_BOOL bRet = FALSE;
+    switch(u8DemodIndex)
+    {
+        case 0:
+        #ifdef FRONTEND_TUNER_PORT0_INT
+            bRet = TRUE;
+            *pIntNum = FRONTEND_TUNER_PORT0_INT;
+        #endif
+        break;
+        case 1:
+        #ifdef FRONTEND_TUNER_PORT1_INT
+            bRet = TRUE;
+            *pIntNum = FRONTEND_TUNER_PORT1_INT;
+        #endif
+        break;  
+        case 2:
+        #ifdef FRONTEND_TUNER_PORT2_INT
+            bRet = TRUE;
+            *pIntNum = FRONTEND_TUNER_PORT2_INT;
+        #endif
+        break;
+        case 3:
+        #ifdef FRONTEND_TUNER_PORT3_INT
+            bRet = TRUE;
+            *pIntNum = FRONTEND_TUNER_PORT3_INT;
+        #endif
+        break;
+        default:
+            break;
+    }
+    return bRet;
+}
+
+
+static MS_BOOL _mdrv_dmd_msb124x_IntNum2DemodIndex(MS_U8* pu8DemodIndex, InterruptNum IntNum)
+{
+    #ifdef FRONTEND_TUNER_PORT0_INT
+      if(IntNum == FRONTEND_TUNER_PORT0_INT)
+      {
+        *pu8DemodIndex = 0;
+        return TRUE;
+      }
+    #endif
+
+    #ifdef FRONTEND_TUNER_PORT1_INT
+      if(IntNum == FRONTEND_TUNER_PORT1_INT)
+      {
+        *pu8DemodIndex = 1;
+        return TRUE;
+      }
+    #endif
+
+    #ifdef FRONTEND_TUNER_PORT2_INT
+      if(IntNum == FRONTEND_TUNER_PORT2_INT)
+      {
+        *pu8DemodIndex = 2;
+        return TRUE;
+      }
+    #endif
+
+    #ifdef FRONTEND_TUNER_PORT3_INT
+      if(IntNum == FRONTEND_TUNER_PORT3_INT)
+      {
+        *pu8DemodIndex = 3;
+        return TRUE;
+      }
+    #endif
+
+    return FALSE;
+}
+
+static void _mdrv_dmd_msb124x_event_task(MS_U32 argc, void *argv)
+{
+  MDvr_CofdmDmd_CONFIG *pMSB124X = NULL;
+  MS_U32 u32WaitEventFlag;
+  MS_U8 u8DemodIndex = 0;
+
+  u32WaitEventFlag = MSB124X_EVT_PORT0INT|MSB124X_EVT_PORT1INT|MSB124X_EVT_PORT2INT|MSB124X_EVT_PORT3INT;
+  do
+  {
+     MsOS_WaitEvent(_s32DmdEventId, u32WaitEventFlag,&u32Events, E_OR_CLEAR, MSOS_WAIT_FOREVER);
+     switch(u32Events)
+     {
+         case MSB124X_EVT_PORT0INT:
+            u8DemodIndex = 0;
+            break;
+         case MSB124X_EVT_PORT1INT:
+            u8DemodIndex = 1;
+            break;
+         case MSB124X_EVT_PORT2INT:
+            u8DemodIndex = 2;
+            break;
+         case MSB124X_EVT_PORT3INT:
+            u8DemodIndex = 3;
+            break;
+         default:
+            break;
+            
+     }
+     
+     if(pstMSB124X != NULL)
+     {
+         pMSB124X = (pstMSB124X+ u8DemodIndex);
+         #if MSB124X_TIMER_EN
+         if(ps32msb124x_TimerID != NULL)
+             MsOS_StartTimer (*(ps32msb124x_TimerID + u8DemodIndex));
+         #endif
+         if(pMSB124X->MSB124X_InitParam.fpCB != NULL)
+             pMSB124X->MSB124X_InitParam.fpCB(pMSB124X->MSB124X_InitParam.u8FrontendIndex,1);
+
+         MSB124X_IIC_Bypass_Mode(u8DemodIndex, TRUE);
+         pMSB124X->MSB124X_InitParam.pstTunertab->Extension_Function(u8DemodIndex,TUNER_EXT_FUNC_RESET_RFAGC, NULL);
+         MSB124X_IIC_Bypass_Mode(u8DemodIndex, FALSE);
+     }
+  }while(1);
+}
+
+static void _mdrv_dmd_msb124x_cb(InterruptNum irq)
+{
+    MS_U8 u8DemodIndex=0;
+
+    u8TS_VLD_cnt++;
+    if(u8TS_VLD_cnt < 2)
+        MsOS_EnableInterrupt(irq);
+    else
+    {
+        MsOS_DisableInterrupt(irq);
+        if(_mdrv_dmd_msb124x_IntNum2DemodIndex(&u8DemodIndex, irq))
+        {
+            MsOS_ClearEvent(_s32DmdEventId, MSB124X_EVT_MASK);
+            MsOS_SetEvent(_s32DmdEventId, (1<<u8DemodIndex));
+        }
+    }
+}
+
+
 static MS_BOOL MSB124X_Variables_alloc(void)
 {
-    MS_U8 i;
+    MS_U8 i,j;
     MDvr_CofdmDmd_CONFIG *pMSB124X = NULL;
-    SLAVE_ID_TBL* pSlaveIDTBL = NULL;
+    SLAVE_ID_USAGE* pSlaveIDTBL = NULL;
+    MS_U8 u8MaxI2CPort;
+
+    u8MaxI2CPort = (MS_U8)((E_MS_IIC_SW_PORT_0/8) + (E_MS_IIC_PORT_NOSUP - E_MS_IIC_SW_PORT_0));
 
     if(NULL == pstMSB124X)
     {
@@ -763,20 +956,43 @@ static MS_BOOL MSB124X_Variables_alloc(void)
 
     if(NULL == pstMSB124X_slave_ID_TBL)
     {
-        pstMSB124X_slave_ID_TBL = (SLAVE_ID_TBL *)malloc(sizeof(SLAVE_ID_TBL) * MSB124X_MAX_IIC_PORT_CNT);
+        pstMSB124X_slave_ID_TBL = (SLAVE_ID_USAGE *)malloc(sizeof(MSB124X_possible_slave_ID) * u8MaxI2CPort);
         if(NULL == pstMSB124X_slave_ID_TBL)
         {
             return FALSE;
         }
         else
         {
-            for(i=0; i< MSB124X_MAX_IIC_PORT_CNT ; i++)
+            for(i=0; i< u8MaxI2CPort; i++)
             {
-                pSlaveIDTBL = (pstMSB124X_slave_ID_TBL + i);
-                memcpy(&(pSlaveIDTBL->stID_Tbl), &MSB124X_possible_slave_ID, sizeof(MSB124X_possible_slave_ID));
+                for(j=0; j< (sizeof(MSB124X_possible_slave_ID)/sizeof(SLAVE_ID_USAGE)); j++)
+                {
+                    pSlaveIDTBL = (pstMSB124X_slave_ID_TBL + i*sizeof(MSB124X_possible_slave_ID)/sizeof(SLAVE_ID_USAGE) + j);
+                    memcpy(pSlaveIDTBL, &MSB124X_possible_slave_ID[j], sizeof(SLAVE_ID_USAGE));
+                 }
             }
+
+        }
+
+    }
+
+    #if MSB124X_TIMER_EN
+    if(NULL == ps32msb124x_TimerID)
+    {
+        ps32msb124x_TimerID = (MS_S32 *)malloc(sizeof(MS_S32) * MAX_FRONTEND_NUM);
+        if(NULL == ps32msb124x_TimerID)
+        {
+            return FALSE;
+        }
+        else
+        {
+            for(i=0; i< MAX_FRONTEND_NUM; i++)
+            {
+              *(ps32msb124x_TimerID + i) = (-1);
+            }        
         }
     }
+#endif
 
     return TRUE;
 
@@ -801,6 +1017,14 @@ static MS_BOOL MSB124X_Variables_free(void)
         free(pstMSB124X_slave_ID_TBL);
         pstMSB124X_slave_ID_TBL = NULL;
     }
+
+    #if MSB124X_TIMER_EN
+    if(NULL != ps32msb124x_TimerID)
+    {
+        free(ps32msb124x_TimerID);
+        ps32msb124x_TimerID = NULL;
+    }
+    #endif
     return TRUE;
 }
 
@@ -824,25 +1048,46 @@ static MS_BOOL _GetDemodIndexByHandle(MS_S32 s32Handle, MS_U8* pu8DemodIndex)
 static void _msb124x_hw_reset(MS_U8 u8DemodIndex)
 {
     MDvr_CofdmDmd_CONFIG *pMSB124X = (pstMSB124X + u8DemodIndex);
-#ifdef GPIO_DEMOD_RST
-    int rst_pin = 9999;
-    if(pMSB124X->bIsMCP_DMD)
-    {
-        rst_pin = GPIO_DEMOD_RST;
-        mdrv_gpio_set_high(rst_pin);
-        MsOS_DelayTask(5);
-        mdrv_gpio_set_low(rst_pin);
-        MsOS_DelayTask(10);
-        mdrv_gpio_set_high(rst_pin);
-        MsOS_DelayTask(5);
-    }
-    rst_pin = 9999;
+    if((pstMSB124X == NULL) || (pDemodRest == NULL))
+        return;
+    
+#ifdef GPIO_DEMOD_RST // for the chip have MCP demod
+            //In below cases, modify reset pin as GPIO_DEMOD_RST
+            //1. have known this is internal demod
+            //2. before demod detection compelect,assuem 1st reset pin (for tuner)must be corresponding to MCP demod
+            if((pMSB124X->bIsMCP_DMD) || (!u8DemodIndex))
+            {
+               pMSB124X->RstPin = GPIO_DEMOD_RST;
+            }
 #endif
+
+    mdrv_gpio_set_high(pMSB124X->RstPin);
+    MsOS_DelayTask(5);
+    mdrv_gpio_set_low(pMSB124X->RstPin);
+    MsOS_DelayTask(10);
+    mdrv_gpio_set_high(pMSB124X->RstPin);
+    MsOS_DelayTask(5);
 
     pMSB124X->bInited = FALSE;
     pMSB124X->bOpen = FALSE;
     *(pDemodRest + u8DemodIndex) = TRUE;
     MDrv_DMD_MSB124X_Exit_EX(pMSB124X->s32DemodHandle);
+}
+
+static void _msb124x_power_onoff(MS_U8 u8DemodIndex, MS_BOOL bOn)
+{
+#ifdef GPIO_DEMOD_RST
+    MDvr_CofdmDmd_CONFIG *pMSB124X = (pstMSB124X + u8DemodIndex);
+    int rst_pin = 9999;
+    rst_pin = GPIO_DEMOD_RST;
+    if(pMSB124X->bIsMCP_DMD)
+    {
+        if(bOn)
+            mdrv_gpio_set_high(rst_pin);
+        else
+            mdrv_gpio_set_low(rst_pin);
+    }
+#endif
 }
 
 #ifdef USE_SPI_LOAD_TO_SDRAM
@@ -903,14 +1148,18 @@ static void msb124x_SPIPAD_TS2_En(MS_BOOL bOnOff)
 MS_BOOL MSB124X_WriteBytes_demod(MS_U8 u8DemodIndex,MS_U8 u8AddrSize, MS_U8 *pu8Addr, MS_U16 u16Size, MS_U8 *pu8Data)
 {
     MS_BOOL bRet = 0;
+    MS_IIC_PORT ePort;
+    
     MDvr_CofdmDmd_CONFIG *pMSB124X = (pstMSB124X + u8DemodIndex);
+    
     if (!pMSB124X)
     {
         DMD_ERR(("pMSB124X error !\n"));
         return FALSE;
     }
 
-    bRet = MDrv_IIC_Write(pMSB124X->u8SlaveID, pu8Addr, u8AddrSize, pu8Data, u16Size);
+    ePort = getI2CPort(u8DemodIndex);
+    bRet = MDrv_IIC_WriteBytes(ePort, (MS_U16)pMSB124X->u8SlaveID, u8AddrSize, pu8Addr, u16Size, pu8Data);
     if (FALSE == bRet)
     {
         DMD_ERR(("Demod IIC write error, slave ID = 0x%x\n", pMSB124X->u8SlaveID));
@@ -921,50 +1170,17 @@ MS_BOOL MSB124X_WriteBytes_demod(MS_U8 u8DemodIndex,MS_U8 u8AddrSize, MS_U8 *pu8
 MS_BOOL MSB124X_ReadBytes_demod(MS_U8 u8DemodIndex, MS_U8 u8AddrSize, MS_U8 *pu8Addr, MS_U16 u16Size, MS_U8 *pu8Data)
 {
     MS_BOOL bRet = 0;
+    MS_IIC_PORT ePort;
+    
     MDvr_CofdmDmd_CONFIG *pMSB124X = (pstMSB124X + u8DemodIndex);
     if (!pMSB124X)
     {
         DMD_ERR(("pMSB124X error !\n"));
         return FALSE;
     }
+    ePort = getI2CPort(u8DemodIndex);
+    bRet = MDrv_IIC_ReadBytes(ePort, (MS_U16)pMSB124X->u8SlaveID, u8AddrSize, pu8Addr, u16Size, pu8Data);
 
-    bRet = MDrv_IIC_Read(pMSB124X->u8SlaveID, pu8Addr, u8AddrSize, pu8Data, u16Size);
-    if (FALSE == bRet)
-    {
-        DMD_ERR(("Demod IIC read error\n"));
-    }
-    return bRet;
-}
-
-MS_BOOL MSB124X_WriteBytes_demod1(MS_U8 u8DemodIndex, MS_U8 u8AddrSize, MS_U8 *pu8Addr, MS_U16 u16Size, MS_U8 *pu8Data)
-{
-    MS_BOOL bRet = 0;
-    MDvr_CofdmDmd_CONFIG *pMSB124X = (pstMSB124X + u8DemodIndex);
-    if (!pMSB124X)
-    {
-        DMD_ERR(("pMSB124X error !\n"));
-        return FALSE;
-    }
-
-    bRet = MDrv_IIC1_Write(pMSB124X->u8SlaveID, pu8Addr, u8AddrSize, pu8Data, u16Size);
-    if (FALSE == bRet)
-    {
-        DMD_ERR(("Demod IIC write error\n"));
-    }
-    return bRet;
-}
-
-MS_BOOL MSB124X_ReadBytes_demod1(MS_U8 u8DemodIndex, MS_U8 u8AddrSize, MS_U8 *pu8Addr, MS_U16 u16Size, MS_U8 *pu8Data)
-{
-    MS_BOOL bRet = 0;
-    MDvr_CofdmDmd_CONFIG *pMSB124X = (pstMSB124X + u8DemodIndex);
-    if (!pMSB124X)
-    {
-        DMD_ERR(("pMSB124X error !\n"));
-        return FALSE;
-    }
-
-    bRet = MDrv_IIC1_Read(pMSB124X->u8SlaveID, pu8Addr, u8AddrSize, pu8Data, u16Size);
     if (FALSE == bRet)
     {
         DMD_ERR(("Demod IIC read error\n"));
@@ -976,7 +1192,10 @@ MS_BOOL MSB124X_ReadBytes_demod1(MS_U8 u8DemodIndex, MS_U8 u8AddrSize, MS_U8 *pu
 MS_BOOL MSB124X_WriteBytes_spi(MS_U8 u8DemodIndex, MS_U8 u8AddrSize, MS_U8 *pu8Addr, MS_U16 u16Size, MS_U8 *pu8Data)
 {
     MS_BOOL bRet = 0;
-    bRet = MDrv_IIC_Write(DEMOD_DYNAMIC_SLAVE_ID_2, pu8Addr, u8AddrSize, pu8Data, u16Size);
+    MS_IIC_PORT ePort;
+    
+    ePort = getI2CPort(u8DemodIndex);
+    bRet = MDrv_IIC_WriteBytes(ePort, DEMOD_DYNAMIC_SLAVE_ID_2, u8AddrSize, pu8Addr, u16Size, pu8Data);
     if (FALSE == bRet)
     {
         DMD_ERR(("Demod IIC write spi error\n"));
@@ -987,36 +1206,17 @@ MS_BOOL MSB124X_WriteBytes_spi(MS_U8 u8DemodIndex, MS_U8 u8AddrSize, MS_U8 *pu8A
 MS_BOOL MSB124X_ReadBytes_spi(MS_U8 u8DemodIndex, MS_U8 u8AddrSize, MS_U8 *pu8Addr, MS_U16 u16Size, MS_U8 *pu8Data)
 {
     MS_BOOL bRet = 0;
-    bRet = MDrv_IIC_Read(DEMOD_DYNAMIC_SLAVE_ID_2, pu8Addr, u8AddrSize, pu8Data, u16Size);
+    MS_IIC_PORT ePort;
+    
+    ePort = getI2CPort(u8DemodIndex);
+    bRet = MDrv_IIC_ReadBytes(ePort, DEMOD_DYNAMIC_SLAVE_ID_2, u8AddrSize, pu8Addr, u16Size, pu8Data);
     if (FALSE == bRet)
     {
-        DMD_ERR(("Demod IIC read spi error\n"));
+        DMD_ERR(("Demod IIC Read spi error\n"));
     }
     return bRet;
-}
 
-MS_BOOL MSB124X_WriteBytes_spi1(MS_U8 u8DemodIndex, MS_U8 u8AddrSize, MS_U8 *pu8Addr, MS_U16 u16Size, MS_U8 *pu8Data)
-{
-    MS_BOOL bRet = 0;
-    bRet = MDrv_IIC1_Write(DEMOD_DYNAMIC_SLAVE_ID_2, pu8Addr, u8AddrSize, pu8Data, u16Size);
-    if (FALSE == bRet)
-    {
-        DMD_ERR(("Demod IIC write spi error\n"));
-    }
-    return bRet;
 }
-
-MS_BOOL MSB124X_ReadBytes_spi1(MS_U8 u8DemodIndex, MS_U8 u8AddrSize, MS_U8 *pu8Addr, MS_U16 u16Size, MS_U8 *pu8Data)
-{
-    MS_BOOL bRet = 0;
-    bRet = MDrv_IIC1_Read(DEMOD_DYNAMIC_SLAVE_ID_2, pu8Addr, u8AddrSize, pu8Data, u16Size);
-    if (FALSE == bRet)
-    {
-        DMD_ERR(("Demod IIC read spi error\n"));
-    }
-    return bRet;
-}
-
 
 typedef struct
 {
@@ -1045,28 +1245,6 @@ static mapi_i2c* mapi_i2c_GetI2C_Dev(MS_U32 u32gID)
     }
     return handler;
 }
-
-static mapi_i2c* mapi_i2c1_GetI2C_Dev(MS_U32 u32gID)
-{
-    mapi_i2c *handler;
-    switch (u32gID)
-    {
-    default:
-        DMD_DBG(("iic device not supported\n"));
-    case MSB124X_DEMOD_IIC:
-        handler = &DemodI2Chandler;
-        handler->WriteBytes = MSB124X_WriteBytes_demod1;
-        handler->ReadBytes = MSB124X_ReadBytes_demod1;
-        break;
-    case MSB124X_SPI_IIC:
-        handler = &SpiI2Chandler;
-        handler->WriteBytes = MSB124X_WriteBytes_spi1;
-        handler->ReadBytes = MSB124X_ReadBytes_spi1;
-        break;
-    }
-    return handler;
-}
-
 
 static MS_BOOL msb124x_I2C_Access(eDMD_MSB124X_DemodI2CSlaveID eSlaveID, eDMD_MSB124X_DemodI2CMethod eMethod, MS_U8 u8AddrSize, MS_U8 *pu8Addr, MS_U16 u16Size, MS_U8 *pu8Data)
 {
@@ -1098,53 +1276,6 @@ static MS_BOOL msb124x_I2C_Access(eDMD_MSB124X_DemodI2CSlaveID eSlaveID, eDMD_MS
         {
         case E_DMD_MSB124X_DEMOD_I2C_WRITE_BYTES:
             bRet = i2c_iptr->WriteBytes(u8DemodIndex,u8AddrSize, pu8Addr, u16Size, pu8Data);
-            break;
-        case E_DMD_MSB124X_DEMOD_I2C_READ_BYTES:
-            bRet = i2c_iptr->ReadBytes(u8DemodIndex, u8AddrSize, pu8Addr, u16Size, pu8Data);
-        default:
-            break;
-        }
-    }
-    else
-    {
-        bRet = FALSE;
-    }
-
-    return bRet;
-}
-
-static MS_BOOL msb124x_I2C1_Access(eDMD_MSB124X_DemodI2CSlaveID eSlaveID, eDMD_MSB124X_DemodI2CMethod eMethod, MS_U8 u8AddrSize, MS_U8 *pu8Addr, MS_U16 u16Size, MS_U8 *pu8Data)
-{
-    MS_BOOL bRet = TRUE;
-    mapi_i2c *i2c_iptr = mapi_i2c1_GetI2C_Dev(MSB124X_DEMOD_IIC);
-    MS_U8 u8DemodIndex = 0;
-
-#if defined(SUPPORT_MULTI_DEMOD) && (SUPPORT_MULTI_DEMOD == 1)
-    if(!_GetDemodIndexByHandle(MDrv_DMD_MSB124X_GetCurrentHandle(), &u8DemodIndex))
-    {
-        DMD_ERR(("124X_I2C1_Access get demod index FAIL\n"));
-    }
-#endif
-
-
-
-    switch (eSlaveID)
-    {
-    case E_DMD_MSB124X_DEMOD_I2C_DYNAMIC_SLAVE_ID_2:
-        i2c_iptr = mapi_i2c1_GetI2C_Dev(MSB124X_SPI_IIC);
-        break;
-    case E_DMD_MSB124X_DEMOD_I2C_DYNAMIC_SLAVE_ID_1:
-    default:
-        i2c_iptr = mapi_i2c1_GetI2C_Dev(MSB124X_DEMOD_IIC);
-        break;
-    }
-
-    if (i2c_iptr != NULL)
-    {
-        switch (eMethod)
-        {
-        case E_DMD_MSB124X_DEMOD_I2C_WRITE_BYTES:
-            bRet = i2c_iptr->WriteBytes(u8DemodIndex, u8AddrSize, pu8Addr, u16Size, pu8Data);
             break;
         case E_DMD_MSB124X_DEMOD_I2C_READ_BYTES:
             bRet = i2c_iptr->ReadBytes(u8DemodIndex, u8AddrSize, pu8Addr, u16Size, pu8Data);
@@ -1281,24 +1412,9 @@ MS_BOOL MSB124X_I2C_CH_Reset(MS_U8 u8DemodIndex, MS_U8 ch_num)
 {
     MS_BOOL bRet = TRUE;
     MS_U8     data[5] = {0x53, 0x45, 0x52, 0x44, 0x42};
-    HWI2C_PORT hwi2c_port;
     mapi_i2c *iptr;
 
-    hwi2c_port = getI2CPort(u8DemodIndex);
-    if (hwi2c_port < E_HWI2C_PORT_1)
-    {
-        iptr = mapi_i2c_GetI2C_Dev(MSB124X_DEMOD_IIC);
-    }
-    else if (hwi2c_port < E_HWI2C_PORT_2)
-    {
-        iptr = mapi_i2c1_GetI2C_Dev(MSB124X_DEMOD_IIC);
-    }
-    else
-    {
-        DMD_ERR(("hwi2c_port number exceeds limitation\n"));
-        return FALSE;
-    }
-
+    iptr = mapi_i2c_GetI2C_Dev(MSB124X_DEMOD_IIC);
     // ch_num, 0: for MIU access, 3: for RIU access
     DMD_DBG(("[MSB124X][beg]MSB124X_I2C_CH_Reset, CH=0x%x\n", ch_num));
 
@@ -1312,11 +1428,13 @@ MS_BOOL MSB124X_I2C_CH_Reset(MS_U8 u8DemodIndex, MS_U8 ch_num)
 
     if (*(pDemodRest + u8DemodIndex))
     {
-        *(pDemodRest + u8DemodIndex) = FALSE;
         // 8'hb2(SRID)->8,h53(PWD1)->8,h45(PWD2)->8,h52(PWD3)->8,h44(PWD4)->8,h42(PWD5)
         data[0] = 0x53;
         // Don't check Ack because this passward only ack one time for the first time.
-        iptr->WriteBytes(u8DemodIndex, 0, NULL, 5, data);
+        if(iptr->WriteBytes(u8DemodIndex, 0, NULL, 5, data))
+            *(pDemodRest + u8DemodIndex) = FALSE;
+        else
+            return FALSE;
     }
 
     // 8'hb2(SRID)->8,h71(CMD)  //TV.n_iic_
@@ -1997,7 +2115,7 @@ EN_LOCK_STATUS MSB124X_DTV_GetLockStatus(MS_U8 u8DemodIndex)
             if (MSB124X_Lock(u8DemodIndex, E_DEVICE_DEMOD_DVB_T2, COFDM_P1_LOCK_HISTORY) == TRUE)
             {
                 u32Timeout = DVBT2_FEC_timeout;
-                DMD_DBG(("====> T2 P1 Locked!\n"));
+                //DMD_DBG(("====> T2 P1 Locked!\n"));
             }
         }
 
@@ -2005,7 +2123,7 @@ EN_LOCK_STATUS MSB124X_DTV_GetLockStatus(MS_U8 u8DemodIndex)
         {
             u32LockTimeStartDVBT2 = MsOS_GetSystemTime();
             pMSB124X->bFECLock = TRUE;
-            DMD_DBG(("====> T2 FEC Locked!\n"));
+            //DMD_DBG(("====> T2 FEC Locked!\n"));
             return E_DEMOD_LOCK;
         }
         else if ((u32NowTime - pMSB124X->u32ChkScanTimeStart < u32Timeout)
@@ -2035,7 +2153,7 @@ EN_LOCK_STATUS MSB124X_DTV_GetLockStatus(MS_U8 u8DemodIndex)
         {
             if (MSB124X_Lock(u8DemodIndex, E_DEVICE_DEMOD_DVB_T, COFDM_TPS_LOCK) == TRUE)
             {
-                DMD_DBG(("T TPS locked!\n"));
+                //DMD_DBG(("T TPS locked!\n"));
                 u32Timeout = DVBT_FEC_timeout;
                 gTimeoutFlag = DVBT_FEC_timeout;
             }
@@ -2044,7 +2162,7 @@ EN_LOCK_STATUS MSB124X_DTV_GetLockStatus(MS_U8 u8DemodIndex)
         {
             u32LockTimeStartDVBT = MsOS_GetSystemTime();
             pMSB124X->bFECLock = TRUE;
-            DMD_DBG(("T FEC locked!\n"));
+            //DMD_DBG(("T FEC locked!\n"));
             return E_DEMOD_LOCK;
         }
         else if ((u32NowTime - pMSB124X->u32ChkScanTimeStart < u32Timeout)
@@ -2111,7 +2229,7 @@ EN_LOCK_STATUS MSB124X_DTV_GetLockStatus(MS_U8 u8DemodIndex)
         if(u8Data==0x0C)
             bCheckPass= TRUE;
 
-        DMD_DBG((">>>MSB124x DVBC: [%s] Lock Status = %d\n", __FUNCTION__, u8Data));
+        //DMD_DBG((">>>MSB124x DVBC: [%s] Lock Status = %d\n", __FUNCTION__, u8Data));
         if (bCheckPass)
         {
             u32LockTimeStartDVBC=MsOS_GetSystemTime();
@@ -2388,7 +2506,9 @@ MS_BOOL MSB124X_DTV_GetPreBER(MS_U8 u8DemodIndex, float *p_preBer)
     MS_U8  reg = 0;
     float fber = 0;
     MS_U8 status = TRUE;
-
+    MS_U8           reg_frz=0;
+    MS_BOOL         BEROver;
+   
     MDvr_CofdmDmd_CONFIG *pMSB124X = (pstMSB124X + u8DemodIndex);
     if (!pMSB124X)
     {
@@ -2467,6 +2587,62 @@ MS_BOOL MSB124X_DTV_GetPreBER(MS_U8 u8DemodIndex, float *p_preBer)
         DMD_DBG(("[DVBT2] preber=%f, Err_num=%d, block_count=%d, reg=0x%x\n", fber, (int)BitErr, (int)BitErrPeriod, reg));
         break;
 
+    case E_DEVICE_DEMOD_DVB_T:
+
+    // bank 7 0x10 [3] reg_rd_freezeber
+    status &= MSB124X_ReadReg(pMSB124X, 0x1100 + 0x10, &reg_frz);
+    status &= MSB124X_WriteReg(pMSB124X, 0x1100 + 0x10, reg_frz|0x08);
+
+    // bank 7 0x16 [7:0] reg_ber_timerl
+    //             [15:8] reg_ber_timerm
+    // bank 7 0x18 [5:0] reg_ber_timerh
+    status &= MSB124X_ReadReg(pMSB124X, 0x1100 + 0x18, &reg);
+    BitErrPeriod = reg&0x3f;
+
+    status &= MSB124X_ReadReg(pMSB124X, 0x1100 + 0x17, &reg);
+    BitErrPeriod = (BitErrPeriod << 8)|reg;
+
+    status &= MSB124X_ReadReg(pMSB124X, 0x1100 + 0x16, &reg);
+    BitErrPeriod = (BitErrPeriod << 8)|reg;
+ 
+     // bank 7 0x1e [7:0] reg_ber_7_0
+    //             [15:8] reg_ber_15_8
+    status &= MSB124X_ReadReg(pMSB124X, 0x1100 + 0x1F, &reg);
+    BitErr = reg;
+
+    status &= MSB124X_ReadReg(pMSB124X, 0x1100 + 0x1E, &reg);
+    BitErr = (BitErr << 8)|reg;
+
+    // bank 7 0x1a [13:8] reg_cor_intstat_reg
+    status &= MSB124X_ReadReg(pMSB124X, 0x1100 + 0x1B, &reg);
+    if (reg & 0x10)
+        BEROver = true;
+    else
+        BEROver = false;
+
+    if (BitErrPeriod ==0 )//protect 0
+      BitErrPeriod=1;
+
+    if (BEROver)
+    {
+        fber = 1;
+        printf("BER is over\n");
+    }
+    else
+    {
+        if (BitErr <=0 )
+        fber=0.5 / (float)(BitErrPeriod * 256);
+        else
+        fber=(float)(BitErr) / (float)(BitErrPeriod * 256);
+    }
+
+    // bank 7 0x10 [3] reg_rd_freezeber
+    status &= MSB124X_WriteReg(pMSB124X, 0x1100 + 0x10, reg_frz);
+       
+        *p_preBer = fber;
+        DMD_DBG(("[DVBTT] preber=%f, Err_num=%d, block_count=%d, reg=0x%x\n", fber, (int)BitErr, (int)BitErrPeriod, reg));
+        break;
+        
     default:
         *p_preBer = 0.0;
     }
@@ -3997,12 +4173,12 @@ EN_DEVICE_DEMOD_TYPE MSB124X_GetCurrentDemodulatorType(MS_U8 u8DemodIndex)
     if (!pMSB124X)
     {
         DMD_ERR(("pMSB124X error !"));
-        return FALSE;
+        return E_DEVICE_DEMOD_NULL;
     }
     if ((!pMSB124X->bInited) || (!pMSB124X->bOpen))
     {
         DMD_ERR(("[%s]pMSB124X have not inited !!!\n", __FUNCTION__));
-        return FALSE;
+        return E_DEVICE_DEMOD_NULL;
     }
     return pMSB124X->enDemodType ;
 }
@@ -4145,6 +4321,12 @@ MS_BOOL MSB124X_DTV_GetPlpBitMap(MS_U8 u8DemodIndex,MS_U8* u8PlpBitMap)
         return FALSE;
     }
 
+    if(E_DEVICE_DEMOD_DVB_T2 != pMSB124X->enDemodType)
+    {
+        DMD_ERR(("[%s]Wrong Demod Type !!!\n",__FUNCTION__));
+        return FALSE;
+    }
+
     status &= MSB124X_ReadDspReg(pMSB124X, 0x0120, &u8Data);     // check L1 ready
     if (u8Data != 0x30)
         return FALSE;
@@ -4212,6 +4394,12 @@ MS_BOOL MSB124X_GetPlpIDList(MS_U8 u8DemodIndex)
         return FALSE;
     }
 
+    if(E_DEVICE_DEMOD_DVB_T2 != pMSB124X->enDemodType)
+    {
+        DMD_ERR(("[%s]Wrong Demod Type !!!\n",__FUNCTION__));
+        return FALSE;
+    }
+
     pMSB124X->PlpIDSize = 0;
     memset(u8PlpBitMap, 0xff, sizeof(u8PlpBitMap));
     bRet = MSB124X_DTV_GetPlpBitMap(u8DemodIndex,u8PlpBitMap);
@@ -4252,6 +4440,13 @@ MS_BOOL MSB124X_DTV_GetPlpGroupID(MS_U8 u8DemodIndex,MS_U8 u8PlpID, MS_U8* u8Gro
         DMD_ERR(("pMSB124X have not inited !!!"));
         return FALSE;
     }
+
+    if(E_DEVICE_DEMOD_DVB_T2 != pMSB124X->enDemodType)
+    {
+        DMD_ERR(("[%s]Wrong Demod Type !!!\n",__FUNCTION__));
+        return FALSE;
+    }
+
 
     status &= MSB124X_ReadDspReg(pMSB124X, 0x0120, &u8Data);         // check L1 ready
     if (u8Data != 0x30)
@@ -4299,6 +4494,13 @@ MS_BOOL MSB124X_DTV_SetPlpGroupID(MS_U8 u8DemodIndex,MS_U8 u8PlpID, MS_U8 u8Grou
         DMD_ERR(("[%s]pMSB124X have not inited !!!\n", __FUNCTION__));
         return FALSE;
     }
+
+    if(E_DEVICE_DEMOD_DVB_T2 != pMSB124X->enDemodType)
+    {
+        DMD_ERR(("[%s]Wrong Demod Type !!!\n",__FUNCTION__));
+        return FALSE;
+     }
+
 
     pMSB124X->u32ChkScanTimeStart = MsOS_GetSystemTime();
     DMD_DBG(("[start]\n"));
@@ -4392,6 +4594,12 @@ MS_BOOL MSB124X_DTV_GetNextPLPID(MS_U8 u8DemodIndex, MS_U8 Index, MS_U8* pu8PLPI
         return FALSE;
     }
 
+    if(E_DEVICE_DEMOD_DVB_T2 != pMSB124X->enDemodType)
+    {
+        DMD_ERR(("[%s]Wrong Demod Type !!!\n",__FUNCTION__));
+        return FALSE;
+    }
+
     *pu8PLPID = pMSB124X->PlpIDList[Index];
     MsOS_ReleaseMutex(pMSB124X->s32_MSB124X_Mutex);
     return TRUE;
@@ -4413,6 +4621,13 @@ MS_BOOL MSB124X_T2_SetPlpID(MS_U8 u8DemodIndex,MS_U8 u8PlpID)
         DMD_ERR(("pMSB124X have not inited !!!"));
         return FALSE;
     }
+
+    if(E_DEVICE_DEMOD_DVB_T2 != pMSB124X->enDemodType)
+    {
+        DMD_ERR(("[%s]Wrong Demod Type !!!\n",__FUNCTION__));
+        return FALSE;
+    }
+    
     {
         //MS_U32 u32Timeout;
         MS_U8 u8Data;
@@ -5094,6 +5309,8 @@ MS_BOOL MSB124X_DTV_GetPLPType(MS_U8 u8DemodIndex, DEMOD_DVBT2_PLP_TYPE* ePLP_TY
     MDvr_CofdmDmd_CONFIG *pMSB124X = (pstMSB124X + u8DemodIndex);
     MS_U16 u16data=0;
     MS_BOOL bret = TRUE;
+    MS_U32 u32StartTime;
+    MS_BOOL bFECLock = FALSE;
 
     if (!pMSB124X)
     {
@@ -5105,13 +5322,37 @@ MS_BOOL MSB124X_DTV_GetPLPType(MS_U8 u8DemodIndex, DEMOD_DVBT2_PLP_TYPE* ePLP_TY
         DMD_ERR(("[%s]pMSB124X have not inited !!!\n", __FUNCTION__));
         return FALSE;
     }
+
+    if(pMSB124X->enDemodType != E_DEVICE_DEMOD_DVB_T2)
+    {
+        DMD_ERR(("[%s]Wrong Demod Type !!!\n",__FUNCTION__));
+        return FALSE;
+    }
+        
     if (MsOS_ObtainMutex(pMSB124X->s32_MSB124X_Mutex, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
     {
-        DMD_ERR(("MDrv_Demod_Open:Obtain mutex failed !!!\n"));
+        DMD_ERR(("Obtain mutex failed !!!\n"));
         return FALSE;
     }
 
-    bret &= MSB124X_DTV_DVB_T2_Get_L1_Parameter(u8DemodIndex, &u16data, T2_PLP_TYPE);
+  
+    u32StartTime = MsOS_GetSystemTime();
+
+    do   
+    {        
+        if (MSB124X_Lock(u8DemodIndex, E_DEVICE_DEMOD_DVB_T2, COFDM_FEC_LOCK) == TRUE)        
+        {            
+          DMD_DBG(("GetPlpType, FEC LOCK time: %dms\n ", (int)(MsOS_GetSystemTime() - u32StartTime))); 
+          bFECLock = TRUE;
+          break;        
+        }
+        MsOS_DelayTask(10);       
+    }while((MsOS_GetSystemTime() - u32StartTime) < DVBT2_FEC_timeout);  
+
+    if(bFECLock)
+        bret &= MSB124X_DTV_DVB_T2_Get_L1_Parameter(u8DemodIndex, &u16data, T2_PLP_TYPE);
+    else
+        bret = FALSE; 
 
     if(!bret)
         *ePLP_TYPE = DEMOD_DVBT2_PLP_TYPE_INVALID;
@@ -5177,7 +5418,6 @@ MS_BOOL MSB124X_DTV_GetCellID(MS_U8 u8DemodIndex, MS_U16 *pCellID)
         cell_id |= (MS_U16)id << 8;
 
         status &= MSB124X_WriteReg(pMSB124X, 0x0ffe, 0x00);
-
     }
 
     *pCellID = cell_id;
@@ -5391,9 +5631,6 @@ MS_U16 MSB124X_Get_FreqOffset(MS_U8 u8DemodIndex, float *pFreqOff, MS_U8 u8BW)
         *pFreqOff = FreqIcfo + (FreqCfoFd + FreqCfoTd) / 1000;
 
         status &= MSB124X_ReadReg(pMSB124X, 0x3E5E, &reg);
-
-        if (reg & 0x01)
-            *pFreqOff = -*pFreqOff;
 
         DMD_DBG(("$$$$$$$$$$$$$$$$$$$$  DVB-T CFOE = %f\n", *pFreqOff));
 
@@ -5798,6 +6035,40 @@ MS_BOOL MSB124X_Demod_GetPWR(MS_U8 u8DemodIndex, MS_S32 *ps32Signal)
 {
     MDvr_CofdmDmd_CONFIG *pMSB124X = (pstMSB124X + u8DemodIndex);
 
+    if (!pMSB124X)
+    {
+        DMD_ERR(("pMSB124X error !\n"));
+        return FALSE;
+    }
+    if ((!pMSB124X->bInited) || (!pMSB124X->bOpen))
+    {
+        DMD_ERR(("[%s]pMSB124X have not inited !!!\n", __FUNCTION__));
+        return FALSE;
+    }
+    if (MsOS_ObtainMutex(pMSB124X->s32_MSB124X_Mutex, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+        DMD_ERR(("MDrv_Demod_GetPWR:Obtain mutex failed !!!\n"));
+        return FALSE;
+    }
+    else
+    {
+        MSB124X_IIC_Bypass_Mode(u8DemodIndex, TRUE);
+        if (TRUE != pMSB124X->MSB124X_InitParam.pstTunertab->Extension_Function(u8DemodIndex,TUNER_EXT_FUNC_GET_POWER_LEVEL, ps32Signal))
+        {
+            MSB124X_IIC_Bypass_Mode(u8DemodIndex, FALSE);
+            return FALSE;
+        }
+        MSB124X_IIC_Bypass_Mode(u8DemodIndex, FALSE);
+    }
+
+    MsOS_ReleaseMutex(pMSB124X->s32_MSB124X_Mutex);
+    return TRUE;
+}
+
+MS_BOOL MSB124X_Demod_GetSSI(MS_U8 u8DemodIndex, MS_U16 *pu16SSI)
+{
+    MDvr_CofdmDmd_CONFIG *pMSB124X = (pstMSB124X + u8DemodIndex);
+    int PowerLevel = 0;
     float fSignal = 0;
 
     if (!pMSB124X)
@@ -5817,52 +6088,29 @@ MS_BOOL MSB124X_Demod_GetPWR(MS_U8 u8DemodIndex, MS_S32 *ps32Signal)
     }
     else
     {
-        *ps32Signal = 0;
+        *pu16SSI = 0;
         if (E_DEMOD_LOCK == MSB124X_DTV_GetLockStatus(u8DemodIndex))
         {
-            if(TUNER_MXL603 == pMSB124X->MSB124X_InitParam.pstTunertab->data)
-            {
-                MSB124X_IIC_Bypass_Mode(u8DemodIndex, TRUE);
-                if (TRUE != pMSB124X->MSB124X_InitParam.pstTunertab->Extension_Function(u8DemodIndex,TUNER_EXT_FUNC_GET_POWER_LEVEL, &fSignal))
-                {
-                    DMD_ERR(("MxLWare603_API_ReqTunerRxPower failed !!!\n"));
-                    MSB124X_IIC_Bypass_Mode(u8DemodIndex, FALSE);
-                    return FALSE;
-                }
-                MSB124X_IIC_Bypass_Mode(u8DemodIndex, FALSE);
-                *ps32Signal = (MS_U32)MSB124X_DTV_GetSignalStrengthWithRFPower(u8DemodIndex,fSignal);
-            }
-            else if(TUNER_MXL608 == pMSB124X->MSB124X_InitParam.pstTunertab->data)
-            {
-
-                MSB124X_IIC_Bypass_Mode(u8DemodIndex, TRUE);
-                if (TRUE != pMSB124X->MSB124X_InitParam.pstTunertab->Extension_Function(u8DemodIndex,TUNER_EXT_FUNC_GET_POWER_LEVEL, &fSignal))
-                {
-                    DMD_ERR(("MxLWare608_API_ReqTunerRxPower failed !!!\n"));
-                    MSB124X_IIC_Bypass_Mode(u8DemodIndex, FALSE);
-                    return FALSE;
-                }
-
-                MSB124X_IIC_Bypass_Mode(u8DemodIndex, FALSE);
-                *ps32Signal = (MS_U32)MSB124X_DTV_GetSignalStrengthWithRFPower(u8DemodIndex,fSignal);
-            }
+            MSB124X_IIC_Bypass_Mode(u8DemodIndex, TRUE);
+            pMSB124X->MSB124X_InitParam.pstTunertab->Extension_Function(u8DemodIndex,TUNER_EXT_FUNC_GET_POWER_LEVEL, &PowerLevel);
+            MSB124X_IIC_Bypass_Mode(u8DemodIndex, FALSE);
+            fSignal = (float)PowerLevel;
+            if(fSignal != 0)
+               *pu16SSI = MSB124X_DTV_GetSignalStrengthWithRFPower(u8DemodIndex,fSignal);
             else
-                *ps32Signal  = (MS_U32)MSB124X_DTV_GetSignalStrength(u8DemodIndex);
+                *pu16SSI  = MSB124X_DTV_GetSignalStrength(u8DemodIndex); 
         }
 
-        if (*ps32Signal > 100)
+        if (*pu16SSI > 100)
         {
-            *ps32Signal = 100;
-        }
-        else if (*ps32Signal < 0)
-        {
-            *ps32Signal = 0;
+            *pu16SSI = 100;
         }
     }
 
     MsOS_ReleaseMutex(pMSB124X->s32_MSB124X_Mutex);
     return TRUE;
 }
+
 
 MS_BOOL MSB124X_Demod_GetSignalQuality(MS_U8 u8DemodIndex, MS_U16 *pu16quality)
 {
@@ -5925,6 +6173,14 @@ MS_BOOL MSB124X_Demod_GetLock(MS_U8 u8DemodIndex, EN_LOCK_STATUS *peLockStatus)
         *peLockStatus = MSB124X_DTV_GetLockStatus(u8DemodIndex);
     }
 
+    if(((*peLockStatus) == E_DEMOD_LOCK)&&(!MSB124X_TIMER_EN)&&\
+        ((pMSB124X->enDemodType == DVBT) || (pMSB124X->enDemodType == DVBT2)))
+    {
+        MSB124X_IIC_Bypass_Mode(u8DemodIndex, TRUE);
+        pMSB124X->MSB124X_InitParam.pstTunertab->Extension_Function(u8DemodIndex,TUNER_EXT_FUNC_RESET_RFAGC, NULL);
+        MSB124X_IIC_Bypass_Mode(u8DemodIndex, FALSE);
+    }
+    
     MsOS_ReleaseMutex(pMSB124X->s32_MSB124X_Mutex);
     return TRUE;
 }
@@ -6305,13 +6561,26 @@ MS_BOOL MSB124X_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM *pPa
 #if MSB124X_NO_CHANNEL_CHECK
     MDvr_CofdmDmd_CONFIG *pMSB124X = (pstMSB124X + u8DemodIndex);
 #endif
+    InterruptNum IntNum;
+#if MSB124X_TIMER_EN  
+    char cTimerName[]="msb124x_timerX";
+    MS_S32* ps32TimerID = NULL;
+    
+    if(ps32msb124x_TimerID!=NULL)
+    {
+       ps32TimerID = ps32msb124x_TimerID + u8DemodIndex;
+       if(*ps32TimerID > 0)
+           MsOS_StopTimer (*ps32TimerID);
+    }
+#endif
+
 
     if(u32BroadCastType == DVBC)
     {
         ret =  MSB124X_DVBC_Demod_Restart(u8DemodIndex, pParam);
     }
 #if MS_DVBS_INUSE
-    else if(u32BroadCastType == DVBS)
+    else if((u32BroadCastType == DVBS) || (u32BroadCastType == DVBS2))
     {
         ret =  MSB124X_DVBS_S2_Demod_Restart(u8DemodIndex, pParam);
     }
@@ -6333,6 +6602,35 @@ MS_BOOL MSB124X_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM *pPa
     pMSB124X->t2NoChannelFlag = FALSE;
     pMSB124X->tNoChannelFlag = FALSE;
     pMSB124X->u32LockTime = MsOS_GetSystemTime();
+#endif
+
+    u8TS_VLD_cnt = 0;
+    if(_mdrv_dmd_msb124x_get_IntNum(u8DemodIndex, &IntNum))
+    {
+       MsOS_EnableInterrupt(IntNum);
+    }
+
+#if MSB124X_TIMER_EN
+    if(ps32msb124x_TimerID == NULL)
+        return ret;
+        
+    if(*ps32TimerID < 0)
+    {
+        cTimerName[13] = u8DemodIndex + '0';
+        *ps32TimerID = MsOS_CreateTimer (_mdrv_dmd_msb124x_timer_cb,
+                                         MSB124X_LOCK_TIMEOUT,
+                                         MSB124X_STATUS_CHK_PERIOD,
+                                         TRUE,
+                                         cTimerName);
+       if (*ps32TimerID > 0)
+           printf("[%s][%d] %s create ok\n",__FUNCTION__,__LINE__, cTimerName);
+       else
+           printf("[%s][%d] create timer failed \n",__FUNCTION__,__LINE__);
+     }
+     else
+     {
+         MsOS_StartTimer (*ps32TimerID);
+     }
 #endif
 
     return ret;
@@ -6367,12 +6665,10 @@ MS_U8 MSB124X_Demod_GetPlpIDList(MS_U8 u8DemodIndex, MS_U8* u8PlpID)
         return FALSE;
     }
 
-    if (0 == pMSB124X->PlpIDSize)
-    {
-        if (FALSE == MSB124X_GetPlpIDList(u8DemodIndex))
-            pMSB124X->PlpIDSize = 0;
-    }
-    memcpy(u8PlpID , pMSB124X->PlpIDList, pMSB124X->PlpIDSize);
+
+    if (FALSE == MSB124X_GetPlpIDList(u8DemodIndex))
+        pMSB124X->PlpIDSize = 0;
+    //memcpy(u8PlpID , pMSB124X->PlpIDList, pMSB124X->PlpIDSize);
     MsOS_ReleaseMutex(pMSB124X->s32_MSB124X_Mutex);
 
     *u8PlpID = pMSB124X->PlpIDSize;
@@ -6385,14 +6681,15 @@ MS_BOOL MSB124X_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
 
     MS_U8     status = TRUE;
     sDMD_MSB124X_InitData sMSB124X_InitData;
-    HWI2C_PORT hwi2c_port;
     MDvr_CofdmDmd_CONFIG *pMSB124X = (pstMSB124X + u8DemodIndex);
+    InterruptNum IntNum;
 
 
     if(NULL == pParam)
         return FALSE;
 
     pMSB124X->MSB124X_InitParam.pstTunertab = pParam->pstTunertab;
+    pMSB124X->MSB124X_InitParam.fpCB= pParam->fpCB;
 
 #ifdef USE_SPI_LOAD_TO_SDRAM
 #if defined(MSPI_PATH_DETECT) && (MSPI_PATH_DETECT == 1)
@@ -6461,20 +6758,7 @@ MS_BOOL MSB124X_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
         return FALSE;
     }
 
-    hwi2c_port = getI2CPort(u8DemodIndex);
-    if (hwi2c_port < E_HWI2C_PORT_1)
-    {
-        sMSB124X_InitData.fpMSB124X_I2C_Access = msb124x_I2C_Access;
-    }
-    else if (hwi2c_port < E_HWI2C_PORT_2)
-    {
-        sMSB124X_InitData.fpMSB124X_I2C_Access = msb124x_I2C1_Access;
-    }
-    else
-    {
-        DMD_ERR(("hwi2c_port number exceeds limitation\n"));
-        return FALSE;
-    }
+    sMSB124X_InitData.fpMSB124X_I2C_Access = msb124x_I2C_Access;
     sMSB124X_InitData.u8WO_SPI_Flash = TRUE;
     sMSB124X_InitData.bPreloadDSPCodeFromMainCHIPI2C = FALSE;
     sMSB124X_InitData.bFlashWPEnable = TRUE;
@@ -6496,12 +6780,12 @@ MS_BOOL MSB124X_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
     if(DMX_INPUT_EXT_INPUT0 == pMSB124X->u32DmxInputPath)
     {
         sMSB124X_InitData.bEnableSPILoadCode = TRUE;
-        sMSB124X_InitData.fpMSB124x_SPIPAD_En = msb124x_SPIPAD_TS0_En;
+        sMSB124X_InitData.fpMSB124x_SPIPAD_En = SPIPAD_EN[0];
     }
     else if(DMX_INPUT_EXT_INPUT1 == pMSB124X->u32DmxInputPath)
     {
         sMSB124X_InitData.bEnableSPILoadCode = TRUE;
-        sMSB124X_InitData.fpMSB124x_SPIPAD_En = msb124x_SPIPAD_TS1_En;
+        sMSB124X_InitData.fpMSB124x_SPIPAD_En = SPIPAD_EN[1];
     }
     else
 #endif
@@ -6556,6 +6840,46 @@ MS_BOOL MSB124X_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
     if(E_DEVICE_DEMOD_DVB_S == pMSB124X->enDemodType)
         MSB124X_DiSEqC_Init(u8DemodIndex);
 #endif
+
+    if(_mdrv_dmd_msb124x_get_IntNum(u8DemodIndex, &IntNum))
+    {
+        GET_DEMOD_ENTRY_NODE(DEMOD_MSB124X).SupportINT = TRUE;
+        MsOS_AttachInterrupt(IntNum, _mdrv_dmd_msb124x_cb);
+        MsOS_DisableInterrupt(IntNum);  
+ 
+        if (_s32DmdEventId < 0)
+        {
+            _s32DmdEventId = MsOS_CreateEventGroup("MSB124X_Event");
+            if (_s32DmdEventId > 0)
+            {
+                DMD_DBG(("[%s][%d] Event create ok\n",__FUNCTION__,__LINE__));
+            }
+            else
+            {  
+                DMD_ERR(("[%s][%d] create failed \n",__FUNCTION__,__LINE__));
+            }
+        }
+
+        if(_s32DmdEventTaskId < 0)
+        {
+           _s32DmdEventTaskId = MsOS_CreateTask(_mdrv_dmd_msb124x_event_task,
+                                                0,
+                                                E_TASK_PRI_HIGHEST,
+                                                TRUE,
+                                                u8StackBuffer,
+                                                MSB124X_EVT_TASK_STACK_SIZE,
+                                                "MSB124X_EVT_TASK");
+            if (_s32DmdEventTaskId > 0)
+            {
+                DMD_DBG(("[%s][%d] Event task create ok\n",__FUNCTION__,__LINE__));
+            }
+            else
+            {
+                DMD_ERR(("[%s][%d] create task failed \n",__FUNCTION__,__LINE__));
+            }
+        }
+    }
+
     return TRUE;
 }
 
@@ -6563,24 +6887,9 @@ static MS_BOOL _MSB124X_GetReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 *pu8Dat
 {
     MS_BOOL bRet=TRUE;
     MS_U8 u8MsbData[6];
-    HWI2C_PORT hwi2c_port;
     mapi_i2c *iptr;
 
-    hwi2c_port = getI2CPort(u8DemodIndex);
-    if (hwi2c_port < E_HWI2C_PORT_1)
-    {
-        iptr = mapi_i2c_GetI2C_Dev(MSB124X_DEMOD_IIC);
-    }
-    else if (hwi2c_port < E_HWI2C_PORT_2)
-    {
-        iptr = mapi_i2c1_GetI2C_Dev(MSB124X_DEMOD_IIC);
-    }
-    else
-    {
-        DMD_ERR(("hwi2c_port number exceeds limitation\n"));
-        return FALSE;
-    }
-
+    iptr = mapi_i2c_GetI2C_Dev(MSB124X_DEMOD_IIC);
     if (iptr == NULL)
     {
         return FALSE;
@@ -6609,24 +6918,9 @@ static MS_BOOL _MSB124X_SetReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 u8Data)
 {
     MS_BOOL bRet=TRUE;
     MS_U8 u8MsbData[6];
-    HWI2C_PORT hwi2c_port;
     mapi_i2c *iptr;
 
-    hwi2c_port = getI2CPort(u8DemodIndex);
-    if (hwi2c_port < E_HWI2C_PORT_1)
-    {
-        iptr = mapi_i2c_GetI2C_Dev(MSB124X_DEMOD_IIC);
-    }
-    else if (hwi2c_port < E_HWI2C_PORT_2)
-    {
-        iptr = mapi_i2c1_GetI2C_Dev(MSB124X_DEMOD_IIC);
-    }
-    else
-    {
-        DMD_ERR(("hwi2c_port number exceeds limitation\n"));
-        return FALSE;
-    }
-
+    iptr = mapi_i2c_GetI2C_Dev(MSB124X_DEMOD_IIC);
     if (iptr == NULL)
     {
         return FALSE;
@@ -6694,24 +6988,33 @@ static MS_BOOL _MSB124X_SetReg2Bytes(MS_U8 u8DemodIndex,MS_U16 u16Addr, MS_U16 u
 //}
 
 #define MSB124X_CHIP_ID 0x6f
+static MS_BOOL _msb124x_I2C_CH3_reset(MS_U8 u8DemodIndex)
+{
+    _msb124x_hw_reset(u8DemodIndex);
+    if(!MSB124X_I2C_CH_Reset(u8DemodIndex,3))
+    {
+        DMD_ERR(("[MSB124X] I2C_CH_Reset fail \n"));
+        return FALSE;
+    }
+    else
+    {
+        _msb124x_hw_reset(u8DemodIndex);
+        if(!MSB124X_I2C_CH_Reset(u8DemodIndex,3))
+        {
+            DMD_ERR(("[MSB124X] I2C_CH_Reset fail \n"));
+            return FALSE;
+        }
+   }
+   return TRUE;
+}
+
 MS_BOOL MSB124X_Check_Exist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
 {
     MS_U8 u8_tmp = 0;
     MS_U8 i, u8I2C_Port = 0;
     MDvr_CofdmDmd_CONFIG *pMSB124X;
-    SLAVE_ID_TBL *pMSB124X_ID_TBL;
-    HWI2C_PORT hwi2c_port;
-
-    hwi2c_port = getI2CPort(u8DemodIndex);
-    if (hwi2c_port < E_HWI2C_PORT_1)
-    {
-        u8I2C_Port = 0;
-    }
-    else if (hwi2c_port < E_HWI2C_PORT_2)
-    {
-        u8I2C_Port = 1;
-    }
-
+    SLAVE_ID_USAGE *pMSB124X_ID_TBL;
+    MS_IIC_PORT ePort;
 
     if(!MSB124X_Variables_alloc())
     {
@@ -6721,35 +7024,42 @@ MS_BOOL MSB124X_Check_Exist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
     else
     {
         pMSB124X = (pstMSB124X + u8DemodIndex);
-        pMSB124X_ID_TBL = (pstMSB124X_slave_ID_TBL + u8I2C_Port);
     }
 
-    for(i=0 ; i<(sizeof(pMSB124X_ID_TBL->stID_Tbl)/sizeof(SLAVE_ID_USAGE)); i++)
+    ePort = getI2CPort(u8DemodIndex);
+    if((int)ePort < (int)E_MS_IIC_SW_PORT_0)
+    {
+       u8I2C_Port = (MS_U8)ePort/8;
+    }
+    else if((int)ePort < (int)E_MS_IIC_PORT_NOSUP)//sw i2c
+    {
+       u8I2C_Port = E_MS_IIC_SW_PORT_0/8 + (ePort - E_MS_IIC_SW_PORT_0);
+    }
+
+    i=0;
+    do
     {
         DMD_DBG(("### %x\n",i));
-        if(pMSB124X_ID_TBL->stID_Tbl[i].u8SlaveID == 0xFF)
+        pMSB124X_ID_TBL = pstMSB124X_slave_ID_TBL + u8I2C_Port*sizeof(MSB124X_possible_slave_ID)/sizeof(SLAVE_ID_USAGE) + i;
+        if(pMSB124X_ID_TBL->u8SlaveID == 0xFF)
         {
             DMD_DBG(("[MSB124X] All Slave ID have tried but not detect\n"));
-            return FALSE;
+            break;
         }
 
-        if(pMSB124X_ID_TBL->stID_Tbl[i].bInUse)
+        if(pMSB124X_ID_TBL->bInUse)
         {
-            DMD_DBG(("[MSB124X] Slave ID 0x%x have been used\n", pMSB124X_ID_TBL->stID_Tbl[i].u8SlaveID));
+            DMD_DBG(("[MSB124X] Slave ID 0x%x have been used\n", pMSB124X_ID_TBL->u8SlaveID));
+            i++;
             continue;
         }
         else
         {
-            pMSB124X->u8SlaveID = pMSB124X_ID_TBL->stID_Tbl[i].u8SlaveID;
-            DMD_DBG(("[MSB124X] Try slave ID 0x%x\n",pMSB124X_ID_TBL->stID_Tbl[i].u8SlaveID));
+            pMSB124X->u8SlaveID = pMSB124X_ID_TBL->u8SlaveID;
+            DMD_DBG(("[MSB124X] Try slave ID 0x%x\n",pMSB124X_ID_TBL->u8SlaveID));
         }
 
-        _msb124x_hw_reset(u8DemodIndex);
-        if(!MSB124X_I2C_CH_Reset(u8DemodIndex,3))
-        {
-            DMD_ERR(("[MSB124X] I2C_CH_Reset fail \n"));
-        }
-        else
+        if(_msb124x_I2C_CH3_reset(u8DemodIndex))
         {
             DMD_DBG(("[MSB124X] I2C slave id :%x \n",pMSB124X->u8SlaveID ));
             if(_MSB124X_GetReg(u8DemodIndex,0x0900,&u8_tmp))
@@ -6757,12 +7067,13 @@ MS_BOOL MSB124X_Check_Exist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
                 DMD_DBG(("[MSB124X] read id :%x \n",u8_tmp ));
                 if(u8_tmp == MSB124X_CHIP_ID)
                 {
-                    pMSB124X_ID_TBL->stID_Tbl[i].bInUse = TRUE;
+                    pMSB124X_ID_TBL->bInUse = TRUE;
                     break;
                 }
             }
         }
-    }
+        i++;
+    }while((pMSB124X_ID_TBL->u8SlaveID) != 0xFF);
 
 
     if(u8_tmp == MSB124X_CHIP_ID)
@@ -6773,12 +7084,12 @@ MS_BOOL MSB124X_Check_Exist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
         _MSB124X_GetReg(u8DemodIndex,0x0905,&u8_tmp);
         if((u8_tmp>>2) & 0x01)
         {
-            DMD_DBG(("[MSB1245] This is External DMD \n"));
+            DMD_DBG(("[MSB124x] This is External DMD \n"));
             pMSB124X->bIsMCP_DMD = FALSE;
         }
         else
         {
-            DMD_DBG(("[MSB1245] This is MCP DMD \n"));
+            DMD_DBG(("[MSB124x] This is MCP DMD \n"));
             pMSB124X->bIsMCP_DMD = TRUE;
         }
 
@@ -6802,7 +7113,7 @@ MS_BOOL MSB124X_Check_Exist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
         //check TS path
         MDrv_DMD_SSPI_Init(0);
         MDrv_MasterSPI_CsPadConfig(0, 0xff);
-        MDrv_MasterSPI_MaxClkConfig(0, 54);
+        MDrv_MasterSPI_MaxClkConfig(0, 27);
         _MSB124X_SetReg2Bytes(u8DemodIndex,0x0900+(0x28)*2, 0x0000);
         _MSB124X_SetReg2Bytes(u8DemodIndex,0x0900+(0x2d)*2, 0x00ff);
         // ------enable to use TS_PAD as SSPI_PAD
@@ -6831,7 +7142,7 @@ MS_BOOL MSB124X_Check_Exist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
             {
                 pMSB124X->u32DmxInputPath = (MS_U32)i;
                 SPIPAD_EN[i](FALSE);                    
-                DMD_DBG(("Get MSB124X chip ID by MSPI on TS%lx\n", pMSB124X->u32DmxInputPath));
+                DMD_DBG(("Get MSB124X chip ID by MSPI on TS%d\n", (int)pMSB124X->u32DmxInputPath));
                 break;
             }
             else
@@ -6889,7 +7200,8 @@ MS_BOOL MSB124X_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE f
 {
     MS_BOOL bret = TRUE;
     MDvr_CofdmDmd_CONFIG *pMSB124X = (pstMSB124X + u8DemodIndex);
-
+    InterruptNum IntNum;
+    
     switch(fuction_type)
     {
     case DEMOD_EXT_FUNC_OPEN:
@@ -6899,6 +7211,13 @@ MS_BOOL MSB124X_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE f
         bret &= MSB124X_Demod_Close(u8DemodIndex);
         break;
     case DEMOD_EXT_FUNC_FINALIZE:
+        if(!pstMSB124X)
+        {
+          DMD_ERR(("pMSB124X error !\n"));
+          bret = FALSE;
+          break;
+        }
+        
         if(pMSB124X->s32_MSB124X_Mutex >= 0)
         {
             bret &= MsOS_DeleteMutex(pMSB124X->s32_MSB124X_Mutex);
@@ -6927,6 +7246,48 @@ MS_BOOL MSB124X_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE f
         *(MS_BOOL *)(data) = pMSB124X->bIsMCP_DMD;
         break;
 
+     case DEMOD_EXT_FUNC_POWER_ON_OFF:
+        _msb124x_power_onoff(u8DemodIndex, *(MS_BOOL*)(data));
+        break;
+
+#if MS_DVBS_INUSE
+     case DEMOD_EXT_FUNC_SET_DISEQC_TX_22K_OFF:
+        if(!pstMSB124X)
+        {
+          DMD_ERR(("pMSB124X error !\n"));
+          bret = FALSE;
+          break;
+        }
+        pMSB124X->bDiSeqc_Tx22K_Off = *(MS_BOOL*)(data);
+        if(pMSB124X->bInited == TRUE)
+        {
+            bret &= MSB124X_DiSEqC_Init(u8DemodIndex);
+        }
+        break;
+#endif
+    case DEMOD_EXT_FUNC_SET_RESET_PIN:
+        if(!MSB124X_Variables_alloc())
+        {
+            MSB124X_Variables_free();
+            return FALSE;
+        }
+        else
+        {
+            pMSB124X = (pstMSB124X + u8DemodIndex);
+            pMSB124X->RstPin = *(int*)data;
+        }
+        break;
+        
+    case DEMOD_EXT_FUNC_SET_CON_INFO:
+         if(_mdrv_dmd_msb124x_get_IntNum(u8DemodIndex, &IntNum))
+         {
+             GET_DEMOD_ENTRY_NODE(DEMOD_MSB124X).SupportINT = TRUE;
+         }
+        break;
+        
+    case DEMOD_EXT_FUNC_GET_T_T2_CELL_ID:
+        bret = MSB124X_DTV_GetCellID(u8DemodIndex, (MS_U16*)data);
+        break;
     default:
         DMD_DBG(("Request extension function (%x) does not exist\n",fuction_type));
         break;
@@ -6974,11 +7335,16 @@ MS_BOOL MSB124X_DiSEqC_Init(MS_U8 u8DemodIndex)
         bRet&=MSB124X_ReadReg(pMSB124X, 0x976, &u8Data);
         u8Data=(u8Data&(~0x01));
         bRet&=MSB124X_WriteReg(pMSB124X, 0x976, u8Data);
+    }
+
+    if(pMSB124X->bDiSeqc_Tx22K_Off)
+    {
         //Disable DiSeqc tone mode, depend on LNB control IC
         bRet&=MSB124X_ReadReg(pMSB124X, 0xDD7, &u8Data);
         u8Data|= 0x80;
         bRet&=MSB124X_WriteReg(pMSB124X, 0xDD7, u8Data);
     }
+    
     return bRet;
 }
 
@@ -7353,16 +7719,61 @@ MS_BOOL MSB124X_Demod_GetParam(MS_U8 u8DemodIndex,DEMOD_MS_FE_CARRIER_PARAM* pPa
     return bRet;
 }
 
+#ifdef FE_AUTO_TEST
+MS_U16 MSB124X_Demod_ReadReg(MS_U8 u8DemodIndex, MS_U16 RegAddr)
+{
+    MDvr_CofdmDmd_CONFIG *pMSB124X = (pstMSB124X + u8DemodIndex);
+    MS_U8 RegData = 0;
+
+    if (!pMSB124X)
+    {
+        DMD_ERR(("pMSB124X error !\n"));
+        return FALSE;
+    }
+
+    MSB124X_ReadReg(pMSB124X, RegAddr, &RegData);
+
+    return (MS_U16) RegData;
+}
+
+MS_BOOL MSB124X_Demod_WriteReg(MS_U8 u8DemodIndex,MS_U16 RegAddr, MS_U16 RegData)
+{
+    MDvr_CofdmDmd_CONFIG *pMSB124X = (pstMSB124X + u8DemodIndex);
+
+    if (!pMSB124X)
+    {
+        DMD_ERR(("pMSB124X error !\n"));
+        return FALSE;
+    }
+
+    return MSB124X_WriteReg(pMSB124X, RegAddr, RegData);
+}
+
+MS_BOOL  MSB124X_Demod_AutoTestReadReg(MS_U8 u8DemodIndex, MS_U16 RegAddr, MS_U8 *pu8Data)
+{
+    *pu8Data = (MS_U8)MSB124X_Demod_ReadReg(u8DemodIndex, RegAddr);
+    return TRUE;
+}
+
+MS_BOOL MSB124X_Demod_AutoTestWriteReg(MS_U8 u8DemodIndex, MS_U16 RegAddr, MS_U16 RegData)
+{
+    return MSB124X_Demod_WriteReg(u8DemodIndex, RegAddr, RegData);
+}
+#endif
+
+
 
 DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB124X) DDI_DRV_TABLE_ENTRY(demodtab) =
 {
     .name                         = "DEMOD_MSB124X",
     .data                         = DEMOD_MSB124X,
+    .SupportINT                   = FALSE,
     .init                         = MSB124X_Demod_Init,
     .GetLock                      = MSB124X_Demod_GetLock,
     .GetSNR                       = MSB124X_Demod_GetSNR,
     .GetBER                       = MSB124X_Demod_GetBER,
     .GetPWR                       = MSB124X_Demod_GetPWR,
+    .GetSSI                       = MSB124X_Demod_GetSSI,
     .GetQuality                   = MSB124X_Demod_GetSignalQuality,
     .GetParam                     = MSB124X_Demod_GetParam,
     .Restart                      = MSB124X_Demod_Restart,
@@ -7372,6 +7783,10 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB124X) DDI_DRV_TABLE_ENTRY(dem
     .Extension_Function           = MSB124X_Extension_Function,
     .Extension_FunctionPreSetting = NULL,
     .Get_Packet_Error              = MSB124X_Get_Packet_Error,
+#ifdef FE_AUTO_TEST
+    .ReadReg                      = MSB124X_Demod_AutoTestReadReg,
+    .WriteReg                     = MSB124X_Demod_AutoTestWriteReg,
+#endif 
 #if MS_DVBT2_INUSE
     .SetCurrentDemodType          = MSB124X_Demod_SetCurrentDemodType,
     .GetCurrentDemodType          = MSB124X_Demod_GetCurrentDemodType,
@@ -7396,7 +7811,10 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB124X) DDI_DRV_TABLE_ENTRY(dem
     .DiSEqCGetLNBOut              = MSB124X_DiSEqC_GetLNBOut,
     .DiSEqCSet22kOnOff            = MSB124X_DiSEqC_Set22kOnOff,
     .DiSEqCGet22kOnOff            = MSB124X_DiSEqC_Get22kOnOff,
-    .DiSEqC_SendCmd               = MSB124X_DiSEqC_SendCmd
+    .DiSEqC_SendCmd               = MSB124X_DiSEqC_SendCmd,
+    .DiSEqC_GetReply              = MDrv_Demod_null_DiSEqC_GetReply,
+    .GetISIDInfo                  = MDrv_Demod_null_GetVCM_ISID_INFO,
+    .SetISID                      = MDrv_Demod_null_SetVCM_ISID
 #endif
 
 };

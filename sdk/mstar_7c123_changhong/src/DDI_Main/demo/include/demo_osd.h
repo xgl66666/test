@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -120,7 +120,25 @@ typedef enum
     E_DDI_OSD_SD_DST_OP2VE        = 4,
 }EN_DDI_OSD_SD_DST_TYPE;
 
+#if (DEMO_GOP_ZORDER_TEST == 1)
+typedef enum
+{
+    E_DISPLAY_LAYER_0 = 0,
+    E_DISPLAY_LAYER_1,
+    E_DISPLAY_LAYER_2,
+    E_DISPLAY_LAYER_3,
+    E_DISPLAY_LAYER_4,
+    E_DISPLAY_LAYER_5
+}EN_DISPLAY_LAYER;
 
+MS_BOOL Demo_ZOrder_Init(void);
+MS_BOOL Demo_ZOrder_SetZOrder(
+                                MS_U32* pu32VideoLayerOrder,
+                                MS_U8* pu8Layer0Gop,
+                                MS_U8* pu8Layer1Gop,
+                                MS_U8* pu8Layer2Gop,
+                                MS_U8* pu8Layer3Gop);
+#endif
 MS_BOOL Demo_OSD_Help(void);
 MS_BOOL Demo_OSD_Init(MS_U32 *pu32HD_GOP, MS_U32 *pu32SD_GOP, MS_U32 *pu32HD_DST, MS_U32 *pu32SD_DST);
 MS_BOOL Demo_OSD_PTGOP_Init(void);
@@ -156,11 +174,19 @@ MS_BOOL Demo_OSD_TwoSourceBitblt(void);
 MS_BOOL Demo_OSD_DrawJpeg(void);
 MS_BOOL Demo_OSD_DrawGPD(MS_BOOL bGif);
 
+#if (DEMO_ZUI_TEST == 1)
+MS_BOOL Demo_UI_GEGOPInit(MS_U32 *pu32HD_GOP, MS_U32 *pu32SD_GOP, MS_U32 *pu32HD_DST, MS_U32 *pu32SD_DST);
+MS_U8 Demo_OSD_GetHDGOPNum(void);
+MS_U8 Demo_OSD_GetSDGOPNum(void);
+MS_U8 Demo_OSD_GetHDGOPDst(void);
+MS_U8 Demo_OSD_GetSDGOPDst(void);
+#endif
 
 #if (DEMO_MM_TEST == 1)
 MS_BOOL Demo_MM_DrawPhoto(void);
 MS_BOOL Demo_MM_Photo_SetGwinFmt(MS_U16 *pu16fmt);
 MS_BOOL Demo_MM_ClearPhoto(void);
+MS_BOOL Demo_MM_StartDrawPhoto(void);
 #endif
 
 #if (DEMO_DTE_TEST == 1)

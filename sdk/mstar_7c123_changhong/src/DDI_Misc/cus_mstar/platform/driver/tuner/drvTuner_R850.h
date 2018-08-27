@@ -3,7 +3,7 @@
 #define DEBUG_MODE  FALSE
 
 
-#define VERSION   "R850_GUI_v1.1H_MSTAR_Format"
+#define VERSION   "R850_GUI_v1.2FS_MSTAR_Format_ISDBT_EAD"
 #define VER_NUM   0
 #define CHIP_ID       0x98
 //----------------------------------------------------------//
@@ -249,6 +249,11 @@ typedef enum _R850_RF_Gain_TYPE
 	RF_MANUAL
 }R850_RF_Gain_TYPE;
 
+typedef enum _R850_TuningMode
+{
+	R850_AUTO_SCAN = 0,
+	R850_CHANNEL_CHANGE
+}R850_TuningMode;
 typedef enum _R850_Xtal_Div_TYPE
 {
 	XTAL_DIV1 = 0,
@@ -300,13 +305,15 @@ typedef struct _I2C_TYPE
 
 R850_ErrCode R850_Init(MS_U8 u8TunerIndex, R850_Standard_Type R850_Standard);
 R850_ErrCode R850_SetPllData(MS_U8 u8TunerIndex, R850_Set_Info R850_INFO);
+R850_ErrCode R850_SetPllData_Mode(MS_U8 u8TunerIndex, R850_Set_Info R850_INFO, R850_TuningMode R850_Tune_Mode);
 R850_ErrCode R850_Standby(MS_U8 u8TunerIndex, R850_LoopThrough_Type R850_STANDBY_LT);
 R850_ErrCode R850_WakeUp(MS_U8 u8TunerIndex);
+R850_ErrCode R850_SetLoop_Through(MS_U8 u8TunerIndex, R850_LoopThrough_Type R850_LT);
 R850_ErrCode R850_GetRfGain(MS_U8 u8TunerIndex, R850_RF_Gain_Info *pR850_rf_gain);
 R850_ErrCode R850_RfGainMode(MS_U8 u8TunerIndex, R850_RF_Gain_TYPE R850_RfGainType);
 R850_ErrCode R850_GetRfRssi(MS_U8 u8TunerIndex, MS_U32 RF_Freq_Khz, R850_Standard_Type RT_Standard, MS_S32 *RfLevelDbm, MS_U8 *fgRfMaxGain);
 MS_U8 R850_PLL_Lock(MS_U8 u8TunerIndex);
-
+R850_ErrCode R850_AGC_Slow(MS_U8 u8TunerIndex);
 
 typedef enum _R850_HpfNotch_Type
 {

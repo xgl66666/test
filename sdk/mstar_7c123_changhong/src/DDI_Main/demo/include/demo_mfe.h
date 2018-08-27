@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -95,10 +95,136 @@
 #ifndef _APPDEMO_MFE_H_
 #define _APPDEMO_MFE_H_
 
-MS_BOOL Demo_MFE_Init(const MS_U32 *Frame_width, const MS_U32 *Frame_height);
-MS_BOOL Demo_MFE_Encode_File(char *in_file, char *out_file, const MS_U32 *Frame_Number);
-MS_BOOL Demo_MFE_Encode_From_DIP(char *out_file, const MS_U32 *Frame_Number);
+#include "drv_mfe_st.h"
+#include "apiVOIPMFE.h"
+#include "apiMFE_v2.h"
 
+typedef enum
+{
+    E_MFE_DEVICE_FIRST = 0,
+    E_MFE_DEVICE_SECOND,
+    E_MFE_DEVICE_MAX,          /// Max Device
+} EN_MFE_Device;
 
+typedef enum
+{
+    E_MFE_NotInital = 0,
+    E_MFE_Inital,
+    E_MFE_Start,
+    E_MFE_Stop,
+} EN_MFE_Status;
+
+typedef enum
+{
+    E_MFE_INPUTSOURCE_NONE = 0,
+    E_MFE_INPUTSOURCE_FILE,
+    E_MFE_INPUTSOURCE_DIP,
+    E_MFE_INPUTSOURCE_DMS,
+} EN_MFE_INPUTSOURCE;
+
+typedef struct
+{
+    MS_U32 u32Index;
+    MS_S32 s32Frame_type;
+    MS_U32 u32Frame_size;
+    MS_U32 u32Framecnt;
+}ST_MFE_CTX;
+
+typedef struct
+{
+    MS_U8* pu8Ptr;
+    MS_U32 u32Pa;
+    MS_U32 u32Size;
+}ST_MFE_MEMADDR;
+
+typedef struct
+{
+    ST_MFE_MEMADDR stCurY;
+    ST_MFE_MEMADDR stCurUV;
+} ST_MFE_MEMADDR_CUR;
+
+typedef struct
+{
+    PVR_Info *encode_info;
+    ST_MFE_CTX *g_compress_ctx;
+}ST_MFE_VENC_INFO;
+
+typedef struct
+{
+    MS_BOOL bCaptureInited;
+    MS_U32 u32Window;
+
+    MS_U8 *pu8BufferAddr;
+    MS_PHY phyBufferAddr;
+    MS_PHY phyBufferSize;
+
+    MS_U32 u32CaptureEnable;
+    MS_U32 u32WindowVisible;
+}ST_MFE_VENC_SET_CAPTUREINFO;
+
+typedef struct
+{
+    MS_PHY phyBufferYAddr;
+    MS_PHY phyBufferCAddr;
+    MS_U64 u64Pts;
+    MS_U32 u32frameCount;
+}ST_MFE_VENC_CAPTUREINFO;
+
+typedef struct
+{
+    void *pInstanceMFE;
+    EN_MFE_Status  eMFEStatus;
+    Task_Info   stMFETask;
+    MS_S32 MFE_DIPEventid;
+}ST_MFE_Controller;
+
+typedef struct
+{
+    FILE *out_f;
+    FILE *in_f;
+}ST_MFE_FILE;
+
+typedef struct
+{
+    MS_BOOL bInited;
+    EN_MFE_Status stVENCStatus;
+
+    ST_MFE_FILE stFile;
+
+    MS_U8  u8Codec;        // 1:Avc  3:Hevc
+    MS_U32 u32Width;       //16 align
+    MS_U32 u32Height;      //16 align
+    MS_U32 u32FrameRatex100;
+    MS_U32 u32Bitrate;
+    MS_U32 u32FrameNum;
+    MS_U32 u32MiuOffset;
+    MS_U32 u32InitMode;     // 1 : IMI flow
+    MFE_COLOR_FORMAT_INFO eColorFormat;
+
+    ST_MFE_VENC_INFO stVENCInfo;
+
+    MS_U8 *pu8VENCBufOri;   //memory allocate
+    ST_MFE_MEMADDR stMFEBufAddr;
+
+    ST_MFE_VENC_SET_CAPTUREINFO stSetCaptureInfo;
+    ST_MFE_VENC_CAPTUREINFO stCaptureInfo;
+}ST_MFE_VENC;
+
+MS_BOOL Demo_MFE_Encode_FMT_EX(MS_U32 *pu32Index,MS_U32 *pu32Fmt);
+MS_BOOL Demo_MFE_Init(const MS_U32 *pu32FrameWidth, const MS_U32 *pu32FrameHeight, const MS_U32 *pu32FrameRate, const MS_U32 *pu32BitRate);
+MS_BOOL Demo_MFE_Init_EX(const MS_U32 *pu32Index, const MS_U8 *pu8Codec,const MS_U32 *pu32FrameWidth, const MS_U32 *pu32FrameHeight, const MS_U32 *pu32FrameRate, const MS_U32 *pu32BitRate, const MS_U32 *pu32InitMode);
+
+// Encode from File
+MS_BOOL Demo_MFE_Encode_File(char *pInfile, char *pOutfile, const MS_U32 *pu32FrameNumber);
+MS_BOOL Demo_MFE_Encode_File_EX(MS_U32 *pu32Index,char *pInfile, char *pOutfile, const MS_U32 *pu32FrameNumber);
+
+// Encode from SC_OP by DIP capture
+MS_BOOL Demo_MFE_Encode_From_DIP(char *pOutfile, const MS_U32 *pu32FrameNumber);
+MS_BOOL Demo_MFE_Encode_From_DIP_EX(const MS_U32 *pu32Index,char *pOutfile,const MS_U32 *pu32FrameNumber);
+
+#if (DEMO_DMS_TEST == 1)
+// Encode from Display manage service capture
+MS_BOOL Demo_MFE_Set_CaptureInfo(MS_U32 *pu32Index,MS_U32 *u32Window,MS_U32 *pu32Enable,MS_U32 *pu32Visible);
+MS_BOOL Demo_MFE_Encode_From_Capture_EX(const MS_U32 *pu32Index,char *pOutfile);
 #endif
-
+#endif

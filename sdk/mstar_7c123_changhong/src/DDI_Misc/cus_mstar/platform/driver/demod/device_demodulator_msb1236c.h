@@ -1434,6 +1434,7 @@ typedef struct
 #define PAGE_WRITE_SIZE         256
 #define VERSION_CODE_ADDR       0xFC0
 #define VERSION_CODE_SIZE       32
+#define MSB1236C_RST_PIN_NOT_SET     9999
 
 #ifdef USE_SPI_LOAD_TO_SDRAM
 /////////////// CONSTANT /////////////////

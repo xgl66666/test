@@ -111,6 +111,8 @@
 //-------------------------------------------------------------------------------------------------
 #include "MsCommon.h"
 #include "drvCH34.h"
+#include "demo_ch34.h"
+
 //-------------------------------------------------------------------------------------------------
 // Local Defines
 //-------------------------------------------------------------------------------------------------
@@ -123,7 +125,7 @@
 //-------------------------------------------------------------------------------------------------
 // Global Variables
 //-------------------------------------------------------------------------------------------------
-
+MS_U32 g_u32CH34_Spec = E_CH34_SPEC_DEFAULT;
 
 //-------------------------------------------------------------------------------------------------
 // Local Variables
@@ -200,6 +202,119 @@ static MS_BOOL _MappingCH34Mode(MS_U32 channel, MS_U32 videoSys, MS_U32 audioSys
 }
 
 //------------------------------------------------------------------------------
+/// @brief The sample code to select CH34
+/// @param[in] spec The spec of ch34.
+/// @return None
+/// @note
+/// Command: \b CH34_SelectSpec 0 \n
+//------------------------------------------------------------------------------
+MS_BOOL Demo_CH34_SelectSpec(MS_U32 *pu32Spec)
+{
+    if(*pu32Spec == E_CH34_SPEC_ABNT_NBR_15604)
+    {
+        g_u32CH34_Spec = E_CH34_SPEC_ABNT_NBR_15604;
+        printf("Select ABNT NBR 15604 SPEC.\n");
+    }
+    else
+    {
+        g_u32CH34_Spec = E_CH34_SPEC_DEFAULT;
+        printf("Select default SPEC.\n");
+    }
+
+    return TRUE;
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to Set CH34 DAC Swing Level
+/// @param[in] level The DAC Swing Level of ch34.
+/// @return None
+/// @note
+/// Command: \b CH34_SetDACSwingLevel 0 \n
+//------------------------------------------------------------------------------
+MS_BOOL Demo_CH34_SetDACSwingLevel(MS_U32 *pu32DACSwingLevel)
+{
+    CH34_SET_DAC_OUTPUT_SWING stCH34_DACSwingLevel = {0};
+
+    stCH34_DACSwingLevel.u32SetDACOutputSwing_Version = SET_DAC_OUTPUT_SWING_VERSION;
+    stCH34_DACSwingLevel.u16SetDACOutputSwing_Length = sizeof(CH34_SET_DAC_OUTPUT_SWING);
+
+    switch(*pu32DACSwingLevel)
+    {
+        case E_DAC_SWING_LEVEL0:
+            stCH34_DACSwingLevel.eDACSwingLevel = E_CH34_DAC_SWING_LEVEL0;
+            break;
+        case E_DAC_SWING_LEVEL1:
+            stCH34_DACSwingLevel.eDACSwingLevel = E_CH34_DAC_SWING_LEVEL1;
+            break;
+        case E_DAC_SWING_LEVEL2:
+            stCH34_DACSwingLevel.eDACSwingLevel = E_CH34_DAC_SWING_LEVEL2;
+            break;
+        case E_DAC_SWING_LEVEL3:
+            stCH34_DACSwingLevel.eDACSwingLevel = E_CH34_DAC_SWING_LEVEL3;
+            break;
+        default:
+            stCH34_DACSwingLevel.eDACSwingLevel = E_CH34_DAC_SWING_LEVEL0;
+            break;
+    }
+
+    if(MDrv_Ch34_GeneralCtrl(CH34_CMD_SET_DAC_OUTPUT_SWING, (void*) &stCH34_DACSwingLevel,sizeof(CH34_SET_DAC_OUTPUT_SWING)))
+    {
+        printf("Set DAC Swing Level successfully\n");
+        return TRUE;
+    }
+    else
+    {
+        printf("Set DAC Swing Level failed.\n");
+        return FALSE;
+    }
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to Set CH34 Sigma Delta Gain Level
+/// @param[in] level The Sigma Delta Gain Level of ch34.
+/// @return None
+/// @note
+/// Command: \b CH34_SetSigmaDeltaGainLevel 0 \n
+//------------------------------------------------------------------------------
+MS_BOOL Demo_CH34_SetSigmaDeltaGainLevel(MS_U32 *pu32SigmaDeltaGainLevel)
+{
+    CH34_SET_SIGMA_DELTA_GAIN stCH34_SigmaDeltaGain = {0};
+
+    stCH34_SigmaDeltaGain.u32SetSigmaDeltaGain_Version = SET_SIGMA_DELTA_GAIN_VERSION;
+    stCH34_SigmaDeltaGain.u16SetSigmaDeltaGain_Length = sizeof(CH34_SET_SIGMA_DELTA_GAIN);
+
+    switch(*pu32SigmaDeltaGainLevel)
+    {
+        case E_SIGMA_DELTA_GAIN_LEVEL0:
+            stCH34_SigmaDeltaGain.eSigmaDeltaGainLevel = E_CH34_SIGMA_DELTA_GAIN_LEVEL0;
+            break;
+        case E_SIGMA_DELTA_GAIN_LEVEL1:
+            stCH34_SigmaDeltaGain.eSigmaDeltaGainLevel = E_CH34_SIGMA_DELTA_GAIN_LEVEL1;
+            break;
+        case E_SIGMA_DELTA_GAIN_LEVEL2:
+            stCH34_SigmaDeltaGain.eSigmaDeltaGainLevel = E_CH34_SIGMA_DELTA_GAIN_LEVEL2;
+            break;
+        case E_SIGMA_DELTA_GAIN_LEVEL3:
+            stCH34_SigmaDeltaGain.eSigmaDeltaGainLevel = E_CH34_SIGMA_DELTA_GAIN_LEVEL3;
+            break;
+        default:
+            stCH34_SigmaDeltaGain.eSigmaDeltaGainLevel = E_CH34_SIGMA_DELTA_GAIN_LEVEL0;
+            break;
+    }
+
+    if(MDrv_Ch34_GeneralCtrl(CH34_CMD_SET_SIGMA_DELTA_GAIN, (void*) &stCH34_SigmaDeltaGain,sizeof(CH34_SET_SIGMA_DELTA_GAIN)))
+    {
+        printf("Set Sigma Delta Gain successfully\n");
+        return TRUE;
+    }
+    else
+    {
+        printf("Set Sigma Delta Gain failed.\n");
+        return FALSE;
+    }
+}
+
+//------------------------------------------------------------------------------
 /// @brief The sample code to set ch34 mode
 /// @param[in] channel The channel of ch34.
 /// @param[in] videoSys The video system of ch34
@@ -215,6 +330,8 @@ MS_BOOL Demo_CH34_SetMode(MS_U32 *channel, MS_U32 *videoSys, MS_U32 *audioSys)
     E_CH34_CHANNEL eChannel = E_CH34_CH3;
     E_CH34_VIDEO_SYS eVideoSys = E_CH34_VIDEO_SYS_NTSC;
     E_CH34_AUDIO_SYS eAudioSys = E_CH34_AUDIO_SYS_MONO;
+    CH34_ATTRIBUTE_INFO stCH34Info = {0};
+
     if(FALSE == _MappingCH34Mode(*channel, *videoSys, *audioSys, &eChannel, &eVideoSys, &eAudioSys))
     {
         printf("Parameter error. please check it.\n");
@@ -222,7 +339,21 @@ MS_BOOL Demo_CH34_SetMode(MS_U32 *channel, MS_U32 *videoSys, MS_U32 *audioSys)
     }
     printf("ch:%d v:%d a:%d\n",eChannel,eVideoSys,eAudioSys);
 
-    eRet = MDrv_Ch34_SetMode(eChannel, eVideoSys, eAudioSys);
+    if(g_u32CH34_Spec == E_CH34_SPEC_ABNT_NBR_15604)
+    {
+        stCH34Info.u32AttributeInfo_Version = ATTRIBUTE_INFO_VERSION;
+        stCH34Info.u16AttributeInfo_Length = sizeof(CH34_ATTRIBUTE_INFO);
+        stCH34Info.eChannel = eChannel;
+        stCH34Info.eVideoSys = eVideoSys;
+        stCH34Info.eAudioSys = eAudioSys;
+        stCH34Info.eSpecSelect = E_CH34_SPEC_ABNT_NBR_15604;
+        eRet = MDrv_Ch34_SetAttribute(&stCH34Info);
+    }
+    else
+    {
+        eRet = MDrv_Ch34_SetMode(eChannel, eVideoSys, eAudioSys);
+    }
+
     if( eRet == En_Drv_CH34_INVALID_PARAM || eRet == En_Drv_CH34_NotSupport)
     {
         printf("CH34 set Channel Index %ld and VideoSys Index %ld and AudioSys Index %ld Return Type not support.\n", *channel, *videoSys, *audioSys);

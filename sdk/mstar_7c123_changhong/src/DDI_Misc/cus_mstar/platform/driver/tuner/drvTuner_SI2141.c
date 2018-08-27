@@ -20,10 +20,22 @@
 #define TUNER_DTV_IQ_SWAP               0 // iq swap
 
 
-static MS_U8 SI2141_Address = 0xC0;
+//static MS_U8 SI2141_Address = 0xC0;
 static TUNER_MS_INIT_PARAM InitParam[MAX_FRONTEND_NUM];
 static L1_Si2141_44_24_Context *pstSI2141_API = NULL;
 static MS_BOOL _u8TunerInited[MAX_FRONTEND_NUM];
+
+SLAVE_ID_USAGE* pstSI2141_slave_ID_TBL = NULL;
+static SLAVE_ID_USAGE SI2141_possible_slave_ID[5] =
+{
+    {0xC0, FALSE},
+    {0xC2, FALSE},
+    {0xC4, FALSE},
+    {0xC6, FALSE},
+    {0xFF, FALSE}
+};
+static MS_BOOL bUnderExtDMDTest = FALSE;
+
 //-------------------------------------------------------------------------------------------------
 //  Global Variables
 //-------------------------------------------------------------------------------------------------
@@ -227,12 +239,6 @@ static void SI2141_SetIfDemod(TUNER_EN_TER_BW_MODE eBandWidth, Network_Type eNet
                 {
                     TUNER_ERR((" [Silabs]: ERROR_SETTING_PROPERTY Si2141_44_24_DTV_LIF_FREQ_PROP\n"));
                 }
-                /*  api->prop->tuner_return_loss.mode = Si2141_44_24_TUNER_RETURN_LOSS_PROP_RETURNLOSS_DEFAULT;
-                 if (Si2141_44_24_L1_SetProperty2(api, Si2141_44_24_TUNER_RETURN_LOSS_PROP_CODE) != 0)
-                {
-                    mcSHOW_HW_MSG((" [Silabs]: ERROR_SETTING_PROPERTY Si2141_44_24_TUNER_RETURN_LOSS_PROP_CODE\n"));
-                }
-                */
                 pstSI2141_API->prop->dtv_pga_limits.max = 56;
                 pstSI2141_API->prop->dtv_pga_limits.min = 24;
                 if (Si2141_44_24_L1_SetProperty2(pstSI2141_API,Si2141_44_24_DTV_PGA_LIMITS_PROP) != 0)
@@ -274,12 +280,6 @@ static void SI2141_SetIfDemod(TUNER_EN_TER_BW_MODE eBandWidth, Network_Type eNet
                 {
                     TUNER_ERR((" [Silabs]: ERROR_SETTING_PROPERTY Si2141_44_24_DTV_LIF_FREQ_PROP\n"));
                 }
-
-                /*api->prop->tuner_return_loss.mode = Si2141_44_24_TUNER_RETURN_LOSS_PROP_MODE_TERRESTRIAL;
-                 if (Si2141_44_24_L1_SetProperty2(api, Si2141_44_24_TUNER_RETURN_LOSS_PROP_CODE) != 0)
-                {
-                    mcSHOW_HW_MSG((" [Silabs]: ERROR_SETTING_PROPERTY Si2141_44_24_TUNER_RETURN_LOSS_PROP_CODE\n"));
-                }*/
                 pstSI2141_API->prop->dtv_pga_limits.max = 56;
                 pstSI2141_API->prop->dtv_pga_limits.min = 24;
                 if (Si2141_44_24_L1_SetProperty2(pstSI2141_API,Si2141_44_24_DTV_PGA_LIMITS_PROP) != 0)
@@ -326,6 +326,25 @@ static void SI2141_SetIfDemod(TUNER_EN_TER_BW_MODE eBandWidth, Network_Type eNet
                 printf("[Error]%s,%s,%d\n",__FILE__,__FUNCTION__,__LINE__);
                 break;
         }
+        if ( pstSI2141_API->rsp->part_info.part == 44 )
+        {
+			if ( eNetworktype == E_Network_Type_DVBC )
+			{
+				pstSI2141_API->prop->tuner_return_loss.returnloss = Si2144_TUNER_RETURN_LOSS_PROP_RETURNLOSS_RETURNLOSS_8DB;
+				//printf("***[Si2144_SetIfDemod_DVB_C] tuner_return_loss.returnloss = %d \n",pstSI2141_API->prop->tuner_return_loss.returnloss);
+			}
+			else
+			{
+				pstSI2141_API->prop->tuner_return_loss.returnloss = Si2144_TUNER_RETURN_LOSS_PROP_RETURNLOSS_RETURNLOSS_5DB;
+				//printf("***[Si2144_SetIfDemod_NON_DVB_C] tuner_return_loss.returnloss = %d \n",pstSI2141_API->prop->tuner_return_loss.returnloss);
+			}
+			pstSI2141_API->prop->tuner_return_loss.reserved       = Si2144_TUNER_RETURN_LOSS_PROP_RESERVED_RESERVED;
+			
+			if (Si2141_44_24_L1_SetProperty2(pstSI2141_API, Si2144_TUNER_RETURN_LOSS_PROP_CODE) != 0)
+            {
+              TUNER_ERR((" [Silabs]: ERROR_SETTING_PROPERTY Si2144_TUNER_RETURN_LOSS_PROP_CODE\n"));
+            }
+        }
 }
 
 static Network_Type Dtv_system_enum_conversion(MS_U32 u32BroadCastType)
@@ -362,10 +381,9 @@ static Network_Type Dtv_system_enum_conversion(MS_U32 u32BroadCastType)
     return ret_dtv_sys;
 }
 
-static MS_BOOL Si2141_44_24_GetRSSILevel(float *strength_dBm)
+static MS_BOOL Si2141_44_24_GetRSSILevel(int *strength_dBm)
 {
-    float rssi=0;
-
+    MS_U8 rssi=0;
     if(pstSI2141_API==NULL)
     {
         TUNER_ERR(("Tuner not inited\n"));
@@ -377,8 +395,17 @@ static MS_BOOL Si2141_44_24_GetRSSILevel(float *strength_dBm)
         return FALSE;
     }
 
-    rssi=(float) pstSI2141_API->rsp->tuner_status.rssi;
-    *strength_dBm = rssi;
+    rssi = (MS_U8)pstSI2141_API->rsp->tuner_status.rssi;
+
+    if(rssi>>7) //signed bit
+    {
+       *strength_dBm = ((int)(0xff - rssi))*(-1);
+    }
+    else
+    {
+       *strength_dBm = (int)rssi;
+    }
+
     return TRUE;
 }
 
@@ -386,23 +413,6 @@ MS_BOOL MDrv_Tuner_SI2141_Init(MS_U8 u8TunerIndex, TUNER_MS_INIT_PARAM* pParam)
 {
     MS_BOOL bRet = TRUE;
     int error;
-    HWI2C_PORT hwi2c_port;
-    hwi2c_port = getI2CPort(u8TunerIndex);
-
-    printf("Tuner SI2141 Init...\n");
-    if (hwi2c_port < E_HWI2C_PORT_1)
-    {
-        u8TunerIndex = 0; //means I2C port
-    }
-    else if (hwi2c_port < E_HWI2C_PORT_2)
-    {
-        u8TunerIndex = 1;
-    }
-    else
-    {
-        printf("hwi2c_port number exceeds limitation\n");
-        return FALSE;
-    }
 
     if(pParam->pCur_Broadcast_type == NULL)
     {
@@ -413,6 +423,8 @@ MS_BOOL MDrv_Tuner_SI2141_Init(MS_U8 u8TunerIndex, TUNER_MS_INIT_PARAM* pParam)
     {
         InitParam[u8TunerIndex].pCur_Broadcast_type = pParam->pCur_Broadcast_type;
     }
+   
+    SI214X_ucI2cSetSlaveAddr(u8TunerIndex, InitParam[u8TunerIndex].u8SlaveID);
 
     if(pstSI2141_API==NULL)
     {
@@ -607,6 +619,9 @@ MS_BOOL MDrv_Tuner_SI2141_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt
     MS_U8  buffer2[2] = {0xc0, 0x00};
     MS_U8  buffer3[2] = {0xfe, 0x00};
     MS_U8  replybyte   = 0;
+    SLAVE_ID_USAGE* pSlaveIDTBL = NULL;
+    MS_IIC_PORT ePort;
+    MS_U8 u8I2C_Port = 0, u8MaxI2CPort, i = 0, j;
 
     memset(_u8TunerInited, 0, sizeof(_u8TunerInited));
 
@@ -625,18 +640,81 @@ MS_BOOL MDrv_Tuner_SI2141_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt
             return bRet;
         }
     }
-    InitParam[u8TunerIndex].u8SlaveID = C_Si2141_44_24_LO_ADDRESS;    
-    SI214X_ucI2cSetSlaveAddr(u8TunerIndex, SI2141_Address);
-    SI214X_ucI2cWriteOnly(0xFF, buffer1, sizeof(buffer1));
-    SI214X_ucI2cWriteOnly(0xFF, buffer2, sizeof(buffer2));
-    SI214X_ucI2cReadOnly(0xFF, &replybyte, 1);
-    SI214X_ucI2cWriteOnly(0xFF, buffer3, sizeof(buffer3));
-    printf("[SI2141]replybyte=0x%x\n", replybyte);
-    if (replybyte == 0x1D)
+
+    u8MaxI2CPort = (MS_U8)((E_MS_IIC_SW_PORT_0/8) + (E_MS_IIC_PORT_NOSUP - E_MS_IIC_SW_PORT_0));
+
+    ePort = getI2CPort(u8TunerIndex);
+    if((int)ePort < (int)E_MS_IIC_SW_PORT_0)
+    {
+        u8I2C_Port = (MS_U8)ePort/8;
+    }
+    else if((int)ePort < (int)E_MS_IIC_PORT_NOSUP)//sw i2c
+    {
+       u8I2C_Port = E_MS_IIC_SW_PORT_0/8 + (ePort - E_MS_IIC_SW_PORT_0);
+    }
+
+
+    if(pstSI2141_slave_ID_TBL == NULL)
+    {
+        pstSI2141_slave_ID_TBL = (SLAVE_ID_USAGE *)malloc(u8MaxI2CPort * sizeof(SI2141_possible_slave_ID));  
+        if(NULL == pstSI2141_slave_ID_TBL)
         {
-        bRet = TRUE;     
+            return FALSE;
         }
-    else if(replybyte == 0x0D)//rework for doing "reboot" command after tuner init
+        else
+        {
+            for(i=0; i< u8MaxI2CPort; i++)
+            {
+                for(j=0; j< (sizeof(SI2141_possible_slave_ID)/sizeof(SLAVE_ID_USAGE)); j++)
+                {
+                    pSlaveIDTBL = (pstSI2141_slave_ID_TBL + i*sizeof(SI2141_possible_slave_ID)/sizeof(SLAVE_ID_USAGE) + j);
+                    memcpy(pSlaveIDTBL, &SI2141_possible_slave_ID[j], sizeof(SLAVE_ID_USAGE));
+                }
+            }
+        }
+    }
+
+    i=0;
+    do
+    {
+        pSlaveIDTBL = pstSI2141_slave_ID_TBL + u8I2C_Port*sizeof(SI2141_possible_slave_ID)/sizeof(SLAVE_ID_USAGE) + i;
+        if(pSlaveIDTBL->bInUse)
+        {
+            TUNER_DBG(("[SI2141]I2C Slave ID 0x%x Have Used on the same I2C Port\n", pSlaveIDTBL->u8SlaveID));  
+        }
+        else if((pSlaveIDTBL->u8SlaveID) == 0xFF)
+        {
+            break;
+        }
+        else
+        {
+            InitParam[u8TunerIndex].u8SlaveID = pSlaveIDTBL->u8SlaveID;    
+            SI214X_ucI2cSetSlaveAddr(u8TunerIndex, pSlaveIDTBL->u8SlaveID);
+            SI214X_ucI2cWriteOnly(0xFF, buffer1, sizeof(buffer1));
+            SI214X_ucI2cWriteOnly(0xFF, buffer2, sizeof(buffer2));
+            SI214X_ucI2cReadOnly(0xFF, &replybyte, 1);
+            SI214X_ucI2cWriteOnly(0xFF, buffer3, sizeof(buffer3));
+            printf("[SI2141]replybyte=0x%x\n", replybyte);
+
+            if ((replybyte == 0x1D) || (replybyte == 0x0D))
+            {
+               TUNER_DBG(("[RT710(RT720)] Read chip ID OK with slave ID 0x%x\n", pSlaveIDTBL->u8SlaveID));
+               bRet = TRUE;
+               if(!bUnderExtDMDTest)
+                   pSlaveIDTBL->bInUse = TRUE;
+               
+               break;
+            }
+            else
+            {
+                TUNER_ERR(("[RT710(RT720)] Read chip ID fail with slave ID 0x%x\n", pSlaveIDTBL->u8SlaveID));
+            }
+        }
+        i++;
+    }while((pSlaveIDTBL->u8SlaveID) != 0xFF);
+        
+
+    if(replybyte == 0x0D)//rework for doing "reboot" command after tuner init
     {
         if(_u8TunerInited[u8TunerIndex]==FALSE)
         {
@@ -647,7 +725,6 @@ MS_BOOL MDrv_Tuner_SI2141_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt
             if(MDrv_Tuner_SI2141_Init(u8TunerIndex, &stParam)==TRUE)
             {
                 _u8TunerInited[u8TunerIndex]=TRUE;
-            bRet = TRUE;
             }
         }
     }
@@ -670,7 +747,7 @@ MS_BOOL MDrv_Tuner_SI2141_GetTunerIF(MS_U8 u8TunerIndex, MS_U32* u32IF_Freq)
 
 MS_BOOL MDrv_Tuner_SI2141_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE fuction_type, void *data)
 {
-    MS_BOOL bResult = FALSE;
+    MS_BOOL bResult = TRUE;
 
     switch(fuction_type)
     {
@@ -678,10 +755,18 @@ MS_BOOL MDrv_Tuner_SI2141_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCT
             TUNER_ERR(("Not implement\n"));
             bResult = TRUE;
             break;
+            
+        case TUNER_EXT_FUNC_FINALIZE:
+           _u8TunerInited[u8TunerIndex] = FALSE;
+            break;     
 
         case TUNER_EXT_FUNC_GET_POWER_LEVEL:
-            bResult = Si2141_44_24_GetRSSILevel(data);
+            bResult = Si2141_44_24_GetRSSILevel((int *)data);
             break;
+
+        case TUNER_EXT_FUNC_UNDER_EXT_DMD_TEST:
+            bUnderExtDMDTest = *(MS_BOOL*)data;
+            break;      
         default:
             printf("Request extension function (%x) does not exist\n",fuction_type);
     }
@@ -691,7 +776,7 @@ MS_BOOL MDrv_Tuner_SI2141_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCT
 
 DRV_TUNER_TABLE_TYPE GET_TUNER_ENTRY_NODE(TUNER_SI2141) DDI_DRV_TUNER_TABLE_ENTRY(tunertab) =
 {
-    .name               = "TUNER_SI2141",          // demod system name
+    .name               = "TUNER_SI2141(SI2144)",   // demod system name
     .data               = TUNER_SI2141,            // private data value
     .Init               = MDrv_Tuner_SI2141_Init,
     .SetFreq            = MDrv_Tuner_Null_SetFreq,

@@ -139,6 +139,14 @@ typedef enum
     E_OUTPUT_TIMING_4096X2160_30P = 21,
     E_OUTPUT_TIMING_4096X2160_50P = 22,
     E_OUTPUT_TIMING_4096X2160_60P = 23,
+    E_OUTPUT_TIMING_1600X1200_60P = 24,
+    E_OUTPUT_TIMING_1440X900_60P  = 25,
+    E_OUTPUT_TIMING_1280X1024_60P = 26,
+    E_OUTPUT_TIMING_1024X768_60P  = 27,
+    E_OUTPUT_TIMING_1280X720_24P  = 28,
+    E_OUTPUT_TIMING_1280X720_25P  = 29,
+    E_OUTPUT_TIMING_1280X720_30P  = 30,
+    E_OUTPUT_TIMING_AUTO          = 255,
 }E_OUTPUT_TIMING_TYPE;
 
 typedef enum
@@ -149,6 +157,7 @@ typedef enum
     E_DDI_OUTPUT_DEST_SD_YPBPR     = 3,
     E_DDI_OUTPUT_DEST_HD_COMPONENT = 4,
     E_DDI_OUTPUT_DEST_HD_HDMITX    = 5,
+    E_DDI_OUTPUT_DEST_HD_VGA       = 6,
 }E_DDI_OUTPUT_DESTINTATION;
 
 typedef enum
@@ -243,6 +252,28 @@ typedef enum
     E_APS_INVALID           = 0xFF
 } E_APS_TYPE;
 
+typedef enum{
+  E_3D_OUTPUT_TIMING_1920x1080p23d98Hz_24Hz_FRAME_PACKING=0,
+  E_3D_OUTPUT_TIMING_1280x720p59d94Hz_60Hz_FRAME_PACKING,
+  E_3D_OUTPUT_TIMING_1280x720p50Hz_FRAME_PACKING,
+  E_3D_OUTPUT_TIMING_1920x1080i59d94HZ_60Hz_SIDE_BY_SIDE,
+  E_3D_OUTPUT_TIMING_1920x1080i50Hz_SIDE_BY_SIDE,
+  E_3D_OUTPUT_TIMING_1920x1080p23d98Hz_24Hz_TOP_BOTTOM,
+  E_3D_OUTPUT_TIMING_1280x720p59d94Hz_60Hz_TOP_BOTTOM,
+  E_3D_OUTPUT_TIMING_1280x720p50Hz_TOP_BOTTOM,
+  E_3D_OUTPUT_TIMING_1280x720p59d94Hz_60Hz_SIDE_BY_SIDE, //Primary
+  E_3D_OUTPUT_TIMING_1280x720p50Hz_SIDE_BY_SIDE,
+  E_3D_OUTPUT_TIMING_1920x1080p23d98Hz_24Hz_SIDE_BY_SIDE,
+  E_3D_OUTPUT_TIMING_1920x1080p59d94Hz_60Hz_TOP_BOTTOM,
+  E_3D_OUTPUT_TIMING_1920x1080p50Hz_TOP_BOTTOM,
+  E_3D_OUTPUT_TIMING_1920x1080p29d97Hz_30Hz_TOP_BOTTOM,
+}E_3D_OUTPUT_TIMING_TYPE;
+
+typedef enum{
+  E_AUDIO_OUTPUT_PCM=0,
+  E_AUDIO_OUTPUT_NONPCM,
+  E_AUDIO_OUTPUT_NONPCM_DDPBypass,
+}E_AUDIO_OUTPUT_TYPE;
 
 /*
  * This Enum type was defined base on EncoderICTest_Forms Rev1_3_K2_0819a.doc, ROVI CONFIDENTIAL
@@ -286,9 +317,39 @@ typedef enum
     MS_ACP_DCS_TYPE_MIN = 0,
     MS_ACP_DCS_CVBS_NTSC = MS_ACP_DCS_TYPE_MIN,
     MS_ACP_DCS_CVBS_PAL,
-    MS_ACP_DCS_TYPE_MAX = MS_ACP_DCS_CVBS_PAL,
+    MS_ACP_DCS_CVBS_MAX = MS_ACP_DCS_CVBS_PAL,
+
+    MS_ACP_DCS_COMPONENT_MIN = 0x10,
+    MS_ACP_DCS_COMPONENT_480I = MS_ACP_DCS_COMPONENT_MIN,
+    MS_ACP_DCS_COMPONENT_480P,
+    MS_ACP_DCS_COMPONENT_576I,
+    MS_ACP_DCS_COMPONENT_576P,
+    MS_ACP_DCS_COMPONENT_720P_24,
+    MS_ACP_DCS_COMPONENT_720P_25,
+    MS_ACP_DCS_COMPONENT_720P_30,
+    MS_ACP_DCS_COMPONENT_720P_50,
+    MS_ACP_DCS_COMPONENT_720P_60,
+    MS_ACP_DCS_COMPONENT_1080I_50,
+    MS_ACP_DCS_COMPONENT_1080I_60,
+    MS_ACP_DCS_COMPONENT_1080P_24,
+    MS_ACP_DCS_COMPONENT_1080P_25,
+    MS_ACP_DCS_COMPONENT_1080P_30,
+    MS_ACP_DCS_COMPONENT_1080P_50,
+    MS_ACP_DCS_COMPONENT_1080P_60,
+    MS_ACP_DCS_COMPONENT_MAX = MS_ACP_DCS_COMPONENT_1080P_60,
+
+    MS_ACP_DCS_TYPE_MAX = MS_ACP_DCS_COMPONENT_MAX,
     MS_ACP_DCS_TYPE_NUM,
 } MS_ACP_DCS_TYPE;
+
+typedef enum
+{
+    MS_SCART_AS_MIN           = 0,
+    MS_SCART_AS_1TO1          = MS_SCART_AS_MIN,
+    MS_SCART_AS_16TO9,
+    MS_SCART_AS_4TO3,
+    MS_SCART_AS_MAXNUM,
+}MS_SCART_ASPECT_RATIO;
 
 typedef enum
 {
@@ -299,6 +360,33 @@ typedef enum
     MS_XC_MM_SetXCPath,
     MS_XC_MM_MAX,
 } MS_XC_MM_Command;
+
+typedef enum
+{
+    E_DDI_DOVI_VIDEO_PRIORITY = 0,
+    E_DDI_DOVI_GRAPHIC_PRIORITY,
+}E_DDI_DOLBY_VISION_GRAPHIC_PRIORITY_MODE;
+
+typedef enum
+{
+    E_DDI_DOVI_GRAPHIC_LUMINANCE_DEFAULT = 0,
+    E_DDI_DOVI_GRAPHIC_LUMINANCE_CUSTOM,
+}E_DDI_DOLBY_VISION_GRAPHIC_LUMINANCE_TYPE;
+
+typedef enum
+{
+    E_DDI_DOVI_OUTPUT_DEFAULT = 0,
+    E_DDI_DOVI_OUTPUT_SDR = 1,
+    E_DDI_DOVI_OUTPUT_HDR10 = 2,
+    E_DDI_DOVI_OUTPUT_DOLBY_VISION = 3,
+}E_DDI_DOLBY_VISION_OUTPUT_FORMAT;
+
+typedef enum
+{
+    E_DDI_DOVI_MODE_DEFAULT = 0,
+    E_DDI_DOVI_MODE_STANDARD_MODE,
+    E_DDI_DOVI_MODE_LOW_LATENCY_MODE,
+}E_DDI_DOLBY_VISION_LOW_LATENCY_MODE;
 
 typedef struct
 {
@@ -323,8 +411,6 @@ MS_BOOL Demo_XC_SetOutputDest(MS_U32 *pu32OutputDest, MS_U32 *pu32Enable);
 MS_BOOL Demo_VE_SetOutputTiming(MS_U32 *pu32OutputTiming);
 MS_BOOL Demo_VE_PlayVideo(void);
 
-//Set Window Number
-MS_BOOL Demo_XC_PlayWindow(MS_U8 *pu8WinNum);
 //Play Video
 MS_BOOL Demo_XC_PlayVideo(MS_U32 *pu32XCDevice, MS_U32 *pu32XCWindow, MS_U32 *pu32XCInputSrc);
 MS_BOOL Demo_XC_PlayCusVideo(MS_U32 *pu32XCDevice, MS_U32 *pu32XCWindow, MS_U32 *pu32XCInputSrc);
@@ -339,6 +425,7 @@ MS_BOOL Demo_XC_EnableWindow(MS_U32 *pu32XCDevice, MS_U32 *pu32XCWindow, MS_U32 
 
 // Regression Test
 MS_BOOL Demo_XC_RegressionTest_ScalingDown(MS_U32 *pu32XCDevice, MS_U32 *pu32XCWindow, MS_U32 *pu32XCInputSrc);
+MS_BOOL Demo_XC_DisplayWindowTest(MS_U32 *pu32XCDevice, MS_U32 *pu32XCWindow, MS_U32 *pu32XCInputSrc);
 
 #if (DEMO_XC_SEAMLESS_ZAPPING_TEST == 1)
 // Seamless Zapping
@@ -368,6 +455,8 @@ MS_BOOL Demo_XC_EnableDS_SWDB(MS_U32 *bEnable);
 MS_BOOL Demo_XC_ChangeWindowSize(MS_U32 *pu32XCDevice, MS_U32 *pu32XCWindow);
 #endif
 
+MS_BOOL Demo_XC_SetDSOnOFF(VDEC_EX_DispInfo *pstDispInfo, MS_BOOL bEnableDS);
+
 //Color Related
 MS_BOOL Demo_XC_SetBrightness(MS_U32 *pu32XCDevice, MS_U32 *pu32XCWindow, MS_U8 *u8Value);
 MS_BOOL Demo_XC_SetSharpness(MS_U32 *pu32XCDevice, MS_U32 *pu32XCWindow, MS_U8 *u8Value);
@@ -381,10 +470,11 @@ MS_BOOL Demo_XC_SetVideoAlpha(MS_U32 *pu32XCDevice,MS_U32 *pu32XCWindow, MS_U8 *
 MS_BOOL Demo_XC_EnableDmesg(MS_U32 *pbEnable);
 
 MS_BOOL Demo_XC_VdecDispInfo2msAPIVdecDispInfo(VDEC_EX_DispInfo *pstDispInfo, MSAPI_XC_VDEC_DispInfo *pstMSAPIDispInfo );
-
+MS_BOOL Demo_XC_SetFrameBufferSize(MS_U32 *pu32XCDevice, MS_U32 *pu32XCWindow, MS_U32 *pu32Size);
 MS_BOOL Demo_XC_Exit(MS_U32 *pu32XCDevice);
 MS_BOOL Demo_VE_Exit(void);
-
+MS_BOOL Demo_XC_SetHDREnable(MS_U32 *pu32HDREnable);
+MS_BOOL Demo_XC_SetHDRSeamlessFlag(MS_U32 *pu32HDRSeamlessEnable);
 
 //DAC detect
 MS_BOOL Demo_Video_DACDetect(MS_BOOL *OnlySDDac, MS_BOOL *EnableSDDetect, MS_BOOL *EnableHDDetect);
@@ -433,17 +523,78 @@ MS_BOOL Demo_ACP_SetDCS(MS_BOOL *pbEnable, MS_U16 *pu16DCSIdx); //DCS type
 #if (DEMO_XC_HDMIRX_TEST == 1)
 //HDMI setting
 MS_BOOL Demo_HDMI_SetRxBypass(MS_U32 *pu32Enable);
+MS_BOOL Demo_HDMI_SetRxEDID(void);
+MS_BOOL Demo_HDMI_GetRXPacketInfo(void);
 MS_BOOL Demo_HDMI_SetColorThroughMode(MS_U32 *bEn);
 #endif
 
 //Set HDMI Tx output mode
 MS_BOOL Demo_HDMI_SetTxOutputMode(MS_U32 *u32OutputMode);
 
+#if (DEMO_HDMI8bits_ONLY_TEST == 0)
 //Set HDMI Color Depth
 MS_BOOL Demo_HDMI_SetOutputColorDepth(MS_U32 *pu32CDType);
+#endif
 
+//Set HDMI Color format
+MS_BOOL Demo_HDMI_SetOutputColorFormat(MS_U32 *pu32CFinType,MS_U32 *pu32CFoutType, MS_BOOL *pbForceEnable);
+
+#if ((DEMO_XC_3DVIDEO_TEST == 1) || (DEMO_XC_3DVIDEO2DOUT_TEST == 1))
+//Set HDMI 3D Structure
+MS_BOOL Demo_HDMI_Set3DStructure(MS_U32 *pu323DStructure);
+#endif
+
+//Set HDMI Aspect Ratio
+MS_BOOL Demo_HDMI_SetAspectRatio(MS_U32 *pu32AspectRatio);
+
+//Set HDMI AV Mute
+MS_BOOL Demo_HDMI_SetAVMute(MS_U32 *pu32AVMute);
+
+//Set HDMI Colormetry
+MS_BOOL Demo_HDMI_SetColorimetry(MS_U32 *pu32Colorimetry,MS_U32 *pu32ExtendColorimetry);
+
+#if (DEMO_AUDIO_HDMI_TEST == 1)
+//Set HDMI Audio
+MS_BOOL Demo_HDMI_SetAudio(MS_U32 *pu32AudioType);
+#endif
+
+//Show HDMITx Output Info
+MS_BOOL Demo_HDMI_ShowHDMITxOutputInfo(void);
+
+//Set HDMI Color Range
+MS_BOOL Demo_HDMI_SetOutputColorRange(MS_U32 *pu32InColorFormat, MS_U32 *pu32OutColorFormat,
+                                      MS_U32 *pu32InColorRange, MS_U32 *pu32OutColorRange);
+
+#if (DEMO_HDMI_CTS_CERTIFICATION_TEST == 1)
+MS_BOOL Demo_HDMI_EnableCertification(MS_BOOL *bEnCertification);
+#endif
+
+#if (DEMO_XC_DOVI_TEST == 1)
+//Set Dolby Vision Graphic Priority
+MS_BOOL Demo_XC_SetDolbyVisionGraphicPriority(MS_U8 *pu8DoViGraphicPriority);
+//Enable Dolby Vision Graphic Luminance
+MS_BOOL Demo_XC_SetDolbyVisionGraphicLuminanceEnable(MS_BOOL *pbEnable);
+//Set Dolby Vision Graphic Min/Max Luminance
+MS_BOOL Demo_XC_SetDolbyVisionGraphicLuminance(MS_U32 *pu32GMin,MS_U32 *pu32GMax);
+// Show Dolby Vision HDR Information
+MS_BOOL Demo_HDMI_ShowDoViHDRInfo(void);
+// Set Dolby Vision Output Format
+MS_BOOL Demo_HDMI_SetDolbyVisionOutputFormat(MS_U32 *pu32DoViOutputFortmat);
+// Set Dolby Vision Low Latency Mode
+MS_BOOL Demo_HDMI_SetDolbyVisionLowLatencyMode(MS_U32 *pu32DoViLLMode);
+#endif
+
+// Show HDCP Status
+MS_BOOL Demo_HDMI_ShowHDCPInfo(void);
+// Show EDID Info
+MS_BOOL Demo_HDMI_GetEDIDInfo(MS_U32 *pu32NumoOfBlock);
 //For Generate Black Video
 MS_BOOL Demo_XC_GenerateBlackVideo(MS_U32 *pu32XCDevice, MS_BOOL bEnable, SCALER_WIN eWindow);
+
+#if (DEMO_SCART_OUTPUT_SWITCH_TEST == 1)
+//Switch Scart output mode
+MS_BOOL Demo_SCART_OutputSwitch(MS_BOOL *bScartOutRGB, MS_U32 *pu32eAS);
+#endif
 
 //Help
 MS_BOOL Demo_XC_Help(void);

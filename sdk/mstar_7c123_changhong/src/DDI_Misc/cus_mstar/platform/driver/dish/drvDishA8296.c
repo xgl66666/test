@@ -76,19 +76,19 @@
 //******************************************************************************
 //<MStar Software>
 
-#include "Board.h"
 #include "MsCommon.h"
-#include "HbCommon.h"
 #include "drvDish.h"
 #include "drvDemod.h"
 #include "drvIIC.h"
 #include "drvDishNull.h"
 
+#if MS_DVBS_INUSE
+/*
 #if(DISH_TYPE == DISH_A8296) ||\
    (defined(DISH_TYPE1) && (DISH_TYPE1 == DISH_A8296)) || \
    (defined(DISH_TYPE2) && (DISH_TYPE2 == DISH_A8296)) || \
    (defined(DISH_TYPE3) && (DISH_TYPE3 == DISH_A8296))
-
+*/
 #define A8296_SLAVE_ADDR_R   0x11
 #define A8296_SLAVE_ADDR   0x10
 
@@ -128,10 +128,10 @@ VSEL2 VSEL1 VSEL0 LNB (V)
 2 OCP 		This bit will be set to a 1 if the LNB output current exceeds the overcurrent threshold (IOUT(MAX)) for more than
 			the overcurrent disable time (tDIS). If the OCP bit is set to 1, then the DIS bit is also set to 1.
 3 TRIMS 	Factory use only.
-4 PNG		Set to 1 when the A8296 is enabled and the LNB output voltage is either too low or too high (nominally Â¡Ã€9%
+4 PNG		Set to 1 when the A8296 is enabled and the LNB output voltage is either too low or too high (nominally ¡À9%
 			from the LNB DAC setting). Set to 0 when the A8296 is enabled and the LNB voltage is within the acceptable
-			range (nominally Â¡Ã€5% from the LNB DAC setting).
-5 Â¨C 		Not used.
+			range (nominally ¡À5% from the LNB DAC setting).
+5 ¨C 		Not used.
 6 TSD 		The TSD bit is set to 1 if the A8296 has detected an overtemperature condition. If the TSD bit is set to 1, then
 			the DIS bit is also set to 1.
 7 UVLO 		The UVLO bit is set to 1 if either the voltage at the VIN pin or the voltage at the VREG pin is too low. If the
@@ -151,58 +151,16 @@ VSEL2 VSEL1 VSEL0 LNB (V)
 #define DATA_18V_OUT                  (DATA_POWER_18V | BIT_LNB_ON)
 
  static MS_U8 u8PowerData = DATA_LNBPOWER_OFF;
-
-#ifdef DISH_IIC_PORT
-#define A8296_IIC_PORT DISH_IIC_PORT
-#else
-#define A8296_IIC_PORT FRONTEND_TUNER_PORT
-#endif
-
-#ifdef DISH_IIC_PORT1
-#define A8296_IIC_PORT1 DISH_IIC_PORT1
-#else
-#define A8296_IIC_PORT1 FRONTEND_TUNER_PORT1
-#endif
-
-#ifdef DISH_IIC_PORT2
-#define A8296_IIC_PORT2 DISH_IIC_PORT2
-#else
-#define A8296_IIC_PORT2 FRONTEND_TUNER_PORT2
-#endif
-
-#ifdef DISH_IIC_PORT3
-#define A8296_IIC_PORT3 DISH_IIC_PORT3
-#else
-#define A8296_IIC_PORT3 FRONTEND_TUNER_PORT3
-#endif
-
  
 /************************************************************************************/
-static DISH_MS_INIT_PARAM DishInitParam[MAX_FRONTEND_NUM];
+static DISH_MS_INIT_PARAM DishInitParam[MAX_LNB_SUPPORT];
 
-static HWI2C_PORT _get_I2C_port(MS_U8 u8DishIndex)
+static MS_IIC_PORT _get_I2C_port(MS_U8 u8DishIndex)
 {
-    HWI2C_PORT ehwI2c_port;
-    switch(u8DishIndex)
-    {
-        case 1:
-            ehwI2c_port = A8296_IIC_PORT1;
-            break;
-        case 2:
-            ehwI2c_port = A8296_IIC_PORT2;
-            break;
-        case 3:
-            ehwI2c_port = A8296_IIC_PORT3;
-            break;
-        case 0:
-        default:    
-            ehwI2c_port = A8296_IIC_PORT;
-            break;
-    }
-    return ehwI2c_port;
+    return DishInitParam[u8DishIndex].stLNBCon.eI2C_PORT;
 }
 
-MS_BOOL MDrv_Dish_Init(MS_U8 u8DishIndex,DISH_MS_INIT_PARAM* pParam)
+MS_BOOL MDrv_Dish_A8296_Init(MS_U8 u8DishIndex,DISH_MS_INIT_PARAM* pParam)
 {
     MS_U8 u8Data=0;
 	MS_U8 u8BuffTemp[2];
@@ -212,37 +170,35 @@ MS_BOOL MDrv_Dish_Init(MS_U8 u8DishIndex,DISH_MS_INIT_PARAM* pParam)
     if(pParam->pstDemodtab== NULL)
         return FALSE;
     else
+    {
         DishInitParam[u8DishIndex].pstDemodtab = pParam->pstDemodtab;
+        DishInitParam[u8DishIndex].stLNBCon.eI2C_PORT= pParam->stLNBCon.eI2C_PORT;
+    }
     
 	MDrv_HWI2C_SetReadMode(E_HWI2C_READ_MODE_DIRECT);
-	#if defined(DISH_IIC_PORT)// && (DISH_IIC_PORT!=FRONTEND_TUNER_PORT)
-	    if(DISH_IIC_PORT!=FRONTEND_TUNER_PORT)
-	    {
-	        printf("init DISH_IIC_PORT\n");
-    	    MDrv_IIC_Init(DISH_IIC_PORT);
-    	}
-	#endif
+    MDrv_IIC_Init(_get_I2C_port(u8DishIndex));
+
 
 	if(!MDrv_IIC_ReadBytes(_get_I2C_port(u8DishIndex),A8296_SLAVE_ADDR_R, 0, NULL, 1, &u8Data))
 	{
-		HB_printf("\n MDrv_Dish_Init failed-1-ReadBytes fail!\n");
+		DISH_ERR(("\n MDrv_Dish_Init failed-1-ReadBytes fail!\n"));
 	}	
 	u8Data = DATA_13V_OUT; 
 	u8BuffTemp[1]=u8Data;
 	if(!MDrv_IIC_WriteBytes(_get_I2C_port(u8DishIndex), A8296_SLAVE_ADDR, 0, NULL, 2, &u8BuffTemp[0]))
 	{
-		HB_printf("\n MDrv_Dish_Init failed-2-WriteBytes fail!");
+		DISH_ERR(("\n MDrv_Dish_Init failed-2-WriteBytes fail!"));
 		return FALSE;
 	}
 	if(!MDrv_IIC_ReadBytes(_get_I2C_port(u8DishIndex),A8296_SLAVE_ADDR_R, 0, NULL, 1, &u8Data))
 	{
-		HB_printf("\n MDrv_Dish_Init failed-3-ReadBytes fail!");
+		DISH_ERR(("\n MDrv_Dish_Init failed-3-ReadBytes fail!"));
 	}
 
     return TRUE;
 }
 /************************************************************************************/
-MS_BOOL MDrv_Dish_SetTone(MS_U8 u8DishIndex,EN_TONEBURST_TYPE enToneType)
+MS_BOOL MDrv_Dish_A8296_SetTone(MS_U8 u8DishIndex,EN_TONEBURST_TYPE enToneType)
 {
  
       switch(enToneType)
@@ -254,13 +210,13 @@ MS_BOOL MDrv_Dish_SetTone(MS_U8 u8DishIndex,EN_TONEBURST_TYPE enToneType)
                return DishInitParam[u8DishIndex].pstDemodtab->DiSEqCSetTone(u8DishIndex,TRUE);
                break;
            default:
-               HB_printf("----%s error type %d----",__FUNCTION__,enToneType);
+               DISH_ERR(("----%s error type %d----",__FUNCTION__,enToneType));
                break;
       }
       return FALSE;
 }
 /************************************************************************************/
-MS_BOOL MDrv_Dish_SetLNBPower(MS_U8 u8DishIndex, DISH_LNBPWR_TYPE enLNBPwr)
+MS_BOOL MDrv_Dish_A8296_SetLNBPower(MS_U8 u8DishIndex, DISH_LNBPWR_TYPE enLNBPwr)
 {
 	MS_U8 u8Data = 0;//DATA_22K_ON;
 	MS_BOOL b8result=0;
@@ -280,7 +236,7 @@ MS_BOOL MDrv_Dish_SetLNBPower(MS_U8 u8DishIndex, DISH_LNBPWR_TYPE enLNBPwr)
                break;
            default:
  		       u8Data = DATA_13V_OUT;
-               HB_printf("----%s error type %d ----",__FUNCTION__,enLNBPwr);
+               DISH_ERR(("----%s error type %d ----",__FUNCTION__,enLNBPwr));
                return FALSE;
       }
 
@@ -289,40 +245,40 @@ MS_BOOL MDrv_Dish_SetLNBPower(MS_U8 u8DishIndex, DISH_LNBPWR_TYPE enLNBPwr)
 	  	b8result=MDrv_IIC_WriteBytes(_get_I2C_port(u8DishIndex), A8296_SLAVE_ADDR, 0, NULL, 2, &u8BuffTemp[0]);
 		if(0==b8result)
 		{
-			 HB_printf("\n MDrv_Dish_SetLNBPower failed-!");
+			 DISH_ERR(("\n MDrv_Dish_SetLNBPower failed-!"));
 		}
 
 		return b8result;
 	  
 }
 /************************************************************************************/
-MS_BOOL MDrv_Dish_Set22k(MS_U8 u8DishIndex,DISH_LNB22K_TYPE enLNB22k)
+MS_BOOL MDrv_Dish_A8296_Set22k(MS_U8 u8DishIndex,DISH_LNB22K_TYPE enLNB22k)
 {
       switch(enLNB22k)
       {
            case EN_LNB22K_TYPE_OFF:
-               printf("EN_LNB22K_TYPE_OFF\n");
+               DISH_DBG(("EN_LNB22K_TYPE_OFF\n"));
                DishInitParam[u8DishIndex].pstDemodtab->DiSEqCSet22kOnOff(u8DishIndex, FALSE);
                return TRUE;
                break;
            case EN_LNB22K_TYPE_ON:
-                printf("EN_LNB22K_TYPE_ON\n");
+               DISH_DBG(("EN_LNB22K_TYPE_ON\n"));
                DishInitParam[u8DishIndex].pstDemodtab->DiSEqCSet22kOnOff(u8DishIndex, TRUE);
                return TRUE;
                break;  
            default:
-               HB_printf("----%s error type %d----",__FUNCTION__,enLNB22k);
+               DISH_ERR(("----%s error type %d----",__FUNCTION__,enLNB22k));
                return FALSE;
       }
        return FALSE;
 }
 /************************************************************************************/
-MS_BOOL MDrv_Dish_SendCmd(MS_U8 u8DishIndex,MS_U8* pCmd,MS_U8 u8CmdSize)
+MS_BOOL MDrv_Dish_A8296_SendCmd(MS_U8 u8DishIndex,MS_U8* pCmd,MS_U8 u8CmdSize)
 { 
      return DishInitParam[u8DishIndex].pstDemodtab->DiSEqC_SendCmd(u8DishIndex, pCmd,u8CmdSize);
 }
 /************************************************************************************/
-MS_BOOL MDrv_Dish_IsOverCurrent(MS_U8 u8DishIndex)
+MS_BOOL MDrv_Dish_A8296_IsOverCurrent(MS_U8 u8DishIndex)
 {
     MS_U8 u8Status;
 	MS_U8 u8BuffTemp[2];
@@ -341,19 +297,19 @@ MS_BOOL MDrv_Dish_IsOverCurrent(MS_U8 u8DishIndex)
     return FALSE;
 }
 
-MS_BOOL MDrv_Dish_SetCable(MS_U8 u8DishIndex, EN_CABLE_SELECT eCableIndex)
+MS_BOOL MDrv_Dish_A8296_SetCable(MS_U8 u8DishIndex, EN_CABLE_SELECT eCableIndex)
 {       
    return FALSE;
 }
 
 DISHTAB_ENTRY(dish_entry_DISH_A8296,"DISH_A8296", DISH_A8296,
-            MDrv_Dish_Init,
-            MDrv_Dish_SetTone,
-            MDrv_Dish_SetLNBPower,
-            MDrv_Dish_Set22k,
-            MDrv_Dish_SendCmd,
-            MDrv_Dish_IsOverCurrent,
-            MDrv_Dish_SetCable
+            MDrv_Dish_A8296_Init,
+            MDrv_Dish_A8296_SetTone,
+            MDrv_Dish_A8296_SetLNBPower,
+            MDrv_Dish_A8296_Set22k,
+            MDrv_Dish_A8296_SendCmd,
+            MDrv_Dish_A8296_IsOverCurrent,
+            MDrv_Dish_A8296_SetCable
 );
 
 #endif 

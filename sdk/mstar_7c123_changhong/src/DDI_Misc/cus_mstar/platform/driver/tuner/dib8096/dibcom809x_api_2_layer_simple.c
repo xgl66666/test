@@ -80,7 +80,7 @@
 #include "dibcom809x_api_2_layer_simple.h"
 
 
-
+#if 0//currently not using
 MS_U8 g_debugi2cdata = 1;
 
 unsigned char dib_init(void)
@@ -165,4 +165,4 @@ unsigned char dib_signal_quality(void)
     return mon.CoN;
 
 }
-
+#endif

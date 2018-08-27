@@ -10,11 +10,11 @@
    L2 API for commands and properties
    FILE: Si2141_44_24_L2_API.c
    Supported IC : Si2141-A10, Si2141-B10, Si2144-A20, Si2124-A20
-   Compiled for ROM 61 firmware 1_1_build_10
-   Revision: 0.1
-   Tag:  ROM61_1_1_build_10_V0.1
-   Date: July 24 2015
-  (C) Copyright 2015, Silicon Laboratories, Inc. All rights reserved.
+   Compiled for ROM 61 firmware 1_1_build_12
+   Revision: 0.0
+   Tag:  ROM61_1_1_build_12_V0.0
+   Date: March 04 2016
+  (C) Copyright 2016, Silicon Laboratories, Inc. All rights reserved.
 ****************************************************************************************/
 #include <string.h>
 /* Si2141_44_24 API Defines */
@@ -23,8 +23,8 @@
 /************************************************************************************************************************/
 /* Si2141_44_24 API Specific Includes */
 #include "Si2141_44_24_L2_API.h"               /* Include file for this code */
-#include "Si2144_firmware_2_1_build_2.h"       /* firmware compatible with Si2144-A20 marking */
-#include "Si2141_firmware_1_1_build_10.h"       /* firmware compatible with Si2141-A10 marking */
+#include "Si2144_firmware_2_1_build_3.h"       /* firmware compatible with Si2144-A20 marking */
+#include "Si2141_firmware_1_1_build_12.h"       /* firmware compatible with Si2141-A10 marking */
 #define Si2141_44_24_BYTES_PER_LINE 8
 #ifdef USING_DLIF_FILTER
 #include "write_DLIF_video_coeffs.h"   /* .h file from custom Video filter Tool output */
@@ -32,7 +32,8 @@
 
 /* define the following token if using >1 tuner and control1ing vco settings via the demod wrappper */
 #undef Si2141_44_24_DEMOD_WRAPPER_VCO
-
+/* Number of times the powerup command will be attempted before generating an error */
+#define RESET_HARDWARE_POWERUP_ATTEMPTS 10
 /************************************************************************************************************************
   NAME: Si2141_44_24_Configure
   DESCRIPTION: Setup Si2141_44_24 video filters, GPIOs/clocks, Common Properties startup, etc.
@@ -60,27 +61,73 @@ int Si2141_44_24_Configure           (L1_Si2141_44_24_Context *api)
     return return_code;
 }
 /************************************************************************************************************************
-  NAME: Si2141_44_24_PowerUpWithPatch
-  DESCRIPTION: Send Si2141_44_24 API PowerUp Command with PowerUp to bootloader,
-  Check the Chip rev and part, and ROMID are compared to expected values.
-  Load the Firmware Patch then Start the Firmware.
-  Programming Guide Reference:    Flowchart A.2 (POWER_UP with patch flowchart)
+  NAME: Si2141_44_24_WritePrePowerUpBytes
+  DESCRIPTION: Send Si2141_44_24 API PrePowerUp sequence to bootloader,
+    This I2C sequence resolves an issue where the XTAL oscillation amplitude may decrease if the tuner
+    is initialized multiple times without a power cycle.  This code may be skipped in applications
+    that begin with a power-cycle before initialization.  See FW 1.1 build 11 release notes.
 
   Parameter:  pointer to Si2141_44_24 Context
   Returns:    Si2141_44_24/I2C transaction error code, NO_Si2141_44_24_ERROR if successful
 ************************************************************************************************************************/
-int Si2141_44_24_PowerUpWithPatch    (L1_Si2141_44_24_Context *api)
+int Si2141_44_24_WritePrePowerUpBytes (L1_Si2141_44_24_Context *api)
+{
+    #define Si2141_44_24_PREPOWERUP_BYTES_PER_LINE 3
+    int nbLines;
+    int line;
+    unsigned char cmd1ByteBuffer[] = {0xFF, 0x00};
+    unsigned char cmd2ByteBuffer[] = {0xFE, 0x00};
+    unsigned char PrePowerUpByteBuffer[] = {0xc0,0x0a,0x04,
+                                            0x07,0x55,0x00,
+                                            0x07,0x1b,0x00,
+                                            0x07,0x1b,0x01,
+                                            0x07,0x1b,0x00,
+                                          };
+
+
+    nbLines=sizeof(PrePowerUpByteBuffer)/Si2141_44_24_PREPOWERUP_BYTES_PER_LINE;
+
+    if (L0_WriteCommandBytes(api->i2c, sizeof(cmd1ByteBuffer), cmd1ByteBuffer) != sizeof(cmd1ByteBuffer))
+    {
+      SiTRACE("Error writing cmd1ByteBuffer bytes!\n");
+      return ERROR_Si2141_44_24_SENDING_COMMAND;
+    }
+     /* for each line in byteBuffer_table */
+    for (line = 0; line < nbLines; line++)
+    {
+        if (L0_WriteCommandBytes(api->i2c, Si2141_44_24_PREPOWERUP_BYTES_PER_LINE, PrePowerUpByteBuffer+Si2141_44_24_PREPOWERUP_BYTES_PER_LINE*line) != Si2141_44_24_PREPOWERUP_BYTES_PER_LINE)
+        {
+          SiTRACE("Error writing PrePowerUpByteBuffer bytes!\n");
+          return ERROR_Si2141_44_24_SENDING_COMMAND;
+        }
+    }
+    if (L0_WriteCommandBytes(api->i2c, sizeof(cmd2ByteBuffer), cmd2ByteBuffer) != sizeof(cmd2ByteBuffer))
+    {
+      SiTRACE("Error writing cmd2ByteBuffer bytes!\n");
+      return ERROR_Si2141_44_24_SENDING_COMMAND;
+    }
+    return NO_Si2141_44_24_ERROR;
+
+}
+/************************************************************************************************************************
+  NAME: Si2141_44_24_PowerUpOnly
+  DESCRIPTION: Send Si2141_44_24 API PowerUp sequence with PowerUp to bootloader,
+  This was created to handle an issue if a PART_INFO error occurs this will reset the part.
+
+  Parameter:  pointer to Si2141_44_24 Context
+  Returns:    Si2141_44_24/I2C transaction error code, NO_Si2141_44_24_ERROR if successful
+************************************************************************************************************************/
+int Si2141_44_24_PowerUpOnly    (L1_Si2141_44_24_Context *api)
 {
     int return_code;
+    char err_count;
     return_code = NO_Si2141_44_24_ERROR;
-
-    if (!(api->load_control & SKIP_POWERUP))
-    {
+    err_count=0;
     /* always wait for CTS prior to POWER_UP command */
-        if ((return_code = Si2141_44_24_pollForCTS  (api)) != NO_Si2141_44_24_ERROR) {
-            SiTRACE ("Si2141_44_24_pollForCTS error 0x%02x\n", return_code);
-            return return_code;
-        }
+    if ((return_code = Si2141_44_24_pollForCTS  (api)) != NO_Si2141_44_24_ERROR) {
+        SiTRACE ("Si2141_44_24_pollForCTS error 0x%02x\n", return_code);
+        return return_code;
+    }
 
     do {
             if ((return_code = Si2141_44_24_L1_RESET_HW(api,
@@ -106,7 +153,90 @@ int Si2141_44_24_PowerUpWithPatch    (L1_Si2141_44_24_Context *api)
                                     )) != NO_Si2141_44_24_ERROR)
             {
                 SiTRACE ("Si2141_44_24_L1_POWER_UP error 0x%02x: %s\n", return_code, Si2141_44_24_L1_API_ERROR_TEXT(return_code) );
+                ++err_count;
+                if (err_count > RESET_HARDWARE_POWERUP_ATTEMPTS)
+                {
+                    return return_code;
+                }
+            }
+
+    } while (Si2141_44_24_GetStatus(api) == 0xFE);
+      if ((return_code = Si2141_44_24_L1_WAKE_UP (api,
+                                Si2141_44_24_WAKE_UP_CMD_SUBCODE_CODE,
+                                Si2141_44_24_WAKE_UP_CMD_RESET_RESET,
+                                Si2141_44_24_WAKE_UP_CMD_CLOCK_FREQ_CLK_24MHZ,
+                                Si2141_44_24_WAKE_UP_CMD_RESERVED9_RESERVED,
+                                Si2141_44_24_WAKE_UP_CMD_FUNC_BOOTLOADER,
+                                Si2141_44_24_WAKE_UP_CMD_WAKE_UP_WAKE_UP
+                                )) != NO_Si2141_44_24_ERROR)
+        {
+            SiTRACE ("Si2141_44_24_L1_WAKE_UP error 0x%02x: %s\n", return_code, Si2141_44_24_L1_API_ERROR_TEXT(return_code) );
+            return return_code;
+        }
+    return return_code;
+}
+
+/************************************************************************************************************************
+  NAME: Si2141_44_24_PowerUpWithPatch
+  DESCRIPTION: Send Si2141_44_24 API PowerUp Command with PowerUp to bootloader,
+  Check the Chip rev and part, and ROMID are compared to expected values.
+  Load the Firmware Patch then Start the Firmware.
+  Programming Guide Reference:    Flowchart A.2 (POWER_UP with patch flowchart)
+
+  Parameter:  pointer to Si2141_44_24 Context
+  Returns:    Si2141_44_24/I2C transaction error code, NO_Si2141_44_24_ERROR if successful
+************************************************************************************************************************/
+int Si2141_44_24_PowerUpWithPatch    (L1_Si2141_44_24_Context *api)
+{
+    int return_code;
+    char err_count = 0;
+    unsigned char cmdByteBuffer[] = {0x05,0x20,0x00,0x00,0x00,0x00,0x00,0x00};
+    return_code = NO_Si2141_44_24_ERROR;
+
+    if (!(api->load_control & SKIP_POWERUP))
+    {
+    /* always wait for CTS prior to POWER_UP command */
+        if ((return_code = Si2141_44_24_pollForCTS  (api)) != NO_Si2141_44_24_ERROR) {
+            SiTRACE ("Si2141_44_24_pollForCTS error 0x%02x\n", return_code);
+            return return_code;
+        }
+   /*This I2C sequence resolves an issue where the XTAL oscillation amplitude may decrease if the tuner
+    is initialized multiple times without a power cycle.  This code may be skipped in applications
+    that begin with a power-cycle before initialization.  See FW 1.1 build 11 release notes.
+    */
+       if ((return_code = Si2141_44_24_WritePrePowerUpBytes(api)) != NO_Si2141_44_24_ERROR) {
+            SiTRACE ("Si2141_44_24_WritePrePowerUpBytes error 0x%02x\n", return_code);
+            return return_code;
+        }
+    do {
+            if ((return_code = Si2141_44_24_L1_RESET_HW(api,
+                                                  Si2141_44_24_RESET_HW_CMD_SUBCODE_CODE,
+                                                  Si2141_44_24_RESET_HW_CMD_RESERVED1_RESERVED,
+                                                  Si2141_44_24_RESET_HW_CMD_RESERVED2_RESERVED)) != NO_Si2141_44_24_ERROR)
+            {
+                SiTRACE ("Si2141_44_24_L1_RESET_HW error 0x%02x: %s\n", return_code, Si2141_44_24_L1_API_ERROR_TEXT(return_code) );
                 return return_code;
+            }
+
+            if ((return_code = Si2141_44_24_L1_POWER_UP (api,
+                                    Si2141_44_24_POWER_UP_CMD_SUBCODE_CODE,
+                                    api->cmd->power_up.clock_mode,
+                                    api->cmd->power_up.en_xout,
+                                    Si2141_44_24_POWER_UP_CMD_CONFIG_1P8V_INTERNAL_REG,
+                                    Si2141_44_24_POWER_UP_CMD_RESERVED3_RESERVED,
+                                    Si2141_44_24_POWER_UP_CMD_RESERVED4_RESERVED,
+                                    Si2141_44_24_POWER_UP_CMD_RESERVED5_RESERVED,
+                                    Si2141_44_24_POWER_UP_CMD_RESERVED6_RESERVED,
+                                    Si2141_44_24_POWER_UP_CMD_RESERVED7_RESERVED,
+                                    Si2141_44_24_POWER_UP_CMD_RESERVED8_RESERVED
+                                    )) != NO_Si2141_44_24_ERROR)
+            {
+                SiTRACE ("Si2141_44_24_L1_POWER_UP error 0x%02x: %s\n", return_code, Si2141_44_24_L1_API_ERROR_TEXT(return_code) );
+                ++err_count;
+                if (err_count > RESET_HARDWARE_POWERUP_ATTEMPTS)
+                {
+                    return return_code;
+                }
             }
 
     } while (Si2141_44_24_GetStatus(api) == 0xFE);
@@ -124,11 +254,29 @@ int Si2141_44_24_PowerUpWithPatch    (L1_Si2141_44_24_Context *api)
             SiTRACE ("Si2141_44_24_L1_WAKE_UP error 0x%02x: %s\n", return_code, Si2141_44_24_L1_API_ERROR_TEXT(return_code) );
             return return_code;
         }
-
+       /* Write the null bytes to the bootloader to avoid the corruption error */
+        if (Si2141_44_24_L1_API_Patch(api,sizeof(cmdByteBuffer), cmdByteBuffer) != NO_Si2141_44_24_ERROR)
+        {
+          SiTRACE("Error writing cmdByteBuffer bytes!\n");
+          return ERROR_Si2141_44_24_SENDING_COMMAND;
+        }
         /* Get the Part Info from the chip.   This command is only valid in Bootloader mode */
         if ((return_code = Si2141_44_24_L1_PART_INFO(api)) != NO_Si2141_44_24_ERROR) {
             SiTRACE ("Si2141_44_24_L1_PART_INFO error 0x%02x: %s\n", return_code, Si2141_44_24_L1_API_ERROR_TEXT(return_code) );
+             /* if there is an error at this point retry the powerup sequence and execute the PART_INFO command again */
+            if ((return_code = Si2141_44_24_PowerUpOnly(api)) == NO_Si2141_44_24_ERROR)
+            {
+               if ((return_code = Si2141_44_24_L1_PART_INFO(api)) != NO_Si2141_44_24_ERROR)
+                {
+                    SiTRACE ("Si2141_44_24_L1_PART_INFO error 0x%02x: %s\n", return_code, Si2141_44_24_L1_API_ERROR_TEXT(return_code) );
+                    return return_code;
+                }
+            }
+           else
+           {
+            SiTRACE ("Si2141_44_24_PowerUpOnly error 0x%02x: %s\n", return_code, Si2141_44_24_L1_API_ERROR_TEXT(return_code) );
             return return_code;
+           }
         }
         SiTRACE("chiprev %d\n",        api->rsp->part_info.chiprev);
         SiTRACE("part    Si21%d\n",    api->rsp->part_info.part   );
@@ -148,14 +296,14 @@ int Si2141_44_24_PowerUpWithPatch    (L1_Si2141_44_24_Context *api)
         /* Check part info values and load the proper firmware */
           if (api->rsp->part_info.romid == 0x61)
           {
-             if ((return_code = Si2141_44_24_LoadFirmware_16(api, Si2141_FW_1_1b10, FIRMWARE_LINES_1_1b10)) != NO_Si2141_44_24_ERROR) {
+             if ((return_code = Si2141_44_24_LoadFirmware_16(api, Si2141_FW_1_1b12, FIRMWARE_LINES_1_1b12)) != NO_Si2141_44_24_ERROR) {
                SiTRACE ("Si2141_44_24_LoadFirmware error 0x%02x: %s\n", return_code, Si2141_44_24_L1_API_ERROR_TEXT(return_code) );
                return return_code;
              }
           }
           else if (api->rsp->part_info.romid == 0x62)
           {
-             if ((return_code = Si2141_44_24_LoadFirmware_16(api, Si2144_FW_2_1b2, FIRMWARE_LINES_2_1b2)) != NO_Si2141_44_24_ERROR) {
+             if ((return_code = Si2141_44_24_LoadFirmware_16(api, Si2144_FW_2_1b3, FIRMWARE_LINES_2_1b3)) != NO_Si2141_44_24_ERROR) {
                 SiTRACE ("Si2141_LoadFirmware error 0x%02x: %s\n", return_code, Si2141_44_24_L1_API_ERROR_TEXT(return_code) );
                 return return_code;
              }
@@ -204,7 +352,7 @@ int Si2141_44_24_PowerUpUsingBroadcastI2C    (L1_Si2141_44_24_Context *tuners[],
       tuners[t]->load_control = SKIP_LOADFIRMWARE | SKIP_STARTFIRMWARE;
       /* Si2141_44_24_PowerUpWithPatch will return right after Si2141_44_24_L1_PART_INFO, because SKIP_LOADFIRMWARE and SKIP_STARTFIRMWARE are set */
       if ( (return_code = Si2141_44_24_PowerUpWithPatch(tuners[t])) != NO_Si2141_44_24_ERROR) {
-        SiTRACE ("Tuner Si2141_44_24_PowerUpWithPatch error 0x%02x\n", return_code);
+        //SiTRACE ("Tuner %d Si2141_44_24_PowerUpWithPatch error %d\n", return_code);
         return return_code;
       }
        if ( (return_code = Si2141_44_24_L1_CONFIG_I2C(tuners[t], Si2141_44_24_CONFIG_I2C_CMD_SUBCODE_CODE, Si2141_44_24_CONFIG_I2C_CMD_I2C_BROADCAST_ENABLED)) != NO_Si2141_44_24_ERROR )
@@ -225,7 +373,7 @@ int Si2141_44_24_PowerUpUsingBroadcastI2C    (L1_Si2141_44_24_Context *tuners[],
   /* Si2141_44_24_PowerUpWithPatch will now broadcast the tuner fw and return
       when all is completed, because load_fw is now '1'                               */
   if ( (return_code = Si2141_44_24_PowerUpWithPatch(tuners[Si2141_44_24_TUNER_BROADCAST_INDEX])) != NO_Si2141_44_24_ERROR) {
-    SiTRACE("Tuner Si2141_44_24_PowerUpWithPatch error 0x%02x\n", return_code);
+    //iTRACE("Tuner %d Si2141_44_24_PowerUpWithPatch error %d\n", return_code);
     return return_code;
   }
 
@@ -395,6 +543,7 @@ int Si2141_44_24_Init                (L1_Si2141_44_24_Context *api)
     }
     /* At this point, FW is loaded and started.  */
     Si2141_44_24_Configure(api);
+
     SiTRACE("Si2141_44_24_Init complete...\n");
     return NO_Si2141_44_24_ERROR;
 }
@@ -1075,6 +1224,7 @@ int errcode;
  return NO_Si2141_44_24_ERROR;
 
 }
+
 /************************************************************************************************************************
   NAME: Si2141_44_24_L2_VCO_Blocking_PostTune
   DESCRIPTION: Si2141_44_24 user menu function
@@ -1086,8 +1236,7 @@ int errcode;
 ************************************************************************************************************************/
 int Si2141_44_24_L2_VCO_Blocking_PostTune(L1_Si2141_44_24_Context *tuners[], int tuner_num, int tuner_count)
 {
-
-  int  ((*Tuner_Block_VCO_ptr[3])(L1_Si2141_44_24_Context *,int)) = {Si2141_44_24_Tuner_Block_VCO, Si2141_44_24_Tuner_Block_VCO2, Si2141_44_24_Tuner_Block_VCO3};
+  int  ((*Tuner_Block_VCO_ptr[3])(L1_Si2141_44_24_Context *api, int vco_code)) = {Si2141_44_24_Tuner_Block_VCO, Si2141_44_24_Tuner_Block_VCO2, Si2141_44_24_Tuner_Block_VCO3};
   int errcode;
   int vco_dest[]={0,0,0,0};
   int vco_fn[]={0,0,0,0};

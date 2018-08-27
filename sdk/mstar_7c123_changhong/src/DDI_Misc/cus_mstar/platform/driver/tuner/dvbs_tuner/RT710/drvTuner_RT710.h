@@ -15,7 +15,7 @@
 #define UINT32 unsigned long
 
 
-#define VERSION   "RT710(720)_GUI_v3.5"
+#define VERSION   "RT710(720)_GUI_v3.7"
 #define RT710_DEVICE_ADDRESS 0xF4
 #define RT710_Reg_Num 16
 
@@ -129,6 +129,7 @@ typedef struct _RT710_Handle
    MS_U32 pre_satellite_bw;
    RT710_INFO_Type Info_Msg;
    unsigned char Reg_Arry[RT710_Reg_Num];
+   TUNER_MS_INIT_PARAM Init_Param;
 }RT710_Handle;
 
 //----------------------------------------------------------//

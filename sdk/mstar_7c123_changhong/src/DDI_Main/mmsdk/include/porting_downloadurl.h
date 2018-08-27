@@ -121,15 +121,15 @@ typedef struct
     /// Set push mode callback to push data
     MMSDK_BOOL(*Client_Set_PushMode_ReadCallback)(ST_CLIENT_INSTANCE* pstClient, ClientPushModeReadFunc pFunc, void* pUserData);
     /// Set notify callback
-    MMSDK_BOOL(*Client_Set_EventNotifyCallback)(ST_CLIENT_INSTANCE* pstClient, ClientEventNotifyFunc pFunc, void* pUserData);
+    MMSDK_BOOL(*Client_Set_EventNotifyCallback)(ST_CLIENT_INSTANCE* pstClient, ClientEventNotifyFunc pFunc, void* pUserData, MMSDK_BOOL bReviseItem);
     /// Get video codec info, for push mode
     MMSDK_BOOL(*Client_Get_VideoInfo)(ST_CLIENT_INSTANCE* pstClient, ST_MMSDK_ES_VIDEO_INFO* stVideoInfo);
     /// Get audio codec info, for push mode
     MMSDK_BOOL(*Client_Get_AudioInfo)(ST_CLIENT_INSTANCE* pstClient, ST_MMSDK_ES_AUDIO_INFO* stAudioInfo);
     /// Get the data from Server with the timestamp which you want to seek
     MMSDK_BOOL (*Client_Time_Seek)(ST_CLIENT_INSTANCE* pstClient, MMSDK_U64 u64TimeStamp);
-    /// Set the Item  to download module
-    MMSDK_BOOL (*Client_Set_Item)(ST_CLIENT_INSTANCE* pstClient, void* pUserData, ClientEventNotifyFunc pFunc);
+    /// Stop Download Module
+    MMSDK_BOOL (*Client_Stop_Connect)(void);
     void* pFptrReserved1;
     void* pFptrReserved2;
     void* pFptrReserved3;

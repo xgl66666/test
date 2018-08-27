@@ -107,6 +107,8 @@ typedef enum
     E_MMSDK_CONTROLFLAG_ENABLE_FRC,
     /// (photo)SOC pattern selection base on display buffer
     E_MMSDK_CONTROLFLAG_ENABLE_DISPLAY_BASE_ON_BUFFER,
+    /// vsync control mode
+    E_MMSDK_CONTROLFLAG_ENABLE_VDEC_VSYNC_CTRL,
     /// Reserved
     E_MMSDK_CONTROLFLAG_ENABLE_MAX = 0x0000FFFF,
 }EN_MMSDK_CONTROLFLAG;

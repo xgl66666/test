@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -97,8 +97,8 @@
 // Include Files
 //-------------------------------------------------------------------------------------------------
 #include "MsCommon.h"
+#include "drvSAR.h"
 #include "string.h"
-#include "msAPI_TSensor.h"
 #include "MsIRQ.h"
 
 //------------------------------------------------------------------------------
@@ -119,7 +119,7 @@
 //--------------------------------------------------------------------------------------------------
 // Local Variables
 //--------------------------------------------------------------------------------------------------
-static void _Demo_TSensor_ISR(MS_U32 u32Vector);
+//static void _Demo_TSensor_ISR(MS_U32 u32Vector);
 
 //--------------------------------------------------------------------------------------------------
 // Local Defines
@@ -128,22 +128,69 @@ static void _Demo_TSensor_ISR(MS_U32 u32Vector);
 //--------------------------------------------------------------------------------------------------
 // Global Functions
 //--------------------------------------------------------------------------------------------------
+#if (DEMO_SAR_TSENSOR_SUPPORT == 1)
+static void _TSensor_INT_CBFunc(void)
+{
+    MS_S16 s16CurUp,s16CurLow,s16CurTemperature_C;
+    s16CurTemperature_C = MDrv_TSensor_GetTemperature();
+    MDrv_TSensor_GetTemperatureRange(&s16CurUp,&s16CurLow);
+    printf("[Warning] Current Temperature is out of range\n");
+    printf("Get T-Sensor Temperature Range , Up Bound : %d ; Low Bound %d; Current Temperature : %d\n",s16CurUp,s16CurLow,s16CurTemperature_C);
+}
+
 //Print current chip's temperature and up-bound/low-bound stauts
-MS_BOOL Demo_TSensor_PriTemp(void)
+MS_BOOL Demo_TSensor_GetTemp(void)
 {
     MS_S16 s16CurTemperature_C = 0;
     MS_BOOL bRet = TRUE;
 
-    bRet &= MApi_TSensorEnable();
-    s16CurTemperature_C = MApi_TSensorGetCurTemp_C();
-    
-    printf("[TSNSR.APP] Current chip's temperature = %d C\n",s16CurTemperature_C);
+    s16CurTemperature_C = MDrv_TSensor_GetTemperature();
+    printf("Current Temperature_C : %d\n",s16CurTemperature_C);
 
-    printf("[TSNSR.APP] Current LOB = %d C, UPB = %d C\n",MApi_TSensorGetLowBound(),MApi_TSensorGetUpBound());
-    
     return bRet;
 }
 
+MS_BOOL Demo_TSensor_SetTempMonitorRange(const MS_U32 *s16UpBound, const MS_U32 *s16LowBound)
+{
+    MS_S16 s16CurUp,s16CurLow;
+    if(*s16UpBound< *s16LowBound)
+    {
+        printf("[ERROR] TSensor_SetTempRange [UpBound] [LowBound] , but [UpBound] is lesser than [LowBound]\n");
+        return FALSE;
+    }
+    if(!MDrv_TSensor_SetTemperatureMointerRange((MS_S16) *s16UpBound,(MS_S16) *s16LowBound,_TSensor_INT_CBFunc))
+    {
+        printf("[ERROR] Set Temperature Up/Low Bound Error\n");
+        return FALSE;
+    }
+
+    MDrv_TSensor_GetTemperatureRange(&s16CurUp,&s16CurLow);
+    printf("Set T-Sensor Range , Up Bound : %d ; Low Bound %d\n",s16CurUp,s16CurLow);
+    return TRUE;
+}
+
+MS_BOOL Demo_TSensor_GetTempMonitorRange(void)
+{
+    MS_S16 s16CurUp,s16CurLow,s16CurTemperature_C;
+    s16CurTemperature_C = MDrv_TSensor_GetTemperature();
+    MDrv_TSensor_GetTemperatureRange(&s16CurUp,&s16CurLow);
+    printf("Get T-Sensor Temperature Range , Up Bound : %d ; Low Bound %d; Current Temperature : %d\n",s16CurUp,s16CurLow,s16CurTemperature_C);
+    return TRUE;
+}
+
+MS_BOOL Demo_TSensor_ClearIRQ(void)
+{
+    if(MDrv_TSensorIRQClear())
+    {
+        return TRUE;
+    }
+    else
+    {
+        printf("[ERROR] Clear IRQ Fail\n");
+        return FALSE;
+    }
+}
+#else
 //Set the temperature up-bound and low-bound. An ISR will be triggered 
 //if (current temperature < *u8LOB ) || (current temperature > *u8UPB). => note: it is edge triggered 
 //The ISR will call Demo_TSensor_PriTemp to print temperature status. 
@@ -187,6 +234,18 @@ MS_BOOL Demo_TSensor_demo (const MS_U8 *u8LOB,const MS_U8 *u8UPB)
     return bRet;
 }
 
+MS_BOOL Demo_TSensor_PriTemp(void)
+{
+    MS_S16 s16CurTemperature_C = 0;
+    MS_BOOL bRet = TRUE;
+
+    bRet &= MApi_TSensorEnable();
+    s16CurTemperature_C = MApi_TSensorGetCurTemp_C();
+    printf("[TSNSR.APP] Current chip's temperature = %d C\n",s16CurTemperature_C);
+    printf("[TSNSR.APP] Current LOB = %d C, UPB = %d C\n",MApi_TSensorGetLowBound(),MApi_TSensorGetUpBound());
+    return bRet;
+}
+
 //--------------------------------------------------------------------------------------------------
 // Local Functions
 //--------------------------------------------------------------------------------------------------
@@ -211,4 +270,5 @@ static void _Demo_TSensor_ISR(MS_U32 u32Vector)
     //MsOS_EnableInterrupt(E_INT_IRQ_KEYPAD);
 }
 
+#endif
 #endif

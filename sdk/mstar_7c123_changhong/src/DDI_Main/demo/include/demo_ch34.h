@@ -93,9 +93,31 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef _DEMO_CH34_H_
-#define _DEMO_CH34_H_ 
+#define _DEMO_CH34_H_
 
+typedef enum
+{
+    E_DAC_SWING_LEVEL0 = 0,     ///< Dac output swing level0
+    E_DAC_SWING_LEVEL1,           ///< Dac output swing level1
+    E_DAC_SWING_LEVEL2,           ///< Dac output swing level2
+    E_DAC_SWING_LEVEL3,           ///< Dac output swing level3
+} E_DAC_SWING_LEVEL;
+
+typedef enum
+{
+    E_SIGMA_DELTA_GAIN_LEVEL0 = 0,     ///< Sigma Delta Gain level0, 0.9375
+    E_SIGMA_DELTA_GAIN_LEVEL1,           ///< Sigma Delta Gain level1, 0.875
+    E_SIGMA_DELTA_GAIN_LEVEL2,           ///< Sigma Delta Gain level2, 0.75
+    E_SIGMA_DELTA_GAIN_LEVEL3,           ///< Sigma Delta Gain level3, 0.5
+} E_SIGMA_DELTA_GAIN_LEVEL;
+
+//-------------------------------------------------------------------------------------------------
+// Functions
+//-------------------------------------------------------------------------------------------------
 MS_BOOL Demo_CH34_Init(void);
+MS_BOOL Demo_CH34_SelectSpec(MS_U32 *pu32Spec);
+MS_BOOL Demo_CH34_SetDACSwingLevel(MS_U32 *pu32DACSwingLevel);
+MS_BOOL Demo_CH34_SetSigmaDeltaGainLevel(MS_U32 *pu32SigmaDeltaGainLevel);
 MS_BOOL Demo_CH34_SetMode(MS_U32 *channel, MS_U32 *videoSys, MS_U32 *audioSys);
 MS_BOOL Demo_CH34_Help(void);
 

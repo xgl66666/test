@@ -29,34 +29,81 @@
 #include "MxLWare_HYDRA_PhyCtrl.h"
 #include "MxLWare_HYDRA_Registers.h"
 #include "MxLWare_FW_Download.h"
+#include "MxLWare_HYDRA_DemodTunerApi.h"
 
 /* MxLWare Driver version for Hydra device */
-static const UINT8 MxLWare_HYDRA_Version[] = {2, 2, 1, 11, 0};
+static const UINT8 MxLWare_HYDRA_Version[] = {2, 2, 2, 1, 4};
 
-static MXL_BOOL_E MxL_Ctrl_IsFirmwareAlive(UINT8 devId)
+#define MXL_HYDRA_DELAY_BETWEEN_CONSECUTIVE_FW_CHECKS_MS 50
+#define MAX_ACTIVE_DURATION_OF_EDGE_INTERRUPT 50*1000  //50 uS
+
+struct
+{
+  MXL_HYDRA_DEVICE_E sku;
+  UINT32 bondOpt;
+  UINT32 chipId;
+  UINT32 socId;
+  MXL_HYDRA_DEVICE_E targetSku;
+  const char * skuName;
+} hydraSKUs[] =
+ {
+//    sku                     bondOpt            chipId   socId   targetSku              skuName      
+  {MXL_HYDRA_DEVICE_532C, MXL_HYDRA_SKU_ID_532C, 0x560,   0x04,  MXL_HYDRA_DEVICE_532C, "MXL532C" },
+  {MXL_HYDRA_DEVICE_542C, MXL_HYDRA_SKU_ID_542C, 0x560,   0x05,  MXL_HYDRA_DEVICE_542C, "MXL542C" },
+  {MXL_HYDRA_DEVICE_582C, MXL_HYDRA_SKU_ID_582C, 0x560,   0x05,  MXL_HYDRA_DEVICE_582C, "MXL582C" },
+  {MXL_HYDRA_DEVICE_568,  MXL_HYDRA_SKU_ID_568,  0x560,   0x04,  MXL_HYDRA_DEVICE_568,  "MXL568"  },
+  {0,0,0,0,0, NULL}
+ };
+
+static MXL_BOOL_E MxL_Ctrl_IsFirmwareAlive(UINT8 devId, UINT16 timeoutMs)
 {
   MXL_STATUS_E mxlStatus = MXL_SUCCESS;
   UINT32 fwHeartBeat = 0;
   UINT32 regData = 0;
   MXL_BOOL_E fwActiveFlag = MXL_FALSE;
+  MXLDBG2(UINT8 attempt = 0;);
 
-  mxlStatus |= MxLWare_HYDRA_ReadRegister(devId, HYDRA_HEAR_BEAT, &fwHeartBeat);
-  MxLWare_HYDRA_OEM_SleepInMs(10);
-  mxlStatus |= MxLWare_HYDRA_ReadRegister(devId, HYDRA_HEAR_BEAT, &regData);
-
-  if ((fwHeartBeat) && (regData) && (!mxlStatus))
+  MXLENTERSTR;
+  MXLENTER(MXL_HYDRA_PRINT("timeoutMs=%d\n", timeoutMs);)
+  
+  while ((mxlStatus == MXL_SUCCESS) && 
+          (timeoutMs > MXL_HYDRA_DELAY_BETWEEN_CONSECUTIVE_FW_CHECKS_MS) && 
+          (fwActiveFlag == MXL_FALSE))
   {
-    if ((regData - fwHeartBeat) == 0)
-      fwActiveFlag = MXL_FALSE;
-    else
-      fwActiveFlag = MXL_TRUE;
+    mxlStatus = MxLWare_HYDRA_ReadRegister(devId, HYDRA_HEAR_BEAT, &fwHeartBeat);
+    MxLWare_HYDRA_OEM_SleepInMs(10);
+    mxlStatus |= MxLWare_HYDRA_ReadRegister(devId, HYDRA_HEAR_BEAT, &regData);
+    
+    MXLDBG2(attempt++;);
+    if ((fwHeartBeat) && (regData) && (!mxlStatus))
+    {
+      if ((regData - fwHeartBeat) == 0)
+      {
+        fwActiveFlag = MXL_FALSE;
+        MxLWare_HYDRA_OEM_SleepInMs(MXL_HYDRA_DELAY_BETWEEN_CONSECUTIVE_FW_CHECKS_MS);
+      }
+      else
+      {
+        fwActiveFlag = MXL_TRUE;
+      }
+    }
+    MXLDBG2(
+      if (fwActiveFlag == MXL_FALSE)
+      {
+        MXL_HYDRA_PRINT("Firmware not alive. Attempt %d\n", attempt);
+      }
+      );
+    timeoutMs -= MXL_HYDRA_DELAY_BETWEEN_CONSECUTIVE_FW_CHECKS_MS;
   }
+  MXLDBG2(MXL_HYDRA_PRINT("Firmware %s after %d attempts\n", (fwActiveFlag == MXL_TRUE)?"running":"dead", attempt););
+  MXLERR(if (mxlStatus != MXL_SUCCESS) MXL_HYDRA_ERROR("Error reading register\n"););
+  MXLEXITSTR(fwActiveFlag);
   return fwActiveFlag;
 }
 
 static MXL_BOOL_E MxL_Ctrl_ValidateSku(MXL_HYDRA_CONTEXT_T * devHandlePtr)
 {
-  MXL_BOOL_E skuOK = MXL_TRUE;
+  MXL_BOOL_E skuOK = MXL_FALSE;
   MXL_STATUS_E mxlStatus = MXL_SUCCESS;
   UINT32 padMuxBond = 0;
   UINT32 prcmChipId = 0;
@@ -70,6 +117,25 @@ static MXL_BOOL_E MxL_Ctrl_ValidateSku(MXL_HYDRA_CONTEXT_T * devHandlePtr)
 
   if (mxlStatus == MXL_SUCCESS)
   {
+    UINT8 i;
+    i = 0;
+
+    while((hydraSKUs[i].socId) &&
+          ((hydraSKUs[i].sku != devHandlePtr->deviceType) ||
+           (hydraSKUs[i].bondOpt != padMuxBond) ||
+           (hydraSKUs[i].chipId != prcmChipId) ||
+           (hydraSKUs[i].socId != prcmSoCId))
+           ) i++;
+
+    if (hydraSKUs[i].socId)
+    {
+      skuOK = MXL_TRUE;
+      MXLDBG1(MXL_HYDRA_PRINT("SKU selected %s\n", hydraSKUs[i].skuName);)
+      devHandlePtr->deviceType = hydraSKUs[i].targetSku;
+    }
+    else
+    {
+      skuOK = MXL_TRUE;
     if (prcmChipId != 0x560)
     {
       switch(padMuxBond)
@@ -172,14 +238,6 @@ static MXL_BOOL_E MxL_Ctrl_ValidateSku(MXL_HYDRA_CONTEXT_T * devHandlePtr)
             MXLDBG1(MXL_HYDRA_PRINT("SKU selection MxL561S %s\n", (skuOK == MXL_TRUE)?"correct":"incorrect"););
 
             break;
-
-          case MXL_HYDRA_SKU_ID_568:
-            MXL_HYDRA_PRINT("SKU prcmSoCId %d \n", prcmSoCId);
-            skuOK = (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_568)?MXL_TRUE:MXL_FALSE;
-
-            MXLDBG1(MXL_HYDRA_PRINT("SKU selection MxL568 B0 %s\n", (skuOK == MXL_TRUE)?"correct":"incorrect"););
-            break;
-
           default:
             skuOK = MXL_FALSE;
             break;
@@ -227,31 +285,13 @@ static MXL_BOOL_E MxL_Ctrl_ValidateSku(MXL_HYDRA_CONTEXT_T * devHandlePtr)
             }
             MXLDBG1(MXL_HYDRA_PRINT("SKU selection MxL568C %s\n", (skuOK == MXL_TRUE)?"correct":"incorrect"););
             break;
-
-          case MXL_HYDRA_SKU_ID_582:
-            skuOK = (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_582C)?MXL_TRUE:MXL_FALSE;
-            if(skuOK == MXL_TRUE)
-            {
-              devHandlePtr->deviceType = MXL_HYDRA_DEVICE_582C;
-            }
-            MXLDBG1(MXL_HYDRA_PRINT("SKU selection MxL582C %s\n", (skuOK == MXL_TRUE)?"correct":"incorrect"););
-            break;
-
-          case MXL_HYDRA_SKU_ID_584:
-            skuOK = (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_542C)?MXL_TRUE:MXL_FALSE;
-            if(skuOK == MXL_TRUE)
-            {
-              devHandlePtr->deviceType = MXL_HYDRA_DEVICE_542C;
-            }
-            MXLDBG1(MXL_HYDRA_PRINT("SKU selection MxL542C %s\n", (skuOK == MXL_TRUE)?"correct":"incorrect"););
-            break;
-
           default:
             skuOK = MXL_FALSE;
             break;
         }
       }
     }
+  }
   }
   else
     skuOK = MXL_FALSE;
@@ -418,24 +458,23 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDevFWDownload(UINT8 devId, UINT32 mbinBufferSi
                       // bring XCPU out of reset
                       MXLDBG3(MXL_HYDRA_PRINT("[%s] Bring XCPU out of reset\n", __FUNCTION__););
                       mxlStatus = MxLWare_HYDRA_WriteRegister(devId, 0x90720000, 1);
-                      MxLWare_HYDRA_OEM_SleepInMs(500);
+                      MxLWare_HYDRA_OEM_SleepInMs(10);
                     }
                     else
 #endif
                     {
                       // Bring CPU out of reset
                       mxlStatus = SET_REG_FIELD_DATA(devId, PRCM_PRCM_CPU_SOFT_RST_N, 1);
-                      //Wait till FW Boots
-                      MxLWare_HYDRA_OEM_SleepInMs(150);
+                      MxLWare_HYDRA_OEM_SleepInMs(50);
                     }
 
                     // Initilize XPT XBAR
                     mxlStatus |= MxLWare_HYDRA_WriteRegister(devId, XPT_DMD0_BASEADDR, 0x76543210);
 
                     // Check if Firmware is alive
-                    if ((MXL_TRUE == MxL_Ctrl_IsFirmwareAlive(devId)) && (mxlStatus == MXL_SUCCESS))
+                    if ((MXL_TRUE == MxL_Ctrl_IsFirmwareAlive(devId, 750)) && (mxlStatus == MXL_SUCCESS))
                     {
-                      devSkuCfg.skuType = devHandlePtr->skuType;
+                      devSkuCfg.skuType = (UINT32) devHandlePtr->skuType;
 
                       // buid and send command to configure interrupt settings
                       BUILD_HYDRA_CMD(MXL_HYDRA_DEV_CFG_SKU_CMD, MXL_CMD_WRITE, cmdSize, &devSkuCfg, cmdBuff);
@@ -489,22 +528,31 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDevInterrupt(UINT8 devId, MXL_HYDRA_INTR_CFG_T
   UINT8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
 
   MXLENTERAPISTR(devId);
-  MXLENTERAPI(MXL_HYDRA_PRINT("intrMask = %x\n", intrMask););
+  MXLENTERAPI(MXL_HYDRA_PRINT("intrType=%d, intrDuration=%dns, intrMask = %x\n", intrCfg.intrType, intrCfg.intrDurationInNanoSecs, intrMask););
 
   status |= MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
   if (status == MXL_SUCCESS)
   {
-    devIntrCfg.intrMask = intrMask;
-    devIntrCfg.intrType = (UINT32)intrCfg.intrType;
-    devIntrCfg.intrDurationInNanoSecs = intrCfg.intrDurationInNanoSecs;
-
-    // buid and send command to configure interrupt settings
-    BUILD_HYDRA_CMD(MXL_HYDRA_DEMOD_INTR_TYPE_CMD, MXL_CMD_WRITE, cmdSize, &devIntrCfg, cmdBuff);
-    status |= MxLWare_HYDRA_SendCommand(devId, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
-
-    if (status == MXL_SUCCESS)
+    if (((intrCfg.intrDurationInNanoSecs <= MAX_ACTIVE_DURATION_OF_EDGE_INTERRUPT) && (intrCfg.intrDurationInNanoSecs >=1)) ||
+        ((intrCfg.intrType != HYDRA_HOST_INTR_TYPE_EDGE_POSITIVE) && (intrCfg.intrType != HYDRA_HOST_INTR_TYPE_EDGE_NEGATIVE)))
     {
-      devHandlePtr->intrMask = intrMask;
+      devIntrCfg.intrMask = intrMask;
+      devIntrCfg.intrType = (UINT32)intrCfg.intrType;
+      devIntrCfg.intrDurationInNanoSecs = intrCfg.intrDurationInNanoSecs;
+
+      // buid and send command to configure interrupt settings
+      BUILD_HYDRA_CMD(MXL_HYDRA_DEMOD_INTR_TYPE_CMD, MXL_CMD_WRITE, cmdSize, &devIntrCfg, cmdBuff);
+      status |= MxLWare_HYDRA_SendCommand(devId, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
+
+      if (status == MXL_SUCCESS)
+      {
+        devHandlePtr->intrMask = intrMask;
+      }
+    } 
+    else
+    {
+      status = MXL_INVALID_PARAMETER;
+      MXLERR(MXL_HYDRA_PRINT("Edge interrupt duration must be within 1ns - %dns\n", MAX_ACTIVE_DURATION_OF_EDGE_INTERRUPT););
     }
   }
 
@@ -605,6 +653,10 @@ MXL_STATUS_E MxLWare_HYDRA_API_ReqDevInterruptStatus(UINT8 devId, UINT32 *intrSt
       //This is done to clear the interrupt status
       //Set the Clear on read mask to clear only the bits read from the Interrupt message register
       status |= MxLWare_HYDRA_WriteRegister(devId, HYDRA_INTR_CLEAR_ON_READ_MASK, regData);
+      if (regData & (MXL_HYDRA_INTR_DISEQC_0 | MXL_HYDRA_INTR_DISEQC_1 | MXL_HYDRA_INTR_DISEQC_2 | MXL_HYDRA_INTR_DISEQC_3))
+      {
+        regData = MxL_Get_DiseqcMappingBitMapReverse(devHandlePtr, regData);        
+      }
       //Reading the status register clears the Message and status registers
       status |= MxLWare_HYDRA_ReadRegister(devId, HYDRA_INTR_STATUS_REG, &tempRegData);
 
@@ -682,7 +734,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_ReqDevVersionInfo(UINT8 devId, MXL_HYDRA_VER_INFO
       versionInfoPtr->mxlWareVer[4] = MxLWare_HYDRA_Version[4];
 
       // Firmware status - Check if heart beat is active
-      versionInfoPtr->firmwareDownloaded = MxL_Ctrl_IsFirmwareAlive(devId);
+      versionInfoPtr->firmwareDownloaded = MxL_Ctrl_IsFirmwareAlive(devId, 150);
 
       if (versionInfoPtr->firmwareDownloaded == MXL_TRUE)
       {
@@ -727,7 +779,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_ReqDevVersionInfo(UINT8 devId, MXL_HYDRA_VER_INFO
  * @date 06/12/2012 Initial release
  *
  * This API can be called to configure Hydra device into a required power
- * mode. Please refer to corresponding deviceï¿½s datasheet for power
+ * mode. Please refer to corresponding device�s datasheet for power
  * consumption values.
 
  * Power Mode    Description
@@ -831,14 +883,17 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDevWakeOnRF(UINT8 devId, MXL_HYDRA_TUNER_ID_E 
  * @brief MxLWare_HYDRA_API_CfgDevWakeOnPidParams
  *
  * @param[in]   devId        Device ID
- * @param[in]   enable
- * @param[in]   wakeOnPidPtr
- * @param[in]   pidSearchTimeInMsecs
- * @param[in]   demodSleepTimeInMsecs
+ * @param[in]   chanTuneParamsPtr
+ * @param[in]   interruptLockFail 
+ * @param[in]   awakeTimeSeconds
+ * @param[in]   sleepTimeSeconds
+ * @param[in]   magicPid
+ * @param[in]   matchBufferPtr 
+ * @param[in]   maskBufferPtr 
  *
- * @author Mahee
+ * @author Aman/John
  *
- * @date 06/12/2012 Initial release
+ * @date 12/04/2015 Initial release
  *
  * This API configures PIDs for use with wake on broadcast feature of the device.
  *
@@ -847,52 +902,51 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDevWakeOnRF(UINT8 devId, MXL_HYDRA_TUNER_ID_E 
  * @retval MXL_INVALID_PARAMETER  - Invalid parameter is passed
  *
  ************************************************************************/
-
-MXL_STATUS_E MxLWare_HYDRA_API_CfgDevWakeOnPidParams(UINT8 devId, MXL_BOOL_E enable,
-                              MXL_HYDRA_WAKE_ON_PID_T *wakeOnPidPtr,
-                              UINT32 pidSearchTimeInMsecs, UINT32 demodSleepTimeInMsecs)
+MXL_STATUS_E MxLWare_HYDRA_API_CfgDevWakeOnPidParams(UINT8 devId,
+                              MXL_HYDRA_TUNE_PARAMS_T * chanTuneParamsPtr,
+                              MXL_BOOL_E interruptLockFail, UINT16 awakeTimeInSeconds, 
+                              UINT16 sleepTimeInSeconds, UINT16 magicPid,
+                              UINT8 * matchBufferPtr, UINT8 * maskBufferPtr)
 {
   MXL_HYDRA_CONTEXT_T * devHandlePtr;
   MXL_STATUS_E status = MXL_SUCCESS;
   MXL_HYDRA_BROADCAST_WAKEUP_CFG_T broadcastWakeCfg;
   UINT8 cmdSize = sizeof(broadcastWakeCfg);
   UINT8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
-  UINT16 i, temp;
+  interruptLockFail = MXL_FALSE;
 
   MXLENTERAPISTR(devId);
-  MXLENTERAPI(MXL_HYDRA_PRINT("enable=%d, pidSearchTimeInMsecs=%d, demodSleepTimeInMsecs=%d\n", enable, pidSearchTimeInMsecs, demodSleepTimeInMsecs););
+  MXLENTERAPI(MXL_HYDRA_PRINT("awakeTimeInSeconds=%d, sleepTimeInSeconds=%d, \
+                               interruptLockFail=%d, magicPid=%d\n", 
+                               awakeTimeInSeconds, sleepTimeInSeconds, \
+                               interruptLockFail, magicPid);); 
 
   status = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
-  if (status == MXL_SUCCESS)
+
+  if ((status == MXL_SUCCESS) && (chanTuneParamsPtr) && (awakeTimeInSeconds >= MXL_HYDRA_MIN_TIME_IN_SECS && awakeTimeInSeconds <= MXL_HYDRA_MAX_TIME_IN_SECS) &&
+      (sleepTimeInSeconds >= MXL_HYDRA_MIN_TIME_IN_SECS && sleepTimeInSeconds <= MXL_HYDRA_MAX_TIME_IN_SECS) && (magicPid >= MXL_HYDRA_MIN_PID && magicPid <= MXL_HYDRA_MAX_PID) && 
+      ( ((matchBufferPtr) && (maskBufferPtr)) || ((!matchBufferPtr) && (!maskBufferPtr)) ) )
   {
-    if (wakeOnPidPtr)
+    MXL_HYDRA_TUNER_ID_E tunerId = 0;
+    MXL_HYDRA_DEMOD_ID_E demodId = 0;
+    MXLDBG1(MXL_HYDRA_PRINT("Using demodId=%d, tunerId=%d\n", demodId, tunerId););
+    status = MxLWare_HYDRA_HelperFn_CfgDemodChanTuneParamSetUp(devId, tunerId, demodId, &broadcastWakeCfg.demodChanCfg, chanTuneParamsPtr);
+
+    broadcastWakeCfg.interruptLockFail = (UINT32) (interruptLockFail == MXL_TRUE)?1:0;
+    broadcastWakeCfg.awakeTimeInSeconds = awakeTimeInSeconds;
+    broadcastWakeCfg.sleepTimeInSeconds = sleepTimeInSeconds;
+    broadcastWakeCfg.magicPid = magicPid;
+
+    if(status == MXL_SUCCESS)
     {
-      MXLWARE_OSAL_MEMSET(broadcastWakeCfg.wakeOnPid.wakeUpPid, 0, 16);
-      MXLWARE_OSAL_MEMCPY(&broadcastWakeCfg.wakeOnPid, wakeOnPidPtr, sizeof(MXL_HYDRA_WAKE_ON_PID_T));
-      broadcastWakeCfg.enable = enable;
-      broadcastWakeCfg.pidSearchTimeInMsecs = pidSearchTimeInMsecs;
-      broadcastWakeCfg.demodSleepTimeInMsecs = demodSleepTimeInMsecs;
-
-      MXL_HYDRA_PRINT("PID List: Before\n");
-      for(i=0;i<broadcastWakeCfg.wakeOnPid.numPids;i++)
-      {
-        MXL_HYDRA_PRINT("%d\n", broadcastWakeCfg.wakeOnPid.wakeUpPid[i]);
-      }
-
-      // convert data to componsate for I2C data swapping in FW layer
-      for(i=0;i<broadcastWakeCfg.wakeOnPid.numPids;i=i+2)
-      {
-        temp = broadcastWakeCfg.wakeOnPid.wakeUpPid[i];
-        broadcastWakeCfg.wakeOnPid.wakeUpPid[i] = broadcastWakeCfg.wakeOnPid.wakeUpPid[i+1];
-        broadcastWakeCfg.wakeOnPid.wakeUpPid[i+1] = temp;
-      }
-
       // buid and send command to configure wake on RF feature
       BUILD_HYDRA_CMD(MXL_HYDRA_DEV_BROADCAST_WAKE_UP_CMD, MXL_CMD_WRITE, cmdSize, &broadcastWakeCfg, cmdBuff);
       status |= MxLWare_HYDRA_SendCommand(devId, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
     }
-    else
-      status = MXL_INVALID_PARAMETER;
+  }
+  else
+  {
+    status = MXL_INVALID_PARAMETER;
   }
 
   MXLEXITAPISTR(devId, status);
@@ -1022,7 +1076,7 @@ MXL_STATUS_E  MxLWare_HYDRA_API_CfgDevDiseqcFskOpMode(UINT8 devId, MXL_HYDRA_AUX
  *
  * @date 10/12/2014 Initial release
  *
- * This API should be used to configure device GPIO pinï¿½s direction
+ * This API should be used to configure device GPIO pin�s direction
  * (input or output).
  *
  * @retval MXL_SUCCESS            - OK
@@ -1044,7 +1098,8 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDevGPIODirection(UINT8 devId, UINT8 gpioId, MX
   {
     if ((gpioId < devHandlePtr->gpioMaxNum) && (gpioDir < MXL_HYDRA_GPIO_DIR_MAX))
     {
-      if (((devHandlePtr->deviceType == MXL_HYDRA_DEVICE_542) || (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_544) || (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_542C)) && \
+      if (((devHandlePtr->deviceType == MXL_HYDRA_DEVICE_542) || (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_544) || 
+           (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_542C) || (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_532C)) && 
           ((gpioId >= 5) && (gpioId <= 8)) && (gpioDir == MXL_HYDRA_GPIO_DIR_OUTPUT))
         gpioOutPinMux = 0;
 

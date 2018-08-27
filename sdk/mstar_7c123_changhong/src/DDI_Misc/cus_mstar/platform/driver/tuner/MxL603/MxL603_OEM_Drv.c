@@ -21,18 +21,6 @@
 
 #if IF_THIS_TUNER_INUSE(TUNER_MXL603)
 
-
-//extern MS_BOOL MDrv_IIC_Write(MS_U8 u8SlaveID, MS_U8 *pu8Addr, MS_U8 u8AddrSize, MS_U8 *pu8Buf, MS_U32 u32BufSize);
-//extern MS_BOOL MDrv_IIC_Read(MS_U8 u8SlaveID, MS_U8 *pu8Addr, MS_U8 u8AddrSize, MS_U8 *pu8Buf, MS_U32 u32BufSize);
-//extern MS_BOOL MDrv_IIC1_Write(MS_U8 u8SlaveID, MS_U8 *pu8Addr, MS_U8 u8AddrSize, MS_U8 *pu8Buf, MS_U32 u32BufSize);
-//extern MS_BOOL MDrv_IIC1_Read(MS_U8 u8SlaveID, MS_U8 *pu8Addr, MS_U8 u8AddrSize, MS_U8 *pu8Buf, MS_U32 u32BufSize);
-
-#define IIC0_WRITE                    MDrv_IIC_Write
-#define IIC0_READ                     MDrv_IIC_Read
-#define IIC1_WRITE                    MDrv_IIC1_Write
-#define IIC1_READ                     MDrv_IIC1_Read
-
-
 /*----------------------------------------------------------------------------------------
 --| FUNCTION NAME : MxLWare603_OEM_WriteRegister
 --|
@@ -60,7 +48,6 @@ MXL_STATUS MxLWare603_OEM_WriteRegister(UINT8 u8TunerIndex, UINT8 devId, UINT8 R
   // Legends: SADDR (I2c slave address), S (Start condition), A (Ack), N(NACK),
   // P(Stop condition)
 
-  MXL_STATUS status = MXL_FALSE;
 
 
 /* If OEM data is implemented, customer needs to use OEM data structure related operation
@@ -90,139 +77,22 @@ MXL_STATUS MxLWare603_OEM_WriteRegister(UINT8 u8TunerIndex, UINT8 devId, UINT8 R
   /* If OEM data is not required, customer should treat devId as I2C slave Address */
 
   //UINT8 i2c_address = devId; // create device i2c address
-  UINT8 pArray[2];
-  HWI2C_PORT hwi2c_port;
-  
-  hwi2c_port = getI2CPort(u8TunerIndex);
-  
-  if (hwi2c_port < E_HWI2C_PORT_1)
-  {
-      u8TunerIndex = 0; //means I2C port
-  }
-  else if (hwi2c_port < E_HWI2C_PORT_2)
-  {
-      u8TunerIndex = 1;
-  }
-  else
-  {
-      TUNER_ERR(("hwi2c_port number exceeds limitation\n"));
-      return FALSE;
-  }
+    MXL_STATUS status = MXL_FALSE;
+    MS_IIC_PORT ePort;
+    MS_U8 pArray[2];
+    
+    ePort = getI2CPort(u8TunerIndex);
 
-  pArray[0] = RegAddr;
-  pArray[1] = RegData;
+    pArray[0] = RegAddr;
+    pArray[1] = RegData;
 
-  //RegAddr = RegAddr;
-  //RegData = RegData;
-  //printf("\n1\n");
-//MDrv_IIC_Write(MS_U8 u8SlaveID, MS_U8 *pu8Addr, MS_U8 u8AddrSize, MS_U8 *pu8Buf, MS_U32 u32BufSize);
-  //if (IIC_WRITE( devId, 0, 0, pArray, 2))
-/*
-    if (u8TunerIndex == 1)
+    if(MDrv_IIC_WriteBytes(ePort, devId, 0, NULL, 2, pArray))
     {
-        if (IIC1_WRITE( devId, NULL, 0, pArray, 2) != 0)
-        {
-            MsOS_DelayTask(1);
-            return status =MXL_TRUE ;
-        }
-        else
-        {
-
-            printf("\ni2c1 write err\n");
-            return status=MXL_FALSE;
-        }
-
+       status = MXL_TRUE;
     }
-    else
-    {
-        if (IIC_WRITE( devId, NULL, 0, pArray, 2) != 0)
-        {
-            MsOS_DelayTask(1);
-            return status =MXL_TRUE ;
-        }
-        else
-        {
 
-            printf("\ni2c write err\n");
-            return status=MXL_FALSE;
-        }
-    }
-*/
-    switch(u8TunerIndex)
-    {
-        case 0:
-        {
-            if (IIC0_WRITE( devId, NULL, 0, pArray, 2) != 0)
-            {
-                MsOS_DelayTask(1);
-                return status =MXL_TRUE ;
-            }
-            else
-            {
-                TUNER_ERR(("i2c write err\n"));
-                return status=MXL_FALSE;
-            }
-            break;
-        }
-        case 1:
-        {
-            if (IIC1_WRITE( devId, NULL, 0, pArray, 2) != 0)
-            {
-                MsOS_DelayTask(1);
-                return status =MXL_TRUE ;
-            }
-            else
-            {
+    return status;
 
-                TUNER_ERR(("i2c1 write err\n"));
-                return status=MXL_FALSE;
-            }
-            break;
-        }
-        case 2:
-        {
-            if (IIC0_WRITE( devId, NULL, 0, pArray, 2) != 0)
-            {
-                MsOS_DelayTask(1);
-                return status =MXL_TRUE ;
-            }
-            else
-            {
-                TUNER_ERR(("i2c write err\n"));
-                return status=MXL_FALSE;
-            }
-            break;
-        }
-        case 3:
-        {
-            if (IIC1_WRITE( devId, NULL, 0, pArray, 2) != 0)
-            {
-                MsOS_DelayTask(1);
-                return status =MXL_TRUE ;
-            }
-            else
-            {
-
-                TUNER_ERR(("i2c1 write err\n"));
-                return status=MXL_FALSE;
-            }
-            break;
-        }
-        default:
-        {
-            if (IIC0_WRITE( devId, NULL, 0, pArray, 2) != 0)
-            {
-                MsOS_DelayTask(1);
-                return status =MXL_TRUE ;
-            }
-            else
-            {
-                TUNER_ERR(("i2c write err\n"));
-                return status=MXL_FALSE;
-            }
-            break;
-        }
-    } //end switch(u8TunerIndex)
 }
 
 /*------------------------------------------------------------------------------
@@ -257,7 +127,7 @@ MXL_STATUS MxLWare603_OEM_ReadRegister(UINT8 u8TunerIndex,UINT8 devId, UINT8 Reg
   // Legends: SADDR(I2c slave address), S(Start condition), MA(Master Ack), MN(Master NACK),
   // P(Stop condition)
 
-  MXL_STATUS status = MXL_TRUE;
+
 
 /* If OEM data is implemented, customer needs to use OEM data structure related operation
    Following code should be used as a reference.
@@ -285,131 +155,22 @@ MXL_STATUS MxLWare603_OEM_ReadRegister(UINT8 u8TunerIndex,UINT8 devId, UINT8 Reg
 
   /* If OEM data is not required, customer should treat devId as I2C slave Address */
 
-  //devId = devId;
-  //RegAddr = RegAddr;
-  //*DataPtr = *DataPtr;
-
-  UINT8 pArray[2];
-  HWI2C_PORT hwi2c_port;
+  MXL_STATUS status = MXL_FALSE;
+  MS_U8 pArray[2];
+  MS_IIC_PORT ePort;
   
-  hwi2c_port = getI2CPort(u8TunerIndex);
+  ePort = getI2CPort(u8TunerIndex);
   
-  if (hwi2c_port < E_HWI2C_PORT_1)
-  {
-      u8TunerIndex = 0; //means I2C port
-  }
-  else if (hwi2c_port < E_HWI2C_PORT_2)
-  {
-      u8TunerIndex = 1;
-  }
-  else
-  {
-      TUNER_ERR(("hwi2c_port number exceeds limitation\n"));
-      return FALSE;
-  }
-
-
   pArray[0] = 0xFB;
   pArray[1] = RegAddr;
-  //printf("\n2\n");
-/*
-    if (u8TunerIndex == 1)
-    {
-      if (IIC1_READ( devId, pArray, 2, DataPtr, 1)!= 0)
-      {
-          return status =MXL_TRUE ;
-      }
-      else
-      {
+  
+  if(MDrv_IIC_ReadBytes(ePort, devId, 2, pArray, 1, DataPtr))
+  {
+     status = MXL_TRUE;
+  }
+  
+  return status;  
 
-          printf("\ni2c1 write err\n");
-          return status=MXL_FALSE;
-      }
-
-    }
-    else
-    {
-      if (IIC_READ( devId, pArray, 2, DataPtr, 1) != 0)
-      {
-          return status =MXL_TRUE ;
-      }
-      else
-      {
-
-          printf("\ni2c read err\n");
-          return status=MXL_FALSE;
-      }
-    }
-*/
-    switch(u8TunerIndex)
-    {
-        case 0:
-        {
-            if (IIC0_READ( devId, pArray, 2, DataPtr, 1) != 0)
-            {
-              return status =MXL_TRUE ;
-            }
-            else
-            {
-
-              TUNER_ERR(("i2c read err\n"));
-              return status=MXL_FALSE;
-            }
-            break;
-        }
-        case 1:
-        {
-            if (IIC1_READ( devId, pArray, 2, DataPtr, 1)!= 0)
-            {
-              return status =MXL_TRUE ;
-            }
-            else
-            {
-              TUNER_ERR(("i2c1 write err\n"));
-              return status=MXL_FALSE;
-            }
-            break;
-        }
-        case 2:
-        {
-            if (IIC0_READ( devId, pArray, 2, DataPtr, 1) != 0)
-            {
-              return status =MXL_TRUE ;
-            }
-            else
-            {
-              TUNER_ERR(("i2c read err\n"));
-              return status=MXL_FALSE;
-            }
-            break;
-        }
-        case 3:
-        {
-            if (IIC1_READ( devId, pArray, 2, DataPtr, 1)!= 0)
-            {
-              return status =MXL_TRUE ;
-            }
-            else
-            {
-              TUNER_ERR(("i2c1 write err\n"));
-              return status=MXL_FALSE;
-            }
-            break;
-        }
-        default:
-        {
-            if (IIC0_READ( devId, pArray, 2, DataPtr, 1) != 0)
-            {
-              return status =MXL_TRUE ;
-            }
-            else
-            {
-              TUNER_ERR(("i2c read err\n"));
-              return status=MXL_FALSE;
-            }
-            break;
-        }
-    } //end switch(u8TunerIndex)
 }
 
 /*------------------------------------------------------------------------------

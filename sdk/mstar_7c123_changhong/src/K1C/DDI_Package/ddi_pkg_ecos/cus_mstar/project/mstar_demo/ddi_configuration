@@ -1,0 +1,18 @@
+# Setup variable to deault
+CFG_CC_OPTS =
+CFG_LD_OPTS =
+CFG_CC_DEFS =
+
+CFG_CC_OPTS += -D'DDI_MAIN_TEST'
+
+# Inlcude other configuration
+-include $(PRJ_DIR)/configurations/platform_configuration
+ifeq ($(CFG_BOARD),BD_MST290C_D01A_S)
+-include $(PRJ_DIR)/configurations/feature_configuration_290C
+CFG_CC_OPTS += -D'MS_DVBT2_INUSE=0'
+else
+-include $(PRJ_DIR)/configurations/feature_configuration
+endif
+
+-include $(PRJ_DIR)/configurations/mmsdk_porting_configuration
+-include $(PRJ_DIR)/configurations/toolchain_configuration

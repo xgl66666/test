@@ -3,8 +3,16 @@
 /* ------------------------------------
     Header Files
    ------------------------------------ */
+#ifdef MSOS_TYPE_LINUX_KERNEL
+#include <linux/string.h>
+#include <linux/fs.h>
+#include <linux/vmalloc.h>
+#include <linux/err.h>
+#include <asm/uaccess.h>
+#else
 #include <stdio.h>
 #include <string.h>
+#endif
 //#include "msAPI_Timer.h"
 //#include "Mapp_IR.h"
 //#include "Mapp_Key.h"
@@ -478,6 +486,9 @@ MS_BOOL MSB1238_Demod_Config(MS_U8 *pRegParam)
 
 MS_BOOL MSB1238_Demod_GetParam(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM* pParam)
 {
+    DMD_DTMB_MODULATION_INFO sDtmbModulationMode;
+    MS_BOOL bret = FALSE;
+
     if (HB_ObtainMutex(_s32MutexId, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
     {
         DBG_MSB(HB_printf("%s: Obtain mutex failed.\n", __FUNCTION__));
@@ -485,6 +496,17 @@ MS_BOOL MSB1238_Demod_GetParam(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM* pP
     }
     else
     {
+        bret = MDrv_DMD_DTMB_MD_GetModulationMode(u8DemodIndex, &sDtmbModulationMode);
+        if(bret)
+        {
+            pParam->DTMBParam.fSiCodeRate = sDtmbModulationMode.fSiCodeRate;
+            pParam->DTMBParam.u16PNM = sDtmbModulationMode.u8PNC;
+            pParam->DTMBParam.u16SiInterLeaver = sDtmbModulationMode.u8SiInterLeaver;
+            pParam->DTMBParam.u8PNC = sDtmbModulationMode.u8PNC;
+            pParam->DTMBParam.u8SiCarrierMode = sDtmbModulationMode.u8SiCarrierMode;
+            pParam->DTMBParam.u8SiNR = sDtmbModulationMode.u8SiNR;
+            pParam->DTMBParam.u8SiQamMode= sDtmbModulationMode.u8SiQamMode;
+        }
     }
     HB_ReleaseMutex(_s32MutexId);
     return TRUE;
@@ -744,7 +766,7 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB1238) DDI_DRV_TABLE_ENTRY(dem
      .I2CByPassPreSetting          = NULL,
      .Extension_Function           = MSB1238_Extension_Function,
      .Extension_FunctionPreSetting = NULL,
-     .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error,      
+     .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error,
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
@@ -767,7 +789,10 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB1238) DDI_DRV_TABLE_ENTRY(dem
      .DiSEqCGetLNBOut              = MDrv_Demod_null_DiSEqC_GetLNBOut,
      .DiSEqCSet22kOnOff            = MDrv_Demod_null_DiSEqC_Set22kOnOff,
      .DiSEqCGet22kOnOff            = MDrv_Demod_null_DiSEqC_Get22kOnOff,
-     .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd
+     .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd,
+     .DiSEqC_GetReply              = MDrv_Demod_null_DiSEqC_GetReply,
+     .GetISIDInfo                  = MDrv_Demod_null_GetVCM_ISID_INFO,
+     .SetISID                      = MDrv_Demod_null_SetVCM_ISID
 #endif
 };
 

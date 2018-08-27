@@ -9,7 +9,11 @@
 
 
 //#include "stdafx.h"
+#ifdef MSOS_TYPE_LINUX_KERNEL
+#include <linux/string.h>
+#else
 #include <string.h>
+#endif
 #include "Board.h"
 #include "MsOS.h"
 
@@ -87,19 +91,19 @@ typedef enum _Rafael_Chip_Type  //Don't modify chip list
 
 #if(TUNER_CLK_OUT==TRUE)  //enable tuner clk output for share Xtal application
 UINT8 R828_iniArry[27] = {0x83, 0x32, 0x75, 0xC0, 0x40, 0xD6, 0x6C, 0xF5, 0x53,
-                    /*     0x05  0x06  0x07  0x08  0x09  0x0A  0x0B  0x0C  0x0D                                                    */      
-                                                      
+                    /*     0x05  0x06  0x07  0x08  0x09  0x0A  0x0B  0x0C  0x0D                                                    */
+
                            0x75, 0x68, 0x6C, 0x83, 0x80, 0x00, 0x0F, 0x00, 0xC0,//xtal_check
-                    /*     0x0E  0x0F  0x10  0x11  0x12  0x13  0x14  0x15  0x16                                                    */      
+                    /*     0x0E  0x0F  0x10  0x11  0x12  0x13  0x14  0x15  0x16                                                    */
 
                            0x30, 0x48, 0xCC, 0x60, 0x00, 0x54, 0xA6, 0x4A, 0xC0};
                     /*     0x17  0x18  0x19  0x1A  0x1B  0x1C  0x1D  0x1E  0x1F                                                    */
 #else
 UINT8 R828_iniArry[27] = {0x83, 0x32, 0x75, 0xC0, 0x40, 0xD6, 0x6C, 0xF5, 0x53,
-                    /*     0x05  0x06  0x07  0x08  0x09  0x0A  0x0B  0x0C  0x0D                                                    */      
-                                                      
+                    /*     0x05  0x06  0x07  0x08  0x09  0x0A  0x0B  0x0C  0x0D                                                    */
+
                            0x75, 0x78, 0x6C, 0x83, 0x80, 0x00, 0x0F, 0x00, 0xC0,//xtal_check
-                    /*     0x0E  0x0F  0x10  0x11  0x12  0x13  0x14  0x15  0x16                                                    */      
+                    /*     0x0E  0x0F  0x10  0x11  0x12  0x13  0x14  0x15  0x16                                                    */
 
                            0x30, 0x48, 0xCC, 0x60, 0x00, 0x54, 0xA6, 0x4A, 0xC0};
                     /*     0x17  0x18  0x19  0x1A  0x1B  0x1C  0x1D  0x1E  0x1F                                                    */
@@ -130,7 +134,7 @@ UINT8 USE_DIPLEXER=FALSE;
 
 static UINT8 u8bShareXtal = FALSE;
 
-HWI2C_PORT hwi2c_port = FRONTEND_TUNER_PORT;    
+HWI2C_PORT hwi2c_port = FRONTEND_TUNER_PORT;
 
 //----------------------------------------------------------//
 //                   Internal Structs                       //
@@ -386,17 +390,17 @@ Sys_Info_Type R828_Sys_Sel(R828_Standard_Type R828_Standard)
     switch (R828_Standard)
     {
 
-    case DVB_C_8M:  
+    case DVB_C_8M:
         R828_Sys_Info.IF_KHz=5070;
         R828_Sys_Info.BW=BW_8M;
         R828_Sys_Info.FILT_CAL_LO=73500;
         R828_Sys_Info.FILT_GAIN=0x30;  //+3dB on, 6MHz on
         R828_Sys_Info.IMG_R=0x00;       //image negative
         R828_Sys_Info.FILT_Q=0x00;      //R10[4]:low Q(1'b0) //
-        R828_Sys_Info.HP_COR=0x0B;      // 1.7M disable, +0cap, 1MHz        
+        R828_Sys_Info.HP_COR=0x0B;      // 1.7M disable, +0cap, 1MHz
         R828_Sys_Info.EXT_ENABLE=0x40;  //R30[6], ext enable; R30[5]:0 ext at LNA max
         R828_Sys_Info.LOOP_THROUGH=0x00; //R5[7], LT ON          //always ON
-        R828_Sys_Info.LT_ATT=0x80;       //R31[7], LT ATT disable 
+        R828_Sys_Info.LT_ATT=0x80;       //R31[7], LT ATT disable
         R828_Sys_Info.FLT_EXT_WIDEST=0x00;//R15[7]: FLT_EXT_WIDE OFF
         R828_Sys_Info.POLYFIL_CUR=0x60;  //R25[6:5]:Min
         break;
@@ -408,40 +412,40 @@ Sys_Info_Type R828_Sys_Sel(R828_Standard_Type R828_Standard)
         R828_Sys_Info.FILT_GAIN=0x30;  //+3dB on, 6MHz on
         R828_Sys_Info.IMG_R=0x00;       //image negative
         R828_Sys_Info.FILT_Q=0x00;      //R10[4]:low Q(1'b0) //
-        R828_Sys_Info.HP_COR=0x6A;      // 1.7M disable, +2cap, 1.25MHz     
-        R828_Sys_Info.EXT_ENABLE=0x40;  //R30[6], ext enable; R30[5]:0 ext at LNA max 
+        R828_Sys_Info.HP_COR=0x6A;      // 1.7M disable, +2cap, 1.25MHz
+        R828_Sys_Info.EXT_ENABLE=0x40;  //R30[6], ext enable; R30[5]:0 ext at LNA max
         R828_Sys_Info.LOOP_THROUGH=0x00; //R5[7], LT ON           //always ON
-        R828_Sys_Info.LT_ATT=0x80;       //R31[7], LT ATT disable 
+        R828_Sys_Info.LT_ATT=0x80;       //R31[7], LT ATT disable
         R828_Sys_Info.FLT_EXT_WIDEST=0x00;//R15[7]: FLT_EXT_WIDE OFF
         R828_Sys_Info.POLYFIL_CUR=0x60;  //R25[6:5]:Min
         break;
 
-    case DVB_C_6M_5070:  
+    case DVB_C_6M_5070:
         R828_Sys_Info.IF_KHz=5070;
         R828_Sys_Info.BW=BW_6M;
         R828_Sys_Info.FILT_CAL_LO=66000;
         R828_Sys_Info.FILT_GAIN=0x30;  //+3dB on, 6MHz on
         R828_Sys_Info.IMG_R=0x00;       //image negative
         R828_Sys_Info.FILT_Q=0x00;      //R10[4]:low Q(1'b0) //
-        R828_Sys_Info.HP_COR=0x24;      // 1.7M disable, +1cap, -4@2.25MHz      
-        R828_Sys_Info.EXT_ENABLE=0x40;  //R30[6], ext enable; R30[5]:0 ext at LNA max 
+        R828_Sys_Info.HP_COR=0x24;      // 1.7M disable, +1cap, -4@2.25MHz
+        R828_Sys_Info.EXT_ENABLE=0x40;  //R30[6], ext enable; R30[5]:0 ext at LNA max
         R828_Sys_Info.LOOP_THROUGH=0x00; //R5[7], LT ON           //always ON
-        R828_Sys_Info.LT_ATT=0x80;       //R31[7], LT ATT disable 
+        R828_Sys_Info.LT_ATT=0x80;       //R31[7], LT ATT disable
         R828_Sys_Info.FLT_EXT_WIDEST=0x00;//R15[7]: FLT_EXT_WIDE OFF
         R828_Sys_Info.POLYFIL_CUR=0x60;  //R25[6:5]:Min
         break;
 
-    case J83B:  
+    case J83B:
         R828_Sys_Info.IF_KHz=5070;
         R828_Sys_Info.BW=BW_6M;
         R828_Sys_Info.FILT_CAL_LO=70000;
         R828_Sys_Info.FILT_GAIN=0x30;  //+3dB on, 6MHz on
         R828_Sys_Info.IMG_R=0x00;       //image negative
         R828_Sys_Info.FILT_Q=0x00;      //R10[4]:low Q(1'b0) //
-        R828_Sys_Info.HP_COR=0x24;      // 1.7M disable, +1cap, -4@2.25MHz      
-        R828_Sys_Info.EXT_ENABLE=0x00;  //R30[6], ext disable; R30[5]:0 ext at LNA max 
+        R828_Sys_Info.HP_COR=0x24;      // 1.7M disable, +1cap, -4@2.25MHz
+        R828_Sys_Info.EXT_ENABLE=0x00;  //R30[6], ext disable; R30[5]:0 ext at LNA max
         R828_Sys_Info.LOOP_THROUGH=0x00; //R5[7], LT ON           //always ON
-        R828_Sys_Info.LT_ATT=0x80;       //R31[7], LT ATT disable 
+        R828_Sys_Info.LT_ATT=0x80;       //R31[7], LT ATT disable
         R828_Sys_Info.FLT_EXT_WIDEST=0x00;//R15[7]: FLT_EXT_WIDE OFF
         R828_Sys_Info.POLYFIL_CUR=0x60;  //R25[6:5]:Min
         break;
@@ -455,10 +459,10 @@ Sys_Info_Type R828_Sys_Sel(R828_Standard_Type R828_Standard)
         R828_Sys_Info.FILT_GAIN=0x30;  //+3dB on, 6MHz on
         R828_Sys_Info.IMG_R=0x00;       //image negative
         R828_Sys_Info.FILT_Q=0x00;      //R10[4]:low Q(1'b0) //
-        R828_Sys_Info.HP_COR=0x0B;      // 1.7M disable, +0cap, 1MHz        
+        R828_Sys_Info.HP_COR=0x0B;      // 1.7M disable, +0cap, 1MHz
         R828_Sys_Info.EXT_ENABLE=0x40;  //R30[6], ext enable; R30[5]:0 ext at LNA max
         R828_Sys_Info.LOOP_THROUGH=0x00; //R5[7], LT ON          //always ON
-        R828_Sys_Info.LT_ATT=0x80;       //R31[7], LT ATT disable 
+        R828_Sys_Info.LT_ATT=0x80;       //R31[7], LT ATT disable
         R828_Sys_Info.FLT_EXT_WIDEST=0x00;//R15[7]: FLT_EXT_WIDE OFF
         R828_Sys_Info.POLYFIL_CUR=0x60;  //R25[6:5]:Min
         break;
@@ -699,8 +703,8 @@ SysFreq_Info_Type R828_SysFreq_Sel(R828_Standard_Type R828_Standard,UINT32 RF_fr
     {
 
     case DVB_C_8M:
-    case DVB_C_6M_4063: 
-    case DVB_C_6M_5070: 
+    case DVB_C_6M_4063:
+    case DVB_C_6M_5070:
     case J83B:
             R828_SysFreq_Info.MIXER_TOP=0x44;   // MIXER TOP:11 , TOP-1, low-discharge
             R828_SysFreq_Info.LNA_TOP=0xD5;     // Detect BW 3, LNA TOP:2, PreDet Top:2
@@ -729,7 +733,7 @@ SysFreq_Info_Type R828_SysFreq_Sel(R828_Standard_Type R828_Standard,UINT32 RF_fr
             R828_SysFreq_Info.DIV_BUF_CUR=0x30; // 11, 150u
             R828_SysFreq_Info.FILTER_CUR=0x40;    // 10, low
         break;
-    
+
     } //end switch
 
 //DTV use Diplexer
@@ -737,7 +741,7 @@ if(USE_DIPLEXER==TRUE)
 {
         if ((Rafael_Chip==R820C) || (Rafael_Chip==R820T) || (Rafael_Chip==R828S))
         {
-            // Air-in (>=DIP_FREQ) & cable-1(<DIP_FREQ) 
+            // Air-in (>=DIP_FREQ) & cable-1(<DIP_FREQ)
                 if(RF_freq >= DIP_FREQ)
                 {
                     R828_SysFreq_Info.AIR_CABLE1_IN = 0x00; //air in, cable-1 off
@@ -752,7 +756,7 @@ if(USE_DIPLEXER==TRUE)
 }
 
     return R828_SysFreq_Info;
-    
+
     }
 
 
@@ -930,7 +934,7 @@ R828_ErrCode R828_Init(void)
     //write initial reg
     //if(R828_InitReg() != RT_Success)
     //  return RT_Fail;
-    
+
     if(R828_IMR_done_flag==FALSE)
     {
 
@@ -2398,7 +2402,7 @@ R828_ErrCode R828_SetStandard(R828_Standard_Type RT_Standard)
 
            //if(R828_Fil_Cal_code[RT_Standard]==15) //narrowest
         //     R828_Fil_Cal_code[RT_Standard] = 0;
-               
+
         }
         R828_Fil_Cal_flag[RT_Standard] = TRUE;
     }
@@ -2696,7 +2700,7 @@ R828_ErrCode R828_SetFrequency(R828_Set_Info R828_INFO, R828_SetFreq_Type R828_S
      R828_Arry[12] |= SysFreq_Info1.CP_CUR;
      R828_I2C.Data = R828_Arry[12];
      if(I2C_Write(&R828_I2C) != RT_Success)
-         return RT_Fail;    
+         return RT_Fail;
 
      //div buffer current and PLL current
      R828_I2C.RegAddr = 0x17;
@@ -2704,9 +2708,9 @@ R828_ErrCode R828_SetFrequency(R828_Set_Info R828_INFO, R828_SetFreq_Type R828_S
      R828_Arry[18] |= SysFreq_Info1.DIV_BUF_CUR;
      R828_I2C.Data = R828_Arry[18];
      if(I2C_Write(&R828_I2C) != RT_Success)
-         return RT_Fail;    
+         return RT_Fail;
 
-     // Set channel filter current 
+     // Set channel filter current
      R828_I2C.RegAddr  = 0x0A;
      R828_Arry[5]  = (R828_Arry[5] & 0x9F) | SysFreq_Info1.FILTER_CUR;
      R828_I2C.Data     = R828_Arry[5];
@@ -3046,13 +3050,13 @@ R828_ErrCode R828_SetLoopThrough(R828_LoopThrough_Type R828_LT_Type)
 {
     if(R828_LT_Type == LOOP_THROUGH)
     {
-         R828_Arry[0]  = (R828_Arry[0] & 0x7F) | 0x00;  
-         //R828_Arry[26]  = (R828_Arry[26] & 0x7F) | 0x00;   
+         R828_Arry[0]  = (R828_Arry[0] & 0x7F) | 0x00;
+         //R828_Arry[26]  = (R828_Arry[26] & 0x7F) | 0x00;
     }
     else
     {
-         R828_Arry[0]  = (R828_Arry[0] & 0x7F) | 0x80;  
-         //R828_Arry[26]  = (R828_Arry[26] & 0x7F) | 0x80;  
+         R828_Arry[0]  = (R828_Arry[0] & 0x7F) | 0x80;
+         //R828_Arry[26]  = (R828_Arry[26] & 0x7F) | 0x80;
     }
 
      //LT ON/OFF
@@ -3087,7 +3091,7 @@ R828_ErrCode R828_SetLoopThroughAttenu(R828_LoopThroughAtt_Type R828_LT_Att_Type
      R828_I2C.Data     = R828_ExtraArry[2];
      if(I2C_Write(&R828_I2C) != RT_Success)
         return RT_Fail;
-        
+
      return RT_Success;
 }
 
@@ -3130,11 +3134,11 @@ MS_BOOL MDrv_Tuner_R820C_PowerOnOff(MS_BOOL bPowerOn)
 MS_BOOL MDrv_Tuner_R820C_LoopThrough(MS_BOOL bLoop)
 {
     R828_LoopThrough_Type loopType = LOOP_THROUGH;
-    if (FALSE == bLoop) 
+    if (FALSE == bLoop)
     {
         loopType = SIGLE_IN;
     }
-    
+
     //need hw support.
     if(RT_Success != R828_SetLoopThrough(loopType))
     {
@@ -3165,9 +3169,9 @@ MS_BOOL MDrv_Tuner_R820C_Init(MS_U8 u8TunerIndex, TUNER_MS_INIT_PARAM* pParam)
         return FALSE;
     else
         InitParam[u8TunerIndex].pCur_Broadcast_type = pParam->pCur_Broadcast_type;
-    
+
     hwi2c_port = getI2CPort(u8TunerIndex);
-        
+
     memset(R828_iniArry, 0x00, sizeof(R828_iniArry));
 
     if (TRUE == u8bShareXtal)//Share Xtal with Demod
@@ -3237,7 +3241,7 @@ MS_BOOL MDrv_Tuner_R820C_Tune(MS_U8 u8TunerIndex,MS_U32 u32Freq /*Khz*/, MS_U8 u
 
 MS_BOOL MDrv_Tuner_R820C_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt)
 {
-    
+
     hwi2c_port = getI2CPort(u8TunerIndex);
     R828_I2C_Len.RegAddr = 0x34;
     R828_I2C_Len.Len     = 1;
@@ -3271,12 +3275,12 @@ MS_BOOL MDrv_Tuner_R820C_GetPowerLevel(MS_U8 u8TunerIndex,float *Level)
         return FALSE;
     }
     R828_RF_Gain_Info info;
-    
+
     R828_GetRfGain(&info);
-    
+
     printf("[%s][%d]Gain:%u,%u,%u\t",__FUNCTION__,__LINE__,info.RF_gain1,info.RF_gain2,info.RF_gain_comb);
-      
-    
+
+
     *Level = info.RF_gain_comb;
 
     printf("Power level:%f\n",*Level);

@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -91,6 +91,8 @@
 // rights to any and all damages, losses, costs and expenses resulting therefrom.
 //
 ////////////////////////////////////////////////////////////////////////////////
+#if defined(NMGR_ENABLE) && (NMGR_ENABLE==1) || defined(MI_ENABLE) && (MI_ENABLE == 1)
+#if defined(WLAN_ENABLE) && (WLAN_ENABLE==1) || defined(MI_WLAN_ENABLE) && (MI_WLAN_ENABLE == 1)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ///
@@ -103,13 +105,11 @@
 #define _API_WLAN_H_
 
 #if defined (MSOS_TYPE_ECOS)
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif
-
-#include "Board.h"
-#include "drvWlan.h"
 
 
 //-------------------------------------------------------------------------------------------------
@@ -144,9 +144,6 @@ extern "C"
 #define WIFI_STATE_4WAY_HANDSHARK_SUCCESS       33
 #define WIFI_STATE_CONNECTED                     4
 
-#define PING_LOG 1
-#define AP_LIST_BUFFER_SIZE 4096
-
 
 //-------------------------------------------------------------------------------------------------
 //  Type and Structure
@@ -156,11 +153,23 @@ typedef struct _WLAN_ACCESS_POINT {
     char  ssid[33];     //SSID
     char  mac[20];      //MAC Address, BSSID
     char  security[23]; //Security Mode
-    char  signal[9];    //Siganl
+    char  signal[9];    //Signal
     char  mode[8];      //Wireless Mode
     char  ext_ch[7];    //Ext Channel
     char  nt[3];        //Network Type In:Infrastructure  Ad:Ad-hoc
 } WLAN_ACCESS_POINT, *PWLAN_ACCESS_POINT;
+
+typedef enum{
+    CH,   //Channel
+    SSID,     //SSID
+    BSSID,      //MAC Address, BSSID
+    SECURITY_MODE, //Security Mode
+    PASSWD,     // Key
+    SIGNAL,    //Signal
+    WIRELESS_MODE,      //Wireless Mode
+    EXT_CH,    //Ext Channel
+    NETWORK_TYPE        //Network Type In:Infrastructure  Ad:Ad-hoc
+}WIFI_AP_PROPERTY;
 
 typedef struct _WLAN_ACCESS_POINT_LIST {
 	MS_U8 NumberOfAP;
@@ -203,8 +212,7 @@ typedef struct _WIFI_CONFIG {
 //-------------------------------------------------------------------------------------------------
 //  Function and Variable
 //-------------------------------------------------------------------------------------------------
-MS_BOOL MApi_WLAN_Init(void);
-MS_BOOL MApi_WLAN_Config (WIFI_CONFIG wifi_config );
+MS_BOOL MApi_WLAN_Config ( PWIFI_CONFIG wifi_config );
 MS_BOOL MApi_WLAN_RadioOn(void);
 MS_BOOL MApi_WLAN_RadioOff(void);
 MS_BOOL MApi_WLAN_GetAPList(PWLAN_ACCESS_POINT_LIST *ppAPList);
@@ -214,22 +222,19 @@ MS_U32  MApi_WLAN_GetIp(void);
 MS_U32  MApi_WLAN_GetSubnet(void);
 MS_U32  MApi_WLAN_GetGateway(void);
 MS_BOOL MApi_WLAN_GetMac(MS_U8* mac);
-MS_BOOL MApi_WLAN_IpConfig(MS_U8* address);
-MS_BOOL MApi_WLAN_SubnetConfig(MS_U8* subnet);
-MS_BOOL MApi_WLAN_GatewaySet(MS_U8* gateway);
-MS_BOOL MApi_WLAN_GatewayDel(MS_U8* gateway);
-MS_BOOL MApi_WLAN_MacConfig(MS_U8* mac);
 MS_BOOL MApi_WLAN_DhcpConfig(MS_BOOL on);
 MS_U8   MApi_WLAN_GetDhcpState(void);
-void    MApi_WLAN_SetDnsServer(MS_U8* pu8Server1, MS_U8* pu8Server2);
 MS_BOOL MApi_WLAN_GetDnsServer(MS_U8* pu8Server1, MS_U8* pu8Server2, MS_U32 u32Size);
 MS_BOOL MApi_WLAN_IntfReset(void);
 MS_BOOL MApi_WLAN_ShowIntf(void);
 MS_BOOL MApi_WLAN_Scan(void);
-MS_BOOL MApi_WLAN_IsSecured(WLAN_ACCESS_POINT AP);
+MS_BOOL MApi_WLAN_IsSecured(PWLAN_ACCESS_POINT pAP);
 MS_U8   MApi_WLAN_Ping(char* target_addr);
 MS_BOOL MApi_WLAN_IsRadioOn(void);
 MS_BOOL MApi_WLAN_GetConnetedAPBSSID(char * bssid,int len);
+MS_BOOL MApi_WLAN_Init(void);
+void    MApi_WLAN_DeInit(void);
+
 
 
 #ifdef __cplusplus
@@ -239,4 +244,6 @@ MS_BOOL MApi_WLAN_GetConnetedAPBSSID(char * bssid,int len);
 
 #endif // _API_WLAN_H_
 
+#endif
+#endif
 #endif

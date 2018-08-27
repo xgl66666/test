@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -91,5 +91,15 @@
 // rights to any and all damages, losses, costs and expenses resulting therefrom.
 //
 ////////////////////////////////////////////////////////////////////////////////
+#if (DEMO_TSENSOR_TEST == 1)
+#if (DEMO_SAR_TSENSOR_SUPPORT == 1)
+MS_BOOL Demo_TSensor_GetTemp(void);
+MS_BOOL Demo_TSensor_SetTempMonitorRange(const MS_U32 *s16UpBound, const MS_U32 *s16LowBound);
+MS_BOOL Demo_TSensor_GetTempMonitorRange(void);
+MS_BOOL Demo_TSensor_ClearIRQ(void);
+#else
 MS_BOOL Demo_TSensor_PriTemp(void);
 MS_BOOL Demo_TSensor_demo (const MS_U8 *u8LOB,const MS_U8 *u8UPB);
+#endif
+#endif
+//MS_BOOL Demo_TSensor_demo (const MS_U8 *u8LOB,const MS_U8 *u8UPB);

@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -164,7 +164,13 @@
 #include "drvPQ.h"
 #include "apiAUDIO.h"
 #include "apiVDEC_EX.h"
-#include "drvDSCMB.h" 
+#include "drvDSCMB.h"
+#include "msAPI_CEC.h"
+#include "drvAESDMA.h"
+#if (DEMO_CIPHER_TEST == 1)
+#include "drvCA.h"
+#include "drvCIPHER.h"
+#endif
 #endif
 
 #if (DEMO_PM_HK_LINUX_TEST == 1) || (DEMO_PM_HK_eCos_TEST == 1)
@@ -214,16 +220,27 @@ static volatile MS_U32 STR_Wakeup_Flag = HK_STR_IDLE;
 #endif
 
 #ifdef PM51_BUF_ADR    // for union PM buffer
-#ifndef PM51_STR_ADR
-#define PM51_STR_ADR (PM51_BUF_ADR)
-#endif
-#ifndef PM51_LITE_ADR
-#define PM51_LITE_ADR (PM51_BUF_ADR + 0x4000)
-#endif
 #ifndef PM51_MEM_ADR
-#define PM51_MEM_ADR (PM51_BUF_ADR + 0x15000)
+#define PM51_MEM_ADR (PM51_BUF_ADR)
+#endif
+#ifndef PM51_STR_ADR
+#define PM51_STR_ADR (PM51_BUF_ADR+0x400)
 #endif
 #endif
+
+//for CA STR
+#ifdef SBOOT_HASH2_AVAILABLE
+#ifndef SBOOT_LOADER_AVAILABLE
+#define SBOOT_LOADER_AVAILABLE SBOOT_HASH2_AVAILABLE
+#define SBOOT_LOADER_ADR SBOOT_HASH2_ADR
+#define SBOOT_LOADER_LEN SBOOT_HASH2_LEN
+#endif
+#endif
+
+#if (DEMO_CIPHER_TEST == 1)
+#define AES_CBC_MAC_SIZE 16
+#endif
+//for CA STR
 
 #if (DEMO_PM_STR_LINUX_TEST == 1 || DEMO_PM_STR_eCos_TEST == 1)
 ///Define PM STR Mode enum
@@ -258,6 +275,8 @@ static EN_DDI_PM_MODE _PM_MODE = E_DDI_PM_MODE_SRAM;
 static MS_BOOL _EnableWOL = FALSE;
 static MS_U8 _u8PmWakeMACAddress[PM_MAX_BUF_WAKE_MAC_ADDRESS];
 #endif
+
+static MS_U8 *pmlitedat_buffer = NULL;
 
 MS_U8 pmlitedat_flash[]=
 {
@@ -515,8 +534,8 @@ static MS_BOOL _PM_Init(EN_DDI_PM_MODE ePM_Mode, EN_DDI_PM_PWR_MODE ePWR_Mode)
     MS_U32 idx = 0,u32EraseSize = 0,u32StartAddr = 0,u32EndBlock = 0,u32StartBlock  = 0;
     const SERFLASH_Info *pm_serial_info = NULL;
     MS_S32 gs32NonCachedPoolID = INVALID_POOL_ID;
-    MS_U8 *pmlitedat_buffer = NULL;
-    MS_U32 pmlitedat_buffer_pa = 0;
+
+    //MS_U32 pmlitedat_buffer_pa = 0;
 
     MS_U8 u8PmWakeIRArray[]=
     {   //IR wake-up key define
@@ -554,17 +573,22 @@ static MS_BOOL _PM_Init(EN_DDI_PM_MODE ePM_Mode, EN_DDI_PM_PWR_MODE ePWR_Mode)
 
     if (ePM_Mode == E_DDI_PM_MODE_SRAM)
     {
+       MDrv_PM_Disable51();
         _PM_CopyPMCodeToSRAM(ePWR_Mode);
     }
     else if (ePM_Mode == E_DDI_PM_MODE_DRAM)
     {
+        MS_U32 allocate_size = 0;
+    #if 0
         if (TRUE != MDrv_BDMA_Init(0))
         {
             printf("[%s][%d] BDMA init fail\n", __FUNCTION__, __LINE__);
             return FALSE;
         }
-
-        pmlitedat_buffer = MsOS_AllocateMemory(sizeof(pmlitedat_flash), gs32NonCachedPoolID);
+#endif
+        allocate_size = 1 << PM_ALIGN_SHIFT;
+        allocate_size = allocate_size + sizeof(pmlitedat_flash);
+        pmlitedat_buffer = MsOS_AllocateMemory(allocate_size , gs32NonCachedPoolID);
 
         if (pmlitedat_buffer == NULL)
         {
@@ -572,8 +596,9 @@ static MS_BOOL _PM_Init(EN_DDI_PM_MODE ePM_Mode, EN_DDI_PM_PWR_MODE ePWR_Mode)
             return FALSE;
         }
 
-        memcpy(pmlitedat_buffer, pmlitedat_flash, sizeof(pmlitedat_flash));
+        memcpy((void *)((((MS_VIRT)pmlitedat_buffer >> PM_ALIGN_SHIFT) + 1)<<PM_ALIGN_SHIFT), pmlitedat_flash, sizeof(pmlitedat_flash)  );
 
+#if 0
         pmlitedat_buffer_pa = MsOS_VA2PA((MS_U32)pmlitedat_buffer);
 
         if (MDrv_BDMA_CopyHnd((MS_PHYADDR)pmlitedat_buffer_pa,(MS_PHYADDR)PM51_LITE_ADR ,sizeof(pmlitedat_flash),E_BDMA_SDRAM2SDRAM,0x08)!= E_BDMA_OK)
@@ -583,9 +608,11 @@ static MS_BOOL _PM_Init(EN_DDI_PM_MODE ePM_Mode, EN_DDI_PM_PWR_MODE ePWR_Mode)
         }
 
         MsOS_FreeMemory(pmlitedat_buffer,gs32NonCachedPoolID);
+#endif
     }
     else if (ePM_Mode == E_DDI_PM_MODE_SERIALFLASH)
     {
+        MDrv_PM_Disable51();
         MDrv_SERFLASH_Init();
         pm_serial_info = MDrv_SERFLASH_GetInfo();
         MDrv_SERFLASH_WriteProtect(FALSE);
@@ -651,7 +678,7 @@ static MS_BOOL _PM_Init(EN_DDI_PM_MODE ePM_Mode, EN_DDI_PM_PWR_MODE ePWR_Mode)
     }
     else if (ePM_Mode == E_DDI_PM_MODE_DRAM)
     {
-        MDrv_PM_SetDRAMOffsetForMCU(PM51_LITE_ADR>>PM_ALIGN_SHIFT);
+        MDrv_PM_SetDRAMOffsetForMCU( (((MS_VIRT)pmlitedat_buffer >> PM_ALIGN_SHIFT) + 1)<<PM_ALIGN_SHIFT);
     }
     else if (ePM_Mode == E_DDI_PM_MODE_SERIALFLASH)
     {
@@ -726,12 +753,6 @@ static MS_BOOL _PM_PowerDown(MS_BOOL bSTRMode)
     else
 #endif
     {
-    #if (DEMO_PM_WOL_TEST == 1)
-        if(_EnableWOL == FALSE)
-            MApi_System_TurnOff_LAN();
-    #else
-        MApi_System_TurnOff_LAN();
-    #endif
         tPmPowerDownCfg.u8WakeAddress = E_PM_WAKE_LAST;
     }
     PM_PowerDownCfg *pPmPowerDownCfg = (PM_PowerDownCfg*)_PA2VA(PM51_MEM_ADR);
@@ -881,9 +902,80 @@ void strKernelProcess(void)
 {
    MApi_eCos_STR_Enter();
 }
-
 #endif
 
+#ifdef SBOOT_LOADER_AVAILABLE //for CA STR
+#if (DEMO_PM_STR_LINUX_TEST == 1 || DEMO_PM_STR_eCos_TEST == 1)
+#if (DEMO_CIPHER_TEST == 1)
+MS_BOOL _CIPHER_Calculate_AES_CBC_MAC(MS_U32 u32CAVID, MS_U32 u32VAddr, MS_U32 u32Size, MS_U8* pu8MACBuf)
+{
+    MS_U8 u8IV[16] = {0};
+    MS_U32 u32CmdId = 0;
+    MS_U32 u32Exception = 0;
+    MS_U32 u32WaitCnt = 100;
+    MS_U32 i = 0;
+    DRV_CIPHER_DMACFG stCfg;
+
+    MDrv_CIPHER_Init();
+
+    memset(&stCfg, 0, sizeof(DRV_CIPHER_DMACFG));
+
+    stCfg.u32CAVid = u32CAVID;
+
+    //Set Algorithm
+    stCfg.stAlgo.eMainAlgo = E_CIPHER_MAIN_AES;
+    stCfg.stAlgo.eSubAlgo  = E_CIPHER_SUB_CBC_MAC;
+    stCfg.stAlgo.eResAlgo  = E_CIPHER_RES_CLR;
+    stCfg.stAlgo.eSBAlgo   = E_CIPHER_SB_CLR;
+
+    //Set Key
+    // TODO: it should change to E_CIPHER_KSRC_STR with key index=0
+//    stCfg.stKey.eKeySrc = E_CIPHER_KSRC_STR;
+    stCfg.stKey.eKeySrc = E_CIPHER_KSRC_OTP;
+    stCfg.stKey.u8KeyIdx = 3;
+
+    //Set IV
+    stCfg.stKey.pu8IVData = u8IV;
+    stCfg.stKey.u8IVLen = sizeof(u8IV);
+
+    //Set Input/Output data address
+    stCfg.stInput.u32Addr  = MsOS_VA2PA((MS_U32)u32VAddr);
+    stCfg.stInput.u32Size  = u32Size;
+    stCfg.stOutput.u32Addr = MsOS_VA2PA((MS_U32)pu8MACBuf);
+    stCfg.stOutput.u32Size = AES_CBC_MAC_SIZE;
+
+    //Encrypt
+    stCfg.bDecrypt = FALSE;
+
+    if(DRV_CIPHER_OK != MDrv_CIPHER_DMACalc(stCfg, &u32CmdId))
+    {
+        printf("CIPHER DMA Calc fail\n");
+        return FALSE;
+    }
+
+    while(FALSE == MDrv_CIPHER_IsDMADone(u32CmdId, &u32Exception))
+    {
+        MsOS_DelayTaskUs(100);
+        u32WaitCnt --;
+        if(u32WaitCnt == 0)
+        {
+            printf("CIPHER DMA Calc timeout\n");
+            return FALSE;
+        }
+    }
+
+    printf("[%s][%d]Dump STR MAC Ouput:\n", __FUNCTION__, __LINE__);
+    for (i = 0; i < AES_CBC_MAC_SIZE; i++)
+    {
+        printf("%02X%c", pu8MACBuf[i], ((i % 16) == 15) ? '\n' : ' ');
+    }
+    printf("\n\n");
+
+    return TRUE;
+}
+#endif
+#endif
+#endif //for CA STR
 //-------------------------------------------------------------------------------------------------
 // Demo Functions
 //-------------------------------------------------------------------------------------------------
@@ -1153,7 +1245,10 @@ MS_BOOL Demo_PM_PowerSaving(MS_U8 *u8Mode)
     IrInput_init();
 
     //set standby mode
-    MDrv_MMIO_GetBASE(&u32BaseAddr, &u32BaseSize, MS_MODULE_PM);
+    if(!MDrv_MMIO_GetBASE(&u32BaseAddr, &u32BaseSize, MS_MODULE_PM))
+    {
+        printf("[%s][%d] MDrv_MMIO_GetBASE failed.\n", __FUNCTION__, __LINE__);
+    }
 
     if(*u8Mode == 0)
     {
@@ -1242,6 +1337,14 @@ MS_BOOL Demo_PM_Init(MS_U32 *u32Mode)
 MS_BOOL Demo_PM_PowerDown(void)
 {
     //MDrv_SERFLASH_SetPowerState(E_POWER_SUSPEND); //wait utopia1 driver to implement
+
+    #if (DEMO_PM_WOL_TEST == 1)
+        if(_EnableWOL == FALSE)
+            MApi_System_TurnOff_LAN();
+    #else
+        MApi_System_TurnOff_LAN();
+    #endif
+
     if (_PM_PowerDown(FALSE) == FALSE)
     {
         printf("Fail - [%s][%d] \n",__FUNCTION__,__LINE__);
@@ -1293,11 +1396,18 @@ static void PM_STR_StoreRegTbl(MS_U16 *SrcAddr)
                     MS_PHY phySize = 0;
                     if (u32BaseAddr == 0xbf000000)
                     {
-                        MDrv_MMIO_GetBASE(&virtAddr, &phySize, MS_MODULE_PM);
+                        if(!MDrv_MMIO_GetBASE(&virtAddr, &phySize, MS_MODULE_PM))
+                        {
+                            printf("[%s][%d] MDrv_MMIO_GetBASE failed.\n", __FUNCTION__, __LINE__);
+                        }
                     }
                     else
                     {
-                        MDrv_MMIO_GetBASE(&virtAddr, &phySize, MS_MODULE_HW);
+                        if(!MDrv_MMIO_GetBASE(&virtAddr, &phySize, MS_MODULE_HW))
+                        {
+                            printf("[%s][%d] MDrv_MMIO_GetBASE failed.\n", __FUNCTION__, __LINE__);
+                        }
+
                         virtAddr += u32BaseAddr & 0xfffff;
                     }
                     //printf("@@--u32BaseAddr = 0x%x ; virtAddr = 0x%x ; phySize = 0x%x\n", (unsigned int)u32BaseAddr, (unsigned int)virtAddr, (unsigned int)phySize);
@@ -1349,7 +1459,10 @@ static void _PM_STR_INTHandler(InterruptNum eIntNum)
     MS_U32 u32BaseSize = 0;
     MS_U16 u16RegData = 0;
 
-    MDrv_MMIO_GetBASE(&u32BaseAddr, &u32BaseSize, MS_MODULE_IRQ);
+    if(!MDrv_MMIO_GetBASE(&u32BaseAddr, &u32BaseSize, MS_MODULE_IRQ))
+    {
+        printf("[%s][%d] MDrv_MMIO_GetBASE failed.\n", __FUNCTION__, __LINE__);
+    }
 
     u16RegData = _PM_STR_ReadReg((u32BaseAddr | STR_IRQ_FORCE_REG));
 
@@ -1365,7 +1478,10 @@ static void _PM_Check_STR_Wakeup_Flag(void)
     MS_U32 u32BaseAddr = 0;
     MS_U32 u32BaseSize = 0;
 
-    MDrv_MMIO_GetBASE(&u32BaseAddr, &u32BaseSize, MS_MODULE_PM);
+    if(!MDrv_MMIO_GetBASE(&u32BaseAddr, &u32BaseSize, MS_MODULE_PM))
+    {
+        printf("[%s][%d] MDrv_MMIO_GetBASE failed.\n", __FUNCTION__, __LINE__);
+    }
 
     __asm__ volatile (
         "lw $11, %0\n"
@@ -1416,7 +1532,10 @@ MS_BOOL Demo_PM_FastStandby(void)
     MS_U32 u32BaseAddr = 0;
     MS_U32 u32BaseSize = 0;
 
-    MDrv_MMIO_GetBASE(&u32BaseAddr, &u32BaseSize, MS_MODULE_PM);
+    if(!MDrv_MMIO_GetBASE(&u32BaseAddr, &u32BaseSize, MS_MODULE_PM))
+    {
+        printf("[%s][%d] MDrv_MMIO_GetBASE failed.\n", __FUNCTION__, __LINE__);
+    }
 
     STR_Wakeup_Flag = HK_STR_IDLE;
     _PM_STR_WriteReg((u32BaseAddr | STR_STATUS_REG), HK_STR_IDLE);
@@ -1558,6 +1677,7 @@ MS_BOOL Demo_PM_FastStandby(void)
 
 }
 
+
 //------------------------------------------------------------------------------
 /// @brief Sleep with STR and wait for wakeup source
 /// @param[in] None
@@ -1571,6 +1691,64 @@ MS_BOOL Demo_PM_FastStandby(void)
 ///
 //------------------------------------------------------------------------------
 #if (DEMO_PM_STR_LINUX_TEST == 1 || DEMO_PM_STR_eCos_TEST == 1)
+#ifdef SBOOT_LOADER_AVAILABLE //for CA STR
+static MS_BOOL Demo_PM_CA_STR(void)
+{
+#if (DEMO_CIPHER_TEST == 1)
+    printf("Demo_PM_CA_STR start\n");
+    struct STR_Param {
+        MS_U32 u32STRBase;
+        MS_U32 u32STRSize;
+        MS_U32 u32STREntry;
+    };
+
+    struct STR_Param stParam;
+    MS_S32 NON_CACHE_POOL_ID = INVALID_POOL_ID;
+    Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&NON_CACHE_POOL_ID);
+
+    MS_U8 *pu8MACBuf = MsOS_AllocateMemory(AES_CBC_MAC_SIZE, NON_CACHE_POOL_ID);
+    MS_U8 *pSTRParam = MsOS_AllocateMemory(sizeof(struct STR_Param), NON_CACHE_POOL_ID);
+    MS_PHY STRParamPhyAddr = MsOS_VA2PA((MS_VIRT)pSTRParam);
+    MS_VIRT STRParamBusAddr = MsOS_PA2BA(STRParamPhyAddr);
+
+    memset(pu8MACBuf, 0, AES_CBC_MAC_SIZE);
+
+    stParam.u32STRBase  = (MS_U32)_PA2VA(SBOOT_LOADER_ADR);           // hash2 loader
+    stParam.u32STRSize  = SBOOT_LOADER_LEN;                           // check size
+    stParam.u32STREntry = (MS_U32)_PA2VA(SBOOT_LOADER_ADR) + 0x100;   // hash2 loader entry
+
+    //printf("[STRParam]  virt = 0x%X  phy = 0x%08X  bus = 0x%08X \n", (unsigned int)pSTRParam, (unsigned int)STRParamPhyAddr, (unsigned int)STRParamBusAddr);
+    //printf("[STRParam]  STRBase = 0x%X  STRSize = 0x%08X STREntry = 0x%08X \n", (unsigned int)stParam.u32STRBase, (unsigned int)stParam.u32STRSize, (unsigned int)stParam.u32STREntry);
+
+    //set STR paramter to DRAM
+    memcpy(pSTRParam, &stParam, sizeof(struct STR_Param));
+
+    //Catch STR key, and enable warm boot
+    MDrv_CA_STR_Init();
+
+    //set STR parameter bus address to PM
+    MDrv_CA_STR_SetParamAddr((MS_U8*)STRParamBusAddr);
+
+    // ---------------------------------------------------
+    // AES mac with nonce
+    //----------------------------------------------------
+    if(TRUE != _CIPHER_Calculate_AES_CBC_MAC(0xF, stParam.u32STRBase, stParam.u32STRSize, pu8MACBuf))
+    {
+        printf("[%s][%d]STR Calculate AES CBC MAC Fail\n", __func__, __LINE__);
+        return FALSE;
+    }
+
+    if(FALSE == MDrv_CA_STR_SetMAC(pu8MACBuf, AES_CBC_MAC_SIZE))
+    {
+        printf("[%s][%d]STR Set MAC Fail\n", __func__, __LINE__);
+        return FALSE;
+    }
+#endif
+
+    return TRUE;
+}
+#endif //for CA STR
+
 MS_BOOL Demo_PM_STR_Driver_Suspend(void)
 {
    MDrv_GPIO_SetPowerState(E_POWER_SUSPEND);
@@ -1590,6 +1768,7 @@ MS_BOOL Demo_PM_STR_Driver_Suspend(void)
    MDrv_HDMI_SetPowerState(E_POWER_SUSPEND);
    #endif
    MApi_HDMITx_SetPowerState(E_POWER_SUSPEND);
+   msAPI_CEC_Exit();
    //MDrv_AVD_SetPowerState(E_POWER_SUSPEND);
    //MDrv_PCMCIA_SetPowerState(E_POWER_SUSPEND);
    //MDrv_MBX_SetPowerState(E_POWER_SUSPEND);
@@ -1617,6 +1796,7 @@ MS_BOOL Demo_PM_STR_Driver_Suspend(void)
    MApi_AUDIO_ExitAudioSystem();
    MDrv_MBX_DeInit(TRUE);
    MDrv_DSCMB2_SetPowerState(E_POWER_SUSPEND);
+   MDrv_AESDMA_SetPowerState(E_POWER_SUSPEND);
    return TRUE;
 
 }
@@ -1639,6 +1819,7 @@ MS_BOOL Demo_PM_STR_Driver_Resume(void)
     MDrv_HDMI_SetPowerState(E_POWER_RESUME);
     #endif
     MApi_HDMITx_SetPowerState(E_POWER_RESUME);
+    msAPI_CEC_Init();
     //MDrv_AVD_SetPowerState(E_POWER_RESUME);
     //MDrv_PCMCIA_SetPowerState(E_POWER_RESUME);
     //MDrv_MBX_SetPowerState(E_POWER_RESUME);
@@ -1669,18 +1850,34 @@ MS_BOOL Demo_PM_STR_Driver_Resume(void)
     MDrv_Usb_STR_On(1);
     #endif
     MDrv_DSCMB2_SetPowerState(E_POWER_RESUME);
+    MDrv_AESDMA_SetPowerState(E_POWER_RESUME);
     return TRUE;
 
 }
 
 MS_BOOL Demo_PM_STR(void)
 {
+
+  #ifdef SBOOT_LOADER_AVAILABLE //for CA STR
+    if(Demo_PM_CA_STR() == FALSE)
+    {
+        printf("Fail - [%s][%d] \n",__FUNCTION__,__LINE__);
+        return FALSE;
+    }
+  #endif //for CA STR
+
     if (_PM_Init(E_DDI_PM_MODE_SRAM, E_DDI_PM_PWR_MODE_STR) == FALSE)
     {
         printf("Fail - [%s][%d] \n",__FUNCTION__,__LINE__);
         return FALSE;
     }
 
+    #if (DEMO_PM_WOL_TEST == 1)
+        if(_EnableWOL == FALSE)
+            MApi_System_TurnOff_LAN();
+    #else
+        MApi_System_TurnOff_LAN();
+    #endif
 
     if (_PM_PowerDown(TRUE) == FALSE)
     {
@@ -1772,6 +1969,26 @@ MS_BOOL Demo_PM_ConfigWOL(MS_BOOL *On, char*mac)
     return TRUE;
 }
 #endif
+MS_BOOL Demo_PM_DRAM_Disable(void)
+{
+    PM_Result eRet = E_PM_OK;
+
+    MS_S32 gs32NonCachedPoolID = INVALID_POOL_ID;
+
+    Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&gs32NonCachedPoolID);
+
+    if (pmlitedat_buffer != NULL)
+    {
+          eRet = MDrv_PM_Disable51();
+	   MsOS_FreeMemory((void *)pmlitedat_buffer, gs32NonCachedPoolID);
+	   pmlitedat_buffer = NULL;
+    }
+
+    if (eRet == E_PM_FAIL)
+        return FALSE;
+    else
+        return TRUE;
+}
 #endif
 
 #endif

@@ -1,6 +1,7 @@
 #include "porting_controlflag.h"
 #include "MM_Player_Def.h"
 #include "mapp_videoplayer.h"
+#include "porting_sysinfo.h"
 
 #define COMPILE_FLAG_ENABLE_4K2K            0
 #ifdef DIVX_ENABLE
@@ -13,6 +14,8 @@
 #define COMPILE_FLAG_ENABLE_STB             1
 #define COMPILE_FLAG_ENABLE_FRC             MMSDK_CTRL_FRC_PORTING
 #define COMPILE_FLAG_FRC_MODE               MMSDK_FRC_MODE
+
+#define PT_CTRLFLAG_DBG(fmt, arg...)    PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_DBG, "\033[1;35m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
 
 #if (COMPILE_FLAG_FRC_MODE == 1)
 #include "drvMVOP.h"
@@ -86,7 +89,7 @@ MMSDK_BOOL PT_GetControlFlag(const EN_MMSDK_CONTROLFLAG eFlag)
                     {
                         bRet = (stVidStatus.u8Interlace)? FALSE : TRUE;
                     }
-                    printf("\033[1;35m###[%s][%d]### MM VDEC FRC %d\033[0m\n",__FUNCTION__,__LINE__,bRet);
+                    PT_CTRLFLAG_DBG("MM VDEC FRC %d \n", bRet);
                 }
             #else //Mode 0 or other decide FRC by COMPILE_FLAG_ENABLE_FRC
                 bRet = COMPILE_FLAG_ENABLE_FRC; //frame rate control

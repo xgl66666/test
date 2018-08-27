@@ -75,7 +75,12 @@
 //
 //******************************************************************************
 //<MStar Software>
+#ifdef MSOS_TYPE_LINUX_KERNEL
+#include <linux/string.h>
+#else
+#include <string.h>
 #include <math.h>
+#endif
 #include "MsCommon.h"
 #include "drvIIC.h"
 #include "MsOS.h"
@@ -273,10 +278,10 @@ MS_BOOL MDrv_Demod_MSB131X_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
         MsOS_DeleteMutex(_s32MutexId);
         MsOS_DeleteMutex(_s32FunMutexId);
     }
-    
+
     if(MSB131X_SERIAL_TS)
         MDrv_Demod_MSB131X_SetTsSerial(u8DemodIndex, TRUE);
-    
+
     _bInited = TRUE;
     return bRet;
 }
@@ -286,7 +291,7 @@ static MS_BOOL  _MSB131X_I2C_Channel_Set(MS_U8 u8DemodIndex, MS_U8 ch_num)
     MS_BOOL bRet=TRUE;
     MS_U8 Data[5] = {0x53, 0x45, 0x52, 0x44, 0x42};
 
-    HWI2C_PORT ePort;
+    MS_IIC_PORT ePort;
     ePort = getI2CPort(u8DemodIndex);
 
     //Exit
@@ -326,7 +331,7 @@ static MS_BOOL  _MSB131X_GetReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 *pu8Da
 {
     MS_BOOL bRet=TRUE;
     MS_U8 Data[5];
-    HWI2C_PORT ePort;
+    MS_IIC_PORT ePort;
     ePort = getI2CPort(u8DemodIndex);
 
 
@@ -351,7 +356,7 @@ static MS_BOOL _MSB131X_SetReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 u8Data)
 {
     MS_BOOL bRet=TRUE;
     MS_U8 Data[6];
-    HWI2C_PORT ePort;
+    MS_IIC_PORT ePort;
     ePort = getI2CPort(u8DemodIndex);
 
     Data[0] = 0x10;
@@ -430,7 +435,7 @@ static MS_BOOL  MSB131X_I2C_Channel_Set(MS_U8 u8DemodIndex, MS_U8 ch_num)
     MS_BOOL bRet=TRUE;
     MS_U8 Data[5] = {0x53, 0x45, 0x52, 0x44, 0x42};
 
-    HWI2C_PORT ePort;
+    MS_IIC_PORT ePort;
     ePort = getI2CPort(u8DemodIndex);
 
 
@@ -477,7 +482,7 @@ static MS_BOOL  MSB131X_I2C_Channel_Change(MS_U8 u8DemodIndex,MS_U8 ch_num)
 {
     MS_BOOL bRet=TRUE;
     MS_U8 Data[5] = {0x53, 0x45, 0x52, 0x44, 0x42};
-    HWI2C_PORT ePort;
+    MS_IIC_PORT ePort;
     ePort = getI2CPort(u8DemodIndex);
 
     if (MsOS_ObtainMutex(_s32MutexId, MSB131X_MUTEX_TIMEOUT)==FALSE)
@@ -499,7 +504,7 @@ static MS_BOOL  MSB131X_ReadReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 *pu8Da
 {
    MS_BOOL bRet=TRUE;
     MS_U8 Data[5];
-    HWI2C_PORT ePort;
+    MS_IIC_PORT ePort;
     ePort = getI2CPort(u8DemodIndex);
 
     if (MsOS_ObtainMutex(_s32MutexId, MSB131X_MUTEX_TIMEOUT)==FALSE)
@@ -528,7 +533,7 @@ static MS_BOOL MSB131X_WriteReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 u8Data
 {
     MS_BOOL bRet=TRUE;
     MS_U8 Data[6];
-    HWI2C_PORT ePort;
+    MS_IIC_PORT ePort;
     ePort = getI2CPort(u8DemodIndex);
 
     if (MsOS_ObtainMutex(_s32MutexId, MSB131X_MUTEX_TIMEOUT)==FALSE)
@@ -570,7 +575,7 @@ static MS_BOOL MSB131X_WriteRegs(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8* u8pD
     MS_BOOL bRet=TRUE;
     MS_U16 index;
     MS_U8 Data[LOAD_CODE_I2C_BLOCK_NUM+5];
-    HWI2C_PORT ePort;
+    MS_IIC_PORT ePort;
     ePort = getI2CPort(u8DemodIndex);
 
     if (MsOS_ObtainMutex(_s32MutexId, MSB131X_MUTEX_TIMEOUT)==FALSE)
@@ -1097,10 +1102,10 @@ static void MSB131X_Driving_Control(MS_U8 u8DemodIndex, MS_BOOL bEnable)
 
     MSB131X_WriteReg(u8DemodIndex, 0x0958, u8Temp);//TOP_TS_DATA_DRV_SEL
 
-    MSB131X_ReadReg(u8DemodIndex,0x0959, &u8Temp );    
+    MSB131X_ReadReg(u8DemodIndex,0x0959, &u8Temp );
     if (bEnable)
     {
-        u8Temp = u8Temp | 0x0F; 
+        u8Temp = u8Temp | 0x0F;
     }
     else
     {
@@ -2082,14 +2087,14 @@ MS_BOOL MDrv_Demod_MSB131X_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM
 
     if(MSB131X_SERIAL_TS)
     {
-        u8Data |= (0x01);     
+        u8Data |= (0x01);
     }
     else
     {
         u8Data &= (0xFE);
     }
     bRet&= MSB131X_WriteReg(u8DemodIndex, u16Address, u8Data);
-    
+
     u16Address=0x0990;
     bRet&=MSB131X_ReadReg(u8DemodIndex, u16Address, &u8Data);
     u8Data&=0xF0;
@@ -2367,6 +2372,7 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB131X) DDI_DRV_TABLE_ENTRY(dem
      .GetSNR                       = MDrv_Demod_MSB131X_GetSNR,
      .GetBER                       = MDrv_Demod_MSB131X_GetBER,
      .GetPWR                       = MDrv_Demod_MSB131X_GetPWR,
+     .GetSSI                       = MDrv_Demod_null_GetSSI,
      .GetQuality                   = MDrv_Demod_MSB131X_GetSignalQuality,
      .GetParam                     = MDrv_Demod_MSB131X_GetParam,
      .Restart                      = MDrv_Demod_MSB131X_Restart,
@@ -2375,7 +2381,7 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB131X) DDI_DRV_TABLE_ENTRY(dem
      .I2CByPassPreSetting          = NULL,
      .Extension_Function           = MSB131X_Extension_Function,
      .Extension_FunctionPreSetting = NULL,
-     .Get_Packet_Error              = MDrv_Demod_null_Get_Packet_Error,     
+     .Get_Packet_Error              = MDrv_Demod_null_Get_Packet_Error,
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
@@ -2398,7 +2404,10 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB131X) DDI_DRV_TABLE_ENTRY(dem
      .DiSEqCGetLNBOut              = MDrv_MSB131X_DiSEqC_GetLNBOut,
      .DiSEqCSet22kOnOff            = MDrv_MSB131X_DiSEqC_Set22kOnOff,
      .DiSEqCGet22kOnOff            = MDrv_MSB131X_DiSEqC_Get22kOnOff,
-     .DiSEqC_SendCmd               = MDrv_MSB131X_DiSEqC_SendCmd
+     .DiSEqC_SendCmd               = MDrv_MSB131X_DiSEqC_SendCmd,
+     .DiSEqC_GetReply              = MDrv_Demod_null_DiSEqC_GetReply,
+     .GetISIDInfo                  = MDrv_Demod_null_GetVCM_ISID_INFO,
+     .SetISID                      = MDrv_Demod_null_SetVCM_ISID
 #endif
 };
 

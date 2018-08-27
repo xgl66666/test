@@ -1,4 +1,11 @@
+#ifdef MSOS_TYPE_LINUX_KERNEL
+#include <linux/fs.h>
+#include <linux/vmalloc.h>
+#include <linux/err.h>
+#include <asm/uaccess.h>
+#else
 #include <stdio.h>
+#endif
 #include "error.h"
 #include "MsCommon.h"
 #include "Board.h"
@@ -18,7 +25,7 @@
 
 
 
-
+static MS_U32 u32Freq = 950;
 typedef int INT32;
 
 static  MS_BOOL  _DigiTuner_Decide_LNB_LO(TUNER_MS_SAT_PARAM *pSATParam)
@@ -44,43 +51,179 @@ static  MS_BOOL  _DigiTuner_Decide_LNB_LO(TUNER_MS_SAT_PARAM *pSATParam)
          if( u32MidFreq <= (MAX_INPUT_FREQ-s32Offset))
               *pSATParam->pbIsHiLOF = FALSE;
           else
-              *pSATParam->pbIsHiLOF = TRUE;     
+              *pSATParam->pbIsHiLOF = TRUE;
      }
      return TRUE;
 }
 
+static MS_U8 RDA5815mReadReg(MS_U8 u8TunerIndex, MS_U8 u8addr)
+{
+    MS_U8 u8data = 0;
+    MS_IIC_PORT ePort;
+
+    ePort = getI2CPort(u8TunerIndex);
+
+	MDrv_IIC_ReadBytes(ePort, (MS_U16)RDA5815M_SLA, 1, &u8addr, 1, &u8data);
+
+    return u8data;
+}
 
 static MS_BOOL RDA5815WriteReg(MS_U8 u8TunerIndex, MS_U8 paddr, MS_U8 pu8data)
 {
     MS_BOOL bRet = TRUE;
     MS_U8 u8Value[2];
-    HWI2C_PORT hwi2c_port;
+    MS_IIC_PORT ePort;
 
     u8Value[0] = paddr;
     u8Value[1] = pu8data;
 
-    hwi2c_port = getI2CPort(u8TunerIndex);
-    if (hwi2c_port < E_HWI2C_PORT_1)
-    {
-        bRet &= MDrv_IIC_Write(RDA5815M_SLA, 0, 0, u8Value, 2);
-    }
-    else if (hwi2c_port < E_HWI2C_PORT_2)
-    {
-        bRet &= MDrv_IIC1_Write(RDA5815M_SLA, 0, 0, u8Value, 2);
-    }
-    else
-    {
-        TUNER_ERR(("hwi2c_port number exceeds limitation\n"));
-        return FALSE;
-    } 
+    ePort = getI2CPort(u8TunerIndex);
+    bRet &= MDrv_IIC_WriteBytes(ePort, (MS_U16)RDA5815M_SLA, 0, NULL, 2, u8Value);
 
     if (bRet == FALSE)
     {
-        printf(" ERROR in RDA5815WriteReg !!! \n");
+        TUNER_ERR((" ERROR in RDA5815WriteReg !!! \n"));
     }
     return bRet;
 }
 
+int  MDrv_RDA5815M_RSSI(MS_U8 u8TunerIndex)
+{
+
+   unsigned char buffer;
+    /* Gain stage limits                           st1  pre st2    post i2v fil  */
+#define RDA5815m_Gain_Stage__0 0xc00 /* '11   00    00    00     00     00    ' */
+#define RDA5815m_Gain_Stage__1 0xc00 /* '11   00    00    00     00     00 ' */
+#define RDA5815m_Gain_Stage__2 0xc01 /* '11   00    00    00     00     01 ' */
+#define RDA5815m_Gain_Stage__3 0xc02 /* '11   00    00    00     00     10 ' */
+#define RDA5815m_Gain_Stage__4 0xc03 /* '11   00    00    00     00     11 ' */
+#define RDA5815m_Gain_Stage__5 0xc13 /* '11   00    00    01     00     11 ' */
+#define RDA5815m_Gain_Stage__6 0xd17 /* '11   01    00    01     01     11 ' */
+#define RDA5815m_Gain_Stage__7 0xd5b /* '11   01    01    01     10     11 ' */
+#define RDA5815m_Gain_Stage__8 0xe5b /* '11   10    01    01     10     11 ' */
+#define RDA5815m_Gain_Stage__9 0xf9b /* '11   11    10    01     10     11 ' */
+#define RDA5815m_Gain_Stage_10 0xfab /* '11   11    10    10     10     11 ' */
+#define RDA5815m_Gain_Stage_11 0xfaf /* '11   11    10    10     11     11 ' */
+#define RDA5815m_Gain_Stage_12 0xfef /* '11   11    11    10     11     11 ' */
+#define RDA5815m_Gain_Stage_13 0xfff /* '11   11    11    11     11     11 ' */
+#define RDA5815m_Gain_Stage_14 0xfff /* '11   11    11    11     11     11 ' */
+#define RDA5815m_Gain_Stage_15 0xfff /* '11   11    11    11     11     11 ' */
+
+  unsigned char data16,data17,st1,pre,st2,post,i2v,filter,vga;
+  unsigned int  stage_code;
+  unsigned char gain_stage;
+  unsigned char band,offset;
+  double vga_gain, total_gain;
+
+
+ double gain[13][16] = {    
+                                         { -7.6,   -7.7,  -1.7,  4.3,  10.2,  15.8,  25.4, 34.2, 40.7, 49.4, 55.2, 61.4, 65.5, 71.6, 71.6, 71.6},  /* 1  950MHz<=Freq<1000MHz */
+                                         { -7.2,   -7.2,  -1.2,  4.8,  10.8,  16.4,  25.9, 34.2, 40.8, 49.3, 55.3, 61.4, 65.5, 71.8, 71.8, 71.8},  /* 2  1000MHz<=Freq<1100MHz */
+                                         { -6.5,   -6.6,  -0.5,  5.5,  11.5 , 17.1,  26.5, 34.8, 41.1, 49.2, 55.1, 61.1, 65.4, 71.6, 71.6, 71.6},  /* 3  1100MHz<=Freq<1200MHz */
+                                         { -5.9,   -5.8,   0  ,  6.1,  12.1 , 17.7,  27.0, 35.3, 41.4, 49.0, 54.9, 61.0, 65.1, 71.5, 71.5, 71.5},  /* 4  1200MHz<=Freq<1300MHz */
+                                         { -5.8,   -5.8,  0.2,   6.2,  12.2 , 17.9,  27.1, 35.5, 40.9, 48.4, 54.3, 60.4, 64.5, 71.0, 71.0, 71.0},  /* 5  1300MHz<=Freq<1400MHz */
+                                         { -5.7,   -6.3,  0.4,   6.4,  12.4 , 18.1,  27.2, 35.3, 41.3, 48.0, 53.9, 60.1, 64.1, 70.7, 70.7, 70.7},  /* 6  1400MHz<=Freq<1500MHz */
+                                         { -5.0,   -6.3,  1.0,   7.1,  13.0 , 18.7,  27.8, 36.0, 41.2, 48.0, 54.1, 60.2, 64.2, 71.8, 70.8, 71.8},  /* 7  1500MHz<=Freq<1600MHz */
+                                         { -4.2,   -5.7,  1.7,   7.7,  13.8 , 19.4,  28.4, 36.8, 41.7, 47.9, 54.2, 60.2, 64.1, 70.9, 70.9, 70.9},  /* 8  1600MHz<=Freq<1700MHz */
+                                         { -4.2,   -6.0,  1.8,   7.8,  13.8 , 19.5,  28.3, 36.4, 41.3, 47.4, 53.6, 59.8, 63.4, 70.3, 70.3, 70.3},  /* 9  1700MHz<=Freq<1800MHz */
+                                         { -4.4,   -5.2,  1.5,   7.5,  13.5 , 19.2,  27.9, 36.5, 40.6, 46.6, 53.0, 59.1, 62.5, 69.6, 69.6, 69.6},  /* 10  1800MHz<=Freq<1900MHz */
+                                         { -4.3,   -6.1,  1.7,   7.6,  13.7 , 19.4,  28.0, 35.6, 40.3, 46.4, 52.7, 58.9, 62.2, 69.2, 69.2, 69.2},  /* 11  1900MHz<=Freq<2000MHz */
+                                         { -4.2,   -4.6,  1.9,   7.8,  13.8 , 19.6,  28.0, 36.2, 40.4, 46.0, 52.6, 58.6, 61.7, 68.7, 68.7, 68.7},  /* 12  2000MHz<=Freq<2100MHz */
+                                         { -4.6,   -5.3,  1.4,   7.4,  13.4 , 19.2,  27.5, 35.6, 39.5, 45.2, 51.7, 57.8, 60.6, 67.7, 67.6, 67.7}   /* 13  2100MHz<=Freq<=2150MHz */
+                        };
+
+
+  double gain_offset[] = {3,3,3,2,1,1,2,2,1,0,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0};
+  data16 = RDA5815mReadReg(u8TunerIndex, 0x16);
+  i2v    = (data16&0xc0)>>6;
+  filter = (data16&0x30)>>4;
+  st1    = (data16&0x0c)>>2;
+  st2    = (data16&0x03)>>0;
+  //printf("\033[34m\033[1m data16=0x%x\033[0m\n",data16);
+
+  data17 = RDA5815mReadReg(u8TunerIndex, 0x17);
+  pre    = (data17&0x0c)>>2;
+  post   = (data17&0x03)>>0;
+ // printf("\033[34m\033[1m data17=0x%x\033[0m\n",data17);
+
+  stage_code = (st1<<10) + (pre<<8) + (st2<<6) + (post<<4) + (i2v<<2) + (filter<<0);
+
+       if (stage_code == RDA5815m_Gain_Stage_13 ) { gain_stage = 13; }
+  else if (stage_code == RDA5815m_Gain_Stage_12 ) { gain_stage = 12; }
+  else if (stage_code == RDA5815m_Gain_Stage_11 ) { gain_stage = 11; }
+  else if (stage_code == RDA5815m_Gain_Stage_10 ) { gain_stage = 10; }
+  else if (stage_code == RDA5815m_Gain_Stage__9 ) { gain_stage =  9; }
+  else if (stage_code == RDA5815m_Gain_Stage__8 ) { gain_stage =  8; }
+  else if (stage_code == RDA5815m_Gain_Stage__7 ) { gain_stage =  7; }
+  else if (stage_code == RDA5815m_Gain_Stage__6 ) { gain_stage =  6; }
+  else if (stage_code == RDA5815m_Gain_Stage__5 ) { gain_stage =  5; }
+  else if (stage_code == RDA5815m_Gain_Stage__4 ) { gain_stage =  4; }
+  else if (stage_code == RDA5815m_Gain_Stage__3 ) { gain_stage =  3; }
+  else if (stage_code == RDA5815m_Gain_Stage__2 ) { gain_stage =  2; }
+  else if (stage_code == RDA5815m_Gain_Stage__1 ) { gain_stage =  1; }
+  else  { gain_stage =  0; }
+
+                                                            
+  if ( u32Freq < 950 )           return 1;
+    else if ( u32Freq < 1000 )             {band =0;}
+    else if ( u32Freq < 1100 )             {band =1;}
+    else if ( u32Freq < 1200 )             {band =2;}
+    else if ( u32Freq < 1300 )             {band =3;}
+    else if ( u32Freq < 1400 )             {band =4;}
+    else if ( u32Freq < 1500 )             {band =5;}
+    else if ( u32Freq < 1600 )             {band =6;}
+    else if ( u32Freq < 1700 )             {band =7;}
+    else if ( u32Freq < 1800 )             {band =8;}
+    else if ( u32Freq < 1900 )             {band =9;}
+    else if ( u32Freq < 2000 )             {band =10;}
+    else if ( u32Freq < 2100 )             {band =11;}
+    else if ( u32Freq <= 2150 )            {band =12;}
+    else                                        return 1;
+
+   if ( u32Freq < 950 )   return 1;
+   else if ( u32Freq < 1000 ) {offset =0;}
+   else if ( u32Freq < 1050 ) {offset =1;}
+   else if ( u32Freq < 1100 ) {offset =2;}
+   else if ( u32Freq < 1150 ) {offset =3;}
+   else if ( u32Freq < 1200 ) {offset =4;}
+   else if ( u32Freq < 1250 ) {offset =5;}
+   else if ( u32Freq < 1300 ) {offset =6;}
+   else if ( u32Freq < 1350 ) {offset =7;}
+   else if ( u32Freq < 1400 ) {offset =8;}
+   else if ( u32Freq < 1450 ) {offset =9;}
+   else if ( u32Freq < 1500 ) {offset =10;}
+   else if ( u32Freq < 1550 ) {offset =11;}
+   else if ( u32Freq < 1600 ) {offset =12;}
+   else if ( u32Freq < 1650 ) {offset =13;}
+   else if ( u32Freq < 1700 ) {offset =14;}
+   else if ( u32Freq < 1750 ) {offset =15;}
+   else if ( u32Freq < 1800 ) {offset =16;}
+   else if ( u32Freq < 1850 ) {offset =17;}
+   else if ( u32Freq < 1900 ) {offset =18;}
+   else if ( u32Freq < 1950 ) {offset =19;}
+   else if ( u32Freq < 2000 ) {offset =20;}
+   else if ( u32Freq < 2050 ) {offset =21;}
+   else if ( u32Freq < 2100 ) {offset =22;}
+   else if ( u32Freq <= 2150) {offset =23;}
+   else return 1;
+
+
+  
+   buffer = RDA5815mReadReg(u8TunerIndex, 0xB7);
+   //printf("\033[34m\033[1m buffer=0x%x\033[0m\n",buffer);
+   vga =buffer;
+  
+  vga_gain = vga*30.0/255;
+
+  total_gain = gain[band][gain_stage] + vga_gain - gain_offset[offset];
+
+  if (1) {
+   
+    TUNER_DBG(("RDA5815m RSSI = gain[%d][%d] + vga_gain+ gain_offset = %f + %f - %f = %f\n", band, gain_stage, gain[band][gain_stage], vga_gain, gain_offset[offset], total_gain));
+  }
+
+  return  -total_gain;
+}
 
 
 void RDA5815Initial(MS_U8 u8TunerIndex)
@@ -370,30 +513,17 @@ MS_BOOL MDrv_Tuner_RDA5815M_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_c
 {
     MS_U8 u8data[2] = {0};
     MS_U8 u8addr = 0;
-    HWI2C_PORT hwi2c_port;
-    
-    hwi2c_port = getI2CPort(u8TunerIndex);
-    if (hwi2c_port < E_HWI2C_PORT_1)
-    {
-        MDrv_IIC_Read(RDA5815M_SLA, &u8addr, 1, u8data, 2);
-    }
-    else if (hwi2c_port < E_HWI2C_PORT_2)
-    {
-        MDrv_IIC1_Read(RDA5815M_SLA, &u8addr, 1, u8data, 2);
-    }
-    else
-    {
-        TUNER_ERR(("hwi2c_port number exceeds limitation\n"));
-        return FALSE;
-    } 
+    MS_IIC_PORT ePort;
 
+    ePort = getI2CPort(u8TunerIndex);
+    MDrv_IIC_ReadBytes(ePort, (MS_U16)RDA5815M_SLA, 1, &u8addr, 2, u8data);
 
     if((u8data[1] != RDA5815M_CHIP_ID1) || (u8data[0] != RDA5815M_CHIP_ID0))
         return FALSE;
-    
+
     if(NULL != pu32channel_cnt)
         *(pu32channel_cnt) += 1;
-    
+
     return TRUE;
 }
 
@@ -408,10 +538,14 @@ MS_BOOL RDA5815M_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE 
             SAT_PARAM = data;
             bret &= _DigiTuner_Decide_LNB_LO(SAT_PARAM);
             break;
-            
+
+        case TUNER_EXT_FUNC_GET_POWER_LEVEL:
+            *((int*)data)=MDrv_RDA5815M_RSSI(u8TunerIndex);
+            break;
+
         default:
             TUNER_DBG(("Request extension function (%x) does not exist\n",fuction_type));
-            break;     
+            break;
     }
     return bret;
 }

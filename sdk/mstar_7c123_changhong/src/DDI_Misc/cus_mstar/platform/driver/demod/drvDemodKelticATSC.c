@@ -77,6 +77,7 @@
 //<MStar Software>
 #include "Board.h"
 
+#if IS_THIS_DEMOD_PICKED(DEMOD_MSKELTIC_ATSC)
 #if defined(CHIP_KELTIC)
 #include "MsCommon.h"
 #include "HbCommon.h"
@@ -832,6 +833,7 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKELTIC_ATSC) DDI_DRV_TABLE_ENT
      .Extension_Function           = DEMOD_MSKELTIC_ATSC_Extension_Function,
      .Extension_FunctionPreSetting = NULL,
      .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error,     
+     .CheckExist                   = MDrv_Demod_null_CheckExist,
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
@@ -859,4 +861,5 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSKELTIC_ATSC) DDI_DRV_TABLE_ENT
 };
 
 #endif // (FRONTEND_DEMOD_TYPE == DEMOD_MSATSC_C)
+#endif
 

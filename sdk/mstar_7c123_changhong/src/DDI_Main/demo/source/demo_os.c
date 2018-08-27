@@ -167,6 +167,7 @@
 // For USB Test
 //-------------------------------------------------------------------------------------------------
 
+#if (DEMO_ZUI_TEST != 1)
 typedef struct _USBTestArgs
 {
     char *pMountPath;
@@ -176,6 +177,7 @@ typedef struct _USBTestArgs
 
 static void _USB_Test_Clear_Cache(void);
 static MS_U32 _USB_Test_Approximate(MS_U32 u32Numerator, MS_U32 u32Denominator);
+#endif
 static MS_BOOL _USB_Test_Prepare_Data(pUSBTestArgs setting);
 static void _USB_Test_Write_Test(pUSBTestArgs setting);
 static void _USB_Test_Read_Test(pUSBTestArgs setting);
@@ -1011,7 +1013,7 @@ static MS_BOOL _OS_Test_Queue(void)
 
     printf("[%s] Start\n",__FUNCTION__);
     s32DemoQueueID = MsOS_CreateQueue(NULL,               //It is useless now, can pass NULL.
-                                      NULL,               // queue size (byte unit) : now fixed as 10 * u32MessageSize
+                                      (MS_U32)NULL,               // queue size (byte unit) : now fixed as 10 * u32MessageSize
                                       E_MSG_FIXED_SIZE,   // E_MSG_VAR_SIZE has not been supported yet
                                       sizeof(MS_U32),     // message size (byte unit) for E_MSG_FIXED_SIZE
                                       E_MSOS_FIFO,        // E_MSOS_FIFO suspended in FIFO order
@@ -1030,7 +1032,7 @@ static MS_BOOL _OS_Test_Queue(void)
         return FALSE;
     }
     _s32QueueSendTaskId = MsOS_CreateTask(_OS_Test_QueueSend_Task,
-                                          NULL,
+                                          (MS_VIRT)NULL,
                                           E_TASK_PRI_HIGH, // E_TASK_PRI_MEDIUM,
                                           TRUE,
                                           _pQueueSendTaskStack,
@@ -1050,7 +1052,7 @@ static MS_BOOL _OS_Test_Queue(void)
         return FALSE;
     }
     _s32QueueRecvTaskId = MsOS_CreateTask(_OS_Test_QueueRecv_Task,
-                                          NULL,
+                                          (MS_VIRT)NULL,
                                           E_TASK_PRI_HIGH, // E_TASK_PRI_MEDIUM,
                                           TRUE,
                                           _pQueueRecvTaskStack,
@@ -1100,7 +1102,7 @@ static MS_BOOL _OS_Test_Interrupt(void)
 
     while(u32Count++ < 3)
     {
-        MsOS_DelayTask(1000);   
+        MsOS_DelayTask(1000);
         if (bInterruptCB)
         {
             break;
@@ -1157,7 +1159,7 @@ static MS_BOOL _OS_Test_Address(void)
 {
     MS_BOOL bRet = TRUE;
     MS_U32 *TAG = NULL,*TAG_C = NULL;
-    MS_U32 TAG_PA = NULL;
+    MS_U32 TAG_PA = (MS_U32)NULL;
     MS_S32 s32MstarNonCachedPoolID = INVALID_POOL_ID;
 
     Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE, &s32MstarNonCachedPoolID);
@@ -1173,7 +1175,7 @@ static MS_BOOL _OS_Test_Address(void)
     printf("TAG VA 0x%"DTC_MS_U32_x"\n", (MS_U32)TAG);
     printf("TAG VA Value = 0x%08"DTC_MS_U32_x"\n", *TAG);
     TAG_PA= MsOS_VA2PA((MS_U32)TAG);
-    if (TAG_PA == NULL)
+    if (TAG_PA == (MS_U32)NULL)
     {
         printf("[%s][%d] MsOS_VA2PA Failed\n", __FUNCTION__, __LINE__);
         bRet = FALSE;
@@ -1217,7 +1219,7 @@ static MS_BOOL _OS_Test_Address(void)
 static MS_BOOL _OS_Test_Pool(void)
 {
     MS_BOOL bRet = TRUE;
-    MS_U32 u32TestPoolAddr = NULL, u32TestAllocate = NULL;
+    MS_U32 u32TestPoolAddr = (MS_U32)NULL, u32TestAllocate = (MS_U32)NULL;
     printf("[%s] Start\n",__FUNCTION__);
     _s32TestMemPoolID = INVALID_MEMPOOL_ID;
     MS_S32 s32MstarNonCachedPoolID = INVALID_POOL_ID;
@@ -1225,7 +1227,7 @@ static MS_BOOL _OS_Test_Pool(void)
     Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE, &s32MstarNonCachedPoolID);
     // allocate buffer from system memory pool
     u32TestPoolAddr = (MS_U32)MsOS_AllocateMemory(sizeof(MS_U8)*TEST_POOL_LENGTH,s32MstarNonCachedPoolID);
-    if (u32TestPoolAddr == NULL)
+    if (u32TestPoolAddr == (MS_U32)NULL)
     {
         printf("[%s][%d]\n", __FUNCTION__, __LINE__);
         return FALSE;
@@ -1254,7 +1256,7 @@ static MS_BOOL _OS_Test_Pool(void)
 
 
     u32TestAllocate = (MS_U32)MsOS_AllocateMemory(sizeof(MS_U8)*0x100,_s32TestMemPoolID);
-    if (u32TestAllocate == NULL)
+    if (u32TestAllocate == (MS_U32)NULL)
     {
         printf("[%s][%d] Allocated from test pool failed\n", __FUNCTION__, __LINE__);
         bRet = FALSE;
@@ -1509,25 +1511,22 @@ MS_BOOL Demo_OS_Test(MS_U32* u32TestCase, MS_U32 *Reserved0)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_USB_Test(char *pMountPath, MS_U32* u32BlockSizeInKB, MS_U32* u32Iteration, MS_U32* bParallel)
 {
-    // initialize random seed
-    srand(time(NULL));
-    
-    // create arguments setting object 
+    // create arguments setting object
     MS_S32 s32NonCachedPoolID = INVALID_POOL_ID;
     Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE, &s32NonCachedPoolID);
-    
+
     USBTestArgs setting = {pMountPath, *u32BlockSizeInKB * 1024, *u32Iteration};
     pUSBTestArgs pSetting = &setting;
-    
+
     // prepare read data in advance
     if(_USB_Test_Prepare_Data(pSetting) == FALSE)
     {
         printf("[%s][%d] prepare data failed\n", __FUNCTION__, __LINE__);
         return FALSE;
     }
-    
+
     // sequential
-    if(!*bParallel || *bParallel != 1) 
+    if(!*bParallel || *bParallel != 1)
     {
         _USB_Test_Write_Test(pSetting);
         _USB_Test_Read_Test(pSetting);
@@ -1536,35 +1535,35 @@ MS_BOOL Demo_USB_Test(char *pMountPath, MS_U32* u32BlockSizeInKB, MS_U32* u32Ite
     // create task
     else
     {
-        
+
         printf("\e[1m\e[21m Parallel Test Start: \e[0m\n");
-        
+
         Task_Info writeTask = {-1, E_TASK_PRI_HIGH, NULL, (0x8000), "Write Task"};
         Task_Info readTask = {-1, E_TASK_PRI_HIGH, NULL, (0x8000), "Read Task"};
-        
+
         MS_U32 u32Events = TEST_NO_EVENT;
-        
+
         s32USBTestEventID = MsOS_CreateEventGroup("USB_Test_Event");
         if (s32USBTestEventID == INVALID_EVENT_ID)
         {
             printf("[%s][%d] create event group failed\n", __FUNCTION__, __LINE__);
             return FALSE;
         }
-        
+
         writeTask.pStack = MsOS_AllocateMemory(writeTask.u32StackSize, s32NonCachedPoolID);
-        if(!writeTask.pStack) 
+        if(!writeTask.pStack)
         {
             printf("[%s][%d] allocate write memory failed\n", __FUNCTION__, __LINE__);
             return FALSE;
         }
 
         readTask.pStack = MsOS_AllocateMemory(readTask.u32StackSize, s32NonCachedPoolID);
-        if(!readTask.pStack) 
+        if(!readTask.pStack)
         {
             printf("[%s][%d] allocate read memory failed\n", __FUNCTION__, __LINE__);
             return FALSE;
         }
-        
+
         writeTask.iId = MsOS_CreateTask((TaskEntry)_USB_Test_Write_Test,
                                         (MS_U32)pSetting,
                                         writeTask.ePriority,
@@ -1572,7 +1571,7 @@ MS_BOOL Demo_USB_Test(char *pMountPath, MS_U32* u32BlockSizeInKB, MS_U32* u32Ite
                                         writeTask.pStack,
                                         writeTask.u32StackSize,
                                         writeTask.szName);
-                                        
+
         readTask.iId = MsOS_CreateTask((TaskEntry)_USB_Test_Read_Test,
                                         (MS_U32)pSetting,
                                         readTask.ePriority,
@@ -1580,21 +1579,21 @@ MS_BOOL Demo_USB_Test(char *pMountPath, MS_U32* u32BlockSizeInKB, MS_U32* u32Ite
                                         readTask.pStack,
                                         readTask.u32StackSize,
                                         readTask.szName);
-         
+
         char flag = 0;
-                
+
         while(1)
         {
             MsOS_WaitEvent(s32USBTestEventID, USB_TEST_READ_WRITE_COMPLETE_EVENT, &u32Events, E_OR_CLEAR, MSOS_WAIT_FOREVER);
             //printf("[%s][%d] u32Events %"DTC_MS_U32_d"\n", __FUNCTION__, __LINE__, u32Events);
             flag += u32Events;
-            if (flag == USB_TEST_READ_WRITE_COMPLETE_EVENT) 
+            if (flag == USB_TEST_READ_WRITE_COMPLETE_EVENT)
             {
                 printf("\e[1m\e[21m Test Completed! \e[0m\n");
                 break;
             }
         }
-        
+
         if (MsOS_DeleteEventGroup(s32USBTestEventID) == FALSE)
         {
             printf("[%s][%d] delete eventgroup failed\n", __FUNCTION__, __LINE__);
@@ -1604,34 +1603,34 @@ MS_BOOL Demo_USB_Test(char *pMountPath, MS_U32* u32BlockSizeInKB, MS_U32* u32Ite
         {
             printf("[%s][%d] delete tasks failed\n", __FUNCTION__, __LINE__);
         }
-        
+
     }
-    
+
     return TRUE;
 }
 
-static void _USB_Test_Clear_Cache()
+void _USB_Test_Clear_Cache()
 {
     #if defined(MSOS_TYPE_LINUX)
-    
+
     const char* magic = "3";
-    
+
     sync();
-    
+
     FILE* cache = MsFS_Fopen("/proc/sys/vm/drop_caches", "wb");
     if(!cache)
     {
         printf("[%s][%d] clear cache failed\n", __FUNCTION__, __LINE__);
         return;
     }
-    
+
     MsFS_Fwrite(magic, 1, sizeof(char), cache);
     MsFS_Fclose(cache);
-    
+
     #endif
 }
 
-static MS_U32 _USB_Test_Approximate(MS_U32 u32Numerator, MS_U32 u32Denominator)
+MS_U32 _USB_Test_Approximate(MS_U32 u32Numerator, MS_U32 u32Denominator)
 {
     MS_U32 u32Reminder = u32Numerator % u32Denominator;
     MS_U32 u32Interval = u32Denominator / 8;
@@ -1652,24 +1651,25 @@ static MS_U32 _USB_Test_Approximate(MS_U32 u32Numerator, MS_U32 u32Denominator)
 static MS_BOOL _USB_Test_Prepare_Data(pUSBTestArgs setting)
 {
     printf("\e[1m\e[21m Prepare Data ... \e[0m\n");
-    
+
     MS_S32 s32NonCachedPoolID = 0;
     Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE, &s32NonCachedPoolID);
 
     char* filename = "/read.bin";
     char* fullpath;
-    
-    fullpath = MsOS_AllocateMemory(sizeof(setting->pMountPath) + sizeof(filename) + 1, s32NonCachedPoolID);
+
+    fullpath = MsOS_AllocateMemory(strlen(setting->pMountPath) + strlen(filename) + 1, s32NonCachedPoolID);
     if(!fullpath)
     {
         printf("[%s][%d] allocate memory failed\n", __FUNCTION__, __LINE__);
         return FALSE;
     }
+    memset(fullpath, 0, strlen(setting->pMountPath) + strlen(filename) + 1);
 
-    strcpy(fullpath, setting->pMountPath);
-    strcat(fullpath, filename);
-    
-    if(strlen(fullpath) == 0) 
+    strncat(fullpath, setting->pMountPath, strlen(setting->pMountPath));
+    strncat(fullpath, filename, strlen(filename));
+
+    if(strlen(fullpath) == 0)
     {
         printf("[%s][%d] string concat failed\n", __FUNCTION__, __LINE__);
         return FALSE;
@@ -1683,42 +1683,42 @@ static MS_BOOL _USB_Test_Prepare_Data(pUSBTestArgs setting)
     }
 
     MS_U8* array;
-    
+
     array = MsOS_AllocateMemory(setting->u32BlockSize, s32NonCachedPoolID);
     if(!array)
     {
         printf("[%s][%d] allocate data memory failed\n", __FUNCTION__, __LINE__);
         return FALSE;
     }
-    
-    MS_U8 hex = (MS_U8) rand();
+
+    MS_U8 hex = (MS_U8)(MsOS_GetSystemTime() % 256);
     MS_S32 i;
-    for(i=0;i<setting->u32BlockSize;i++) 
+    for(i=0;i<setting->u32BlockSize;i++)
     {
         array[i] = hex++;
     }
 
-    for(i=0;i<setting->u32Iteration;i++) 
+    for(i=0;i<setting->u32Iteration;i++)
     {
         MsFS_Fwrite(array, 1, setting->u32BlockSize, writeFile);
     }
 
-    MsFS_Fclose(writeFile);  
-    
+    MsFS_Fclose(writeFile);
+
     _USB_Test_Clear_Cache();
-    
+
     if (MsOS_FreeMemory(array, s32NonCachedPoolID) == FALSE || MsOS_FreeMemory(fullpath, s32NonCachedPoolID) == FALSE)
     {
         printf("[%s][%d] free memory failed\n", __FUNCTION__, __LINE__);
     }
-    
+
     return TRUE;
 }
 
-static void _USB_Test_Write_Test(pUSBTestArgs setting) 
+static void _USB_Test_Write_Test(pUSBTestArgs setting)
 {
     printf("\e[1m\e[21m Write Test Start! \e[0m\n");
-    
+
     MS_S32 s32NonCachedPoolID = 0;
     Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE, &s32NonCachedPoolID);
 
@@ -1726,19 +1726,20 @@ static void _USB_Test_Write_Test(pUSBTestArgs setting)
 
     char* filename = "/write.bin";
     char* fullpath;
-    
-    fullpath = MsOS_AllocateMemory(sizeof(setting->pMountPath) + sizeof(filename) + 1, s32NonCachedPoolID);
+
+    fullpath = MsOS_AllocateMemory(strlen(setting->pMountPath) + strlen(filename) + 1, s32NonCachedPoolID);
     if(!fullpath)
     {
         printf("[%s][%d] allocate memory failed\n", __FUNCTION__, __LINE__);
         MsOS_SetEvent(s32USBTestEventID, USB_TEST_WRITE_COMPLETE_EVENT);
         return;
     }
+    memset(fullpath, 0, strlen(setting->pMountPath) + strlen(filename) + 1);
 
-    strcpy(fullpath, setting->pMountPath);
-    strcat(fullpath, filename);
-    
-    if(strlen(fullpath) == 0) 
+    strncpy(fullpath, setting->pMountPath, strlen(setting->pMountPath));
+    strncat(fullpath, filename, strlen(filename));
+
+    if(strlen(fullpath) == 0)
     {
         printf("[%s][%d] string concat failed\n", __FUNCTION__, __LINE__);
         MsOS_SetEvent(s32USBTestEventID, USB_TEST_WRITE_COMPLETE_EVENT);
@@ -1754,7 +1755,7 @@ static void _USB_Test_Write_Test(pUSBTestArgs setting)
     }
 
     MS_U8* array;
-    
+
     array = MsOS_AllocateMemory(setting->u32BlockSize, s32NonCachedPoolID);
     if(!array)
     {
@@ -1762,17 +1763,18 @@ static void _USB_Test_Write_Test(pUSBTestArgs setting)
         MsOS_SetEvent(s32USBTestEventID, USB_TEST_WRITE_COMPLETE_EVENT);
         return;
     }
-    
+
+    // coverity[dont_call]
     MS_U8 hex = (MS_U8) rand();
     MS_S32 i;
-    for(i=0;i<setting->u32BlockSize;i++) 
+    for(i=0;i<setting->u32BlockSize;i++)
     {
         array[i] = hex++;
     }
-    
+
     MS_U32 cumulativeCounter = 0;
 
-    for(i=0;i<setting->u32Iteration;i++) 
+    for(i=0;i<setting->u32Iteration;i++)
     {
         start = MsOS_GetSystemTime();
         MsFS_Fwrite(array, 1, setting->u32BlockSize, writeFile);
@@ -1782,25 +1784,30 @@ static void _USB_Test_Write_Test(pUSBTestArgs setting)
 
     MsFS_Fclose(writeFile);
 
-    printf(" write size: %lu KB\n", setting->u32BlockSize * setting->u32Iteration / 1024);
-    printf(" write processing time: %lu ms\n", cumulativeCounter);
+    printf(" write size: %"DTC_MS_U32_d" KB\n", setting->u32BlockSize * setting->u32Iteration / 1024);
+    printf(" write processing time: %"DTC_MS_U32_d" ms\n", cumulativeCounter);
     MS_U32 denominator = 1024 * cumulativeCounter / 1000 * 1024;
-    printf("\e[96m Write Speed: %lu.%lu MB/s\e[0m\n", setting->u32BlockSize * setting->u32Iteration / denominator, _USB_Test_Approximate(setting->u32BlockSize * setting->u32Iteration, denominator));
-    
+    if (denominator == 0)
+    {
+        printf("Error, denominator is zero, can't process _USB_Test_Approximate correctly\n");
+        return;
+    }
+    printf("\e[96m Write Speed: %"DTC_MS_U32_d".%"DTC_MS_U32_d" MB/s\e[0m\n", setting->u32BlockSize * setting->u32Iteration / denominator, _USB_Test_Approximate(setting->u32BlockSize * setting->u32Iteration, denominator));
+
     _USB_Test_Clear_Cache();
-    
+
     if (MsOS_FreeMemory(array,s32NonCachedPoolID)== FALSE || MsOS_FreeMemory(fullpath,s32NonCachedPoolID)== FALSE)
     {
         printf("[%s][%d] free memory failed\n", __FUNCTION__, __LINE__);
     }
-    
+
     MsOS_SetEvent(s32USBTestEventID, USB_TEST_WRITE_COMPLETE_EVENT);
 }
 
-static void _USB_Test_Read_Test(pUSBTestArgs setting) 
+static void _USB_Test_Read_Test(pUSBTestArgs setting)
 {
     printf("\e[1m\e[21m Read Test Start! \e[0m\n");
-    
+
     MS_S32 s32NonCachedPoolID = 0;
     Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE, &s32NonCachedPoolID);
 
@@ -1808,19 +1815,20 @@ static void _USB_Test_Read_Test(pUSBTestArgs setting)
 
     char* filename = "/read.bin";
     char* fullpath;
-    
-    fullpath = MsOS_AllocateMemory(sizeof(setting->pMountPath) + sizeof(filename) + 1, s32NonCachedPoolID);
+
+    fullpath = MsOS_AllocateMemory(strlen(setting->pMountPath) + strlen(filename) + 1, s32NonCachedPoolID);
     if(!fullpath)
     {
         printf("[%s][%d] allocate memory failed\n", __FUNCTION__, __LINE__);
         MsOS_SetEvent(s32USBTestEventID, USB_TEST_READ_COMPLETE_EVENT);
         return;
     }
+    memset(fullpath, 0, strlen(setting->pMountPath) + strlen(filename) + 1);
 
-    strcpy(fullpath, setting->pMountPath);
-    strcat(fullpath, filename);
-    
-    if(strlen(fullpath) == 0) 
+    strncpy(fullpath, setting->pMountPath, strlen(setting->pMountPath));
+    strncat(fullpath, filename, strlen(filename));
+
+    if(strlen(fullpath) == 0)
     {
         printf("[%s][%d] string concat failed\n", __FUNCTION__, __LINE__);
         MsOS_SetEvent(s32USBTestEventID, USB_TEST_READ_COMPLETE_EVENT);
@@ -1836,7 +1844,7 @@ static void _USB_Test_Read_Test(pUSBTestArgs setting)
     }
 
     MS_U8* array;
-    
+
     array = MsOS_AllocateMemory(setting->u32BlockSize, s32NonCachedPoolID);
     if(!array)
     {
@@ -1844,11 +1852,11 @@ static void _USB_Test_Read_Test(pUSBTestArgs setting)
         MsOS_SetEvent(s32USBTestEventID, USB_TEST_READ_COMPLETE_EVENT);
         return;
     }
-    
+
     MS_S32 i;
     MS_U32 cumulativeCounter = 0;
 
-    for(i=0;i<setting->u32Iteration;i++) 
+    for(i=0;i<setting->u32Iteration;i++)
     {
         start = MsOS_GetSystemTime();
         MsFS_Fread(array, setting->u32BlockSize, 1, readFile);
@@ -1858,18 +1866,23 @@ static void _USB_Test_Read_Test(pUSBTestArgs setting)
 
     MsFS_Fclose(readFile);
 
-    printf(" read size: %lu KB\n", setting->u32BlockSize * setting->u32Iteration / 1024);
-    printf(" read processing time: %lu ms\n", cumulativeCounter);
+    printf(" read size: %"DTC_MS_U32_d" KB\n", setting->u32BlockSize * setting->u32Iteration / 1024);
+    printf(" read processing time: %"DTC_MS_U32_d" ms\n", cumulativeCounter);
     MS_U32 denominator = 1024 * cumulativeCounter / 1000 * 1024;
-    printf("\e[96m Read Speed: %lu.%lu MB/s\e[0m\n", setting->u32BlockSize * setting->u32Iteration / denominator, _USB_Test_Approximate(setting->u32BlockSize * setting->u32Iteration, denominator));
-    
+    if (denominator == 0)
+    {
+        printf("Error, denominator is zero, can't process _USB_Test_Approximate correctly\n");
+        return;
+    }
+    printf("\e[96m Read Speed: %"DTC_MS_U32_d".%"DTC_MS_U32_d" MB/s\e[0m\n", setting->u32BlockSize * setting->u32Iteration / denominator, _USB_Test_Approximate(setting->u32BlockSize * setting->u32Iteration, denominator));
+
     _USB_Test_Clear_Cache();
-    
+
     if (MsOS_FreeMemory(array, s32NonCachedPoolID) == FALSE || MsOS_FreeMemory(fullpath, s32NonCachedPoolID) == FALSE)
     {
         printf("[%s][%d] free memory failed\n", __FUNCTION__, __LINE__);
     }
-    
+
     MsOS_SetEvent(s32USBTestEventID, USB_TEST_READ_COMPLETE_EVENT);
 }
 

@@ -128,7 +128,6 @@ typedef struct
 #endif
 
 //#define BIT_LED    0x20
-// ¶¨Òå×Ö·û±àÂë£¬´Ë´¦ÎÞÐèËæ·½°¸²»Í¬¶ø¸Ä¶¯£¬Ö»Ðè¸Ä¶¯ÉÏÃæÅäÖÃµÄBIT_A¡¢BIT_BµÈ
 #define DATA_0        (DATA_NOT (BIT_A | BIT_B | BIT_C | BIT_D | BIT_E | BIT_F))
 #define DATA_1        (DATA_NOT (BIT_B | BIT_C))
 #define DATA_2        (DATA_NOT (BIT_A | BIT_B | BIT_D | BIT_E | BIT_G))

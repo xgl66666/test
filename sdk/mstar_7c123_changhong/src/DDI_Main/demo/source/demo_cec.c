@@ -146,6 +146,9 @@
 //-------------------------------------------------------------------------------------------------
 MS_BOOL _bCECInit = FALSE;
 
+//CEC Message bugger
+E_MSAPI_CEC_MESSAGE_BUFFER* g_stCECMessageBuffer = 0;
+
 //-------------------------------------------------------------------------------------------------
 // Local Variables
 //-------------------------------------------------------------------------------------------------
@@ -294,6 +297,13 @@ MS_BOOL _Demo_CEC_Response(MS_U8 u8header, MS_U8 u8opcode , MS_U8 *pu8Cmd, MS_U1
             }
             break;
 
+        case  E_MSAPI_CEC_OSDNT_GIVE_OSD_NAME:
+            //GIVE OSD Name
+            printf("GIVE OSD Name\n");
+            sprintf((char *)pu8Cmd,"MSTAR");
+
+            break;
+
         default:
             db_print("Not support yet! ");
             bRet = FALSE;
@@ -315,12 +325,27 @@ MS_BOOL _Demo_CEC_Response(MS_U8 u8header, MS_U8 u8opcode , MS_U8 *pu8Cmd, MS_U1
 //------------------------------------------------------------------------------
 MS_BOOL Demo_CEC_init(void)
 {
+    if (_bCECInit)
+    {
+        printf("[CEC] Already init CEC");
+        return FALSE;
+    }
+
     //Init XC first
     MS_U32 u32XCDevice = 0; //0 HDMI
     Demo_XC_Init(&u32XCDevice);
 
     // Set CB function for some CEC features
     msAPI_CECSetResponseCB(_Demo_CEC_Response);
+
+    // Creater CEC message buffer
+    g_stCECMessageBuffer = (E_MSAPI_CEC_MESSAGE_BUFFER*)malloc(sizeof(E_MSAPI_CEC_MESSAGE_BUFFER) * CEC_MESSAGE_BUFFER_SIZE);
+    if (g_stCECMessageBuffer == 0)
+    {
+        printf("[CEC] allocate CEC Message Buffer Fail\n");
+        return FALSE;
+    }
+    memset(g_stCECMessageBuffer, 0, sizeof(E_MSAPI_CEC_MESSAGE_BUFFER) * CEC_MESSAGE_BUFFER_SIZE);
 
     _bCECInit = TRUE;
 
@@ -339,7 +364,18 @@ MS_BOOL Demo_CEC_init(void)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_CEC_Exit(void)
 {
+    if (_bCECInit == FALSE)
+    {
+        return TRUE;
+    }
     _bCECInit = FALSE;
+
+    if (g_stCECMessageBuffer != 0)
+    {
+        free(g_stCECMessageBuffer);
+        g_stCECMessageBuffer = NULL;
+    }
+
     return msAPI_CEC_Exit();
 }
 
@@ -355,8 +391,17 @@ MS_BOOL Demo_CEC_Exit(void)
 //------------------------------------------------------------------------------
 MS_BOOL Demo_CEC_SetOnOff(MS_U32 *pu32CECOnOff)
 {
+    MS_BOOL bRet = FALSE;
     MS_BOOL bStart = *pu32CECOnOff;
-    return msAPI_CEC_SetOnOff(bStart);
+    bRet = msAPI_CEC_SetOnOff(bStart);
+#if (DEMO_XC_HDMIRX_TEST == 1)
+    if(bStart)
+    {
+        msAPI_XC_HDMIRx_SetHPD(E_MSAPI_XC_HDMIRX_PORT0, FALSE, ENABLE);
+        msAPI_XC_HDMIRx_SetHPD(E_MSAPI_XC_HDMIRX_PORT0, TRUE, ENABLE);
+    }
+#endif
+    return bRet;
 }
 
 //------------------------------------------------------------------------------
@@ -385,6 +430,159 @@ MS_BOOL Demo_CEC_SendMessage(MS_U32 *pu32Opcode , MS_U8 *pu8Operand , MS_U32 *pu
     stmsAPI_CEC_Message.u8Length = *pu32Length;
 
     return msAPI_CEC_SendMessage(stmsAPI_CEC_Message);
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to show CEC device list
+/// @param[in]
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Sample Command: \n
+///          \b CEC_Show_Device_List \n
+//------------------------------------------------------------------------------
+MS_BOOL Demo_CEC_Show_Device_List(void)
+{
+    MSAPI_XC_DEV_INFO _st_Device_List[16];
+    MS_U8 _u8_logical_address;
+    MS_U8 _u8_device_maximum = 16;
+    MS_U16 _u16_empty_address = 0xFFFF;
+
+    printf("Scanning......\n");
+    if(msAPI_CEC_Get_Device_List(&_st_Device_List[0]))
+    {
+        printf("=============================================\n");
+        for(_u8_logical_address=0;_u8_logical_address<_u8_device_maximum;_u8_logical_address++)
+        {
+            if(_st_Device_List[_u8_logical_address].physical_addr != _u16_empty_address)
+                printf("Logical Address:%02d,  Physical Address(%04X).\n",_u8_logical_address,_st_Device_List[_u8_logical_address].physical_addr);
+        }
+        printf("=============================================\n");
+    }
+    else
+    {
+        printf("Scan Failed !\n");
+        return FALSE;
+    }
+    printf("Scan Finished !\n");
+
+    return TRUE;
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to show CEC device list
+/// @param[in]
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Sample Command: \n
+///          \b CEC_ShowMessageBuffer \n
+//------------------------------------------------------------------------------
+MS_BOOL Demo_CEC_ShowMessageBuffer(void)
+{
+    if (_bCECInit == FALSE)
+    {
+        printf("[CEC] Please Init CEC first");
+        return FALSE;
+    }
+
+    MS_U8 u8LatestIdx = 0;
+    MS_U8 u8BufIdx = 0;
+    MS_U8 u8index = 0;
+    MS_U8 u8OperandIndex = 0;
+
+    //Get CEC message Buffer
+    if(msAPI_CEC_GetMessageBuffer(g_stCECMessageBuffer, &u8LatestIdx) == FALSE)
+    {
+        printf("[CEC] Get CEC message buffer fail \n");
+        return FALSE;
+    }
+
+    printf("[CEC] Sys Time = %"DTC_MS_U32_d" \n",MsOS_GetSystemTime());
+    for(u8index = 0; u8index < CEC_MESSAGE_BUFFER_SIZE; u8index++)
+    {
+        // Print message from the latest message index in decreasing order EX:  2 1 0 9 8 ...
+        u8BufIdx = (u8LatestIdx + CEC_MESSAGE_BUFFER_SIZE - u8index) % CEC_MESSAGE_BUFFER_SIZE; // Avoid negative number
+        printf("System time = %10"DTC_MS_U32_d" ",g_stCECMessageBuffer[u8BufIdx].u32RecvTime);
+        printf("Header = 0x%2X ",g_stCECMessageBuffer[u8BufIdx].u8Header);
+        printf("Opcode = 0x%2X ",g_stCECMessageBuffer[u8BufIdx].u8Opcode);
+
+        //Print Operand
+        if (g_stCECMessageBuffer[u8BufIdx].u8Length > 2)
+        {
+            printf("Operand = ");
+            // Start from 2 (Opcode and Header)
+            for (u8OperandIndex = 2; u8OperandIndex < g_stCECMessageBuffer[u8BufIdx].u8Length; u8OperandIndex++)
+            {
+                printf("0x%2X ",g_stCECMessageBuffer[u8BufIdx].u8Operand[u8OperandIndex]);
+            }
+        }
+        printf(" \n");
+    }
+
+    return TRUE;
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to send one touch play message
+/// @param[in]
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Sample Command: \n
+///          \b CEC_Show_Device_List \n
+//------------------------------------------------------------------------------
+MS_BOOL Demo_CEC_OneTouchPlay(void)
+{
+    return msAPI_CEC_OneTouchPlay();
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to send standby message
+/// @param[in] *pu32DeviceLA the target device logic address
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Sample Command: \n
+///          \b CEC_Show_Device_List \n
+//------------------------------------------------------------------------------
+MS_BOOL Demo_CEC_Standby(MS_U32 *pu32DeviceLA)
+{
+    return msAPI_CEC_Standby(*pu32DeviceLA);
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to send standby message
+/// @param[in] *pu32DeviceLA the target device logic address
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Sample Command: \n
+///          \b CEC_Show_Device_List \n
+//------------------------------------------------------------------------------
+MS_BOOL Demo_CEC_GiveDevicePowerStatus(MS_U32 *pu32DeviceLA)
+{
+    return msAPI_CEC_GiveDevicePowerStatus(*pu32DeviceLA);
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to send standby message
+/// @param[in] *pu32Enable request audio On of Off
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Sample Command: \n
+///          \b CEC_Show_Device_List \n
+//------------------------------------------------------------------------------
+MS_BOOL Demo_CEC_SystemAudioModeRequest(MS_U32 *pu32Enable)
+{
+    return msAPI_CEC_SystemAudioModeRequest(*pu32Enable);
 }
 
 #endif

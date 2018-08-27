@@ -249,6 +249,8 @@ MS_BOOL Demo_BDMA_Demo(void)
     // copy content from test buffer by BDMA
     // _NOTE_
     // MDrv_BDMA_MemCopy takes physical address only.
+    MsOS_Dcache_Flush((MS_U32)TestSrcBuf, TEST_BUF_SIZE);
+    MsOS_Dcache_Flush((MS_U32)TestDstBuf, TEST_BUF_SIZE);
     if (E_BDMA_OK != MDrv_BDMA_MemCopy(MsOS_VA2PA((MS_U32)TestSrcBuf),
                                        MsOS_VA2PA((MS_U32)TestDstBuf),
                                        TEST_BUF_SIZE))
@@ -358,7 +360,7 @@ MS_BOOL Demo_BDMA_CmpMem(MS_U32 *srcPoolAddressA,MS_U32 *srcPoolAddressB,MS_U32 
         return FALSE;
     }
 
-  
+
     _pcmpaddressA = (void*)*srcPoolAddressA;
     _pcmpaddressB = (void*)*srcPoolAddressB;
     _length = *plength;
@@ -369,12 +371,12 @@ MS_BOOL Demo_BDMA_CmpMem(MS_U32 *srcPoolAddressA,MS_U32 *srcPoolAddressB,MS_U32 
         return FALSE;
     }
 
-    printf("[%s][%d] %p %p %lx \n",__FUNCTION__,__LINE__,_pcmpaddressA,_pcmpaddressB,_length);
+    printf("[%s][%d] %p %p %"DTC_MS_U32_x" \n",__FUNCTION__,__LINE__,_pcmpaddressA,_pcmpaddressB,_length);
 
 
     _CompareTestBuf(_pcmpaddressA,_pcmpaddressB,_length);
 
-	
+
     return TRUE;
 }
 
@@ -403,7 +405,7 @@ MS_BOOL Demo_BDMA_DumpMem(MS_U32 *MIU_PoolAddress,MS_U32 *plength)
         return FALSE;
     }
 
-  
+
     _pdumpaddress = (void*)*MIU_PoolAddress;
     _length = *plength;
 
@@ -413,12 +415,12 @@ MS_BOOL Demo_BDMA_DumpMem(MS_U32 *MIU_PoolAddress,MS_U32 *plength)
         return FALSE;
     }
 
-    printf("[%s][%d] %p %lx \n",__FUNCTION__,__LINE__,_pdumpaddress,_length);
+    printf("[%s][%d] %p %"DTC_MS_U32_x" \n",__FUNCTION__,__LINE__,_pdumpaddress,_length);
 
 
     _DumpTestBuf(_pdumpaddress,_length);
 
-	
+
     return TRUE;
 }
 
@@ -455,7 +457,7 @@ MS_BOOL Demo_BDMA_FillMem(MS_U32 *PHYAddress,MS_U32 *plength,MS_U32 *ppattern,MS
     _PHYAddress = (MS_PHYADDR)*PHYAddress;
     _length = *plength;
     _eDev = *pDstDev;
-	
+
     if ((_length == 0) || (_eDev> E_BDMA_DSTDEV_NOT_SUPPORT))
     {
         printf("[%s][%d] \n",__FUNCTION__,__LINE__);
@@ -500,7 +502,7 @@ MS_BOOL Demo_BDMA_HKFillMem(MS_U32 *MIU_PoolAddress,MS_U32 *plength,MS_U32 *ppat
         return FALSE;
     }
 
-  
+
     _pattern = *ppattern & 0xFF;
     _increment = *pincrement & 0xFF;
     _pfilladdress = (void*)*MIU_PoolAddress;
@@ -512,12 +514,12 @@ MS_BOOL Demo_BDMA_HKFillMem(MS_U32 *MIU_PoolAddress,MS_U32 *plength,MS_U32 *ppat
         return FALSE;
     }
 
-    printf("[%s][%d] %p %lx %x %x \n",__FUNCTION__,__LINE__,_pfilladdress,_length,_pattern,_increment);
+    printf("[%s][%d] %p %"DTC_MS_U32_x" %x %x \n",__FUNCTION__,__LINE__,_pfilladdress,_length,_pattern,_increment);
 
 
     _WriteTestBuf(_pfilladdress,_pattern,_increment,_length);
 
-	
+
     return TRUE;
 }
 
@@ -538,7 +540,7 @@ MS_BOOL Demo_BDMA_HKFillMem(MS_U32 *MIU_PoolAddress,MS_U32 *plength,MS_U32 *ppat
 MS_BOOL Demo_BDMA_FreeMemTest(MS_U32 *MIU_PoolID, MS_U32 *MIU_PoolAddress)
 {
     MS_S32 s32MstarPoolID = INVALID_POOL_ID  ;
-    MS_BOOL bRet= FALSE;	
+    MS_BOOL bRet= FALSE;
     void*  freeaddress = NULL;
     if ((MIU_PoolID == NULL)||(MIU_PoolAddress == NULL))
     {
@@ -546,8 +548,8 @@ MS_BOOL Demo_BDMA_FreeMemTest(MS_U32 *MIU_PoolID, MS_U32 *MIU_PoolAddress)
         return FALSE;
     }
 
-    
-    printf("[%s][%d] %lx %lx  \n",__FUNCTION__,__LINE__,*MIU_PoolID,*MIU_PoolAddress);
+
+    printf("[%s][%d] %"DTC_MS_U32_x" %"DTC_MS_U32_x"  \n",__FUNCTION__,__LINE__,*MIU_PoolID,*MIU_PoolAddress);
     s32MstarPoolID = *MIU_PoolID;
     freeaddress = (void*)*MIU_PoolAddress;
 
@@ -592,14 +594,13 @@ MS_BOOL Demo_BDMA_AllocateMemTest(MS_U32 *MIU_Select,MS_U32 *MIU_SIZE)
         printf("[%s][%d] \n",__FUNCTION__,__LINE__);
         return FALSE;
     }
-	
-    printf("[%s][%d] %lx %lx  \n",__FUNCTION__,__LINE__,*MIU_Select,*MIU_SIZE);
+
+    printf("[%s][%d] %"DTC_MS_U32_x" %"DTC_MS_U32_x"  \n",__FUNCTION__,__LINE__,*MIU_Select,*MIU_SIZE);
     u32Size = *MIU_SIZE;
     u8MIU =  *MIU_Select & 0xFF;
+
 #ifdef MIU1_NON_CACHED_POOL_BUF_ADR
-
     /*Support MIU1*/
-
 #else
      if (u8MIU >= 1)
      {
@@ -609,33 +610,33 @@ MS_BOOL Demo_BDMA_AllocateMemTest(MS_U32 *MIU_Select,MS_U32 *MIU_SIZE)
 #endif
 
     printf("[%s][%d] %d \n",__FUNCTION__,__LINE__,u8MIU );
-    switch(u8MIU )
+
+    if(u8MIU == 0)
     {
-         case 0:
-                     bRet=Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&s32MstarPoolID);
-		       u32AllocateAddress = MsOS_AllocateMemory(u32Size, s32MstarPoolID);
-		 	break;
-#ifdef MIU1_NON_CACHED_POOL_BUF_ADR
-         case 1:
-		 	bRet=Demo_Util_GetSystemPoolID(E_DDI_POOL_MIU1_SYS_NONCACHE,&s32MstarPoolID);
-			u32AllocateAddress = MsOS_AllocateMemory(u32Size, s32MstarPoolID);
-		 	break;
-#endif
-	  default:
-	              printf("[%s][%d] \n",__FUNCTION__,__LINE__);
-                     return FALSE;
+        bRet=Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&s32MstarPoolID);
+        u32AllocateAddress = MsOS_AllocateMemory(u32Size, s32MstarPoolID);
     }
-     printf("[%s][%d] %d %ld \n",__FUNCTION__,__LINE__,bRet,s32MstarPoolID );
-  
+
+#ifdef MIU1_NON_CACHED_POOL_BUF_ADR
+    if(u8MIU == 1)
+    {
+        bRet=Demo_Util_GetSystemPoolID(E_DDI_POOL_MIU1_SYS_NONCACHE,&s32MstarPoolID);
+        u32AllocateAddress = MsOS_AllocateMemory(u32Size, s32MstarPoolID);
+    }
+#endif
+
+    printf("[%s][%d] %d %"DTC_MS_S32_d" \n",__FUNCTION__,__LINE__,bRet,s32MstarPoolID );
+
     if (u32AllocateAddress == NULL)
     {
         printf("[%s][%d] \n",__FUNCTION__,__LINE__);
         return FALSE;
     }
-	
+
     _PHYAddress = (MS_PHYADDR)MsOS_MPool_VA2PA((MS_U32)u32AllocateAddress);
- 	 
-    printf("[%s][%d] s32MstarPoolID %ld Allocate Address %p PA %lx\n",__FUNCTION__,__LINE__,s32MstarPoolID,u32AllocateAddress,_PHYAddress);
+
+    printf("[%s][%d] s32MstarPoolID %"DTC_MS_S32_x" Allocate Address %p PA %"DTC_MS_U32_x"\n",__FUNCTION__,__LINE__,s32MstarPoolID,u32AllocateAddress,_PHYAddress);
+
     return TRUE;
 }
 //------------------------------------------------------------------------------
@@ -677,7 +678,7 @@ MS_BOOL Demo_BDMA_Copy(MS_U32 *u32SrcAddr,MS_U32 *u32DstAddr,MS_U32 *u32Size, MS
         return FALSE;
     }
 
-  
+
 
     return TRUE;
 }

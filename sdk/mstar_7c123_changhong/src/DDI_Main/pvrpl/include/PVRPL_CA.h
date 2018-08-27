@@ -109,11 +109,6 @@ extern "C"
 {
 #endif
 
-
-#define DYNAMIC_KEY_MAX 20
-#define AESDMA_BUF_LENGTH 16
-
-
 /// PVR CPL status indicator
 typedef enum
 {
@@ -149,15 +144,18 @@ typedef struct
     MS_BOOL                 bEnable;
 } PVRPL_ENCRYPTDECRYPT_INFO;
 
+// CA DBG enum
 typedef enum
 {
     PVRPLCA_DBG_NONE,
+    PVRPLCA_DBG_MUST,
     PVRPLCA_DBG_ERR,
     PVRPLCA_DBG_WARN,
     PVRPLCA_DBG_INFO,
     PVRPLCA_DBG_FUNC,
     PVRPLCA_DBG_TRACE,
 } PVRPLCA_DBGMSG_LEVEL;
+//--------------------------------------------------------
 
 union PVRPL_AESDMA_KeySet
 {
@@ -171,6 +169,8 @@ typedef struct
     union PVRPL_AESDMA_KeySet unKeySet;
 }PVRPL_AESDMA_INFO;
 
+#define DYNAMIC_KEY_MAX 20
+#define AESDAM_BUF_LENGTH 16
 
 PVRPL_CA_STATUS PVRPL_CAInit(PVRPL_ENCRYPTDECRYPT_INFO *sCurEncryptDecryptInfo);
 PVRPL_CA_STATUS PVRPL_CAEncryptDecrypt(PVRPL_ENCRYPTDECRYPT_INFO *sCurEncryptDecryptInfo, MS_U32 u32Address, MS_U32 u32Length,
@@ -182,5 +182,3 @@ MS_U32          PVRPL_GetCABufLength(void);
 #endif
 
 #endif // #ifndef __API_PVRPL_CA_H__
-
-

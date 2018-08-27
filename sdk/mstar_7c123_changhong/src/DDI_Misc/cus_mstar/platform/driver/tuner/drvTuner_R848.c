@@ -28,11 +28,11 @@
 #else
 #define PRINTE(p)
 #endif
-#define  ADC_MULTI_READ  3
+#define  ADC_MULTI_READ  1
 UINT32 R848_ADC_READ_DELAY = 2;
 UINT8  R848_ADC_READ_COUNT = 1;
-UINT8  R848_VGA_DELAY = 5;
-UINT8  R848_FILTER_DELAY = 3;      
+UINT8  R848_VGA_DELAY = 2;
+UINT8  R848_FILTER_DELAY = 2;      
 
 //PLL LO=161MHz (R20:0x70 ; R24:0x70 ; R28:0x10 ; R29:0x00 ; R30:0x80)
 
@@ -41,7 +41,7 @@ UINT8 R848_iniArray_hybrid[R848_REG_NUM] = {
     //  0x08  0x09  0x0A  0x0B  0x0C  0x0D  0x0E  0x0F  0x10  0x11
     0x7B, 0x0B, 0x70, 0x0A, 0x6E, 0x20, 0x70, 0x87, 0x96, 0x00,    //adr:0x19 from 0x83(1.05+-0.25) modify to 0x87 (1.4+-0.6)
     //  0x12  0x13  0x14  0x15  0x16  0x17  0x18  0x19  0x1A  0x1B  
-    0x10, 0x00, 0x80, 0xA5, 0xB7, 0x00, 0x40, 0xCB, 0x95, 0xF0,
+    0x10, 0x00, 0x80, 0xA5, 0xB7, 0x00, 0x40, 0xCB, 0x95, 0x70,
     //  0x1C  0x1D  0x1E  0x1F  0x20  0x21  0x22  0x23  0x24  0x25
     0x24, 0x00, 0xFD, 0x8B, 0x17, 0x13, 0x01, 0x07, 0x01, 0x3F};
     //  0x26  0x27  0x28  0x29  0x2A  0x2B  0x2C  0x2D  0x2E  0x2F
@@ -51,9 +51,9 @@ UINT8 R848_iniArray_hybrid[R848_REG_NUM] = {
 UINT8 R848_iniArray_dvbs[R848_REG_NUM] = {
     0x80, 0x05, 0x40, 0x40, 0x1F, 0x1F, 0x07, 0xFF, 0x00, 0x40,
     //  0x08  0x09  0x0A  0x0B  0x0C  0x0D  0x0E  0x0F  0x10  0x11
-    0xF0, 0x0F, 0x4D, 0x0A, 0x6F, 0x20, 0x28, 0x83, 0x96, 0x00,  //0x16[1] pulse_flag HPF : Bypass ;  0x19[1:0] Deglich SW Cur : highest
+    0xF0, 0x0F, 0x4D, 0x0A, 0x6F, 0x20, 0x28, 0x87, 0x96, 0x00,  //0x16[1] pulse_flag HPF : Bypass ;  0x19[1:0] Deglich SW Cur : highest
     //  0x12  0x13  0x14  0x15  0x16  0x17  0x18  0x19  0x1A  0x1B   
-    0x1C, 0x99, 0xC1, 0x83, 0xB7, 0x00, 0x4F, 0xCB, 0x95, 0xFD,
+    0x1C, 0x99, 0xC1, 0x83, 0xB7, 0x00, 0x4F, 0xCB, 0x95, 0x7D,
     //  0x1C  0x1D  0x1E  0x1F  0x20  0x21  0x22  0x23  0x24  0x25
     0xA4, 0x01, 0x24, 0x0B, 0x4F, 0x05, 0x01, 0x47, 0x3F, 0x3F};
     //  0x26  0x27  0x28  0x29  0x2A  0x2B  0x2C  0x2D  0x2E  0x2F
@@ -86,6 +86,7 @@ I2C_LEN_TYPE Test_Len;
 
 UINT8  R848_IMR_point_num;
 UINT8  R848_Initial_done_flag[R848_MAX_TUNER_NUM] = {FALSE, FALSE, FALSE, FALSE};
+UINT8  R848_Initial_xtal_check_flag[R848_MAX_TUNER_NUM] = {FALSE, FALSE, FALSE, FALSE};;
 UINT8  R848_IMR_done_flag[R848_MAX_TUNER_NUM] = {FALSE, FALSE, FALSE, FALSE};
 UINT8  R848_Bandwidth[R848_MAX_TUNER_NUM] = {0x00, 0x00, 0x00, 0x00};
 UINT8  R848_SATELLITE_FLAG[R848_MAX_TUNER_NUM] = {0, 0, 0, 0};
@@ -95,6 +96,30 @@ static UINT8 R848_Fil_Cal_code[R848_MAX_TUNER_NUM][R848_STD_SIZE];
 static UINT8 R848_IMR_Cal_Type = R848_IMR_CAL;
 static R848_Standard_Type R848_pre_standard[R848_MAX_TUNER_NUM] = {R848_STD_SIZE, R848_STD_SIZE, R848_STD_SIZE, R848_STD_SIZE};
 static UINT32 R848_pre_satellite_bw;
+static UINT8 R848_SBY[R848_MAX_TUNER_NUM][R848_REG_NUM];
+
+//0x00(8M), 0x40(7M), 0x60(6M)
+static UINT8 R848_Fil_Cal_BW_def[R848_STD_SIZE]={
+       0x60, 0x60, 0x00, 0x00, 0x40, 0x40, 0x00, 0x40, 0x00, //ATV
+       0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,       //ATV (CIF 5M)
+       0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x00,       //DVB-T, DVB-T2
+       0x00, 0x40, 0x40, 0x40, 0x40, 0x00, 0x00, 0x40,       //DVBC_8M, DVBC_6M, J83B, ISDBT_4063, ISDBT_4570, DTMB_4570, DTMB_6000, DTMB_6M_BW_IF_5M
+       0x40, 0x40, 0x40,                                     //DTMB_6M_4500, ATSC, Satellite(don't care), 
+       0x40, 0x00, 0x00, 0x40, 0x00, 0x00, 0x60,             //DVB-T, DVB-T2 (IF 5M)
+       0x00, 0x40, 0x40, 0x40, 0x00, 0x40, 0x40        //DVB-C, J83B, ISDBT, DTMB, ATSC (IF 5M), FM
+       };
+static UINT8 R848_Fil_Cal_code_def[R848_STD_SIZE]={
+       9, 2, 4, 5, 2, 2, 5, 0, 5,     //ATV
+       2, 2, 3, 5, 3, 3, 3, 3,        //ATV (CIF 5M)
+       6, 2, 0, 6, 2, 0, 2, 2,        //DVB-T, DVB-T2
+       2, 1, 2, 7, 6, 6, 1, 1,        //DVB-C, J83B, ISDBT, DTMB
+       7, 1, 1,                       //DTMB_6M_4500, ATSC, Satellite(don't care), 
+       4, 6, 5, 4, 6, 5, 11,          //DVB-T, DVB-T2 (IF 5M)
+       2, 0, 2, 3, 4, 1, 6         //DVB-C, J83B, ISDBT, DTMB, ATSC (IF 5M), FM
+       };
+
+static UINT8 R848_IMR_Cal_Result[R848_MAX_TUNER_NUM] = {0, 0, 0, 0};  //1: fail, 0: ok
+static UINT8 R848_TF_Check_Result[R848_MAX_TUNER_NUM] = {0, 0, 0, 0}; //1: fail, 0: ok
 
 //0: L270n/68n(ISDB-T, DVB-T/T2)
 //1: Bead/68n(DTMB)
@@ -225,6 +250,7 @@ R848_ErrCode R848_PLL(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_Freq, R848_Standa
 R848_ErrCode R848_MUX(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_KHz, UINT32 RF_KHz, R848_Standard_Type R848_Standard);
 R848_ErrCode R848_IQ(R848_TUNER_NUM R848_Tuner_Num, R848_SectType* IQ_Pont);
 R848_ErrCode R848_IQ_Tree(R848_TUNER_NUM R848_Tuner_Num, UINT8 FixPot, UINT8 FlucPot, UINT8 PotReg, R848_SectType* CompareTree);
+R848_ErrCode R848_IQ_Tree5(R848_TUNER_NUM R848_Tuner_Num, UINT8 FixPot, UINT8 FlucPot, UINT8 PotReg, R848_SectType* CompareTree);
 R848_ErrCode R848_CompreCor(R848_TUNER_NUM R848_Tuner_Num, R848_SectType* CorArry);
 R848_ErrCode R848_CompreStep(R848_TUNER_NUM R848_Tuner_Num, R848_SectType* StepArry, UINT8 Pace);
 R848_ErrCode R848_Muti_Read(R848_TUNER_NUM R848_Tuner_Num, UINT8* IMR_Result_Data);
@@ -236,15 +262,50 @@ R848_ErrCode R848_SetTF(R848_TUNER_NUM R848_Tuner_Num, UINT32 u4FreqKHz, UINT8 u
 R848_ErrCode R848_SetStandard(R848_TUNER_NUM R848_Tuner_Num, R848_Standard_Type RT_Standard);
 R848_ErrCode R848_SetFrequency(R848_TUNER_NUM R848_Tuner_Num, R848_Set_Info R848_INFO);
 R848_ErrCode R848_Satellite_Setting(R848_TUNER_NUM R848_Tuner_Num, R848_Set_Info R848_INFO);
+R848_ErrCode R848_SetXtalIntCap(R848_TUNER_NUM R848_Tuner_Num, R848_Xtal_Cap_TYPE R848_XtalCapType);
 
 Sys_Info_Type R848_Sys_Sel(R848_Standard_Type R848_Standard);
 Freq_Info_Type R848_Freq_Sel(UINT32 LO_freq, UINT32 RF_freq, R848_Standard_Type R848_Standard);
 SysFreq_Info_Type R848_SysFreq_Sel(R848_Standard_Type R848_Standard,UINT32 RF_freq);
 
 UINT8 R848_Filt_Cal_ADC(R848_TUNER_NUM R848_Tuner_Num, UINT32 IF_Freq, UINT8 R848_BW, UINT8 FilCal_Gap);
+ __attribute__((unused)) static UINT16 R848_Lna_Acc_Gain[4][32] = 
+{
+	{0,	14,	26,	27,	47,	67,	86,	102,	120,	140,	160,	175,	193,	213,	228,	239,	248,	258,	275,	293,	312,	331,	351,	351,	351},
+	{0,	13,	25,	24,	50,	74,	95,	115,	132,	150,	168,	179,	192,	214,	232,	245,	256,	269,	282,	295,	308,	322,	351,	351,	351},
+	{0,	1,	13,	13,	41,	64,	85,	103,	118,	133,	147,	157,	167,	192,	213,	229,	241,	259,	268,	277,	286,	293,	324,	324,	324},
+	{0,	0,	13,	13,	32,	49,	64,	 79,	 92,	106,	118,	130,	144,	169,	190,	206,	218,	236,	248,	260,	272,	282,	309,	309,	309},
+
+};
+
+ __attribute__((unused)) static signed char Lna_Acc_Gain_offset[86]={11,	7,	6,	-4,	-4,	-9,	-14,	-11,	-7,	2,	//45~145
+									18,	19,	20,	21,	22,	23,	24,	25,	26,	27,	//145~245
+									4,	6,	-2,	4,	0,	-14,	-8,	1,	-2,	-6,	//245~345
+									-7,	-17,	-5,	-3,	-6,	8,	4,	17,	15,	15,	//345~445
+									25,	18,	25,	23,	30,	-11,	-3,	5,	7,	4,	//445~545
+									7,	1,	-2,	0,	-13,	-1,	-6,	-3,	-9,	-12,	//545~645
+									-21,	-23,	-23,	-20,	-19,	-9,	5,	5,	0,	-9,	//645~745
+									-8,	-7,	2,	8,	10,	10,	6,	2,	-4,	-1,	//745~845
+									-3	-2	-4	-2	-3	-6};	//845~905				
+
+ __attribute__((unused)) static UINT16 R848_Rf_Acc_Gain[16] = 
+{
+ 0, 12, 25, 38, 49, 62, 74, 85, 97, 110,			//0~9
+121, 137, 148, 161, 170, 177						//10~15
+};
+
+ __attribute__((unused)) static UINT16 R848_Mixer_Acc_Gain[16] = 
+{
+ 0, 13, 26, 38, 51, 63, 76, 88, 100, 111,			//0~9
+ 121, 122, 122, 122, 122, 122						//10~12
+};
 
 
-//==============================IIC Operation===================================
+ __attribute__((unused)) static UINT16 Satellite_Lna_Acc_Gain[19] = 
+{
+ 0, 26, 42, 74, 103, 129, 158, 181, 188, 200,  //0~9
+ 220, 248, 280, 312, 341, 352, 366, 389, 409,	//10~19
+};
 
 int R848_Convert(int InvertNum)
 {
@@ -264,7 +325,7 @@ int R848_Convert(int InvertNum)
     
     return ReturnNum;
 }
-
+/*
 static MS_BOOL IIC_READ(MS_U8 u8SlaveID, MS_U8* paddr, MS_U8 u8AddrNum, MS_U8* pu8data, MS_U16 u16size)
 {
     if (FALSE == MDrv_IIC_ReadBytes(FRONTEND_TUNER_PORT, u8SlaveID, u8AddrNum, paddr, u16size, pu8data))
@@ -274,7 +335,7 @@ static MS_BOOL IIC_READ(MS_U8 u8SlaveID, MS_U8* paddr, MS_U8 u8AddrNum, MS_U8* p
     }
     return TRUE;
 }
-
+*/
 static MS_BOOL I2C_Read_Len(MS_U8 u8TunerIndex,I2C_LEN_TYPE *I2C_Info)
 {
     MS_U8 DataCunt = 0;
@@ -283,8 +344,12 @@ static MS_BOOL I2C_Read_Len(MS_U8 u8TunerIndex,I2C_LEN_TYPE *I2C_Info)
     MS_U8 *paddr = &regadd;
     MS_U16 u16size  = I2C_Info->Len;
     MS_U8 pu8data[50];
+	MS_IIC_PORT ePort;
 
-    if (FALSE == IIC_READ(u8SlaveID, paddr, 1, pu8data, u16size))
+	ePort = getI2CPort(u8TunerIndex);
+	regadd = I2C_Info->RegAddr;
+
+    if (FALSE == MDrv_IIC_ReadBytes(ePort, (MS_U16)u8SlaveID, 1, paddr, u16size, pu8data))
     {
         PRINTE(("IIC Read Len error\n"));
         return FALSE;
@@ -303,8 +368,11 @@ static MS_BOOL I2C_Write(MS_U8 u8TunerIndex,I2C_TYPE *I2C_Info)
     MS_U16 u16size  = 1;
     MS_U8 *paddr = &(I2C_Info->RegAddr);
     MS_U8 *pu8data = &(I2C_Info->Data);
+    MS_IIC_PORT ePort;
 
-    if (FALSE == MDrv_IIC_WriteBytes(FRONTEND_TUNER_PORT, u8SlaveID, 1, paddr, u16size, pu8data))
+	ePort = getI2CPort(u8TunerIndex);
+
+    if (FALSE == MDrv_IIC_WriteBytes(ePort, u8SlaveID, 1, paddr, u16size, pu8data))
     {
         PRINTE(("devCOFDM_PassThroughIIC_WRITEBytes Error \n"));
         return FALSE;
@@ -321,8 +389,11 @@ static MS_BOOL I2C_Write_Len(MS_U8 u8TunerIndex,I2C_LEN_TYPE *I2C_Info)
     MS_U16 u16size  = I2C_Info->Len;
     MS_U8 *paddr = &(I2C_Info->RegAddr);
     MS_U8 *pu8data = I2C_Info->Data;
+	MS_IIC_PORT ePort;
 
-    if (FALSE == MDrv_IIC_WriteBytes(FRONTEND_TUNER_PORT, u8SlaveID, 1, paddr, u16size, pu8data))
+	ePort = getI2CPort(u8TunerIndex);
+
+    if (FALSE == MDrv_IIC_WriteBytes(ePort, u8SlaveID, 1, paddr, u16size, pu8data))
     {
         PRINTE(("devCOFDM_PassThroughIIC_WRITEBytes Error \n"));
         return FALSE;
@@ -570,7 +641,7 @@ Sys_Info_Type R848_Sys_Sel(R848_Standard_Type R848_Standard)
              R848_Sys_Info.BW=0x00;                           //BW=8M    R848:R19[6:5]
              R848_Sys_Info.FILT_CAL_IF=8130;           //CAL IF
              R848_Sys_Info.HPF_COR=0x09;	             //R19[3:0]=9
-             R848_Sys_Info.FILT_EXT_ENA=0x10;      //R19[4]=1, ext enable
+		R848_Sys_Info.FILT_EXT_ENA=0x00;      //R19[4]=0, ext disable
              R848_Sys_Info.FILT_EXT_WIDEST=0x00;//R38[2]=0, ext normal
              R848_Sys_Info.FILT_EXT_POINT=0x03;   //R38[1:0]=11, buf 8
              break;
@@ -640,7 +711,7 @@ Sys_Info_Type R848_Sys_Sel(R848_Standard_Type R848_Standard)
             R848_Sys_Info.BW=0x40;                          //BW=7M     R848:R19[6:5]
             R848_Sys_Info.FILT_CAL_IF=7000;          //CAL IF  //7200
             R848_Sys_Info.HPF_COR=0x08;	             //R19[3:0]=8
-            R848_Sys_Info.FILT_EXT_ENA=0x10;      //R19[4]=1, ext enable
+            R848_Sys_Info.FILT_EXT_ENA=0x00;      //R19[4]=1, ext disable
             R848_Sys_Info.FILT_EXT_WIDEST=0x00;//R38[2]=0, ext normal
             R848_Sys_Info.FILT_EXT_POINT=0x03;   //R38[1:0]=11, buf 8
             break;
@@ -649,7 +720,7 @@ Sys_Info_Type R848_Sys_Sel(R848_Standard_Type R848_Standard)
            R848_Sys_Info.BW=0x40;                          //BW=7M
            R848_Sys_Info.FILT_CAL_IF=7250;          //CAL IF
            R848_Sys_Info.HPF_COR=0x05;	             //R19[3:0]=5 (2.0M)
-           R848_Sys_Info.FILT_EXT_ENA=0x10;      //R19[4]=1, ext enable
+           R848_Sys_Info.FILT_EXT_ENA=0x00;      //R19[4]=1, ext disable
            R848_Sys_Info.FILT_EXT_WIDEST=0x00;//R38[2]=0, ext normal
            R848_Sys_Info.FILT_EXT_POINT=0x03;   //R38[1:0]=11, buf 8, hpf+3
            break;
@@ -708,9 +779,9 @@ Sys_Info_Type R848_Sys_Sel(R848_Standard_Type R848_Standard)
         case R848_DVB_T2_6M_IF_5M: 
           R848_Sys_Info.IF_KHz=5000;                    //IF
           R848_Sys_Info.BW=0x40;                          //BW=7M     R848:R19[6:5]
-          R848_Sys_Info.FILT_CAL_IF=7800;          //CAL IF
+		R848_Sys_Info.FILT_CAL_IF=7700;          //CAL IF
           R848_Sys_Info.HPF_COR=0x04;	             //R19[3:0]=4
-          R848_Sys_Info.FILT_EXT_ENA=0x10;      //R19[4]=1, ext enable
+		R848_Sys_Info.FILT_EXT_ENA=0x00;      //R19[4]=0, disable
           R848_Sys_Info.FILT_EXT_WIDEST=0x00;//R38[2]=0, ext normal
           R848_Sys_Info.FILT_EXT_POINT=0x03;   //R38[1:0]=11, buf 8
           break;
@@ -719,9 +790,9 @@ Sys_Info_Type R848_Sys_Sel(R848_Standard_Type R848_Standard)
         case R848_DVB_T2_7M_IF_5M:  
           R848_Sys_Info.IF_KHz=5000;                     //IF
           R848_Sys_Info.BW=0x00;                           //BW=8M    R848:R19[6:5]
-          R848_Sys_Info.FILT_CAL_IF=8300;           //CAL IF
-          R848_Sys_Info.HPF_COR=0x07;	             //R19[3:0]=7
-          R848_Sys_Info.FILT_EXT_ENA=0x10;      //R19[4]=1, ext enable
+		R848_Sys_Info.FILT_CAL_IF=8000;           //CAL IF
+		R848_Sys_Info.HPF_COR=0x06;	             //R19[3:0]=6
+		R848_Sys_Info.FILT_EXT_ENA=0x00;      //R19[4]=0, disable
           R848_Sys_Info.FILT_EXT_WIDEST=0x00;//R38[2]=0, ext normal
           R848_Sys_Info.FILT_EXT_POINT=0x03;   //R38[1:0]=11, buf 8
           break;
@@ -730,8 +801,8 @@ Sys_Info_Type R848_Sys_Sel(R848_Standard_Type R848_Standard)
         case R848_DVB_T2_8M_IF_5M: 
            R848_Sys_Info.IF_KHz=5000;                     //IF
            R848_Sys_Info.BW=0x00;                           //BW=8M    R848:R19[6:5]
-           R848_Sys_Info.FILT_CAL_IF=8600;           //CAL IF
-           R848_Sys_Info.HPF_COR=0x09;	             //R19[3:0]=9
+		R848_Sys_Info.FILT_CAL_IF=8500;           //CAL IF
+		R848_Sys_Info.HPF_COR=0x08;	             //R19[3:0]=8
            R848_Sys_Info.FILT_EXT_ENA=0x00;      //R19[4]=1, ext disable
            R848_Sys_Info.FILT_EXT_WIDEST=0x00;//R38[2]=0, ext normal
            R848_Sys_Info.FILT_EXT_POINT=0x03;   //R38[1:0]=11, buf 8
@@ -783,7 +854,7 @@ Sys_Info_Type R848_Sys_Sel(R848_Standard_Type R848_Standard)
            R848_Sys_Info.BW=0x40;                          //BW=7M      R848:R19[6:5]
            R848_Sys_Info.FILT_CAL_IF=7940;          //CAL IF  
            R848_Sys_Info.HPF_COR=0x04;	             //R19[3:0]=4
-           R848_Sys_Info.FILT_EXT_ENA=0x10;      //R19[4]=1, ext enable
+           R848_Sys_Info.FILT_EXT_ENA=0x00;      //R19[4]=0, ext disable
            R848_Sys_Info.FILT_EXT_WIDEST=0x00;//R38[2]=0, ext normal
            R848_Sys_Info.FILT_EXT_POINT=0x03;   //R38[1:0]=11, buf 8
            break;
@@ -957,36 +1028,36 @@ Freq_Info_Type R848_Freq_Sel(UINT32 LO_freq, UINT32 RF_freq, R848_Standard_Type 
     memset(&R848_Freq_Info,0,sizeof(Freq_Info_Type));
 
     if((RF_freq>=0) && (RF_freq<R848_LNA_LOW_LOWEST[R848_SetTfType]))  //<164
-    	 R848_Freq_Info.LNA_BAND = 0x60;   // ultra low			// R848:R13[6:5]
+         R848_Freq_Info.LNA_BAND = 0x60;   // ultra low			// R848:R13[6:5]
     else if((RF_freq>=R848_LNA_LOW_LOWEST[R848_SetTfType]) && (RF_freq<R848_LNA_MID_LOW[R848_SetTfType]))  //164~388
-    	 R848_Freq_Info.LNA_BAND = 0x40;   //low					// R848:R13[6:5]
+         R848_Freq_Info.LNA_BAND = 0x40;   //low					// R848:R13[6:5]
     else if((RF_freq>=R848_LNA_MID_LOW[R848_SetTfType]) && (RF_freq<R848_LNA_HIGH_MID[R848_SetTfType]))  //388~612
-    	 R848_Freq_Info.LNA_BAND = 0x20;   // mid					// R848:R13[6:5]
+         R848_Freq_Info.LNA_BAND = 0x20;   // mid					// R848:R13[6:5]
     else     // >612
-    	 R848_Freq_Info.LNA_BAND = 0x00;   // high				// R848:R13[6:5]
+         R848_Freq_Info.LNA_BAND = 0x00;   // high				// R848:R13[6:5]
     
     //----- LO dependent parameter --------
     //IMR point 
     if((LO_freq>=0) && (LO_freq<133000))  
-            R848_Freq_Info.IMR_MEM = 0;   
+         R848_Freq_Info.IMR_MEM = 0;   
     else if((LO_freq>=133000) && (LO_freq<221000))  
-            R848_Freq_Info.IMR_MEM = 1;   
+         R848_Freq_Info.IMR_MEM = 1;   
     else if((LO_freq>=221000) && (LO_freq<450000))  
-    	 R848_Freq_Info.IMR_MEM = 2;  
+         R848_Freq_Info.IMR_MEM = 2;  
     else if((LO_freq>=450000) && (LO_freq<775000))  
-    	 R848_Freq_Info.IMR_MEM = 3; 
+         R848_Freq_Info.IMR_MEM = 3; 
     else 
-    	 R848_Freq_Info.IMR_MEM = 4; 
+         R848_Freq_Info.IMR_MEM = 4; 
     
     //RF polyfilter band   R33[7:6]
     if((LO_freq>=0) && (LO_freq<133000))  
-            R848_Freq_Info.RF_POLY = 0x80;   //low	
+        R848_Freq_Info.RF_POLY = 0x80;   //low	
     else if((LO_freq>=133000) && (LO_freq<221000))  
-            R848_Freq_Info.RF_POLY = 0x40;   // mid
+        R848_Freq_Info.RF_POLY = 0x40;   // mid
     else if((LO_freq>=221000) && (LO_freq<775000))  
-    	 R848_Freq_Info.RF_POLY = 0x00;   // highest
+        R848_Freq_Info.RF_POLY = 0x00;   // highest
     else
-    	 R848_Freq_Info.RF_POLY = 0xC0;   // ultra high
+        R848_Freq_Info.RF_POLY = 0xC0;   // ultra high
     
     
     //LPF Cap, Notch
@@ -1172,21 +1243,66 @@ SysFreq_Info_Type R848_SysFreq_Sel(R848_Standard_Type R848_Standard,UINT32 RF_fr
 #endif			
 		break;
 
-        case R848_DVB_T_6M:
-        case R848_DVB_T_7M:
-        case R848_DVB_T_8M:
-        case R848_DVB_T_6M_IF_5M:
-        case R848_DVB_T_7M_IF_5M:
-        case R848_DVB_T_8M_IF_5M:
-        case R848_DVB_T2_6M:
-        case R848_DVB_T2_7M: 
-        case R848_DVB_T2_8M:
-        case R848_DVB_T2_1_7M:
-        case R848_DVB_T2_10M:
-        case R848_DVB_T2_6M_IF_5M:
-        case R848_DVB_T2_7M_IF_5M:
-        case R848_DVB_T2_8M_IF_5M:
-        case R848_DVB_T2_1_7M_IF_5M:
+	case R848_DVB_T_6M:
+	case R848_DVB_T_8M:
+	case R848_DVB_T_6M_IF_5M:
+	case R848_DVB_T_8M_IF_5M:
+		
+		if((RF_freq>=686000) && (RF_freq<=694000))  //690
+		{
+			R848_SysFreq_Info.LNA_VTH_L=0xA4;	   // LNA VTH/L=1.34/0.74     (R13=0xA4)
+			R848_SysFreq_Info.RF_TOP=0xA0;         // RF TOP=2   
+			R848_SysFreq_Info.NRB_BW=0x00;         // Nrb BW=widest              
+		}
+		else
+		{
+			R848_SysFreq_Info.LNA_VTH_L=0xA5;	   // LNA VTH/L=1.34/0.84
+			R848_SysFreq_Info.RF_TOP=0x40;         // RF TOP=5
+			R848_SysFreq_Info.NRB_BW=0xC0;         // Nrb BW=lowest
+		}
+			//R848_SysFreq_Info.LNA_VTH_L=0xA5;	   // LNA VTH/L=1.34/0.84     (R31=0xA5)
+			R848_SysFreq_Info.MIXER_TOP=0x05;	   // MIXER TOP=10            (R36[3:0]=4'b0101)
+			R848_SysFreq_Info.MIXER_VTH_L=0x95;    // MIXER VTH/L=1.24/0.84   (R32=0x95)
+			R848_SysFreq_Info.NRB_TOP=0xC0;        // Nrb TOP=3               (R36[7:4]=4'b1100)
+		    R848_SysFreq_Info.LNA_TOP=0x03;		   // LNA TOP=4               (R35[2:0]=3'b011)
+			//R848_SysFreq_Info.RF_TOP=0x40;         // RF TOP=5                (R34[7:5]=3'b010)                 
+			//R848_SysFreq_Info.NRB_BW=0xC0;         // Nrb BW=lowest           (R35[7:6]=2'b11)	
+		break;
+
+
+	case R848_DVB_T2_6M:
+	case R848_DVB_T2_8M:
+	case R848_DVB_T2_1_7M:
+	case R848_DVB_T2_10M:
+    case R848_DVB_T2_6M_IF_5M:
+	case R848_DVB_T2_8M_IF_5M:
+	case R848_DVB_T2_1_7M_IF_5M:
+
+		if((RF_freq>=686000) && (RF_freq<=694000))  //690
+		{
+			R848_SysFreq_Info.LNA_VTH_L=0xA2;	   // LNA VTH/L=1.34/0.54  
+			R848_SysFreq_Info.RF_TOP=0xA0;         // RF TOP=2   
+			R848_SysFreq_Info.NRB_BW=0x00;         // Nrb BW=widest              
+		}
+		else
+		{
+			R848_SysFreq_Info.LNA_VTH_L=0xA5;	   // LNA VTH/L=1.34/0.84
+			R848_SysFreq_Info.RF_TOP=0x40;         // RF TOP=5
+			R848_SysFreq_Info.NRB_BW=0xC0;         // Nrb BW=lowest
+		}					
+			//R848_SysFreq_Info.LNA_VTH_L=0xA5;	   // LNA VTH/L=1.34/0.84     (R31=0xA5)
+			R848_SysFreq_Info.MIXER_TOP=0x05;	   // MIXER TOP=10            (R36[3:0]=4'b0101)
+			R848_SysFreq_Info.MIXER_VTH_L=0x95;    // MIXER VTH/L=1.24/0.84   (R32=0x95)
+			R848_SysFreq_Info.NRB_TOP=0xC0;        // Nrb TOP=3               (R36[7:4]=4'b1100)		
+		    R848_SysFreq_Info.LNA_TOP=0x03;		   // LNA TOP=4               (R35[2:0]=3'b011)
+			//R848_SysFreq_Info.RF_TOP=0x40;       // RF TOP=5                (R34[7:5]=3'b010)                 
+			//R848_SysFreq_Info.NRB_BW=0xC0;       // Nrb BW=lowest           (R35[7:6]=2'b11)	
+		break;
+
+	case R848_DVB_T_7M:
+	case R848_DVB_T2_7M: 
+	case R848_DVB_T_7M_IF_5M:
+	case R848_DVB_T2_7M_IF_5M:
             if((RF_freq>=300000)&&(RF_freq<=472000))
             {
                 R848_SysFreq_Info.LNA_VTH_L=0xA4;	   // LNA VTH/L=1.34/0.74     (R31=0xA4)
@@ -1264,20 +1380,18 @@ SysFreq_Info_Type R848_SysFreq_Sel(R848_Standard_Type R848_Standard,UINT32 RF_fr
     case R848_ISDB_T_IF_5M:	
         if((RF_freq>=300000)&&(RF_freq<=472000))
         {
-        	R848_SysFreq_Info.LNA_VTH_L=0xA4;	   // LNA VTH/L=1.34/0.74     (R31=0xA4)
+			R848_SysFreq_Info.LNA_VTH_L=0x81;	   // LNA VTH/L=1.14/0.44     (R31=0x81)
         }
         else
         {
-        	R848_SysFreq_Info.LNA_VTH_L=0xA5;	   // LNA VTH/L=1.34/0.84     (R31=0xA5)
+			R848_SysFreq_Info.LNA_VTH_L=0x92;	   // LNA VTH/L=1.24/0.54     (R31=0x92)
         }
         R848_SysFreq_Info.LNA_TOP=0x03;		       // LNA TOP=4                    (R35[2:0]=3'b011)
         R848_SysFreq_Info.MIXER_TOP=0x05;	       // MIXER TOP=10               (R36[3:0]=4'b0101)
         R848_SysFreq_Info.MIXER_VTH_L=0x95;   // MIXER VTH/L=1.24/0.84  (R32=0x95)
         R848_SysFreq_Info.RF_TOP=0x60;               // RF TOP=4                        (R34[7:5]=3'b011)
-        //R848_SysFreq_Info.NRB_TOP=0x20;            // Nrb TOP=13                       (R36[7:4]=4'b0010)
-        R848_SysFreq_Info.NRB_TOP=0xB0;            // Nrb TOP=4                       (R36[7:4]=4'b1011)
+			R848_SysFreq_Info.NRB_TOP=0xE0;            // Nrb TOP=1                       (R36[7:4]=4'b1011)
         R848_SysFreq_Info.NRB_BW=0xC0;             // Nrb BW=lowest                  (R35[7:6]=2'b11) 
-                                   
         break;
         
     case R848_DTMB_4570:
@@ -1540,6 +1654,22 @@ SysFreq_Info_Type R848_SysFreq_Sel(R848_Standard_Type R848_Standard,UINT32 RF_fr
             R848_SysFreq_Info.BYP_LPF = 0x00;      //bypass  R12[6]
         break;
         
+		case R848_ISDB_T:	
+		case R848_ISDB_T_4570:
+		case R848_ISDB_T_IF_5M:	
+
+			R848_SysFreq_Info.AGC_CLK = 0x18;		 //60Hz   R26[4:2] 
+
+			//if(RF_freq==473143) //for all frequency
+			R848_SysFreq_Info.RF_SLOW_DISCHARGE = 0x20;    //1   R848:R22[7:5]=2'b001
+
+
+			if(RF_freq<=236000)
+				 R848_SysFreq_Info.BYP_LPF = 0x40;      //low pass  R12[6]
+			else
+				 R848_SysFreq_Info.BYP_LPF = 0x00;      //bypass  R12[6]
+		break;
+
         default:  //other standard
         	 if(RF_freq<=236000)
         		 R848_SysFreq_Info.BYP_LPF = 0x40;      //low pass  R12[6]
@@ -1578,9 +1708,12 @@ R848_ErrCode R848_Init(R848_TUNER_NUM R848_Tuner_Num)
                 R848_IMR_Data[R848_Tuner_Num][i].Iqcap = 0;
                 R848_IMR_Data[R848_Tuner_Num][i].Value = 0;
             }
-            
-            if(R848_IMR_done_flag[R848_Tuner_Num]==FALSE)
-            {
+           
+           R848_IMR_Cal_Result[R848_Tuner_Num] = 0; 
+           R848_TF_Check_Result[R848_Tuner_Num] = 0;
+
+           if(R848_IMR_done_flag[R848_Tuner_Num]==FALSE)
+           {
                 
                 if(R848_InitReg(R848_Tuner_Num, R848_STD_SIZE) != RT_Success)        
                     return RT_Fail;
@@ -1612,49 +1745,40 @@ R848_ErrCode R848_Init(R848_TUNER_NUM R848_Tuner_Num)
                 
                  R848_IMR_done_flag[R848_Tuner_Num] = TRUE;
             }
-/*
-#if(R848_SHARE_XTAL_OUT==TRUE)
-		R848_Xtal_Pwr = XTAL_LARGE_STRONG;
-#else
-		//do Xtal check
-		if(R848_InitReg(R848_Tuner_Num, R848_STD_SIZE) != RT_Success)
-		 return RT_Fail;
 
-		if(R848_Xtal_Check(R848_Tuner_Num) != RT_Success)
-			return RT_Fail;
 
-		if(R848_Xtal_Pwr_tmp[R848_Tuner_Num]==XTAL_LARGE_STRONG)
-			R848_Xtal_Pwr[R848_Tuner_Num] = XTAL_LARGE_STRONG;
-		else
-			R848_Xtal_Pwr[R848_Tuner_Num] = R848_Xtal_Pwr_tmp[R848_Tuner_Num] + 1;
-#endif
-*/
-    if((R848_Tuner_Num!=R848_TUNER_1) && (R848_TUNER1_CLK_OUT==TRUE))
-    {
-        R848_Xtal_Pwr[R848_Tuner_Num] = XTAL_SMALL_LOWEST;
-        R848_Xtal_Pwr_tmp[R848_Tuner_Num] = XTAL_SMALL_LOWEST;
-    }
-    else if((R848_Tuner_Num==R848_TUNER_1) && (R848_TUNER1_CLK_OUT==TRUE))
-    {
-        R848_Xtal_Pwr[R848_Tuner_Num] = XTAL_LARGE_STRONG;
-        R848_Xtal_Pwr_tmp[R848_Tuner_Num] = XTAL_LARGE_STRONG;
-    }
-    else
-    {
-        //do Xtal check
-        if(R848_InitReg(R848_Tuner_Num, R848_STD_SIZE) != RT_Success)        
-            return RT_Fail;
-        
-        if(R848_Xtal_Check(R848_Tuner_Num) != RT_Success)        
-            return RT_Fail;
-        
-        if(R848_Xtal_Pwr_tmp[R848_Tuner_Num]==XTAL_LARGE_STRONG)
-            R848_Xtal_Pwr[R848_Tuner_Num] = XTAL_LARGE_STRONG;
-        else
-            R848_Xtal_Pwr[R848_Tuner_Num] = R848_Xtal_Pwr_tmp[R848_Tuner_Num] + 1;
-    }
-    
-    
+        #if(R848_MULTI_TUNER_APPLICATION==TRUE)
+        if(R848_Tuner_Num!=R848_TUNER_1)
+            {
+                R848_Xtal_Pwr[R848_Tuner_Num] = XTAL_SMALL_LOWEST;
+                R848_Xtal_Pwr_tmp[R848_Tuner_Num] = XTAL_SMALL_LOWEST;
+            }
+            else if(R848_Tuner_Num==R848_TUNER_1)
+            {
+                R848_Xtal_Pwr[R848_Tuner_Num] = XTAL_LARGE_STRONG;
+                R848_Xtal_Pwr_tmp[R848_Tuner_Num] = XTAL_LARGE_STRONG;
+            }
+        #else
+            if(R848_SHARE_XTAL_OUT==TRUE)
+            {
+                R848_Xtal_Pwr[R848_Tuner_Num] = XTAL_LARGE_STRONG;
+            }
+            else
+            {
+                //do Xtal check
+                if(R848_InitReg(R848_Tuner_Num, R848_STD_SIZE) != RT_Success)        
+                    return RT_Fail;
+                
+                if(R848_Xtal_Check(R848_Tuner_Num) != RT_Success)        
+                    return RT_Fail;
+                
+                if(R848_Xtal_Pwr_tmp[R848_Tuner_Num]==XTAL_LARGE_STRONG)
+                    R848_Xtal_Pwr[R848_Tuner_Num] = XTAL_LARGE_STRONG;
+                else
+                    R848_Xtal_Pwr[R848_Tuner_Num] = R848_Xtal_Pwr_tmp[R848_Tuner_Num] + 1;
+            }
+       #endif
+
     R848_Initial_done_flag[R848_Tuner_Num] = TRUE;
     
     } //end if(check init flag)
@@ -1685,27 +1809,6 @@ R848_ErrCode R848_InitReg(R848_TUNER_NUM R848_Tuner_Num, R848_Standard_Type R848
             R848_I2C_Len.Data[InitArrayCunt] = R848_iniArray_hybrid[InitArrayCunt];
             R848_Array[R848_Tuner_Num][InitArrayCunt] = R848_iniArray_hybrid[InitArrayCunt];
         }
-        
-        if((R848_Tuner_Num!=R848_TUNER_1) && (R848_TUNER1_CLK_OUT==TRUE))
-        {
-            // Xtal cap = 10pF  R27[5]=1   ;   Xtal_Gm R27[0] = 0  SMALL(0)
-            R848_I2C_Len.Data[19] = (R848_Array[R848_Tuner_Num][19] & 0xFE) | 0x20;
-            R848_Array[R848_Tuner_Num][19] = (R848_Array[R848_Tuner_Num][19] & 0xFE) | 0x20;
-            
-            // XTAL_POW1:R23[7]    High(0)   ;   XTAL_POW0:R23[6:5] lowest(11)  
-            R848_I2C_Len.Data[15] =  ((R848_Array[R848_Tuner_Num][15] & 0x1F) | 0x60) | 0x00;
-            R848_Array[R848_Tuner_Num][15] = ((R848_Array[R848_Tuner_Num][15] & 0x1F) | 0x60) | 0x00;
-        }
-        else if((R848_Tuner_Num==R848_TUNER_1) && (R848_TUNER1_CLK_OUT==TRUE))
-        {
-            // Xtal cap = 10pF  R27[5]=1   ;   Xtal_Gm R27[0] = 1  LARGE(1)
-            R848_I2C_Len.Data[19] = (R848_Array[R848_Tuner_Num][19] & 0xFE) | 0x21;
-            R848_Array[R848_Tuner_Num][19] = (R848_Array[R848_Tuner_Num][19] & 0xFE) | 0x21;
-            
-            //  XTAL_POW1:R23[7]    Low(1)   ;   XTAL_POW0:R23[6:5] highest(00)  
-            R848_I2C_Len.Data[15] =  ((R848_Array[R848_Tuner_Num][15] & 0x1F) | 0x80) | 0x00;
-            R848_Array[R848_Tuner_Num][15] = ((R848_Array[R848_Tuner_Num][15] & 0x1F) | 0x80) | 0x00;
-        }
     }
     else
     {
@@ -1714,28 +1817,32 @@ R848_ErrCode R848_InitReg(R848_TUNER_NUM R848_Tuner_Num, R848_Standard_Type R848
             R848_I2C_Len.Data[InitArrayCunt] = R848_iniArray_dvbs[InitArrayCunt];
             R848_Array[R848_Tuner_Num][InitArrayCunt] = R848_iniArray_dvbs[InitArrayCunt];
         }
-        
-        if((R848_Tuner_Num!=R848_TUNER_1) && (R848_TUNER1_CLK_OUT==TRUE))
-        {
-            // Xtal cap = 10pF  R27[5]=1   ;   Xtal_Gm R27[0] = 0  SMALL(0)
-            R848_I2C_Len.Data[19] = (R848_Array[R848_Tuner_Num][19] & 0xFE) | 0x20;
-            R848_Array[R848_Tuner_Num][19] = (R848_Array[R848_Tuner_Num][19] & 0xFE) | 0x20;
-            
-            // XTAL_POW1:R23[7]    High(0)   ;   XTAL_POW0:R23[6:5] lowest(11)  
-            R848_I2C_Len.Data[15] =  ((R848_Array[R848_Tuner_Num][15] & 0x1F) | 0x60) | 0x00;
-            R848_Array[R848_Tuner_Num][15] =((R848_Array[R848_Tuner_Num][15] & 0x1F) | 0x60) | 0x00;
-        }
-        else if((R848_Tuner_Num==R848_TUNER_1) && (R848_TUNER1_CLK_OUT==TRUE))
-        {
-            // Xtal cap = 10pF  R27[5]=1   ;   Xtal_Gm R27[0] = 1  LARGE(1)
-            R848_I2C_Len.Data[19] = (R848_Array[R848_Tuner_Num][19] & 0xFE) | 0x21;
-            R848_Array[R848_Tuner_Num][19] = (R848_Array[R848_Tuner_Num][19] & 0xFE) | 0x21;
-            
-            //  XTAL_POW1:R23[7]    Low(1)   ;   XTAL_POW0:R23[6:5] highest(00)  
-            R848_I2C_Len.Data[15] =  ((R848_Array[R848_Tuner_Num][15] & 0x1F) | 0x80) | 0x00;
-            R848_Array[R848_Tuner_Num][15] = ((R848_Array[R848_Tuner_Num][15] & 0x1F) | 0x80) | 0x00;
-        }
+
     }
+
+#if(R848_MULTI_TUNER_APPLICATION==TRUE)
+    if(R848_Tuner_Num!=R848_TUNER_1)
+    {
+        // Xtal cap = 10pF  R27[5]=1   ;   Xtal_Gm R27[0] = 0  SMALL(0)
+        R848_I2C_Len.Data[19] = (R848_Array[R848_Tuner_Num][19] & 0xFE) | 0x20;
+        R848_Array[R848_Tuner_Num][19] = (R848_Array[R848_Tuner_Num][19] & 0xFE) | 0x20;
+        
+        // XTAL_POW1:R23[7]    High(0)   ;   XTAL_POW0:R23[6:5] lowest(11)  
+        R848_I2C_Len.Data[15] =  ((R848_Array[R848_Tuner_Num][15] & 0x1F) | 0x60) | 0x00;
+        R848_Array[R848_Tuner_Num][15] =((R848_Array[R848_Tuner_Num][15] & 0x1F) | 0x60) | 0x00;
+    }
+    else if(R848_Tuner_Num==R848_TUNER_1)
+    {
+        // Xtal cap = 10pF  R27[5]=1   ;   Xtal_Gm R27[0] = 1  LARGE(1)
+        R848_I2C_Len.Data[19] = (R848_Array[R848_Tuner_Num][19] & 0xFE) | 0x21;
+        R848_Array[R848_Tuner_Num][19] = (R848_Array[R848_Tuner_Num][19] & 0xFE) | 0x21;
+        
+        //  XTAL_POW1:R23[7]    Low(1)   ;   XTAL_POW0:R23[6:5] highest(00)  
+        R848_I2C_Len.Data[15] =  ((R848_Array[R848_Tuner_Num][15] & 0x1F) | 0x80) | 0x00;
+        R848_Array[R848_Tuner_Num][15] = ((R848_Array[R848_Tuner_Num][15] & 0x1F) | 0x80) | 0x00;
+    }
+#endif
+
     if(I2C_Write_Len(R848_Tuner_Num, &R848_I2C_Len) != RT_Success)
         return RT_Fail;
     
@@ -1748,7 +1855,9 @@ R848_ErrCode R848_TF_Check(R848_TUNER_NUM R848_Tuner_Num)
     UINT32   RingFreq = 72000;
     UINT32   RingRef = R848_Xtal;
     UINT8     divnum_ring = 0;
-    
+    UINT8    VGA_Count = 0; 
+    UINT8    VGA_Read = 0;  
+
     if(R848_Xtal==16000)  //16M
     {
         divnum_ring = 11;
@@ -1801,7 +1910,7 @@ R848_ErrCode R848_TF_Check(R848_TUNER_NUM R848_Tuner_Num)
      R848_I2C.RegAddr = 0x21;
      R848_I2C.Data = R848_Array[R848_Tuner_Num][25];
      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-    	return RT_Fail;	
+        return RT_Fail;
     
        //Must do before PLL()
      if(R848_MUX(R848_Tuner_Num, RingFreq + 5000, RingFreq, R848_STD_SIZE) != RT_Success)     //FilCal MUX (LO_Freq, RF_Freq)
@@ -1885,36 +1994,38 @@ R848_ErrCode R848_TF_Check(R848_TUNER_NUM R848_Tuner_Num)
     
     
      //------- increase VGA power to let ADC read value significant ---------//
-     UINT8   VGA_Count = 0;
-     UINT8   VGA_Read = 0;
-    
-     for(VGA_Count=0; VGA_Count < 16; VGA_Count ++)
-     {
-        R848_I2C.RegAddr = 0x14;
-        R848_I2C.Data = (R848_Array[R848_Tuner_Num][12] & 0xF0) + VGA_Count;  
-        if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-            return RT_Fail;
-        
-        R848_Delay_MS(R848_VGA_DELAY); //
-        
-        if(R848_Muti_Read(R848_Tuner_Num, &VGA_Read) != RT_Success)
-            return RT_Fail;
-        
-        if(VGA_Read > 40* R848_ADC_READ_COUNT)
-            break;
-     }
-    
-     //Set LNA TF=(0,0)
-     R848_I2C.RegAddr = 0x08;
-       R848_Array[R848_Tuner_Num][0] =(R848_Array[R848_Tuner_Num][0] & 0x80);  	
-       R848_I2C.Data = R848_Array[R848_Tuner_Num][0];
+
+    for(VGA_Count=5; VGA_Count < 16; VGA_Count ++)
+    {
+       R848_I2C.RegAddr = 0x14;
+       R848_I2C.Data = (R848_Array[R848_Tuner_Num][12] & 0xF0) + VGA_Count;  
        if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-            return RT_Fail;
+           return RT_Fail;
+       
+       R848_Delay_MS(R848_VGA_DELAY); //
+       
+       if(R848_Muti_Read(R848_Tuner_Num, &VGA_Read) != RT_Success)
+           return RT_Fail;
+       
+       if(VGA_Read > 40* R848_ADC_READ_COUNT)
+           break;
+    }
+      
+    if((VGA_Read<10*R848_ADC_READ_COUNT) || (VGA_Read>60*R848_ADC_READ_COUNT))
+        R848_TF_Check_Result[R848_Tuner_Num] = 1;  //fail
+    else
+        R848_TF_Check_Result[R848_Tuner_Num] = 0;
+     //Set LNA TF=(0,0)
+    R848_I2C.RegAddr = 0x08;
+    R848_Array[R848_Tuner_Num][0] =(R848_Array[R848_Tuner_Num][0] & 0x80);  	
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][0];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+         return RT_Fail;
     
      R848_Delay_MS(10); //
     
      if(R848_Muti_Read(R848_Tuner_Num, &VGA_Read) != RT_Success)
-    	  return RT_Fail;
+        return RT_Fail;
     
      if(VGA_Read > (36*R848_ADC_READ_COUNT))
           R848_DetectTfType = R848_UL_USING_BEAD;
@@ -2054,34 +2165,35 @@ R848_ErrCode R848_Xtal_Check(R848_TUNER_NUM R848_Tuner_Num)
 R848_ErrCode R848_Cal_Prepare(R848_TUNER_NUM R848_Tuner_Num, UINT8 u1CalFlag)
 {
      R848_Cal_Info_Type  Cal_Info;
-    
+	 UINT8 InitArrayCunt = 0;
+ 
      switch(u1CalFlag)
      {
         case R848_IMR_CAL:
             Cal_Info.FILTER_6DB = 0x08;              //+6dB		 R848:R38[3]
             //Cal_Info.RFBUF_OUT = 0x60;            //from RF_Buf ON, RF_Buf pwr off		 // R848:R12[5]
             //from RF_Buf ON, RF_Buf pwr off
-            Cal_Info.RFBUF_OUT = 0x20;				//from RF_Buf ON
-            Cal_Info.RFBUF_POWER=0x04;				//RF_BUF_pwr OFF
+            Cal_Info.RFBUF_OUT = 0x20;             //from RF_Buf ON
+            Cal_Info.RFBUF_POWER=0x04;              //RF_BUF_pwr OFF
             Cal_Info.LNA_POWER = 0x80;              //LNA power OFF,RF_Buf pwr off  //  R848:R8[7]
-            //Cal_Info.LNA_POWER = 0x00;				//LNA need on
-            Cal_Info.TF_CAL = 0x00;					// TF cal OFF, -6dB	OFF   // R848:R14[6:5]
-            Cal_Info.MIXER_AMP_GAIN = 0x08;			//manual +8				  // R848:R15[4:0]
-            Cal_Info.MIXER_BUFFER_GAIN = 0x10;		//manual min(0)			  // R848:R34[4:0]
-            Cal_Info.LNA_GAIN = 0x9F;                 //manual: max		//  R848:R13[7:0]
+            //Cal_Info.LNA_POWER = 0x00;//LNA need on
+            Cal_Info.TF_CAL = 0x00;                // TF cal OFF, -6dB OFF   // R848:R14[6:5]
+            Cal_Info.MIXER_AMP_GAIN = 0x08;        //manual +8    // R848:R15[4:0]
+            Cal_Info.MIXER_BUFFER_GAIN = 0x10;     //manual min(0)     // R848:R34[4:0]
+            Cal_Info.LNA_GAIN = 0x9F;                 //manual: max //  R848:R13[7:0]
             //Cal_Info.LNA_GAIN = 0x80;
             R848_IMR_Cal_Type = R848_IMR_CAL;
             break;
-        case R848_IMR_LNA_CAL:						    
+        case R848_IMR_LNA_CAL:       
             Cal_Info.FILTER_6DB = 0x08;              //+6dB
             //Cal_Info.RFBUF_OUT = 0x00;              //from RF_Buf ON, RF_Buf pwr on
             
-            Cal_Info.RFBUF_OUT = 0x00;				//from RF_Buf ON
-            Cal_Info.RFBUF_POWER=0x00;				//RF_BUF_pwr OFF
+            Cal_Info.RFBUF_OUT = 0x00;//from RF_Buf ON
+            Cal_Info.RFBUF_POWER=0x00;//RF_BUF_pwr OFF
             
             Cal_Info.LNA_POWER = 0x80;             // LNA power OFF
-            //Cal_Info.LNA_POWER = 0x00;				//LNA need on
-            Cal_Info.TF_CAL = 0x60;				   // TF cal ON, -6dB ON
+            //Cal_Info.LNA_POWER = 0x00;//LNA need on
+            Cal_Info.TF_CAL = 0x60;	// TF cal ON, -6dB ON
             Cal_Info.MIXER_AMP_GAIN = 0x00;    //manual min(0)
             Cal_Info.MIXER_BUFFER_GAIN = 0x10; //manual min(0)
             Cal_Info.LNA_GAIN = 0x9F;                 //manual: max
@@ -2092,13 +2204,13 @@ R848_ErrCode R848_Cal_Prepare(R848_TUNER_NUM R848_Tuner_Num, UINT8 u1CalFlag)
             Cal_Info.FILTER_6DB = 0x08;              //+6dB
             //Cal_Info.RFBUF_OUT = 0x60;               //from RF_Buf ON, RF_Buf pwr off
             
-            Cal_Info.RFBUF_OUT = 0x20;				//from RF_Buf ON
-            Cal_Info.RFBUF_POWER=0x04;				//RF_BUF_pwr OFF
+            Cal_Info.RFBUF_OUT = 0x20;//from RF_Buf ON
+            Cal_Info.RFBUF_POWER=0x04;//RF_BUF_pwr OFF
             
             Cal_Info.RFBUF_OUT = 0x20;
             Cal_Info.LNA_POWER = 0x80;              //LNA power OFF
-            //Cal_Info.LNA_POWER = 0x00;				//LNA need on
-            Cal_Info.TF_CAL = 0x00;					//TF cal OFF, -6dB OFF	
+            //Cal_Info.LNA_POWER = 0x00;	//LNA need on
+            Cal_Info.TF_CAL = 0x00;//TF cal OFF, -6dB OFF	
             Cal_Info.MIXER_AMP_GAIN = 0x00;    //manual min(0)
             Cal_Info.MIXER_BUFFER_GAIN = 0x10; //manual min(0)
             Cal_Info.LNA_GAIN = 0x9F;                  //manual: max
@@ -2107,12 +2219,12 @@ R848_ErrCode R848_Cal_Prepare(R848_TUNER_NUM R848_Tuner_Num, UINT8 u1CalFlag)
             Cal_Info.FILTER_6DB = 0x08;              //+6dB				
             //Cal_Info.RFBUF_OUT = 0x00;              //from RF_Buf ON, RF_Buf pwr on	
             
-            Cal_Info.RFBUF_OUT = 0x00;				//from RF_Buf ON
-            Cal_Info.RFBUF_POWER=0x00;				//RF_BUF_pwr OFF
+            Cal_Info.RFBUF_OUT = 0x00;//from RF_Buf ON
+            Cal_Info.RFBUF_POWER=0x00;//RF_BUF_pwr OFF
             
             Cal_Info.LNA_POWER = 0x80;              //LNA power OFF
-            //Cal_Info.LNA_POWER = 0x00;				//LNA need on
-            Cal_Info.TF_CAL = 0x60;					// TF cal ON, -6dB ON	
+            //Cal_Info.LNA_POWER = 0x00;//LNA need on
+            Cal_Info.TF_CAL = 0x60;	// TF cal ON, -6dB ON	
             Cal_Info.MIXER_AMP_GAIN = 0x00;    //manual min(0)
             Cal_Info.MIXER_BUFFER_GAIN = 0x10; //manual min(0)
             Cal_Info.LNA_GAIN = 0x80;                  //manual: min
@@ -2120,13 +2232,13 @@ R848_ErrCode R848_Cal_Prepare(R848_TUNER_NUM R848_Tuner_Num, UINT8 u1CalFlag)
         case R848_LPF_CAL: 
             Cal_Info.FILTER_6DB = 0x08;              //+6dB						//  R848:R38[3]
             //Cal_Info.RFBUF_OUT = 0x60;               //from RF_Buf ON, RF_Buf pwr off
-            //Cal_Info.RFBUF_OUT = 0x20;				//RF_Buf pwr off			//  R848:R12[5]
-            Cal_Info.RFBUF_OUT = 0x20;				//from RF_Buf ON
-            Cal_Info.RFBUF_POWER=0x04;				//RF_BUF_pwr OFF
+            //Cal_Info.RFBUF_OUT = 0x20;//RF_Buf pwr off			//  R848:R12[5]
+            Cal_Info.RFBUF_OUT = 0x20;//from RF_Buf ON
+            Cal_Info.RFBUF_POWER=0x04;//RF_BUF_pwr OFF
             
             Cal_Info.LNA_POWER = 0x80;              //LNA power OFF, TF cal OFF, -6dB OFF	
             //Cal_Info.LNA_POWER = 0x00;              //LNA need on			   //  R848:R8[7]
-            Cal_Info.TF_CAL = 0x00;					// TF cal OFF, -6dB OFF		// R848:R14[6:5]
+            Cal_Info.TF_CAL = 0x00;	// TF cal OFF, -6dB OFF		// R848:R14[6:5]
             Cal_Info.MIXER_AMP_GAIN = 0x08;    //manual +8						// R848:R15[4:0]
             Cal_Info.MIXER_BUFFER_GAIN = 0x10; //manual min(0)					// R848:R34[4:0]	
             Cal_Info.LNA_GAIN = 0x9F;                 //manual: max				// R848:R13[7:0]
@@ -2135,11 +2247,11 @@ R848_ErrCode R848_Cal_Prepare(R848_TUNER_NUM R848_Tuner_Num, UINT8 u1CalFlag)
         case R848_LPF_LNA_CAL:
             Cal_Info.FILTER_6DB = 0x08;              //+6dB
             //Cal_Info.RFBUF_OUT = 0x00;               //from RF_Buf ON, RF_Buf pwr on
-            Cal_Info.RFBUF_OUT = 0x00;				//from RF_Buf ON
-            Cal_Info.RFBUF_POWER=0x00;				//RF_BUF_pwr OFF
+            Cal_Info.RFBUF_OUT = 0x00;//from RF_Buf ON
+            Cal_Info.RFBUF_POWER=0x00;//RF_BUF_pwr OFF
             Cal_Info.LNA_POWER = 0x80;              //LNA power OFF
             //Cal_Info.LNA_POWER = 0x00;              //LNA need on
-            Cal_Info.TF_CAL = 0x20;					// TF cal ON, -6dB OFF	
+            Cal_Info.TF_CAL = 0x20;// TF cal ON, -6dB OFF	
             Cal_Info.MIXER_AMP_GAIN = 0x00;    //manual min(0)
             Cal_Info.MIXER_BUFFER_GAIN = 0x10; //manual min(0)
             Cal_Info.LNA_GAIN = 0x80;                  //manual: min
@@ -2147,181 +2259,140 @@ R848_ErrCode R848_Cal_Prepare(R848_TUNER_NUM R848_Tuner_Num, UINT8 u1CalFlag)
         default:
             Cal_Info.FILTER_6DB = 0x08;              //+6dB
             //Cal_Info.RFBUF_OUT = 0x60;               //from RF_Buf ON, RF_Buf pwr off
-            Cal_Info.RFBUF_OUT = 0x20;				//from RF_Buf ON
-            Cal_Info.RFBUF_POWER=0x04;				//RF_BUF_pwr OFF
+            Cal_Info.RFBUF_OUT = 0x20;//from RF_Buf ON
+            Cal_Info.RFBUF_POWER=0x04;//RF_BUF_pwr OFF
             Cal_Info.LNA_POWER = 0x80;              //LNA power OFF
             //Cal_Info.LNA_POWER = 0x00;              //LNA need on
-            Cal_Info.TF_CAL = 0x00;					//TF cal OFF, -6dB OFF
+            Cal_Info.TF_CAL = 0x00;//TF cal OFF, -6dB OFF
             Cal_Info.MIXER_AMP_GAIN = 0x08;    //manual +8
             Cal_Info.MIXER_BUFFER_GAIN = 0x10; //manual min(0)
             Cal_Info.LNA_GAIN = 0x9F;                 //manual: max
      }
     
       //Ring From RF_Buf Output & RF_Buf Power
-      R848_I2C.RegAddr = 0x0C;
-      R848_Array[R848_Tuner_Num][4] = (R848_Array[R848_Tuner_Num][4] & 0xDF) | Cal_Info.RFBUF_OUT;   //  R848:R12[5]  12-8=4  12(0x0C) is addr ; [4] is data
-      R848_I2C.Data = R848_Array[R848_Tuner_Num][4];
-      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-          return RT_Fail; 
+     //R848_I2C.RegAddr = 0x0C;
+       R848_Array[R848_Tuner_Num][4] = (R848_Array[R848_Tuner_Num][4] & 0xDF) | Cal_Info.RFBUF_OUT;   //  R848:R12[5]  12-8=4  12(0x0C) is addr ; [4] is data
     
     
-      //RF_Buf Power
-	  R848_I2C.RegAddr = 0x09;
-      R848_Array[R848_Tuner_Num][1] = (R848_Array[R848_Tuner_Num][1] & 0xFB) | Cal_Info.RFBUF_POWER;   //  R848:R12[5]  12-8=4  12(0x0C) is addr ; [4] is data
-      R848_I2C.Data = R848_Array[R848_Tuner_Num][1];
-      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-          return RT_Fail; 
-     
-	  /*//TF cal (LNA power ON/OFF , TF cal ON/OFF, TF_-6dB ON/OFF)
-	  R848_I2C.RegAddr = 0x06;
-      R848_Array[R848_Tuner_Num][6] = (R848_Array[R848_Tuner_Num][6] & 0x1F) | Cal_Info.LNA_POWER;
-      R848_I2C.Data = R848_Array[R848_Tuner_Num][6];
-      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-          return RT_Fail; */
-
-
-	  //(LNA power ON/OFF )
-	  R848_I2C.RegAddr = 0x08;
-      R848_Array[R848_Tuner_Num][0] = (R848_Array[R848_Tuner_Num][0] & 0x7F) | Cal_Info.LNA_POWER;	 //  R848:R8[7]  8-8=0  8(0x08) is addr ; [0] is data
-	  //R848_Array[R848_Tuner_Num][0] = (R848_Array[R848_Tuner_Num][0] & 0x80) 	 // R848:R8[7]  8-8=0  14(0x08) is addr ; [0] is data
-      R848_I2C.Data = R848_Array[R848_Tuner_Num][0];
-      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-          return RT_Fail;
-
-
-	  //TF cal (TF cal ON/OFF, TF_-6dB ON/OFF)
-	  R848_I2C.RegAddr = 0x0E;
-      R848_Array[R848_Tuner_Num][6] = (R848_Array[R848_Tuner_Num][6] & 0x9F) | Cal_Info.TF_CAL;	 // R848:R14[6:5]  14-8=6  14(0x0E) is addr ; [6] is data
-      R848_I2C.Data = R848_Array[R848_Tuner_Num][6];
-      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-          return RT_Fail;
-
-
-	  //LNA gain
-	  R848_I2C.RegAddr = 0x0D;
-	  R848_Array[R848_Tuner_Num][5] = (R848_Array[R848_Tuner_Num][5] & 0x60) | Cal_Info.LNA_GAIN; // R848:R13[7:0]  13-8=5  13(0x0D) is addr ; [5] is data
-      R848_I2C.Data = R848_Array[R848_Tuner_Num][5];
-      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-          return RT_Fail;
-
-	  //Mixer Amp Gain
-	  R848_I2C.RegAddr = 0x0F;
-	  R848_Array[R848_Tuner_Num][7] = (R848_Array[R848_Tuner_Num][7] & 0xE0) | Cal_Info.MIXER_AMP_GAIN; // R848:R15[4:0]  15-8=7  15(0x0F) is addr ; [7] is data
-      R848_I2C.Data = R848_Array[R848_Tuner_Num][7];
-      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-          return RT_Fail;
-
-	  //Mixer Buffer Gain
-	  R848_I2C.RegAddr = 0x22;								// R848:R34[4:0]  34-8=26  34(0x22) is addr ; [26] is data
-	  R848_Array[R848_Tuner_Num][26] = (R848_Array[R848_Tuner_Num][26] & 0xE0) | Cal_Info.MIXER_BUFFER_GAIN;  
-      R848_I2C.Data = R848_Array[R848_Tuner_Num][26];
-      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-          return RT_Fail;	 
-
-	  // Set filter +0/6dB; NA det=OFF 
-      R848_I2C.RegAddr  = 0x26;								// R848:R38[3]  38-8=30  38(0x26) is addr ; [30] is data
-	  R848_Array[R848_Tuner_Num][30] = (R848_Array[R848_Tuner_Num][30] & 0xF7) | Cal_Info.FILTER_6DB | 0x80;
-      R848_I2C.Data = R848_Array[R848_Tuner_Num][30];
-      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-	     return RT_Fail;
-
-	  //Set NA det 710 = OFF
-	  R848_I2C.RegAddr  = 0x28;								// R848:R40[3]  40-8=32  40(0x28) is addr ; [32] is data
-	  R848_Array[R848_Tuner_Num][32] = (R848_Array[R848_Tuner_Num][32] | 0x08);
-      R848_I2C.Data = R848_Array[R848_Tuner_Num][32];
-      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-	     return RT_Fail;
-
-
-	 //---- General calibration setting ----//	 
-	 //IMR IQ cap=0
-	 R848_I2C.RegAddr = 0x0B;		//R848:R11[1:0]  11-8=3  11(0x0B) is addr ; [3] is data
-     R848_Array[R848_Tuner_Num][3] = (R848_Array[R848_Tuner_Num][3] & 0xFC);
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][3];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-          return RT_Fail;
-
-	 // Set RF_Flag ON(%)
-	 R848_I2C.RegAddr = 0x16;		//R848:R22[0]  22-8=14  22(0x16) is addr ; [14] is data
-     R848_Array[R848_Tuner_Num][14] = R848_Array[R848_Tuner_Num][14] | 0x01;  //force far-end mode
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][14];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-          return RT_Fail;
-
-	 //RingPLL power ON
-     R848_I2C.RegAddr = 0x12;	  //R848:R18[4]  18-8=10  18(0x12) is addr ; [10] is data
-     R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xEF);
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-
-	 //LPF filter code = 15
-     R848_I2C.RegAddr = 0x12;	//R848:R18[3:0]  18-8=10  18(0x12) is addr ; [10] is data
-     R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xF0) | 0x0F;
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-	 
-     //HPF corner=narrowest; LPF coarse=6M; 1.7M disable
-     R848_I2C.RegAddr = 0x13;	//R848:R19[7:0]  19-8=11  19(0x13) is addr ; [11] is data
-     R848_Array[R848_Tuner_Num][11] = (R848_Array[R848_Tuner_Num][11] & 0x00) | 0x60;
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][11];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-
-     //ADC/VGA PWR on; Vga code mode(b4=1), Gain = 26.5dB; Large Code mode Gain(b5=1)
-	 //ADC PWR on (b7=0)
-	 R848_I2C.RegAddr = 0x0F;	//R848:R15[7]  15-8=7  15(0x0F) is addr ; [7] is data
-     R848_Array[R848_Tuner_Num][7] = (R848_Array[R848_Tuner_Num][7] & 0x7F);
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][7];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-
-	 //VGA PWR on (b0=0)
-	 //R848_I2C.RegAddr = 0x09;	// R848:R9[0]  9-8=1  9(0x09) is addr ; [1] is data
-     //R848_Array[R848_Tuner_Num][1] = (R848_Array[R848_Tuner_Num][1] & 0xFE);  
-     //R848_I2C.Data = R848_Array[R848_Tuner_Num][1];
-     //if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-     //      return RT_Fail;
-
-	 //VGA PWR on (b0=0)  MT2
-	 R848_I2C.RegAddr = 0x12;	//R848:R18[7]  9-8=1  9(0x09) is addr ; [1] is data
-     R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0x7F);  
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-
-	 //Large Code mode Gain(b5=1)
-	 R848_I2C.RegAddr = 0x0B;	//R848:R11[3]  11-8=3  11(0x0B) is addr ; [3] is data
-     R848_Array[R848_Tuner_Num][3] = (R848_Array[R848_Tuner_Num][3] & 0xF7) | 0x08;  
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][3];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-
-	 //Vga code mode(b4=1)
-	 R848_I2C.RegAddr = 0x09;	//R848:R9[1]  9-8=1  9(0x09) is addr ; [1] is data
-     R848_Array[R848_Tuner_Num][1] = (R848_Array[R848_Tuner_Num][1] & 0xFD) | 0x02;  
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][1];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-
-	 //Gain = 26.5dB
-     R848_I2C.RegAddr = 0x14;	//R848:R20[3:0]  20-8=12  20(0x14) is addr ; [12] is data
-     R848_Array[R848_Tuner_Num][12] = (R848_Array[R848_Tuner_Num][12] & 0xF0) | 0x0B;  
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][12];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-
-
-
-	 //LNA, RF, Nrb dector pw on; det2 cap=IF_det 
-     R848_I2C.RegAddr = 0x25;	//R848:R37[3:0]  37-8=29  37(0x25) is addr ; [29] is data
-     R848_Array[R848_Tuner_Num][29] = (R848_Array[R848_Tuner_Num][29] & 0xF0) | 0x02;
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][29];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-
-      return RT_Success;
+       //RF_Buf Power
+     //R848_I2C.RegAddr = 0x09;
+       R848_Array[R848_Tuner_Num][1] = (R848_Array[R848_Tuner_Num][1] & 0xFB) | Cal_Info.RFBUF_POWER;   //  R848:R12[5]  12-8=4  12(0x0C) is addr ; [4] is data
+    
+     /*//TF cal (LNA power ON/OFF , TF cal ON/OFF, TF_-6dB ON/OFF)
+     R848_I2C.RegAddr = 0x06;
+       R848_Array[R848_Tuner_Num][6] = (R848_Array[R848_Tuner_Num][6] & 0x1F) | Cal_Info.LNA_POWER;
+       R848_I2C.Data = R848_Array[R848_Tuner_Num][6];
+       if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+           return RT_Fail; */
+    
+    
+     //(LNA power ON/OFF )
+     //R848_I2C.RegAddr = 0x08;
+       R848_Array[R848_Tuner_Num][0] = (R848_Array[R848_Tuner_Num][0] & 0x7F) | Cal_Info.LNA_POWER;	 //  R848:R8[7]  8-8=0  8(0x08) is addr ; [0] is data
+     //R848_Array[R848_Tuner_Num][0] = (R848_Array[R848_Tuner_Num][0] & 0x80) 	 // R848:R8[7]  8-8=0  14(0x08) is addr ; [0] is data
+    
+    
+     //TF cal (TF cal ON/OFF, TF_-6dB ON/OFF)
+     //R848_I2C.RegAddr = 0x0E;
+       R848_Array[R848_Tuner_Num][6] = (R848_Array[R848_Tuner_Num][6] & 0x9F) | Cal_Info.TF_CAL;	 // R848:R14[6:5]  14-8=6  14(0x0E) is addr ; [6] is data
+    
+    
+    
+     //LNA gain
+     //R848_I2C.RegAddr = 0x0D;
+     R848_Array[R848_Tuner_Num][5] = (R848_Array[R848_Tuner_Num][5] & 0x60) | Cal_Info.LNA_GAIN; // R848:R13[7:0]  13-8=5  13(0x0D) is addr ; [5] is data
+    
+     //Mixer Amp Gain
+     //R848_I2C.RegAddr = 0x0F;
+     R848_Array[R848_Tuner_Num][7] = (R848_Array[R848_Tuner_Num][7] & 0xE0) | Cal_Info.MIXER_AMP_GAIN; // R848:R15[4:0]  15-8=7  15(0x0F) is addr ; [7] is data
+    
+    
+     //Mixer Buffer Gain
+     //R848_I2C.RegAddr = 0x22;								// R848:R34[4:0]  34-8=26  34(0x22) is addr ; [26] is data
+     R848_Array[R848_Tuner_Num][26] = (R848_Array[R848_Tuner_Num][26] & 0xE0) | Cal_Info.MIXER_BUFFER_GAIN;  
+    
+    
+     // Set filter +0/6dB; NA det=OFF 
+       //R848_I2C.RegAddr  = 0x26;								// R848:R38[3]  38-8=30  38(0x26) is addr ; [30] is data
+     R848_Array[R848_Tuner_Num][30] = (R848_Array[R848_Tuner_Num][30] & 0xF7) | Cal_Info.FILTER_6DB | 0x80;
+    
+     //Set NA det 710 = OFF
+     //R848_I2C.RegAddr  = 0x28;								// R848:R40[3]  40-8=32  40(0x28) is addr ; [32] is data
+     R848_Array[R848_Tuner_Num][32] = (R848_Array[R848_Tuner_Num][32] | 0x08);
+    
+    
+    //---- General calibration setting ----//	 
+    //IMR IQ cap=0
+    //R848_I2C.RegAddr = 0x0B;		//R848:R11[1:0]  11-8=3  11(0x0B) is addr ; [3] is data
+      R848_Array[R848_Tuner_Num][3] = (R848_Array[R848_Tuner_Num][3] & 0xFC);
+    
+    
+    // Set RF_Flag ON(%)
+    //R848_I2C.RegAddr = 0x16;		//R848:R22[0]  22-8=14  22(0x16) is addr ; [14] is data
+      R848_Array[R848_Tuner_Num][14] = R848_Array[R848_Tuner_Num][14] | 0x01;  //force far-end mode
+    
+    
+    //RingPLL power ON
+      //R848_I2C.RegAddr = 0x12;	  //R848:R18[4]  18-8=10  18(0x12) is addr ; [10] is data
+      R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xEF);
+    
+    //LPF filter code = 15
+      //R848_I2C.RegAddr = 0x12;	//R848:R18[3:0]  18-8=10  18(0x12) is addr ; [10] is data
+      R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xF0) | 0x0F;
+    
+    
+      //HPF corner=narrowest; LPF coarse=6M; 1.7M disable
+      //R848_I2C.RegAddr = 0x13;	//R848:R19[7:0]  19-8=11  19(0x13) is addr ; [11] is data
+      R848_Array[R848_Tuner_Num][11] = (R848_Array[R848_Tuner_Num][11] & 0x00) | 0x60;
+    
+    
+      //ADC/VGA PWR on; Vga code mode(b4=1), Gain = 26.5dB; Large Code mode Gain(b5=1)
+    //ADC PWR on (b7=0)
+    //R848_I2C.RegAddr = 0x0F;	//R848:R15[7]  15-8=7  15(0x0F) is addr ; [7] is data
+      R848_Array[R848_Tuner_Num][7] = (R848_Array[R848_Tuner_Num][7] & 0x7F);
+    
+    
+    //VGA PWR on (b0=0)
+    //R848_I2C.RegAddr = 0x09;	// R848:R9[0]  9-8=1  9(0x09) is addr ; [1] is data
+      //R848_Array[R848_Tuner_Num][1] = (R848_Array[R848_Tuner_Num][1] & 0xFE);  
+      //R848_I2C.Data = R848_Array[R848_Tuner_Num][1];
+      //if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+      //      return RT_Fail;
+    
+    //VGA PWR on (b0=0)  MT2
+    //R848_I2C.RegAddr = 0x12;	//R848:R18[7]  9-8=1  9(0x09) is addr ; [1] is data
+      R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0x7F);  
+    
+    
+    //Large Code mode Gain(b5=1)
+    //R848_I2C.RegAddr = 0x0B;	//R848:R11[3]  11-8=3  11(0x0B) is addr ; [3] is data
+      R848_Array[R848_Tuner_Num][3] = (R848_Array[R848_Tuner_Num][3] & 0xF7) | 0x08;  
+    
+    
+    //Vga code mode(b4=1)
+    //R848_I2C.RegAddr = 0x09;	//R848:R9[1]  9-8=1  9(0x09) is addr ; [1] is data
+      R848_Array[R848_Tuner_Num][1] = (R848_Array[R848_Tuner_Num][1] & 0xFD) | 0x02;  
+    
+    
+    //Gain = 26.5dB
+      //R848_I2C.RegAddr = 0x14;	//R848:R20[3:0]  20-8=12  20(0x14) is addr ; [12] is data
+      R848_Array[R848_Tuner_Num][12] = (R848_Array[R848_Tuner_Num][12] & 0xF0) | 0x0B;  
+    
+    
+    //LNA, RF, Nrb dector pw on; det2 cap=IF_det 
+      //R848_I2C.RegAddr = 0x25;	//R848:R37[3:0]  37-8=29  37(0x25) is addr ; [29] is data
+      R848_Array[R848_Tuner_Num][29] = (R848_Array[R848_Tuner_Num][29] & 0xF0) | 0x02;
+    
+    R848_I2C_Len.RegAddr = 0x08;   //  R848:0x08
+    R848_I2C_Len.Len = R848_REG_NUM;
+    for(InitArrayCunt = 0; InitArrayCunt<R848_REG_NUM; InitArrayCunt ++)
+    {
+     R848_I2C_Len.Data[InitArrayCunt] = R848_Array[R848_Tuner_Num][InitArrayCunt];
+    }
+    if(I2C_Write_Len(R848_Tuner_Num, &R848_I2C_Len) != RT_Success)
+     return RT_Fail;
+    
+       return RT_Success;
 }
 
 
@@ -2334,7 +2405,9 @@ R848_ErrCode R848_IMR(R848_TUNER_NUM R848_Tuner_Num, UINT8 IMR_MEM, MS_BOOL IM_F
     UINT8  u1MixerGain = 8;
     UINT32 RingRef = R848_Xtal;
     UINT8   divnum_ring = 0;
-    
+
+    UINT8  IMR_Gain = 0;
+    UINT8  IMR_Phase = 0;
       R848_SectType IMR_POINT;
     
     R848_Array[R848_Tuner_Num][31] &= 0x3F;   //clear ring_div1, R24[7:6]	//R848:R39[7:6]  39-8=31  39(0x27) is addr ; [31] is data 
@@ -2358,11 +2431,11 @@ R848_ErrCode R848_IMR(R848_TUNER_NUM R848_Tuner_Num, UINT8 IMR_MEM, MS_BOOL IM_F
     
     if(RingVCO>=3200000)
     {
-    	R848_Array[R848_Tuner_Num][25] &= 0xDF;   //clear vco_band, R25[5]		//R848:R33[5]    33-8=25  33(0x21) is addr ; [25] is data 
+        R848_Array[R848_Tuner_Num][25] &= 0xDF;   //clear vco_band, R25[5]		//R848:R33[5]    33-8=25  33(0x21) is addr ; [25] is data 
     }
     else
     {
-    	R848_Array[R848_Tuner_Num][25] |= 0x20;   //clear vco_band, R25[5]		//R848:R33[5]    33-8=25  33(0x21) is addr ; [25] is data 
+        R848_Array[R848_Tuner_Num][25] |= 0x20;   //clear vco_band, R25[5]		//R848:R33[5]    33-8=25  33(0x21) is addr ; [25] is data 
     }
 
     switch(IMR_MEM)
@@ -2415,14 +2488,14 @@ R848_ErrCode R848_IMR(R848_TUNER_NUM R848_Tuner_Num, UINT8 IMR_MEM, MS_BOOL IM_F
     //write I2C to set RingPLL
     R848_I2C.RegAddr = 0x27;
     R848_Array[R848_Tuner_Num][31]=(R848_Array[R848_Tuner_Num][31] & 0xC3) | (divnum_ring << 2);
-    R848_I2C.Data    = R848_Array[R848_Tuner_Num][31];
+    R848_I2C.Data    = R848_Array[R848_Tuner_Num][31] & 0xC3;
     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-    	return RT_Fail;
+        return RT_Fail;
     
     R848_I2C.RegAddr = 0x21;
     R848_I2C.Data    = R848_Array[R848_Tuner_Num][25];
     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-    	return RT_Fail;
+        return RT_Fail;
     
     //Ring PLL power
     //if((RingFreq>=0) && (RingFreq<R848_RING_POWER_FREQ_LOW))
@@ -2434,7 +2507,7 @@ R848_ErrCode R848_IMR(R848_TUNER_NUM R848_Tuner_Num, UINT8 IMR_MEM, MS_BOOL IM_F
     R848_I2C.RegAddr = 0x21;
     R848_I2C.Data = R848_Array[R848_Tuner_Num][25];
     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-    	return RT_Fail;
+        return RT_Fail;
     
     //Must do MUX before PLL() 
     if(R848_MUX(R848_Tuner_Num, RingFreq - R848_IMR_IF, RingFreq, R848_STD_SIZE) != RT_Success)      //IMR MUX (LO, RF)
@@ -2453,8 +2526,8 @@ R848_ErrCode R848_IMR(R848_TUNER_NUM R848_Tuner_Num, UINT8 IMR_MEM, MS_BOOL IM_F
     
     if(IM_Flag == TRUE)
     {
-	     if(R848_IQ(R848_Tuner_Num, &IMR_POINT) != RT_Success)
-    	    return RT_Fail;
+        if(R848_IQ(R848_Tuner_Num, &IMR_POINT) != RT_Success)
+            return RT_Fail;
     }
     else
     {
@@ -2463,7 +2536,7 @@ R848_ErrCode R848_IMR(R848_TUNER_NUM R848_Tuner_Num, UINT8 IMR_MEM, MS_BOOL IM_F
         IMR_POINT.Value = R848_IMR_Data[R848_Tuner_Num][3].Value;
         //IMR_POINT.Iqcap = R848_IMR_Data[R848_Tuner_Num][3].Iqcap;
         if(R848_F_IMR(R848_Tuner_Num, &IMR_POINT) != RT_Success)
-    		return RT_Fail;
+            return RT_Fail;
     }
     
     //Save IMR Value
@@ -2473,7 +2546,7 @@ R848_ErrCode R848_IMR(R848_TUNER_NUM R848_Tuner_Num, UINT8 IMR_MEM, MS_BOOL IM_F
             R848_IMR_Data[R848_Tuner_Num][0].Gain_X  = IMR_POINT.Gain_X;
             R848_IMR_Data[R848_Tuner_Num][0].Phase_Y = IMR_POINT.Phase_Y;
             R848_IMR_Data[R848_Tuner_Num][0].Value = IMR_POINT.Value;
-            R848_IMR_Data[R848_Tuner_Num][0].Iqcap = IMR_POINT.Iqcap;		
+            R848_IMR_Data[R848_Tuner_Num][0].Iqcap = IMR_POINT.Iqcap;
             break;
        case 1:
             R848_IMR_Data[R848_Tuner_Num][1].Gain_X  = IMR_POINT.Gain_X;
@@ -2506,12 +2579,22 @@ R848_ErrCode R848_IMR(R848_TUNER_NUM R848_Tuner_Num, UINT8 IMR_MEM, MS_BOOL IM_F
             R848_IMR_Data[R848_Tuner_Num][4].Iqcap = IMR_POINT.Iqcap;
             break;
        }
+    IMR_Gain = R848_IMR_Data[R848_Tuner_Num][IMR_MEM].Gain_X & 0x3F;
+    IMR_Phase = R848_IMR_Data[R848_Tuner_Num][IMR_MEM].Phase_Y & 0x3F;
+
+    if(((IMR_Gain & 0x0F)>6) || ((IMR_Phase & 0x0F)>6))
+    {
+        R848_IMR_Cal_Result[R848_Tuner_Num] = 1; //fail
+    }
+
+
           return RT_Success;
 }
 
 
 R848_ErrCode R848_PLL(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_Freq, R848_Standard_Type R848_Standard)
 {
+    UINT8 InitArrayCunt = 0;
     UINT8  MixDiv = 2;
     UINT8  DivBuf = 0;
     UINT8  Ni = 0;
@@ -2548,64 +2631,46 @@ R848_ErrCode R848_PLL(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_Freq, R848_Standa
      0, 5, 2, 5, 3, 5, 3, 5, 1, 5};
      
     UINT8   cp_cur_27[38] = {
-        0, 0, 0, 0, 0, 0, 1, 5, 1, 5, 
-        4, 5, 4, 0, 4, 0, 4, 0, 0, 0, 
-        0, 0, 3, 1, 4, 1, 1, 1, 4, 0,
-        2, 0, 4, 5, 2, 5, 3, 2};
-        
+    0, 0, 0, 0, 0, 0, 1, 5, 1, 5, 
+    4, 5, 4, 0, 4, 0, 4, 0, 0, 0, 
+    0, 0, 3, 1, 4, 1, 1, 1, 4, 0,
+    2, 0, 4, 5, 2, 5, 3, 2};
+    
     //112MHz to 176MHz CP Set Value
     UINT8   cp_cur_16_low[5] = {
         5, 2, 3, 1, 3};
     //304MHz to 496MHz CP Set Value
     UINT8   cp_cur_16_mid[25] = {
-			2, 0, 4, 0, 3, 0, 1, 0, 4, 0, 
-			2, 0, 3, 0, 4, 0, 1, 5, 1, 5, 
-			1, 5, 3, 5, 4};
+    2, 0, 4, 0, 3, 0, 1, 0, 4, 0, 
+    2, 0, 3, 0, 4, 0, 1, 5, 1, 5, 
+    1, 5, 3, 5, 4};
 
     //TF, NA fix
     u1RfFlag = (R848_Array[R848_Tuner_Num][14] & 0x01);      //R22[0]
     u1PulseFlag = (R848_Array[R848_Tuner_Num][30] & 0x80);   //R38[7]
-    u1SPulseFlag= (R848_Array[R848_Tuner_Num][32] & 0x08);   //R40[3]
-    
-    
-    R848_I2C.RegAddr = 0x16;
+    u1SPulseFlag= (R848_Array[R848_Tuner_Num][32] & 0x08);   //R40[3]   
+    //R848_I2C.RegAddr = 0x16;
     R848_Array[R848_Tuner_Num][14] = R848_Array[R848_Tuner_Num][14] | 0x01;		// TF force sharp mode
-    R848_I2C.Data = R848_Array[R848_Tuner_Num][14];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-    
-    
-    R848_I2C.RegAddr = 0x26;	
-    R848_Array[R848_Tuner_Num][30] = R848_Array[R848_Tuner_Num][30] | 0x80;		// NA det off
-    R848_I2C.Data = R848_Array[R848_Tuner_Num][30];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-        return RT_Fail;
-    
+    //R848_I2C.RegAddr = 0x26;	
+    R848_Array[R848_Tuner_Num][30] = R848_Array[R848_Tuner_Num][30] | 0x80;		// NA det off   
     //Set NA det 710 = OFF
-    R848_I2C.RegAddr  = 0x28;								
-    R848_Array[R848_Tuner_Num][32] = (R848_Array[R848_Tuner_Num][32] | 0x08);
-    R848_I2C.Data = R848_Array[R848_Tuner_Num][32];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-   return RT_Fail;
-/*
-	//Xtal cap
-	R848_I2C.RegAddr = 0x1B;
-	if((R848_Xtal==16000)||(R848_Xtal==27000))   // Xtal cap =16pF  (16MHz)
-		R848_Array[R848_Tuner_Num][19] = (R848_Array[R848_Tuner_Num][19] & 0xDF);
-	else				// Xtal cap =10pF  (24MHz)
-		R848_Array[R848_Tuner_Num][19] = (R848_Array[R848_Tuner_Num][19] | 0x20) ;
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][19];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-*/
+    //R848_I2C.RegAddr  = 0x28;								
+    R848_Array[R848_Tuner_Num][32] = (R848_Array[R848_Tuner_Num][32] | 0x08);    
 
+
+#if(R848_MULTI_TUNER_APPLICATION==FALSE)
+    //Xtal cap
+    //R848_I2C.RegAddr = 0x1B;
+    if((R848_Xtal==16000)||(R848_Xtal==27000))   // Xtal cap =16pF  (16MHz)
+        R848_Array[R848_Tuner_Num][19] = (R848_Array[R848_Tuner_Num][19] & 0xDF);
+    else// Xtal cap =10pF  (24MHz)
+        R848_Array[R848_Tuner_Num][19] = (R848_Array[R848_Tuner_Num][19] | 0x20) ;
+#else
     // Xtal cap =10pF
-    R848_I2C.RegAddr = 0x1B;
+    //R848_I2C.RegAddr = 0x1B;
     R848_Array[R848_Tuner_Num][19] = (R848_Array[R848_Tuner_Num][19] | 0x20) ;
-    R848_I2C.Data = R848_Array[R848_Tuner_Num][19];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-        return RT_Fail;
-    
+#endif
+
     SDM_RES = 0x00;    //short, R27[4:3]=00
     if(R848_Xtal==16000)
     {
@@ -2618,7 +2683,7 @@ R848_ErrCode R848_PLL(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_Freq, R848_Standa
                 //SDM_RES = 0x18;    //400R, R27[4:3]=11
                 SDM_RES = 0x10;    //200R, R27[4:3]=10
             else
-            	SDM_RES = 0x00;    //short, R27[4:3]=00
+               SDM_RES = 0x00;    //short, R27[4:3]=00
             
             //offset
             if(LO_Freq < (160000+R848_IF_HIGH))  //  R848:R21[7]  21-8=13  21(0x15) is addr ; [13] is data	// R848:R21[7]
@@ -2628,13 +2693,13 @@ R848_ErrCode R848_PLL(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_Freq, R848_Standa
             else if ((u2XalDivJudge>=38)&&(u2XalDivJudge<63))
             {
                 if((u2XalDivJudge % 2)==1) //odd
-                	CP_OFFSET = 0x00;  //0u,   [2]=0
+                    CP_OFFSET = 0x00;  //0u,   [2]=0
                 else
-                	CP_OFFSET = 0x80;  //30u,     [2]=1
+                    CP_OFFSET = 0x80;  //30u,     [2]=1
             }
             else 
             {
-            	CP_OFFSET = 0x00;  //0u,     [2]=0
+                CP_OFFSET = 0x00;  //0u,     [2]=0
             }
             
             //current
@@ -2717,7 +2782,7 @@ R848_ErrCode R848_PLL(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_Freq, R848_Standa
             CP_OFFSET = 0x00;  //0u,     [2]=0
         }
     }
-    else	//27MHz
+    else//27MHz
     {
         //cp cur & offset setting
         if(R848_Standard < R848_ATV_SIZE) //ATV
@@ -2770,76 +2835,62 @@ R848_ErrCode R848_PLL(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_Freq, R848_Standa
     
     //SDM_res
     //SDM_RES = 0x00;    //short, R27[4:3]=00
-    R848_I2C.RegAddr = 0x1B;
+    //R848_I2C.RegAddr = 0x1B;
     R848_Array[R848_Tuner_Num][19]    = (R848_Array[R848_Tuner_Num][19] & 0xE7) | SDM_RES; 
-    R848_I2C.Data    = R848_Array[R848_Tuner_Num][19];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-        return RT_Fail;
-    
-    
-       //CP current  R25[6:4]=000
-       R848_I2C.RegAddr = 0x19; 
+
+
+    //CP current  R25[6:4]=000
+    //R848_I2C.RegAddr = 0x19; 
     R848_Array[R848_Tuner_Num][17]    = (R848_Array[R848_Tuner_Num][17] & 0x8F)  | CP_CUR ;
-    R848_I2C.Data = R848_Array[R848_Tuner_Num][17];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-       
-       
-       //Div Cuurent   R20[7:6]=2'b01(150uA)	
-       R848_I2C.RegAddr = 0x14;    
+
+
+    //Div Cuurent   R20[7:6]=2'b01(150uA)	
+    //R848_I2C.RegAddr = 0x14;    
     R848_Array[R848_Tuner_Num][12] = (R848_Array[R848_Tuner_Num][12] & 0x3F)  | 0x40;  
-    R848_I2C.Data = R848_Array[R848_Tuner_Num][12];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-       
-       
+
+
        //CPI*2 R28[7]=1
     if((R848_Standard!=R848_SATELLITE) && (LO_Freq >= 865000))
-       {
-       	R848_I2C.RegAddr = 0x1C;
-    	R848_Array[R848_Tuner_Num][20] = (R848_Array[R848_Tuner_Num][20] & 0x7F) | 0x80;
-    	R848_I2C.Data = R848_Array[R848_Tuner_Num][20];
-    	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-       	return RT_Fail;
-       }
-       else
-       {
-       	R848_I2C.RegAddr = 0x1C;
-    	R848_Array[R848_Tuner_Num][20] = (R848_Array[R848_Tuner_Num][20] & 0x7F);
-    	R848_I2C.Data = R848_Array[R848_Tuner_Num][20];
-    	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-       	return RT_Fail;
-       }
-       
-       //  R848:R26[7:5]  VCO_current= 2
-       R848_I2C.RegAddr = 0x1A;  
+    {
+        R848_I2C.RegAddr = 0x1C;
+        R848_Array[R848_Tuner_Num][20] = (R848_Array[R848_Tuner_Num][20] & 0x7F) | 0x80;
+    }
+    else
+    {
+        R848_I2C.RegAddr = 0x1C;
+        R848_Array[R848_Tuner_Num][20] = (R848_Array[R848_Tuner_Num][20] & 0x7F);
+     }
+         
+    //  R848:R26[7:5]  VCO_current= Auto 
+    //R848_I2C.RegAddr = 0x1A;
     R848_Array[R848_Tuner_Num][18] = (R848_Array[R848_Tuner_Num][18] & 0x1F) | 0xE0;
-    R848_I2C.Data = R848_Array[R848_Tuner_Num][18];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-       
-       
-       //CP Offset R21[7] 
-       R848_I2C.RegAddr = 0x15;  
+    //CP Offset R21[7] 
+    //R848_I2C.RegAddr = 0x15;  
     R848_Array[R848_Tuner_Num][13] = (R848_Array[R848_Tuner_Num][13] & 0x7F) | CP_OFFSET; 
-    R848_I2C.Data = R848_Array[R848_Tuner_Num][13];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-       
-    //set XTAL Power
+    
+#if(R848_MULTI_TUNER_APPLICATION==TRUE)
+    if((R848_Tuner_Num!=R848_TUNER_1) && (R848_MULTI_TUNER_APPLICATION==TRUE))
+    {
+        XTAL_POW1 = 0x00;    // High(0),    R848:R23[7]    
+        XTAL_POW0 = 0x60;	// lowest(11),		R848:R23[6:5] 
+        XTAL_GM = 0x00;     //SMALL(0),   R27[0]=0
+    }
+    else if((R848_Tuner_Num==R848_TUNER_1) && (R848_MULTI_TUNER_APPLICATION==TRUE))
+    {
+        XTAL_POW1 = 0x80;        //Low,      	// R848:R23[7]  
+        XTAL_POW0 = 0x00;        //highest,  	// R848:R23[6:5] 
+        XTAL_GM = 0x01;          //LARGE(1),         R27[0]=1
+    }
+#else
     if(R848_Initial_done_flag[R848_Tuner_Num]==TRUE)
     {
-        if((R848_Tuner_Num!=R848_TUNER_1) && (R848_TUNER1_CLK_OUT==TRUE))
+        
+        if(R848_SHARE_XTAL_OUT==TRUE)
         {
-            XTAL_POW1 = 0x00;    // High(0),    R848:R23[7]    
-            XTAL_POW0 = 0x60;	// lowest(11),		R848:R23[6:5] 
-            XTAL_GM = 0x00;     //SMALL(0),   R27[0]=0
-        }
-        else if((R848_Tuner_Num==R848_TUNER_1) && (R848_TUNER1_CLK_OUT==TRUE))
-        {
-            XTAL_POW1 = 0x80;        //Low,      	// R848:R23[7]  
-            XTAL_POW0 = 0x00;        //highest,  	// R848:R23[6:5] 
-            XTAL_GM = 0x01;          //LARGE(1),         R27[0]=1
+            XTAL_POW1 = 0x80;        //Low,     // R848:R23[7]    
+            XTAL_POW0 = 0x00;        //highest,  // R848:R23[6:5]
+            XTAL_GM = 0x01;          //LARGE(1),         R27[0]=1            
+            R848_SetXtalIntCap(R848_Tuner_Num, XTAL_CAP_SMALL);
         }
         else
         {
@@ -2868,95 +2919,58 @@ R848_ErrCode R848_PLL(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_Freq, R848_Standa
                 XTAL_GM = 0x01;          //LARGE(1),         R27[0]=1
             }
         }
+
     }
     else
     {
-        if((R848_Tuner_Num!=R848_TUNER_1) && (R848_TUNER1_CLK_OUT==TRUE))
+        if(R848_SHARE_XTAL_OUT==TRUE)
         {
-            XTAL_POW1 = 0x00;    // High(0),    R848:R23[7]    
-            XTAL_POW0 = 0x60;	// lowest(11),		R848:R23[6:5] 
-            XTAL_GM = 0x00;     //SMALL(0),   R27[0]=0
+           R848_SetXtalIntCap(R848_Tuner_Num, XTAL_CAP_SMALL);
         }
-        else if((R848_Tuner_Num==R848_TUNER_1) && (R848_TUNER1_CLK_OUT==TRUE))
-        {
-            XTAL_POW1 = 0x80;        //Low,      	// R848:R23[7]  
-            XTAL_POW0 = 0x00;        //highest,  	// R848:R23[6:5] 
-            XTAL_GM = 0x01;          //LARGE(1),         R27[0]=1
-        }
-        else
-        {
-            XTAL_POW1 = 0x80;        //Low,      	// R848:R23[7]  
-            XTAL_POW0 = 0x00;        //highest,  	// R848:R23[6:5] 
-            XTAL_GM = 0x01;          //LARGE(1),         R27[0]=1
-        }
+        
+        XTAL_POW1 = 0x80;        //Low,      	// R848:R23[7]  
+        XTAL_POW0 = 0x00;        //highest,  	// R848:R23[6:5] 
+        XTAL_GM = 0x01;          //LARGE(1),         R27[0]=1
     }
+#endif
     
     //Xtal_Gm R27[0]
-    R848_I2C.RegAddr = 0x1B;
+    //R848_I2C.RegAddr = 0x1B;
     R848_Array[R848_Tuner_Num][19] = (R848_Array[R848_Tuner_Num][19] & 0xFE) | XTAL_GM;
-    R848_I2C.Data = R848_Array[R848_Tuner_Num][19];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-       
-    R848_I2C.RegAddr = 0x17;		// XTAL_POW0:R23[6:5] ;  XTAL_POW1:R23[7]  
+    
+    
+    //R848_I2C.RegAddr = 0x17;		// XTAL_POW0:R23[6:5] ;  XTAL_POW1:R23[7]  
     R848_Array[R848_Tuner_Num][15] = ((R848_Array[R848_Tuner_Num][15] & 0x1F) | XTAL_POW0) | XTAL_POW1; 
-    R848_I2C.Data    = R848_Array[R848_Tuner_Num][15];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-    	return RT_Fail;
+    
     
     //IQ gen ON 
-    R848_I2C.RegAddr = 0x27;		// R39[1]
+    //R848_I2C.RegAddr = 0x27;		// R39[1]
     R848_Array[R848_Tuner_Num][31] = (R848_Array[R848_Tuner_Num][31] & 0xFD) | 0x00; //[0]=0'b0
-    R848_I2C.Data    = R848_Array[R848_Tuner_Num][31];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-       
-       // current:Dmin, Bmin
-    R848_I2C.RegAddr = 0x23;		// R848:R35[5:4]=2'b00
-    R848_Array[R848_Tuner_Num][27]  = (R848_Array[R848_Tuner_Num][27] & 0xCF) | 0x00;
-    R848_I2C.Data    = R848_Array[R848_Tuner_Num][27];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-           return RT_Fail;
-       
-       //set pll autotune = 128kHz (fast)  R23[4:3]=2'b00   
-       R848_I2C.RegAddr = 0x17;		
-    R848_Array[R848_Tuner_Num][15] = R848_Array[R848_Tuner_Num][15] & 0xE7;
-    R848_I2C.Data    = R848_Array[R848_Tuner_Num][15];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-       	return RT_Fail;
-       
-       //Divider
-       while(MixDiv <= 64)
-       {
-       	if(((LO_Freq * MixDiv) >= VCO_Min) && ((LO_Freq * MixDiv) < VCO_Max))
-       	{
-       		DivBuf = MixDiv;
-       		while(DivBuf > 2)
-       		{
-       			DivBuf = DivBuf >> 1;
-       			DivNum ++;
-       		}			
-       		break;
-       	}
-       	MixDiv = MixDiv << 1;
-       }
     
-    //SDM_Res
-    /*if(MixDiv <= 4)  //Div=2,4
+    // current:Dmin, Bmin
+    //R848_I2C.RegAddr = 0x23;		// R848:R35[5:4]=2'b00
+    R848_Array[R848_Tuner_Num][27]  = (R848_Array[R848_Tuner_Num][27] & 0xCF) | 0x00;
+    
+    
+    //set pll autotune = 128kHz (fast)  R23[4:3]=2'b00   
+    //R848_I2C.RegAddr = 0x17;
+    R848_Array[R848_Tuner_Num][15] = R848_Array[R848_Tuner_Num][15] & 0xE7;
+
+    //Divider
+    while(MixDiv <= 64)
     {
-    	SDM_RES = 0x00;    //short, R27[4:3]=00
+       if(((LO_Freq * MixDiv) >= VCO_Min) && ((LO_Freq * MixDiv) < VCO_Max))
+       {
+           DivBuf = MixDiv;
+           while(DivBuf > 2)
+           {
+               DivBuf = DivBuf >> 1;
+               DivNum ++;
+           }
+           break;
+       }
+       MixDiv = MixDiv << 1;
     }
-    else
-    {
-    	SDM_RES = 0x18;   //400R, R27[4:3]=11
-    }
-    SDM_RES = 0x00;    //short, R27[4:3]=00
-    R848_I2C.RegAddr = 0x1B;
-    R848_Array[R848_Tuner_Num][19]    = (R848_Array[R848_Tuner_Num][19] & 0xE7) | SDM_RES; 
-    R848_I2C.Data    = R848_Array[R848_Tuner_Num][19];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-        return RT_Fail;
-    */
     
     //Xtal Div
     if( (R848_Standard == R848_STD_SIZE) || (R848_Standard == R848_SATELLITE) ) //for cal and Satellite
@@ -2967,7 +2981,7 @@ R848_ErrCode R848_PLL(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_Freq, R848_Standa
     }
     else if( (R848_Xtal==16000) || (R848_Xtal==24000))	//16MHz, 24MHz (ATV_DTV_Standard)
     {
-        if(R848_Xtal==16000)		//16MHz
+        if(R848_Xtal==16000)    //16MHz
             u2XalDivJudge = (UINT16) (LO_Freq/1000/8);
         else if(R848_Xtal==24000)	//24MHz
             u2XalDivJudge = (UINT16) (LO_Freq/1000/12);
@@ -2992,31 +3006,14 @@ R848_ErrCode R848_PLL(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_Freq, R848_Standa
         R848_Array[R848_Tuner_Num][16] |= 0x04;   	//R24[2]=1
         PLL_Ref = R848_Xtal / 2;
     }
-    R848_I2C.RegAddr = 0x18;	//R848:R24[2]
-    R848_I2C.Data = R848_Array[R848_Tuner_Num][16];
-       if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-       return RT_Fail;
-    
-/*
-    R848_I2C_Len.RegAddr = 0x00;
-    R848_I2C_Len.Len = 5;
-    if(I2C_Read_Len(&R848_I2C_Len) != RT_Success)
-    	return RT_Fail;	
-    
-     if((R848_I2C_Len.Data[3] & 0xE0) < 0xE0)         //0x60
-    	DivNum = DivNum + 1;
-     else if((R848_I2C_Len.Data[3] & 0xE0) > 0xE0)   //0x60
-        DivNum = DivNum - 1; 
-*/	
+
 
     //Divider num
-    R848_I2C.RegAddr = 0x18; //R24[7:5] 
+    //R848_I2C.RegAddr = 0x18; //R24[7:5] 
     R848_Array[R848_Tuner_Num][16] &= 0x1F;
     R848_Array[R848_Tuner_Num][16] |= (DivNum << 5);
-    R848_I2C.Data = R848_Array[R848_Tuner_Num][16];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-        return RT_Fail;
-    
+
+
     VCO_Freq = LO_Freq * MixDiv;
     Nint     = (UINT16) (VCO_Freq / 2 / PLL_Ref);
     VCO_Fra  = (UINT16) (VCO_Freq - 2 * PLL_Ref * Nint);
@@ -3036,41 +3033,35 @@ R848_ErrCode R848_PLL(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_Freq, R848_Standa
     else
         VCO_Fra = VCO_Fra;
     
-	//Ni:R848:R28[6:0]   Si:R848:R20[5:4]
-	Ni = (UINT8) ((Nint - 13) / 4);
-	Si = (UINT8) (Nint - 4 *Ni - 13);
-	//Si
-    R848_I2C.RegAddr = 0x14;
-	R848_Array[R848_Tuner_Num][12] = (R848_Array[R848_Tuner_Num][12] & 0xCF) | ((Si << 4));
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][12];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-      return RT_Fail;
+    //Ni:R848:R28[6:0]   Si:R848:R20[5:4]
+    Ni = (UINT8) ((Nint - 13) / 4);
+    Si = (UINT8) (Nint - 4 *Ni - 13);
+    //Si
+    //R848_I2C.RegAddr = 0x14;
+    R848_Array[R848_Tuner_Num][12] = (R848_Array[R848_Tuner_Num][12] & 0xCF) | ((Si << 4));
+    
     //Ni
-    R848_I2C.RegAddr = 0x1C;
-	R848_Array[R848_Tuner_Num][20] = (R848_Array[R848_Tuner_Num][20] & 0x80) | (Ni);
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][20];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-      return RT_Fail;
+    //R848_I2C.RegAddr = 0x1C;
+    R848_Array[R848_Tuner_Num][20] = (R848_Array[R848_Tuner_Num][20] & 0x80) | (Ni);
     
-            	
+    
+           	
     //pw_sdm		// R848:R27[7]  
-    R848_I2C.RegAddr = 0x1B;
-	R848_Array[R848_Tuner_Num][19] &= 0x7F;
-	if(VCO_Fra == 0)
-		R848_Array[R848_Tuner_Num][19] |= 0x80;
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][19];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-    	return RT_Fail;
-    
+    //R848_I2C.RegAddr = 0x1B;
+    R848_Array[R848_Tuner_Num][19] &= 0x7F;
+    if(VCO_Fra == 0)
+    	R848_Array[R848_Tuner_Num][19] |= 0x80;
+
+
     //SDM calculator
     while(VCO_Fra > 1)
-    {			
+    {
         if (VCO_Fra > (2*PLL_Ref / Nsdm))
-        {		
+        {
             SDM = SDM + 32768 / (Nsdm/2);
             VCO_Fra = VCO_Fra - 2*PLL_Ref / Nsdm;
             if (Nsdm >= 0x8000)
-            	break;
+                break;
         }
         Nsdm = Nsdm << 1;
     }
@@ -3079,19 +3070,24 @@ R848_ErrCode R848_PLL(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_Freq, R848_Standa
     SDM8to1 =  SDM - (SDM16to9 << 8);
     
     // R848:R30[7:0]  
-    R848_I2C.RegAddr = 0x1E;
+    //R848_I2C.RegAddr = 0x1E;
     R848_Array[R848_Tuner_Num][22]    = (UINT8) SDM16to9;
-    R848_I2C.Data    = R848_Array[R848_Tuner_Num][22];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-        return RT_Fail;
+    
     //R848:R29[7:0] 
-    R848_I2C.RegAddr = 0x1D;
+    //R848_I2C.RegAddr = 0x1D;
     R848_Array[R848_Tuner_Num][21]    = (UINT8) SDM8to1;
-    R848_I2C.Data    = R848_Array[R848_Tuner_Num][21];
-    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+    
+    
+    R848_I2C_Len.RegAddr = 0x08;   //  R848:0x08
+    R848_I2C_Len.Len = R848_REG_NUM;
+    for(InitArrayCunt = 0; InitArrayCunt<R848_REG_NUM; InitArrayCunt ++)
+    {
+        R848_I2C_Len.Data[InitArrayCunt] = R848_Array[R848_Tuner_Num][InitArrayCunt];
+    }
+    if(I2C_Write_Len(R848_Tuner_Num, &R848_I2C_Len) != RT_Success)
         return RT_Fail;
     
-    
+
     //if(R848_Standard <= R848_SECAM_L1_INV)
     if(R848_XtalDiv == XTAL_DIV2)
         R848_Delay_MS(20);
@@ -3139,7 +3135,7 @@ R848_ErrCode R848_PLL(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_Freq, R848_Standa
             XTAL_POW0 = 0x00;        //highest,  	// R848:R23[6:5] 
             XTAL_GM = 0x01;          //LARGE(1),         R27[0]=1
             
-            R848_I2C.RegAddr = 0x17;		// XTAL_POW0:R23[6:5] ;  XTAL_POW1:R23[7]  
+            R848_I2C.RegAddr = 0x17;    // XTAL_POW0:R23[6:5] ;  XTAL_POW1:R23[7]  
             R848_Array[R848_Tuner_Num][15]    = ((R848_Array[R848_Tuner_Num][15] & 0x1F) | XTAL_POW0) | XTAL_POW1; 
             R848_I2C.Data    = R848_Array[R848_Tuner_Num][15];
             if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
@@ -3149,7 +3145,7 @@ R848_ErrCode R848_PLL(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_Freq, R848_Standa
             R848_Array[R848_Tuner_Num][19] = (R848_Array[R848_Tuner_Num][19] & 0xFE) | XTAL_GM;
             R848_I2C.Data = R848_Array[R848_Tuner_Num][19];
             if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-            	return RT_Fail;
+                return RT_Fail;
         }
     }
     
@@ -3175,7 +3171,7 @@ R848_ErrCode R848_PLL(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_Freq, R848_Standa
         return RT_Fail;
     
     //Set NA det 710 = OFF
-    R848_I2C.RegAddr  = 0x28;								
+    R848_I2C.RegAddr  = 0x28;
     R848_Array[R848_Tuner_Num][32] = (R848_Array[R848_Tuner_Num][32] & 0xF7) | u1SPulseFlag;
        R848_I2C.Data = R848_Array[R848_Tuner_Num][32];
        if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
@@ -3201,31 +3197,31 @@ R848_ErrCode R848_MUX(R848_TUNER_NUM R848_Tuner_Num, UINT32 LO_KHz, UINT32 RF_KH
     R848_Array[R848_Tuner_Num][5] = (R848_Array[R848_Tuner_Num][5] & 0x9F) | Freq_Info1.LNA_BAND;
     R848_I2C.Data = R848_Array[R848_Tuner_Num][5];
     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-    	return RT_Fail;
+        return RT_Fail;
     
     // RF Polyfilter
     R848_I2C.RegAddr = 0x21;	// R33[7:6]  
     R848_Array[R848_Tuner_Num][25] = (R848_Array[R848_Tuner_Num][25] & 0x3F) | Freq_Info1.RF_POLY;
     R848_I2C.Data = R848_Array[R848_Tuner_Num][25];
     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-    	return RT_Fail;
+        return RT_Fail;
     
     // LNA Cap
     R848_I2C.RegAddr = 0x09;	// R9[7:3]  
     R848_Array[R848_Tuner_Num][1] = (R848_Array[R848_Tuner_Num][1] & 0x07) | (Freq_Info1.LPF_CAP<<3);	
     R848_I2C.Data = R848_Array[R848_Tuner_Num][1];
     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-    	return RT_Fail;
+        return RT_Fail;
     
     // LNA Notch
     R848_I2C.RegAddr = 0x0A;	// R10[4:0] 
     R848_Array[R848_Tuner_Num][2] = (R848_Array[R848_Tuner_Num][2] & 0xE0) | (Freq_Info1.LPF_NOTCH);	
     R848_I2C.Data = R848_Array[R848_Tuner_Num][2];
     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-    	return RT_Fail;
+        return RT_Fail;
     
     //Set_IMR
-    if(R848_IMR_done_flag[R848_Tuner_Num] == TRUE)
+    if((R848_IMR_done_flag[R848_Tuner_Num] == TRUE) && (R848_IMR_Cal_Result[R848_Tuner_Num]==0))
     {
         Reg08_IMR_Gain = R848_IMR_Data[R848_Tuner_Num][Freq_Info1.IMR_MEM].Gain_X & 0x3F;
         Reg09_IMR_Phase = R848_IMR_Data[R848_Tuner_Num][Freq_Info1.IMR_MEM].Phase_Y & 0x3F;
@@ -3333,7 +3329,7 @@ R848_ErrCode R848_SetTF(R848_TUNER_NUM R848_Tuner_Num, UINT32 u4FreqKHz, UINT8 u
             //R848_TF[R848_Tuner_Num] = u1TF_Set_Result1 + (UINT8)((u1TF_Set_Result2 - u1TF_Set_Result1)*u4Ratio/100);
             
              u1TF_tmp1 = ((u1TF_Set_Result1 & 0x40)>>2) + (u1TF_Set_Result1 & 0x3F);  //b6 is 1xb4
-             u1TF_tmp2 = ((u1TF_Set_Result2 & 0x40)>>2) + (u1TF_Set_Result2 & 0x3F);			 
+             u1TF_tmp2 = ((u1TF_Set_Result2 & 0x40)>>2) + (u1TF_Set_Result2 & 0x3F); 
              u4Ratio = (u4Freq1- u4FreqKHz)*100/(u4Freq1 - u4Freq2);
              R848_TF[R848_Tuner_Num] = u1TF_tmp1 + (UINT8)((u1TF_tmp2 - u1TF_tmp1)*u4Ratio/100);
              if(R848_TF[R848_Tuner_Num]>=0x40)
@@ -3398,7 +3394,7 @@ R848_ErrCode R848_SetTF(R848_TUNER_NUM R848_Tuner_Num, UINT32 u4FreqKHz, UINT8 u
     R848_Array[R848_Tuner_Num][0] = (R848_Array[R848_Tuner_Num][0] & 0x80) | R848_TF[R848_Tuner_Num];
     R848_I2C.Data = R848_Array[R848_Tuner_Num][0]  ;
     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-    	return RT_Fail;
+        return RT_Fail;
     
        return RT_Success;
 }
@@ -3417,15 +3413,15 @@ R848_ErrCode R848_IQ(R848_TUNER_NUM R848_Tuner_Num, R848_SectType* IQ_Pont)
         R848_I2C.RegAddr = 0x14; // R848:R20[3:0]  
         R848_I2C.Data    = (R848_Array[R848_Tuner_Num][12] & 0xF0) + VGA_Count;  
         if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-        	return RT_Fail;
+            return RT_Fail;
         
         R848_Delay_MS(R848_VGA_DELAY); //
         
         if(R848_Muti_Read(R848_Tuner_Num, &VGA_Read) != RT_Success)
-        	return RT_Fail;
+            return RT_Fail;
         
         if(VGA_Read > 40*R848_ADC_READ_COUNT)
-        	break;
+            break;
     }
     
     Compare_IQ[0].Gain_X  = R848_Array[R848_Tuner_Num][8] & 0xC0; // R16[5:0]  
@@ -3460,7 +3456,7 @@ R848_ErrCode R848_IQ(R848_TUNER_NUM R848_Tuner_Num, R848_SectType* IQ_Pont)
     //Another direction
     if(X_Direction==1)
     {    
-        if(R848_IQ_Tree(R848_Tuner_Num, Compare_IQ[0].Gain_X, Compare_IQ[0].Phase_Y, 0x10, &Compare_IQ[0]) != RT_Success) //Y	
+           if(R848_IQ_Tree5(R848_Tuner_Num, Compare_IQ[0].Gain_X, Compare_IQ[0].Phase_Y, 0x10, &Compare_IQ[0]) != RT_Success) //Y	
             return RT_Fail;	
     
        //compare and find min of 3 points. determine I/Q direction
@@ -3473,16 +3469,16 @@ R848_ErrCode R848_IQ(R848_TUNER_NUM R848_Tuner_Num, R848_SectType* IQ_Pont)
     }
     else
     {
-       if(R848_IQ_Tree(R848_Tuner_Num, Compare_IQ[0].Phase_Y, Compare_IQ[0].Gain_X, 0x11, &Compare_IQ[0]) != RT_Success) //X
-         return RT_Fail;	
+        if(R848_IQ_Tree5(R848_Tuner_Num, Compare_IQ[0].Phase_Y, Compare_IQ[0].Gain_X, 0x11, &Compare_IQ[0]) != RT_Success) //X
+            return RT_Fail;	
          
        //compare and find min of 3 points. determine I/Q direction
        if(R848_CompreCor(R848_Tuner_Num, &Compare_IQ[0]) != RT_Success)
-         return RT_Fail;
+           return RT_Fail;
     
           //increase step to find min value of this direction
        if(R848_CompreStep(R848_Tuner_Num, &Compare_IQ[0], 0x10) != RT_Success) //X
-         return RT_Fail;	
+            return RT_Fail;	
     }
     
     
@@ -3495,16 +3491,16 @@ R848_ErrCode R848_IQ(R848_TUNER_NUM R848_Tuner_Num, R848_SectType* IQ_Pont)
     else
     {
        if(R848_IQ_Tree(R848_Tuner_Num, Compare_IQ[0].Gain_X, Compare_IQ[0].Phase_Y, 0x10, &Compare_IQ[0]) != RT_Success) //Y
-           return RT_Fail;		
+           return RT_Fail;
     }
     
     if(R848_CompreCor(R848_Tuner_Num, &Compare_IQ[0]) != RT_Success)
-    	return RT_Fail;
+        return RT_Fail;
     
       //Section-9 check
       //if(R848_F_IMR(&Compare_IQ[0]) != RT_Success)
     if(R848_Section(R848_Tuner_Num, &Compare_IQ[0]) != RT_Success)
-    		return RT_Fail;
+        return RT_Fail;
     
     //clear IQ_Cap = 0   //  R11[1:0]  
     Compare_IQ[0].Iqcap = R848_Array[R848_Tuner_Num][3] & 0xFC;
@@ -3590,14 +3586,14 @@ R848_ErrCode R848_IQ_Tree(R848_TUNER_NUM R848_Tuner_Num, UINT8 FixPot, UINT8 Flu
         }
         
         if(TreeCunt == 0)   //try right-side point
-        	FlucPot ++; 
+            FlucPot ++; 
         else if(TreeCunt == 1) //try left-side point
         {
             if((FlucPot & 0x1F) == 1) //if absolute location is 1, change I/Q direction
             {
                 if(FlucPot & 0x20) //b[5]:I/Q selection. 0:Q-path, 1:I-path
                 {
-                    FlucPot = (FlucPot & 0xC0) | 0x01;			
+                    FlucPot = (FlucPot & 0xC0) | 0x01;
                 }
                 else
                 {
@@ -3615,7 +3611,138 @@ R848_ErrCode R848_IQ_Tree(R848_TUNER_NUM R848_Tuner_Num, UINT8 FixPot, UINT8 Flu
 
 
 
-
+R848_ErrCode R848_IQ_Tree5(R848_TUNER_NUM R848_Tuner_Num, UINT8 FixPot, UINT8 FlucPot, UINT8 PotReg, R848_SectType* CompareTree)
+{
+    UINT8 TreeCunt  = 0;
+    UINT8 TreeTimes = 5;
+    UINT8 TempPot   = 0;
+    UINT8 PntReg    = 0;
+    UINT8 CompCunt = 0;
+    R848_SectType CorTemp[5];
+    R848_SectType Compare_Temp;
+    UINT8 CuntTemp = 0;
+    
+    memset(&Compare_Temp,0, sizeof(R848_SectType));
+    Compare_Temp.Value = 255;
+    
+    for(CompCunt=0; CompCunt<3; CompCunt++)
+    {
+        CorTemp[CompCunt].Gain_X = CompareTree[CompCunt].Gain_X;
+        CorTemp[CompCunt].Phase_Y = CompareTree[CompCunt].Phase_Y;
+        CorTemp[CompCunt].Value = CompareTree[CompCunt].Value;
+    }
+    
+    if(PotReg == 0x10)
+        PntReg = 0x11; //phase control
+    else
+        PntReg = 0x10; //gain control
+    
+    for(TreeCunt = 0;TreeCunt < TreeTimes;TreeCunt ++)
+    {
+        R848_I2C.RegAddr = PotReg;
+        R848_I2C.Data    = FixPot;
+        if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+            return RT_Fail;
+        
+        R848_I2C.RegAddr = PntReg;
+        R848_I2C.Data    = FlucPot;
+        if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+            return RT_Fail;
+        
+        if(R848_Muti_Read(R848_Tuner_Num, &CorTemp[TreeCunt].Value) != RT_Success)
+            return RT_Fail;
+        
+        if(PotReg == 0x10)
+        {
+            CorTemp[TreeCunt].Gain_X  = FixPot;
+            CorTemp[TreeCunt].Phase_Y = FlucPot;
+        }
+        else
+        {
+            CorTemp[TreeCunt].Phase_Y  = FixPot;
+            CorTemp[TreeCunt].Gain_X = FlucPot;
+        }
+        
+        if(TreeCunt == 0)   //next try right-side 1 point
+        {
+            FlucPot ++;     //+1
+        }
+        else if(TreeCunt == 1)   //next try right-side 2 point
+        {
+            FlucPot ++;     //1+1=2
+        }
+        else if(TreeCunt == 2)   //next try left-side 1 point
+        {
+            if((FlucPot & 0x1F) == 0x02) //if absolute location is 2, change I/Q direction and set to 1
+            {
+                TempPot = 1;
+                if((FlucPot & 0x20)==0x20) //b[5]:I/Q selection. 0:Q-path, 1:I-path
+                {
+                    FlucPot = (FlucPot & 0xC0) | 0x01;  //Q1
+                }
+                else
+                {
+                    FlucPot = (FlucPot & 0xC0) | 0x21;  //I1
+                }
+            }
+            else
+                FlucPot -= 3;  //+2-3=-1
+        }
+        else if(TreeCunt == 3) //next try left-side 2 point
+        {
+            if(TempPot==1)  //been chnaged I/Q
+            {
+                FlucPot += 1;
+            }
+            else if((FlucPot & 0x1F) == 0x00) //if absolute location is 0, change I/Q direction
+            {
+                TempPot = 1;
+                if((FlucPot & 0x20)==0x20) //b[5]:I/Q selection. 0:Q-path, 1:I-path
+                {
+                    FlucPot = (FlucPot & 0xC0) | 0x01;  //Q1
+                }
+                else
+                {
+                    FlucPot = (FlucPot & 0xC0) | 0x21;  //I1
+                }
+            }
+            else
+                FlucPot -= 1;  //-1-1=-2
+        }
+        
+        if(CorTemp[TreeCunt].Value < Compare_Temp.Value)
+        {
+          Compare_Temp.Value = CorTemp[TreeCunt].Value;
+          Compare_Temp.Gain_X = CorTemp[TreeCunt].Gain_X;
+          Compare_Temp.Phase_Y = CorTemp[TreeCunt].Phase_Y;
+          CuntTemp = TreeCunt; 
+        }
+    }
+    
+    
+    //CompareTree[0].Gain_X = CorTemp[CuntTemp].Gain_X;
+    //CompareTree[0].Phase_Y = CorTemp[CuntTemp].Phase_Y;
+    //CompareTree[0].Value = CorTemp[CuntTemp].Value;
+    
+    for(CompCunt=0; CompCunt<3; CompCunt++)
+    {
+        if(CuntTemp==3 || CuntTemp==4)
+        {
+            CompareTree[CompCunt].Gain_X = CorTemp[2+CompCunt].Gain_X;  //2,3,4
+            CompareTree[CompCunt].Phase_Y = CorTemp[2+CompCunt].Phase_Y;
+            CompareTree[CompCunt].Value = CorTemp[2+CompCunt].Value;
+        }
+        else
+        {
+            CompareTree[CompCunt].Gain_X = CorTemp[CompCunt].Gain_X;    //0,1,2
+            CompareTree[CompCunt].Phase_Y = CorTemp[CompCunt].Phase_Y;
+            CompareTree[CompCunt].Value = CorTemp[CompCunt].Value;
+        }
+        
+    }
+    
+    return RT_Success;
+}
 //-----------------------------------------------------------------------------------/ 
 // Purpose: compare IMC result aray [0][1][2], find min value and store to CorArry[0]
 // input: CorArry: three IMR data array
@@ -3686,7 +3813,7 @@ R848_ErrCode R848_CompreStep(R848_TUNER_NUM R848_Tuner_Num, R848_SectType* StepA
         }
         else if((StepTemp.Value - 2*R848_ADC_READ_COUNT) > StepArry[0].Value)
         {
-            break;		
+            break;
         }
         
     } //end of while()
@@ -3765,7 +3892,7 @@ R848_ErrCode R848_Section(R848_TUNER_NUM R848_Tuner_Num, R848_SectType* IQ_Pont)
     Compare_IQ[0].Phase_Y = IQ_Pont->Phase_Y;
     
     if(R848_IQ_Tree(R848_Tuner_Num, Compare_IQ[0].Gain_X, Compare_IQ[0].Phase_Y, 0x10, &Compare_IQ[0]) != RT_Success)  // y-direction
-        return RT_Fail;		
+        return RT_Fail;
     
     if(R848_CompreCor(R848_Tuner_Num, &Compare_IQ[0]) != RT_Success)
         return RT_Fail;
@@ -3789,14 +3916,14 @@ R848_ErrCode R848_Section(R848_TUNER_NUM R848_Tuner_Num, R848_SectType* IQ_Pont)
     Compare_Bet[1].Value = Compare_IQ[0].Value;
     
     //Try X+1 column and save min result to Compare_Bet[2]
-    if((IQ_Pont->Gain_X & 0x1F) == 0x00)		
+    if((IQ_Pont->Gain_X & 0x1F) == 0x00)
         Compare_IQ[0].Gain_X = ((IQ_Pont->Gain_X) | 0x20) + 1;  //I-path, Gain=1
     else
         Compare_IQ[0].Gain_X = IQ_Pont->Gain_X + 1;
     Compare_IQ[0].Phase_Y = IQ_Pont->Phase_Y;
     
     if(R848_IQ_Tree(R848_Tuner_Num, Compare_IQ[0].Gain_X, Compare_IQ[0].Phase_Y, 0x10, &Compare_IQ[0]) != RT_Success)
-        return RT_Fail;		
+        return RT_Fail;
     
     if(R848_CompreCor(R848_Tuner_Num, &Compare_IQ[0]) != RT_Success)
         return RT_Fail;
@@ -3892,7 +4019,7 @@ R848_ErrCode R848_IMR_Cross(R848_TUNER_NUM R848_Tuner_Num, R848_SectType* IQ_Pon
         {
           Compare_Temp.Value = Compare_Cross[CrossCount].Value;
           Compare_Temp.Gain_X = Compare_Cross[CrossCount].Gain_X;
-          Compare_Temp.Phase_Y = Compare_Cross[CrossCount].Phase_Y;		
+          Compare_Temp.Phase_Y = Compare_Cross[CrossCount].Phase_Y;
         }
     } //end for loop
     
@@ -4130,168 +4257,162 @@ R848_ErrCode R848_GPO(R848_TUNER_NUM R848_Tuner_Num, R848_GPO_Type R848_GPO_Conr
 
 
 R848_ErrCode R848_SetStandard(R848_TUNER_NUM R848_Tuner_Num, R848_Standard_Type RT_Standard)
-{	 
-	
-	if(RT_Standard != R848_pre_standard[R848_Tuner_Num])
-	{
-		 if(R848_InitReg(R848_Tuner_Num, RT_Standard) != RT_Success)      
-		     return RT_Fail;
-	}
-    R848_pre_standard[R848_Tuner_Num] = RT_Standard;
-
-	Sys_Info1 = R848_Sys_Sel(RT_Standard);
-
-	// Filter Calibration
-	UINT8 u1FilCalGap = 8;
-
-	if(RT_Standard<R848_ATV_SIZE)    //ATV
-	    u1FilCalGap = R848_Fil_Cal_Gap;
-	else
-	    u1FilCalGap = 8;
-
-
-
+{
+    
+    UINT8 u1FilCalGap = 8;
+    if(RT_Standard != R848_pre_standard[R848_Tuner_Num])
+    {
+        if(R848_InitReg(R848_Tuner_Num, RT_Standard) != RT_Success)      
+            return RT_Fail;
+    }
+      R848_pre_standard[R848_Tuner_Num] = RT_Standard;
+    
+    Sys_Info1 = R848_Sys_Sel(RT_Standard);
+    
+    // Filter Calibration
+    //UINT8 u1FilCalGap = 8;
+    
+    if(RT_Standard<R848_ATV_SIZE)    //ATV
+        u1FilCalGap = R848_Fil_Cal_Gap;
+    else
+        u1FilCalGap = 8;
+    
+    
+    
     if(R848_Fil_Cal_flag[R848_Tuner_Num][RT_Standard] == FALSE)
-	{
-		R848_Fil_Cal_code[R848_Tuner_Num][RT_Standard] = R848_Filt_Cal_ADC(R848_Tuner_Num, Sys_Info1.FILT_CAL_IF, Sys_Info1.BW, u1FilCalGap);
-		R848_Fil_Cal_BW[R848_Tuner_Num][RT_Standard] = R848_Bandwidth[R848_Tuner_Num];
-        R848_Fil_Cal_flag[R848_Tuner_Num][RT_Standard] = TRUE;
+    {
+        R848_Fil_Cal_code[R848_Tuner_Num][RT_Standard] = R848_Filt_Cal_ADC(R848_Tuner_Num, Sys_Info1.FILT_CAL_IF, Sys_Info1.BW, u1FilCalGap);
+        R848_Fil_Cal_BW[R848_Tuner_Num][RT_Standard] = R848_Bandwidth[R848_Tuner_Num];
+            R848_Fil_Cal_flag[R848_Tuner_Num][RT_Standard] = TRUE;
+        if(R848_IMR_Cal_Result[R848_Tuner_Num]==1) //fail
+        {
+            if((R848_Fil_Cal_BW[R848_Tuner_Num][RT_Standard]==0x60) && (R848_Fil_Cal_code[R848_Tuner_Num][RT_Standard]==15))  //6M/15
+            {
+                R848_Fil_Cal_BW[R848_Tuner_Num][RT_Standard] = R848_Fil_Cal_BW_def[RT_Standard];
+                R848_Fil_Cal_code[R848_Tuner_Num][RT_Standard] = R848_Fil_Cal_code_def[RT_Standard];
+            }
+        }
+          //Reset register and Array 
+          if(R848_InitReg(R848_Tuner_Num, RT_Standard) != RT_Success)
+           return RT_Fail;
+    }
+    
+    // Set Filter Auto Ext
+    R848_I2C.RegAddr = 0x13;	// R19[4]  
+    R848_Array[R848_Tuner_Num][11] = (R848_Array[R848_Tuner_Num][11] & 0xEF) | Sys_Info1.FILT_EXT_ENA;  
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][11];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+    	return RT_Fail;
+    
+    
+    if(Sys_Info1.FILT_EXT_ENA==0x10)  //(%)
+    {
+        
+         if(R848_Fil_Cal_code[R848_Tuner_Num][RT_Standard]< 2)  
+           R848_Fil_Cal_code[R848_Tuner_Num][RT_Standard] = 2;
+        
+         if((Sys_Info1.FILT_EXT_POINT & 0x02)==0x02)  //HPF+3
+         {
+              if(Sys_Info1.HPF_COR>12)  
+              {    Sys_Info1.HPF_COR = 12; }
+         }
+         else  //HPF+1
+         {
+              if(Sys_Info1.HPF_COR>14)  
+              {    Sys_Info1.HPF_COR = 15; } 
+         }
+    }
+    
+    
+    // Set LPF fine code
+    R848_I2C.RegAddr = 0x12;	//  R848:R18[3:0]  
+    R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xF0) | R848_Fil_Cal_code[R848_Tuner_Num][RT_Standard];  
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+    
+    // Set LPF coarse BW
+    R848_I2C.RegAddr = 0x13;	// R848:R19[6:5]  
+    R848_Array[R848_Tuner_Num][11] = (R848_Array[R848_Tuner_Num][11] & 0x9F) | R848_Fil_Cal_BW[R848_Tuner_Num][RT_Standard];
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][11];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+    
+    // Set HPF corner & 1.7M mode
+    R848_I2C.RegAddr = 0x13;	//R848:R19[7 & 3:0]  
+    R848_Array[R848_Tuner_Num][11] = (R848_Array[R848_Tuner_Num][11] & 0x70) | Sys_Info1.HPF_COR | Sys_Info1.V17M;
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][11];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+    
+    // Set TF current 
+    R848_I2C.RegAddr = 0x0B;	//  R848:R11[6]  
+    R848_Array[R848_Tuner_Num][3] = (R848_Array[R848_Tuner_Num][3] & 0xBF) | Sys_Info1.TF_CUR;  
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][3];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+    
+    // Set Filter current 
+    R848_I2C.RegAddr = 0x12;	//  R848:R18[6:5]  
+    R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0x9F) | Sys_Info1.FILT_CUR;  
+    //R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0x9F) | 0x60;   //lowest
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+    
+    // Set Switch Buffer current 
+    R848_I2C.RegAddr = 0x0C;	//  R848:R12[2] 
+    R848_Array[R848_Tuner_Num][4] = (R848_Array[R848_Tuner_Num][4] & 0xFB) | Sys_Info1.SWBUF_CUR;   
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][4];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+    
+    // Set Filter Comp 
+    R848_I2C.RegAddr = 0x26;	//  R848:R38[6:5]  
+    R848_Array[R848_Tuner_Num][30] = (R848_Array[R848_Tuner_Num][30] & 0x9F) | Sys_Info1.FILT_COMP;  
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][30];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+    
+     // Set Filter 3dB
+    R848_I2C.RegAddr = 0x26;	// R848:R38[7]  
+    R848_Array[R848_Tuner_Num][30] = (R848_Array[R848_Tuner_Num][30] & 0xF7) | Sys_Info1.FILT_3DB;  
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][30];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+    
+    // Set Filter Ext Condition (%)
+    R848_I2C.RegAddr = 0x26;	//  R848:R38[2:0] 
+      R848_Array[R848_Tuner_Num][30] = (R848_Array[R848_Tuner_Num][30] & 0xF8) | 0x04 | Sys_Info1.FILT_EXT_POINT;   //ext both HPF/LPF
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][30];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
 
-	    //Reset register and Array 
-	    if(R848_InitReg(R848_Tuner_Num, RT_Standard) != RT_Success)
-		   return RT_Fail;
-	}
-
-	// Set Filter Auto Ext
-	R848_I2C.RegAddr = 0x13;	// R19[4]  
-	R848_Array[R848_Tuner_Num][11] = (R848_Array[R848_Tuner_Num][11] & 0xEF) | Sys_Info1.FILT_EXT_ENA;  
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][11];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-
-	if(Sys_Info1.FILT_EXT_ENA==0x10)  //(%)
-	{
-		
-			 if(R848_Fil_Cal_code[R848_Tuner_Num][RT_Standard]< 2)  
-			   R848_Fil_Cal_code[R848_Tuner_Num][RT_Standard] = 2;
-		
-			 if((Sys_Info1.FILT_EXT_POINT & 0x02)==0x02)  //HPF+3
-			 {
-				  if(Sys_Info1.HPF_COR>12)  
-				  {    Sys_Info1.HPF_COR = 12; }
-			 }
-			 else  //HPF+1
-			 {
-				  if(Sys_Info1.HPF_COR>14)  
-				  {    Sys_Info1.HPF_COR = 15; }		 
-			 }		  			
-	}
-
-
-	// Set LPF fine code
-	R848_I2C.RegAddr = 0x12;	//  R848:R18[3:0]  
-	R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xF0) | R848_Fil_Cal_code[R848_Tuner_Num][RT_Standard];  
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	// Set LPF coarse BW
-	R848_I2C.RegAddr = 0x13;	// R848:R19[6:5]  
-	R848_Array[R848_Tuner_Num][11] = (R848_Array[R848_Tuner_Num][11] & 0x9F) | R848_Fil_Cal_BW[R848_Tuner_Num][RT_Standard];
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][11];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-	
-	// Set HPF corner & 1.7M mode
-	R848_I2C.RegAddr = 0x13;	//R848:R19[7 & 3:0]  
-	R848_Array[R848_Tuner_Num][11] = (R848_Array[R848_Tuner_Num][11] & 0x70) | Sys_Info1.HPF_COR | Sys_Info1.V17M;
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][11];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	// Set TF current 
-	R848_I2C.RegAddr = 0x0B;	//  R848:R11[6]  
-	R848_Array[R848_Tuner_Num][3] = (R848_Array[R848_Tuner_Num][3] & 0xBF) | Sys_Info1.TF_CUR;  
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][3];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	// Set Filter current 
-	R848_I2C.RegAddr = 0x12;	//  R848:R18[6:5]  
-	R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0x9F) | Sys_Info1.FILT_CUR;  
-	//R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0x9F) | 0x60;   //lowest
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	// Set Switch Buffer current 
-	R848_I2C.RegAddr = 0x0C;	//  R848:R12[2] 
-	R848_Array[R848_Tuner_Num][4] = (R848_Array[R848_Tuner_Num][4] & 0xFB) | Sys_Info1.SWBUF_CUR;   
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][4];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	// Set Filter Comp 
-	R848_I2C.RegAddr = 0x26;	//  R848:R38[6:5]  
-	R848_Array[R848_Tuner_Num][30] = (R848_Array[R848_Tuner_Num][30] & 0x9F) | Sys_Info1.FILT_COMP;  
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][30];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-   // Set Filter 3dB
-	R848_I2C.RegAddr = 0x26;	// R848:R38[7]  
-	R848_Array[R848_Tuner_Num][30] = (R848_Array[R848_Tuner_Num][30] & 0xF7) | Sys_Info1.FILT_3DB;  
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][30];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	// Set Filter Ext Condition (%)
-	R848_I2C.RegAddr = 0x26;	//  R848:R38[2:0] 
-    R848_Array[R848_Tuner_Num][30] = (R848_Array[R848_Tuner_Num][30] & 0xF8) | 0x04 | Sys_Info1.FILT_EXT_POINT;   //ext both HPF/LPF
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][30];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-/*
-	// Set Inductor Bias
-	R848_I2C.RegAddr = 0x04;
-	R848_Array[R848_Tuner_Num][4] = (R848_Array[R848_Tuner_Num][4] & 0xFE) | Sys_Info1.INDUC_BIAS; 
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][4];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-*/
-	// Set sw cap clk
-	R848_I2C.RegAddr = 0x1A;	//  R848:R26[1:0]  
-	R848_Array[R848_Tuner_Num][18] = (R848_Array[R848_Tuner_Num][18] & 0xFC) | Sys_Info1.SWCAP_CLK; 
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][18];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	// Set NA det power
-	R848_I2C.RegAddr = 0x26;	// R848:R38[7] 
-	R848_Array[R848_Tuner_Num][30] = (R848_Array[R848_Tuner_Num][30] & 0x7F) | Sys_Info1.NA_PWR_DET; 
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][30];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-/*
-	// Set AGC clk 
-	R848_I2C.RegAddr = 0x1A;	//  R848:R26[4:2] 
-	R848_Array[R848_Tuner_Num][18] = (R848_Array[R848_Tuner_Num][18] & 0xE3) | Sys_Info1.AGC_CLK;  
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][18];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-*/
-
-	//Set GPO High
-	R848_I2C.RegAddr = 0x17;	// R848:R23[4:2]  
-	R848_Array[R848_Tuner_Num][15] = (R848_Array[R848_Tuner_Num][15] & 0xFE) | 0x01;
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][15];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-	return RT_Fail;
+    // Set sw cap clk
+    R848_I2C.RegAddr = 0x1A;	//  R848:R26[1:0]  
+    R848_Array[R848_Tuner_Num][18] = (R848_Array[R848_Tuner_Num][18] & 0xFC) | Sys_Info1.SWCAP_CLK; 
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][18];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+    
+    // Set NA det power
+    R848_I2C.RegAddr = 0x26;	// R848:R38[7] 
+    R848_Array[R848_Tuner_Num][30] = (R848_Array[R848_Tuner_Num][30] & 0x7F) | Sys_Info1.NA_PWR_DET; 
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][30];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+       return RT_Fail;
+    
 
 
-	return RT_Success;
+    //Set GPO High
+    R848_I2C.RegAddr = 0x17;	// R848:R23[4:2]  
+    R848_Array[R848_Tuner_Num][15] = (R848_Array[R848_Tuner_Num][15] & 0xFE) | 0x01;
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][15];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+    
+    
+    return RT_Success;
 }
 
 
@@ -4304,271 +4425,263 @@ UINT8  R848_Filt_Cal_ADC(R848_TUNER_NUM R848_Tuner_Num, UINT32 IF_Freq, UINT8 R8
      UINT8     u1FilterCalValuePre = 0;
      UINT8     initial_cnt = 0;
      UINT8     i = 0;
-	 UINT32   RingVCO = 0;
-	 UINT32   RingRef = R848_Xtal;
-	 UINT8     divnum_ring = 0;
-
+     UINT32   RingVCO = 0;
+     UINT32   RingRef = R848_Xtal;
+     UINT8     divnum_ring = 0;
+	 R848_Standard_Type	R848_Standard; 
+	 UINT8   VGA_Count = 0; 
+	 UINT8   VGA_Read = 0; 
 	
-	if(R848_Xtal==16000)  //16M
-	{
-         divnum_ring = 11;
-	}
-	else if (R848_Xtal==24000)  //24M
-	{
-		 divnum_ring = 2;
-	}
-	else
-	{
-		divnum_ring = 0;
-	}
-	 RingVCO = (16+divnum_ring)* 8 * RingRef;
-	 u4RingFreq = RingVCO/48;
-
-
-
-	 R848_Standard_Type	R848_Standard;
-	 R848_Standard=R848_ATSC; //no set R848_SATELLITE
-
-	 //Write initial reg before doing calibration 
-	 if(R848_InitReg(R848_Tuner_Num, R848_Standard) != RT_Success)        
-		return RT_Fail;
-
-	 if(R848_Cal_Prepare(R848_Tuner_Num, R848_LPF_CAL) != RT_Success)      
-	      return RT_Fail;
-
-
-	 //Set Ring PLL(72MHz)	 	
-	 /*R848_I2C.RegAddr = 0x18;	//  R848:R22[7:2]  
-	 R848_Array[R848_Tuner_Num][24] = (R848_Array[R848_Tuner_Num][24] & 0x00) | 0x8B;  //div=11, pre div=6
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][24];
-	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;*/
-
-	 R848_I2C.RegAddr = 0x27;	//  R848:R39[5:2]  //div
-	 R848_Array[R848_Tuner_Num][31] = (R848_Array[R848_Tuner_Num][31] & 0xC3) | (divnum_ring<<2);  
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][31];
-	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	 R848_I2C.RegAddr = 0x12;	//R848:R18[4]  
-	 R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xEF) | 0x00; 
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
-	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	 R848_I2C.RegAddr = 0x25;	//  R848:R37[7]  
-	 R848_Array[R848_Tuner_Num][29] = (R848_Array[R848_Tuner_Num][29] & 0x7F) | 0x00; 
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][29];
-	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	
-	 R848_I2C.RegAddr = 0x27;	//  R848:R39[7:6]    //pre div
-	 R848_Array[R848_Tuner_Num][31] = (R848_Array[R848_Tuner_Num][31] & 0x3F) | 0x80;  
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][31];
-	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	 R848_Array[R848_Tuner_Num][25] = (R848_Array[R848_Tuner_Num][25] & 0x00) | 0x8B;   //out div=8, RF poly=low band, power=min_lp
-	 if(RingVCO>=3200000)
-	{
-		R848_Array[R848_Tuner_Num][25] &= 0xDF;   //clear vco_band, R25[5]		//R848:R33[5]    33-8=25  33(0x21) is addr ; [25] is data 
-	}
-	else
-	{
-		R848_Array[R848_Tuner_Num][25] |= 0x20;   //clear vco_band, R25[5]		//R848:R33[5]    33-8=25  33(0x21) is addr ; [25] is data 
-	}
-	 R848_I2C.RegAddr = 0x21;	//  R848:R33[7:0]  
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][25];
-	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;	
-
-     //Must do before PLL() 
-	 if(R848_MUX(R848_Tuner_Num, u4RingFreq + IF_Freq, u4RingFreq, R848_STD_SIZE) != RT_Success)     //FilCal MUX (LO_Freq, RF_Freq)
-	     return RT_Fail;
-
-	 //Set PLL
-	 if(R848_PLL(R848_Tuner_Num, (u4RingFreq + IF_Freq), R848_STD_SIZE) != RT_Success)   //FilCal PLL
-	       return RT_Fail;
-
-	 //-----below must set after R848_MUX()-------//
-	 //Set LNA TF for RF=72MHz. no use
-	 if((R848_SetTfType==R848_TF_NARROW) || (R848_SetTfType==R848_TF_NARROW_LIN))   //UL use 270n setting
-	 {
-	    R848_I2C.RegAddr = 0x08;	//  R848:R8[6:0]  
+    if(R848_Xtal==16000)  //16M
+    {
+       divnum_ring = 11;
+    }
+    else if (R848_Xtal==24000)  //24M
+    {
+       divnum_ring = 2;
+    }
+    else
+    {
+        divnum_ring = 0;
+    }
+     RingVCO = (16+divnum_ring)* 8 * RingRef;
+     u4RingFreq = RingVCO/48;
+    
+    
+    
+	 //R848_Standard_Type	R848_Standard;
+     R848_Standard=R848_ATSC; //no set R848_SATELLITE
+    
+     //Write initial reg before doing calibration 
+     if(R848_InitReg(R848_Tuner_Num, R848_Standard) != RT_Success)        
+         return RT_Fail;
+    
+     if(R848_Cal_Prepare(R848_Tuner_Num, R848_LPF_CAL) != RT_Success)      
+        return RT_Fail;
+        
+     R848_I2C.RegAddr = 0x27;	//  R848:R39[5:2]  //div
+     R848_Array[R848_Tuner_Num][31] = (R848_Array[R848_Tuner_Num][31] & 0xC3) | (divnum_ring<<2);  
+     R848_I2C.Data = R848_Array[R848_Tuner_Num][31];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+         return RT_Fail;
+    
+     R848_I2C.RegAddr = 0x12;	//R848:R18[4]  
+     R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xEF) | 0x00; 
+     R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+    
+     R848_I2C.RegAddr = 0x25;	//  R848:R37[7]  
+     R848_Array[R848_Tuner_Num][29] = (R848_Array[R848_Tuner_Num][29] & 0x7F) | 0x00; 
+     R848_I2C.Data = R848_Array[R848_Tuner_Num][29];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+    
+    
+     R848_I2C.RegAddr = 0x27;	//  R848:R39[7:6]    //pre div
+     R848_Array[R848_Tuner_Num][31] = (R848_Array[R848_Tuner_Num][31] & 0x3F) | 0x80;  
+     R848_I2C.Data = R848_Array[R848_Tuner_Num][31];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+         return RT_Fail;
+    
+     R848_Array[R848_Tuner_Num][25] = (R848_Array[R848_Tuner_Num][25] & 0x00) | 0x8B;   //out div=8, RF poly=low band, power=min_lp
+     if(RingVCO>=3200000)
+     {
+         R848_Array[R848_Tuner_Num][25] &= 0xDF;   //clear vco_band, R25[5]		//R848:R33[5]    33-8=25  33(0x21) is addr ; [25] is data 
+     }
+     else
+     {
+         R848_Array[R848_Tuner_Num][25] |= 0x20;   //clear vco_band, R25[5]		//R848:R33[5]    33-8=25  33(0x21) is addr ; [25] is data 
+     }
+     R848_I2C.RegAddr = 0x21;	//  R848:R33[7:0]  
+     R848_I2C.Data = R848_Array[R848_Tuner_Num][25];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+         return RT_Fail;	
+    
+        //Must do before PLL() 
+     if(R848_MUX(R848_Tuner_Num, u4RingFreq + IF_Freq, u4RingFreq, R848_STD_SIZE) != RT_Success)     //FilCal MUX (LO_Freq, RF_Freq)
+         return RT_Fail;
+    
+     //Set PLL
+     if(R848_PLL(R848_Tuner_Num, (u4RingFreq + IF_Freq), R848_STD_SIZE) != RT_Success)   //FilCal PLL
+           return RT_Fail;
+    
+     //-----below must set after R848_MUX()-------//
+     //Set LNA TF for RF=72MHz. no use
+     if((R848_SetTfType==R848_TF_NARROW) || (R848_SetTfType==R848_TF_NARROW_LIN))   //UL use 270n setting
+     {
+        R848_I2C.RegAddr = 0x08;	//  R848:R8[6:0]  
         R848_Array[R848_Tuner_Num][0] = (R848_Array[R848_Tuner_Num][0] & 0x80) | 0x1F;  
-	 }
-	 else
-	 {
-	    R848_I2C.RegAddr = 0x08;	//  R848:R8[6:0]  
+     }
+     else
+     {
+        R848_I2C.RegAddr = 0x08;	//  R848:R8[6:0]  
         R848_Array[R848_Tuner_Num][0] = (R848_Array[R848_Tuner_Num][0] & 0x80) | 0x00;  
-	 }
+     }
+     
      R848_I2C.Data = R848_Array[R848_Tuner_Num][0];
      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
           return RT_Fail;
-
-	 //Adc=on set 0;
-	 R848_I2C.RegAddr = 0x0F;		//  R848:R15[7]  
+    
+     //Adc=on set 0;
+     R848_I2C.RegAddr = 0x0F;//  R848:R15[7]  
      R848_Array[R848_Tuner_Num][7] = (R848_Array[R848_Tuner_Num][7] & 0x7F);
      R848_I2C.Data = R848_Array[R848_Tuner_Num][7];
      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
            return RT_Fail;
-
-
-
-	//pwd_vga  vga power on set 0;
-	 R848_I2C.RegAddr = 0x12;	//  R848:R18[7] 
+     
+     
+     
+    //pwd_vga  vga power on set 0;
+     R848_I2C.RegAddr = 0x12;	//  R848:R18[7] 
      R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0x7F);  
      R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
            return RT_Fail;
-
-
-
-
-	 //vga6db normal set 0;
-	 R848_I2C.RegAddr = 0x0B;		// R848:R11[3]  
+     //vga6db normal set 0;
+     R848_I2C.RegAddr = 0x0B;// R848:R11[3]  
      R848_Array[R848_Tuner_Num][3] = (R848_Array[R848_Tuner_Num][3] & 0xF7);
      R848_I2C.Data = R848_Array[R848_Tuner_Num][3];
      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
            return RT_Fail;
-
- 	 //Vga Gain = -12dB 
-	 R848_I2C.RegAddr = 0x14;		//  R848:R20[3:0]  
+    
+     //Vga Gain = -12dB 
+     R848_I2C.RegAddr = 0x14;//  R848:R20[3:0]  
      R848_Array[R848_Tuner_Num][12] = (R848_Array[R848_Tuner_Num][12] & 0xF0);
      R848_I2C.Data = R848_Array[R848_Tuner_Num][12];
      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
            return RT_Fail;
-
-	
-	 // vcomp = 0
-	 R848_I2C.RegAddr = 0x26;	//  R848:R38[6:5]  
-	 R848_Array[R848_Tuner_Num][30] = (R848_Array[R848_Tuner_Num][30] & 0x9F);	
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][30];
-	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-	
-	 //Set BW=8M, HPF corner narrowest; 1.7M disable
-     R848_I2C.RegAddr = 0x13;	//  R848:R19[7:0]  
-	 R848_Array[R848_Tuner_Num][11] = (R848_Array[R848_Tuner_Num][11] & 0x00);	  
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][11];		
+    
+    
+     // vcomp = 0
+     R848_I2C.RegAddr = 0x26;	//  R848:R38[6:5]  
+     R848_Array[R848_Tuner_Num][30] = (R848_Array[R848_Tuner_Num][30] & 0x9F);	
+     R848_I2C.Data = R848_Array[R848_Tuner_Num][30];
      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;	
+         return RT_Fail;
+    
+     //Set BW=8M, HPF corner narrowest; 1.7M disable
+     R848_I2C.RegAddr = 0x13;	//  R848:R19[7:0]  
+     R848_Array[R848_Tuner_Num][11] = (R848_Array[R848_Tuner_Num][11] & 0x00);	  
+     R848_I2C.Data = R848_Array[R848_Tuner_Num][11];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+         return RT_Fail;
+    
+     //------- increase VGA power to let ADC read value significant ---------//
+	 //UINT8   VGA_Count = 0;
+	 //UINT8   VGA_Read = 0;
 
-	 //------- increase VGA power to let ADC read value significant ---------//
-	 UINT8   VGA_Count = 0;
-	 UINT8   VGA_Read = 0;
-
-	 R848_I2C.RegAddr = 0x12;	//  R848:R18[3:0]  
+     R848_I2C.RegAddr = 0x12;	//  R848:R18[3:0]  
      R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xF0) | 0;  //filter code=0
      R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
      if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
           return RT_Fail;
-
-	 for(VGA_Count=0; VGA_Count < 16; VGA_Count ++)
-	 {
-		R848_I2C.RegAddr = 0x14;	//  R848:R20[3:0]  
-		R848_I2C.Data    = (R848_Array[R848_Tuner_Num][12] & 0xF0) + VGA_Count;  
-		if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-			return RT_Fail;
-
-		R848_Delay_MS(R848_VGA_DELAY); //
-		
-		if(R848_Muti_Read(R848_Tuner_Num, &VGA_Read) != RT_Success)
-			return RT_Fail;
-
-		if(VGA_Read > 40*R848_ADC_READ_COUNT)
-			break;
-	 }
-
-	 //------- Try suitable BW --------//
-
-	 if(R848_BW==0x60) //6M
+    
+     for(VGA_Count=0; VGA_Count < 16; VGA_Count ++)
+     {
+         R848_I2C.RegAddr = 0x14;	//  R848:R20[3:0]  
+         R848_I2C.Data    = (R848_Array[R848_Tuner_Num][12] & 0xF0) + VGA_Count;  
+         if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+             return RT_Fail;
+         
+         R848_Delay_MS(R848_VGA_DELAY); //
+         
+         if(R848_Muti_Read(R848_Tuner_Num, &VGA_Read) != RT_Success)
+             return RT_Fail;
+         
+         if(VGA_Read > 40*R848_ADC_READ_COUNT)
+             break;
+     }
+    
+     //------- Try suitable BW --------//
+    
+     if(R848_BW==0x60) //6M
          initial_cnt = 1;  //try 7M first
-	 else
-		 initial_cnt = 0;  //try 8M first
-
-	 for(i=initial_cnt; i<3; i++)
-	 {
+     else
+         initial_cnt = 0;  //try 8M first
+    
+     for(i=initial_cnt; i<3; i++)
+     {
          if(i==0)
              R848_Bandwidth[R848_Tuner_Num] = 0x00; //8M
-		 else if(i==1)
-			 R848_Bandwidth[R848_Tuner_Num] = 0x40; //7M
-		 else
-			 R848_Bandwidth[R848_Tuner_Num] = 0x60; //6M
-
-		 R848_I2C.RegAddr = 0x13;	//  R848:R19[7:0]  
-	     R848_Array[R848_Tuner_Num][11] = (R848_Array[R848_Tuner_Num][11] & 0x00) | R848_Bandwidth[R848_Tuner_Num];	  
-         R848_I2C.Data = R848_Array[R848_Tuner_Num][11];		
+         else if(i==1)
+             R848_Bandwidth[R848_Tuner_Num] = 0x40; //7M
+         else
+             R848_Bandwidth[R848_Tuner_Num] = 0x60; //6M
+        
+         R848_I2C.RegAddr = 0x13;	//  R848:R19[7:0]  
+         R848_Array[R848_Tuner_Num][11] = (R848_Array[R848_Tuner_Num][11] & 0x00) | R848_Bandwidth[R848_Tuner_Num];	  
+         R848_I2C.Data = R848_Array[R848_Tuner_Num][11];
          if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		      return RT_Fail;	
-
-		 // read code 0
-		 R848_I2C.RegAddr = 0x12;	//  R848:R18[3:0]  
-		 R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xF0) | 0;  //code 0
-		 R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
-		 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-			  return RT_Fail;
-
-		 R848_Delay_MS(R848_FILTER_DELAY); //delay ms
-	     
-		 if(R848_Muti_Read(R848_Tuner_Num, &u1FilterCalValuePre) != RT_Success)
-			  return RT_Fail;
-
-		 //read code 13
-		 R848_I2C.RegAddr = 0x12;	// R848:R18[3:0]  
-		 R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xF0) | 13;  //code 13
-		 R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
-		 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-			  return RT_Fail;
-
-		 R848_Delay_MS(R848_FILTER_DELAY); //delay ms
-	     
-		 if(R848_Muti_Read(R848_Tuner_Num, &u1FilterCalValue) != RT_Success)
-			  return RT_Fail;
-
-		 if(u1FilterCalValuePre > (u1FilterCalValue+8))  //suitable BW found
-			 break;
-	 }
-
+         return RT_Fail;	
+        
+         // read code 0
+         R848_I2C.RegAddr = 0x12;	//  R848:R18[3:0]  
+         R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xF0) | 0;  //code 0
+         R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
+         if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+             return RT_Fail;
+        
+         R848_Delay_MS(R848_FILTER_DELAY); //delay ms
+           
+         if(R848_Muti_Read(R848_Tuner_Num, &u1FilterCalValuePre) != RT_Success)
+             return RT_Fail;
+        
+         //read code 13
+         R848_I2C.RegAddr = 0x12;	// R848:R18[3:0]  
+         R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xF0) | 13;  //code 13
+         R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
+         if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+             return RT_Fail;
+        
+         R848_Delay_MS(R848_FILTER_DELAY); //delay ms
+           
+         if(R848_Muti_Read(R848_Tuner_Num, &u1FilterCalValue) != RT_Success)
+             return RT_Fail;
+        
+         if(u1FilterCalValuePre > (u1FilterCalValue+8))  //suitable BW found
+             break;
+     }
+    
      //-------- Try LPF filter code ---------//
-	 u1FilterCalValuePre = 0;
-	 for(u1FilterCode=0; u1FilterCode<16; u1FilterCode++)
-	 {
+     u1FilterCalValuePre = 0;
+     for(u1FilterCode=0; u1FilterCode<16; u1FilterCode++)
+     {
          R848_I2C.RegAddr = 0x12;	//  R848:R18[3:0]  
          R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xF0) | u1FilterCode;
          R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
          if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
               return RT_Fail;
-
-		 R848_Delay_MS(R848_FILTER_DELAY); //delay ms
-
-		 if(R848_Muti_Read(R848_Tuner_Num, &u1FilterCalValue) != RT_Success)
-		      return RT_Fail;
-
-		 if(u1FilterCode==0)
-              u1FilterCalValuePre = u1FilterCalValue;
-
-		 if((u1FilterCalValue+FilCal_Gap*R848_ADC_READ_COUNT) < u1FilterCalValuePre)
-		 {
-			 u1FilterCodeResult = u1FilterCode;
-			  break;
-		 }
-
-	 }
-
-	 if(u1FilterCode==16)
-          u1FilterCodeResult = 15;
-
-	  return u1FilterCodeResult;
-
+    
+         R848_Delay_MS(R848_FILTER_DELAY); //delay ms
+        
+         if(R848_Muti_Read(R848_Tuner_Num, &u1FilterCalValue) != RT_Success)
+              return RT_Fail;
+        
+         if(u1FilterCode==0)
+             u1FilterCalValuePre = u1FilterCalValue;
+        
+         if((u1FilterCalValue+FilCal_Gap*R848_ADC_READ_COUNT) < u1FilterCalValuePre)
+         {
+            u1FilterCodeResult = u1FilterCode;
+            break;
+         }
+        
+     }
+    
+     if(u1FilterCode==16)
+             u1FilterCodeResult = 15;
+    
+      return u1FilterCodeResult;
+    
 }
 R848_ErrCode R848_SetFrequency(R848_TUNER_NUM R848_Tuner_Num, R848_Set_Info R848_INFO)
 {
 
      UINT32 LO_KHz;
+     UINT8 RegArrayCunt = 0;
     
-	 if(R848_INFO.R848_Standard!=R848_SATELLITE)
+     if(R848_INFO.R848_Standard!=R848_SATELLITE)
      {
         // Check Input Frequency Range
         if((R848_INFO.RF_KHz<40000) || (R848_INFO.RF_KHz>1002000))
@@ -4581,11 +4694,11 @@ R848_ErrCode R848_SetFrequency(R848_TUNER_NUM R848_Tuner_Num, R848_Set_Info R848
         // Check Input Frequency Range
         if((R848_INFO.RF_KHz<40000) || (R848_INFO.RF_KHz>2400000))
         {
-        	  return RT_Fail;
+            return RT_Fail;
         }
      }
     
-          LO_KHz = R848_INFO.RF_KHz + Sys_Info1.IF_KHz;
+     LO_KHz = R848_INFO.RF_KHz + Sys_Info1.IF_KHz;
     
      //Set MUX dependent var. Must do before PLL( ) 
      if(R848_MUX(R848_Tuner_Num, LO_KHz, R848_INFO.RF_KHz, R848_INFO.R848_Standard) != RT_Success)   //normal MUX
@@ -4597,260 +4710,158 @@ R848_ErrCode R848_SetFrequency(R848_TUNER_NUM R848_Tuner_Num, R848_Set_Info R848
         return RT_Fail;
 
 
-	 //Set TF
-	 if(R848_SetTF(R848_Tuner_Num, R848_INFO.RF_KHz, R848_SetTfType) != RT_Success)
-		return RT_Fail;
-
-
-
-	 #if(FOR_KOREA_CTMR==TRUE)  //Q_CTRL OFF
-		 if((R848_INFO.RF_KHz>700000) && (R848_INFO.R848_Standard<R848_ATV_SIZE))
-		 {
-			R848_I2C.RegAddr = 0x08;
-			R848_Array[R848_Tuner_Num][0] = (R848_Array[R848_Tuner_Num][0] & 0x80) | 0x00;
-			R848_I2C.Data = R848_Array[R848_Tuner_Num][0];
-			if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-				return RT_Fail;
-		 }
-	 #endif
-
-
-
-
+     //Set TF
+     if(R848_SetTF(R848_Tuner_Num, R848_INFO.RF_KHz, R848_SetTfType) != RT_Success)
+         return RT_Fail;
+    
+    
+    
+     #if(FOR_KOREA_CTMR==TRUE)  //Q_CTRL OFF
+     if((R848_INFO.RF_KHz>700000) && (R848_INFO.R848_Standard<R848_ATV_SIZE))
+     {
+         R848_I2C.RegAddr = 0x08;
+         R848_Array[R848_Tuner_Num][0] = (R848_Array[R848_Tuner_Num][0] & 0x80) | 0x00;
+     }
+     #endif
+        
      R848_IMR_point_num = Freq_Info1.IMR_MEM;
-
-	 //Q1.5K   Q_ctrl  R848:R14[4]
-	 //if(R848_INFO.RF_KHz<R848_LNA_MID_LOW[R848_TF_NARROW]) //<300MHz
-     //     R848_Array[R848_Tuner_Num][6] = R848_Array[R848_Tuner_Num][6] | 0x10;	
-	 //else
-	 //	  R848_Array[R848_Tuner_Num][6] = R848_Array[R848_Tuner_Num][6] & 0xEF;		 
-
-	if(R848_INFO.RF_KHz<=472000) //<472MHz
-		R848_Array[R848_Tuner_Num][6] = R848_Array[R848_Tuner_Num][6] | 0x10;	
-	else
-	 	R848_Array[R848_Tuner_Num][6] = R848_Array[R848_Tuner_Num][6] & 0xEF;
-
-	//medQctrl 1.5K
-	if((R848_INFO.RF_KHz>=300000)&&(R848_INFO.RF_KHz<=472000)) //<473MHz and >299MHz
-		R848_Array[R848_Tuner_Num][6] = R848_Array[R848_Tuner_Num][6] | 0x01;	
-	else
-	 	R848_Array[R848_Tuner_Num][6] = R848_Array[R848_Tuner_Num][6] & 0xFE;
-
-	 R848_I2C.RegAddr = 0x0E;	//  R848:R14[1] 
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][6];
-	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	
-	 //3~6 shrink
-	if((R848_INFO.RF_KHz>=300000)&&(R848_INFO.RF_KHz<=550000)) //<551MHz and >299MHz
-		R848_Array[R848_Tuner_Num][3] = R848_Array[R848_Tuner_Num][3] & 0xFB;	
-	else
-	 	R848_Array[R848_Tuner_Num][3] = R848_Array[R848_Tuner_Num][3] | 0x04;
-
-	 R848_I2C.RegAddr = 0x0B;	//  R848:R11[2] 
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][3];
-	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-
-
-	 //set Xtal AAC on=1 ;off=0
-	 R848_I2C.RegAddr = 0x18;	//  R848:R24[1]  
-	 R848_Array[R848_Tuner_Num][16] = R848_Array[R848_Tuner_Num][16] & 0xFD;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][16];
-	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-
+    
+ 
+    
+    if(R848_INFO.RF_KHz<=472000) //<472MHz
+        R848_Array[R848_Tuner_Num][6] = R848_Array[R848_Tuner_Num][6] | 0x10;	
+    else
+        R848_Array[R848_Tuner_Num][6] = R848_Array[R848_Tuner_Num][6] & 0xEF;
+    
+    //medQctrl 1.5K
+    if((R848_INFO.RF_KHz>=300000)&&(R848_INFO.RF_KHz<=472000)) //<473MHz and >299MHz
+        R848_Array[R848_Tuner_Num][6] = R848_Array[R848_Tuner_Num][6] | 0x01;	
+    else
+         R848_Array[R848_Tuner_Num][6] = R848_Array[R848_Tuner_Num][6] & 0xFE;
+     
+     //3~6 shrink
+    if((R848_INFO.RF_KHz>=300000)&&(R848_INFO.RF_KHz<=550000)) //<551MHz and >299MHz
+        R848_Array[R848_Tuner_Num][3] = R848_Array[R848_Tuner_Num][3] & 0xFB;	
+    else
+         R848_Array[R848_Tuner_Num][3] = R848_Array[R848_Tuner_Num][3] | 0x04;
+    
+    
+    
+    
+     //set Xtal AAC on=1 ;off=0
+     //R848_I2C.RegAddr = 0x18;	//  R848:R24[1]  
+     R848_Array[R848_Tuner_Num][16] = R848_Array[R848_Tuner_Num][16] & 0xFD;
      //Get Sys-Freq parameter	
      SysFreq_Info1 = R848_SysFreq_Sel(R848_INFO.R848_Standard, R848_INFO.RF_KHz);
-
-	
      // Set LNA_TOP
-	 R848_I2C.RegAddr = 0x23;	//  R848:R35[2:0]  
-     R848_Array[R848_Tuner_Num][27] = (R848_Array[R848_Tuner_Num][27] & 0xF8) | (SysFreq_Info1.LNA_TOP);
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][27];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-         return RT_Fail;
-
-	  // Set LNA VTHL
-	 R848_I2C.RegAddr = 0x1F;	// R848:R31[7:0]  
-     R848_Array[R848_Tuner_Num][23] = (R848_Array[R848_Tuner_Num][23] & 0x00) | SysFreq_Info1.LNA_VTH_L;
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][23];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-        return RT_Fail;
-
+     //R848_I2C.RegAddr = 0x23;	//  R848:R35[2:0]  
+     R848_Array[R848_Tuner_Num][27] = (R848_Array[R848_Tuner_Num][27] & 0xF8) | (SysFreq_Info1.LNA_TOP);   
+     // Set LNA VTHL
+     //R848_I2C.RegAddr = 0x1F;	// R848:R31[7:0]  
+     R848_Array[R848_Tuner_Num][23] = (R848_Array[R848_Tuner_Num][23] & 0x00) | SysFreq_Info1.LNA_VTH_L;   
      // Set MIXER TOP
-	 R848_I2C.RegAddr = 0x24;	// R848:R36[7:0]   
-     R848_Array[R848_Tuner_Num][28] = (R848_Array[R848_Tuner_Num][28] & 0xF0) | (SysFreq_Info1.MIXER_TOP); 
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][28];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-        return RT_Fail;
-
+     //R848_I2C.RegAddr = 0x24;	// R848:R36[7:0]   
+     R848_Array[R848_Tuner_Num][28] = (R848_Array[R848_Tuner_Num][28] & 0xF0) | (SysFreq_Info1.MIXER_TOP);   
      // Set MIXER VTHL
-	 R848_I2C.RegAddr = 0x20;	//  R848:R32[7:0]  
+     //R848_I2C.RegAddr = 0x20;	//  R848:R32[7:0]  
      R848_Array[R848_Tuner_Num][24] = (R848_Array[R848_Tuner_Num][24] & 0x00) | SysFreq_Info1.MIXER_VTH_L;
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][24];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-        return RT_Fail;
-
-	 // Set RF TOP
-	 R848_I2C.RegAddr = 0x22;	// R848:R34[7:0]  
-	 R848_Array[R848_Tuner_Num][26] = (R848_Array[R848_Tuner_Num][26] & 0x1F) | SysFreq_Info1.RF_TOP;
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][26];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-        return RT_Fail;
-
-	 // Set Nrb TOP
-	 R848_I2C.RegAddr = 0x24;	//R848:R36[7:4]   
-	 R848_Array[R848_Tuner_Num][28] = (R848_Array[R848_Tuner_Num][28] & 0x0F) | SysFreq_Info1.NRB_TOP;
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][28];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-        return RT_Fail;
-
-	 // Set Nrb BW
-	 R848_I2C.RegAddr = 0x23;	//  R848:R35[7:6]  
-	 R848_Array[R848_Tuner_Num][27] = (R848_Array[R848_Tuner_Num][27] & 0x3F) | SysFreq_Info1.NRB_BW;
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][27];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-        return RT_Fail;
-
-	 // Set TF LPF
-	 R848_I2C.RegAddr = 0x0C;	// R848:R12[6]  
-	 R848_Array[R848_Tuner_Num][4] = (R848_Array[R848_Tuner_Num][4] & 0xBF) | SysFreq_Info1.BYP_LPF;
-     R848_I2C.Data = R848_Array[R848_Tuner_Num][4];
-     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-        return RT_Fail;
-
-
-
-	R848_I2C.RegAddr = 0x2E;	//0 	 R848:R46[3:1]=0'b000	
-	R848_Array[R848_Tuner_Num][38] = (R848_Array[R848_Tuner_Num][38] & 0xF1) | SysFreq_Info1.RF_FAST_DISCHARGE;  
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][38];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-
-	R848_I2C.RegAddr = 0x16;	//4   R848:R22[7:5]=2'b010	
-	R848_Array[R848_Tuner_Num][14] = (R848_Array[R848_Tuner_Num][14] & 0x1F) | SysFreq_Info1.RF_SLOW_DISCHARGE;  
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][14];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	R848_I2C.RegAddr = 0x26;	//1   R848:R38[4]=1	
-	R848_Array[R848_Tuner_Num][30] = (R848_Array[R848_Tuner_Num][30] & 0xEF) | SysFreq_Info1.RFPD_PLUSE_ENA;  
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][30];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-
-
-	R848_I2C.RegAddr = 0x2B;	//10  R848:R43[4:0]=5'b01010	
-	R848_Array[R848_Tuner_Num][35] = (R848_Array[R848_Tuner_Num][35] & 0xE0) | SysFreq_Info1.LNA_FAST_DISCHARGE;  
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][35];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-
-	R848_I2C.RegAddr = 0x16;	//0  R848:R22[4:2]=3'b000
-	R848_Array[R848_Tuner_Num][14] = (R848_Array[R848_Tuner_Num][14] & 0xE3) | SysFreq_Info1.LNA_SLOW_DISCHARGE;
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][14];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	R848_I2C.RegAddr = 0x11;	//1  R848:R17[7]=0
-	R848_Array[R848_Tuner_Num][9] = (R848_Array[R848_Tuner_Num][9] & 0x7F) | SysFreq_Info1.LNAPD_PLUSE_ENA;
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][9];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-
-	// Set AGC clk 
-	R848_I2C.RegAddr = 0x1A;	//  R848:R26[4:2] 
-	R848_Array[R848_Tuner_Num][18] = (R848_Array[R848_Tuner_Num][18] & 0xE3) | SysFreq_Info1.AGC_CLK;  
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][18];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-
-	 //no clk out
-	 R848_I2C.RegAddr = 0x19;
-	 R848_Array[R848_Tuner_Num][17] = (R848_Array[R848_Tuner_Num][17] | 0x80);   //no clk out // R848:R25[7]  
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][17];
-	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-			return RT_Fail;
-
-
-	 if(R848_INFO.R848_Standard<R848_ATV_SIZE)   //ATV
-	 {
-		 if(R848_XtalDiv == XTAL_DIV1)
-		 {
-			 //AGC CLK to 500hz		// R848:R26[4:2]   26-8=18   26(0x1A) is addr ; [18] is data
-			 R848_Array[R848_Tuner_Num][18] = (R848_Array[R848_Tuner_Num][18] & 0xE3) | 0x14;  //[4:2]=101
-		 }
-		 else
-		 {
-			 //AGC CLK to 1khz
-			 R848_Array[R848_Tuner_Num][18] = (R848_Array[R848_Tuner_Num][18] & 0xE3) | 0x00;  //[4:2]=000
-		 }
-		 R848_I2C.RegAddr = 0x1A;						
-		 R848_I2C.Data = R848_Array[R848_Tuner_Num][18];
-		 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-			 return RT_Fail;
-	 }
-	 else
-	 {
-		 //for DVB-T2
+     // Set RF TOP
+     //R848_I2C.RegAddr = 0x22;	// R848:R34[7:0]  
+     R848_Array[R848_Tuner_Num][26] = (R848_Array[R848_Tuner_Num][26] & 0x1F) | SysFreq_Info1.RF_TOP;
+     // Set Nrb TOP
+     //R848_I2C.RegAddr = 0x24;	//R848:R36[7:4]   
+     R848_Array[R848_Tuner_Num][28] = (R848_Array[R848_Tuner_Num][28] & 0x0F) | SysFreq_Info1.NRB_TOP;
+        
+     // Set Nrb BW
+     //R848_I2C.RegAddr = 0x23;	//  R848:R35[7:6]  
+     R848_Array[R848_Tuner_Num][27] = (R848_Array[R848_Tuner_Num][27] & 0x3F) | SysFreq_Info1.NRB_BW;   
+     // Set TF LPF
+     //R848_I2C.RegAddr = 0x0C;	// R848:R12[6]  
+     R848_Array[R848_Tuner_Num][4] = (R848_Array[R848_Tuner_Num][4] & 0xBF) | SysFreq_Info1.BYP_LPF;   
+    //R848_I2C.RegAddr = 0x2E;	//0 	 R848:R46[3:1]=0'b000	
+    R848_Array[R848_Tuner_Num][38] = (R848_Array[R848_Tuner_Num][38] & 0xF1) | SysFreq_Info1.RF_FAST_DISCHARGE;  
+    //R848_I2C.RegAddr = 0x16;	//4   R848:R22[7:5]=2'b010	
+    R848_Array[R848_Tuner_Num][14] = (R848_Array[R848_Tuner_Num][14] & 0x1F) | SysFreq_Info1.RF_SLOW_DISCHARGE;  
+    //R848_I2C.RegAddr = 0x26;	//1   R848:R38[4]=1	
+    R848_Array[R848_Tuner_Num][30] = (R848_Array[R848_Tuner_Num][30] & 0xEF) | SysFreq_Info1.RFPD_PLUSE_ENA;  
+    //R848_I2C.RegAddr = 0x2B;	//10  R848:R43[4:0]=5'b01010	
+    R848_Array[R848_Tuner_Num][35] = (R848_Array[R848_Tuner_Num][35] & 0xE0) | SysFreq_Info1.LNA_FAST_DISCHARGE;  
+    //R848_I2C.RegAddr = 0x16;	//0  R848:R22[4:2]=3'b000
+    R848_Array[R848_Tuner_Num][14] = (R848_Array[R848_Tuner_Num][14] & 0xE3) | SysFreq_Info1.LNA_SLOW_DISCHARGE;
+    //R848_I2C.RegAddr = 0x11;	//1  R848:R17[7]=0
+    R848_Array[R848_Tuner_Num][9] = (R848_Array[R848_Tuner_Num][9] & 0x7F) | SysFreq_Info1.LNAPD_PLUSE_ENA;
+    // Set AGC clk 
+    //R848_I2C.RegAddr = 0x1A;	//  R848:R26[4:2] 
+    R848_Array[R848_Tuner_Num][18] = (R848_Array[R848_Tuner_Num][18] & 0xE3) | SysFreq_Info1.AGC_CLK;  
+    //no clk out
+    //R848_I2C.RegAddr = 0x19;
+    R848_Array[R848_Tuner_Num][17] = (R848_Array[R848_Tuner_Num][17] | 0x80);   //no clk out // R848:R25[7]  
+    if(R848_INFO.R848_Standard<R848_ATV_SIZE)   //ATV
+    {
+        if(R848_XtalDiv == XTAL_DIV1)
+        {
+         //AGC CLK to 500hz		// R848:R26[4:2]   26-8=18   26(0x1A) is addr ; [18] is data
+         R848_Array[R848_Tuner_Num][18] = (R848_Array[R848_Tuner_Num][18] & 0xE3) | 0x14;  //[4:2]=101
+        }
+        else
+        {
+         //AGC CLK to 1khz
+         R848_Array[R848_Tuner_Num][18] = (R848_Array[R848_Tuner_Num][18] & 0xE3) | 0x00;  //[4:2]=000
+        }
+    }
+    else
+    {
+		 //Schm hys
+		 R848_Array[R848_Tuner_Num][17] = (R848_Array[R848_Tuner_Num][17] & 0xFB) | 0x00;  //R25[2]=0
+         //for DVB-T2
          switch(R848_INFO.R848_Standard)
-		 {
-		    case R848_DVB_T2_6M:
-			case R848_DVB_T2_7M:
-			case R848_DVB_T2_8M:
-			case R848_DVB_T2_1_7M:
-			case R848_DVB_T2_10M:
-			case R848_DVB_T2_6M_IF_5M:
-			case R848_DVB_T2_7M_IF_5M:
-			case R848_DVB_T2_8M_IF_5M:
-			case R848_DVB_T2_1_7M_IF_5M:
-
-                 R848_Delay_MS(100);
-				 //force plain mode
-				 R848_I2C.RegAddr = 0x0B;	// R848:R11[7]   		
-				 R848_Array[R848_Tuner_Num][3] = (R848_Array[R848_Tuner_Num][3] | 0x80);  //[7]=1
-				 R848_I2C.Data = R848_Array[R848_Tuner_Num][3];
-				 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-					 return RT_Fail;
-
-				 R848_I2C.RegAddr = 0x0A;	// R848:R10[5]   		
-				 R848_Array[R848_Tuner_Num][2] = (R848_Array[R848_Tuner_Num][2] & 0xDF);  //[5]=0
-				 R848_I2C.Data = R848_Array[R848_Tuner_Num][2];
-				 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-					 return RT_Fail;
-				 //LPF
-				 if((R848_INFO.R848_Standard==R848_DVB_T_8M_IF_5M) || (R848_INFO.R848_Standard==R848_DVB_T2_8M_IF_5M))
-				 {
-					  if(R848_INFO.RF_KHz>=800000) 
-					  {
-						  R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xF0) | (R848_Fil_Cal_code[R848_Tuner_Num][R848_INFO.R848_Standard]-2);  
-					  }
-					  else
-					  {
-						  R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xF0) | (R848_Fil_Cal_code[R848_Tuner_Num][R848_INFO.R848_Standard]);  
-					  }		 			  	
-						R848_I2C.RegAddr = 0x12;		//  R848:R18[3:0]  		
-						R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
-						if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-							return RT_Fail;
-				 }
-
+         {
+            case R848_DVB_T2_6M:
+            case R848_DVB_T2_7M:
+            case R848_DVB_T2_8M:
+            case R848_DVB_T2_1_7M:
+            case R848_DVB_T2_10M:
+            case R848_DVB_T2_6M_IF_5M:
+            case R848_DVB_T2_7M_IF_5M:
+            case R848_DVB_T2_8M_IF_5M:
+            case R848_DVB_T2_1_7M_IF_5M:
+            
+             //R848_Delay_MS(100);
+             //force plain mode
+             //R848_I2C.RegAddr = 0x0B;	// R848:R11[7]   		
+             R848_Array[R848_Tuner_Num][3] = (R848_Array[R848_Tuner_Num][3] | 0x80);  //[7]=1
+             //R848_I2C.RegAddr = 0x0A;	// R848:R10[5]   		
+             R848_Array[R848_Tuner_Num][2] = (R848_Array[R848_Tuner_Num][2] & 0xDF);  //[5]=0
+             //LPF
+             if((R848_INFO.R848_Standard==R848_DVB_T_8M_IF_5M) || (R848_INFO.R848_Standard==R848_DVB_T2_8M_IF_5M))
+             {
+                  if(R848_INFO.RF_KHz>=800000) 
+                  {
+                      R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xF0) | (R848_Fil_Cal_code[R848_Tuner_Num][R848_INFO.R848_Standard]-2);  
+                  }
+                  else
+                  {
+                      R848_Array[R848_Tuner_Num][10] = (R848_Array[R848_Tuner_Num][10] & 0xF0) | (R848_Fil_Cal_code[R848_Tuner_Num][R848_INFO.R848_Standard]);  
+                  }
+             }
                  break;
-                 
-                  default:		 
-                         break;
-    	}//end switch
-	 }
-     return RT_Success;
+                
+             default:
+                 break;
+        }//end switch
+  }
+  
+  R848_I2C_Len.RegAddr = 0x08;   //  R848:0x08
+  R848_I2C_Len.Len = R848_REG_NUM;
+  for(RegArrayCunt = 0; RegArrayCunt<R848_REG_NUM; RegArrayCunt ++)
+  {
+      R848_I2C_Len.Data[RegArrayCunt] = R848_Array[R848_Tuner_Num][RegArrayCunt];
+  }
+  
+  if(I2C_Write_Len(R848_Tuner_Num, &R848_I2C_Len) != RT_Success)
+      return RT_Fail;
+  
+  return RT_Success;
 }
 
 
@@ -4858,283 +4869,284 @@ R848_ErrCode R848_SetFrequency(R848_TUNER_NUM R848_Tuner_Num, R848_Set_Info R848
 
 R848_ErrCode R848_Satellite_Setting(R848_TUNER_NUM R848_Tuner_Num, R848_Set_Info R848_INFO)
 {
-	 UINT8 fine_tune=0;
-	 UINT8 Coarse=0;
-
-	if(R848_INFO.R848_Standard != R848_pre_standard[R848_Tuner_Num])
-	{
-		 if(R848_InitReg(R848_Tuner_Num, R848_INFO.R848_Standard) != RT_Success)      
-		     return RT_Fail;
-
-		 R848_pre_satellite_bw = 0; //initial bw value
-
-		//Output Signal Mode    (  O is diff  ; 1 is single  )
-		if(R848_INFO.R848_SATELLITE_OutputSignal_Mode != SINGLEOUT)
-		{
-			R848_Array[R848_Tuner_Num][35] &=0x7F;
-		}
-		else
-		{
-			R848_Array[R848_Tuner_Num][35] |=0x80;  //R710 R11[4]    R848:R43[7]   43-8=35   43(0x2B) is addr ; [35] is data
-		}
-
-		R848_I2C.RegAddr = 0x2B;
-		R848_I2C.Data = R848_Array[R848_Tuner_Num][35];
-		if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-
-		//AGC Type  //R13[4] Negative=0 ; Positive=1;
-		if(R848_INFO.R848_SATELLITE_AGC_Mode != AGC_POSITIVE)
-		{
-			R848_Array[R848_Tuner_Num][37] &= 0xF7;
-		}
-		else
-		{
-			R848_Array[R848_Tuner_Num][37] |= 0x08;  //R710 R13[4]    R848:R45[3]   45-8=37   45(0x2D) is addr ; [37] is data
-		}
-		R848_I2C.RegAddr = 0x2D;
-		R848_I2C.Data = R848_Array[R848_Tuner_Num][37];
-		if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-
-		//RT710_Vga_Sttenuator_Type
-		if(R848_INFO.R848_SATELLITE_AttenVga_Mode != ATTENVGAON)
-		{
-			R848_Array[R848_Tuner_Num][34] &= 0x7F;
-		}
-		else
-		{
-			R848_Array[R848_Tuner_Num][34] |= 0x80;
-		}
-		R848_I2C.RegAddr = 0x2A;
-		R848_I2C.Data = R848_Array[R848_Tuner_Num][34];
-		if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-
-		//R710_Fine_Gain_Type
-		switch(R848_INFO.R848_SATELLITE_FineGain)
-		{
-			case FINEGAIN_3DB:  
-				 R848_Array[R848_Tuner_Num][38] = (R848_Array[R848_Tuner_Num][38] & 0x3F) | 0x00;
-			break;
-			case FINEGAIN_2DB:  
-				 R848_Array[R848_Tuner_Num][38] = (R848_Array[R848_Tuner_Num][38] & 0x3F) | 0x40;
-			break;
-			case FINEGAIN_1DB:
-				 R848_Array[R848_Tuner_Num][38] = (R848_Array[R848_Tuner_Num][38] & 0x3F) | 0x80;
-			break;
-			case FINEGAIN_0DB:
-				 R848_Array[R848_Tuner_Num][38] = (R848_Array[R848_Tuner_Num][38] & 0x3F) | 0xC0;
-			break;
-			default:		
-				R848_Array[R848_Tuner_Num][38] = (R848_Array[R848_Tuner_Num][38] & 0x3F) | 0x00;
-			break;
-		}
-		R848_I2C.RegAddr = 0x2E;
-		R848_I2C.Data = R848_Array[R848_Tuner_Num][38];
-		if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-		//Set GPO Low
-		R848_I2C.RegAddr = 0x17;	// R848:R23[4:2]  23-8=15  23(0x17) is addr ; [15] is data
-		R848_Array[R848_Tuner_Num][15] = (R848_Array[R848_Tuner_Num][15] & 0xFE);
-		R848_I2C.Data = R848_Array[R848_Tuner_Num][15];
-		if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-		
-		R848_pre_standard[R848_Tuner_Num] = R848_INFO.R848_Standard;
-	}
-
-	if(R848_PLL(R848_Tuner_Num, R848_INFO.RF_KHz, R848_INFO.R848_Standard)!= RT_Success)
-	{
-		return RT_Fail;
-	}
-	
-	//VTH/VTL
-	if((R848_INFO.RF_KHz >= 1200000)&&(R848_INFO.RF_KHz <= 1750000))
-	{
-		R848_Array[R848_Tuner_Num][23]=(R848_Array[R848_Tuner_Num][23] & 0x00) | 0x93;			//R848:R31[7:0]    1.24/0.64
-	}
-	else
-	{	
-		R848_Array[R848_Tuner_Num][23]=(R848_Array[R848_Tuner_Num][23] & 0x00) | 0x83;			//R848:R31[7:0]   1.14/0.64
-	}
-	R848_I2C.RegAddr = 0x1F;
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][23];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	if(R848_INFO.RF_KHz >= 2000000) 
-	{
-		R848_Array[R848_Tuner_Num][38]=(R848_Array[R848_Tuner_Num][38] & 0xCF) | 0x20;			//R848:R46[4:5]
-	}
-	else
-	{
-		R848_Array[R848_Tuner_Num][38]=(R848_Array[R848_Tuner_Num][38] & 0xCF) | 0x30;			//R848:R46[4:5]
-	}
-	R848_I2C.RegAddr = 0x2E;
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][38];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	if((R848_INFO.RF_KHz >= 1600000) && (R848_INFO.RF_KHz <= 1950000))
-	{
-		R848_Array[R848_Tuner_Num][35] |= 0x20; //LNA Mode with att   //R710 R2[6]    R848:R43[5]   43-8=35   43(0x2B) is addr ; [35] is data
-	}
-	else
-	{
-		R848_Array[R848_Tuner_Num][35] &= 0xDF; //LNA Mode no att
-	}
-
-	R848_I2C.RegAddr = 0x2B;
-	R848_I2C.Data = R848_Array[R848_Tuner_Num][35];
-	if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-	return RT_Fail;
-
-
-
-	if(R848_INFO.SATELLITE_BW != R848_pre_satellite_bw)
-	{
-		if (R848_INFO.SATELLITE_BW >67400)
-		{
-			fine_tune=1;
-			Coarse =(UINT8)(( R848_INFO.SATELLITE_BW -67400) /1600)+31;
-			if((( R848_INFO.SATELLITE_BW -67400) % 1600) > 0)
-			Coarse+=1;
-		}
-
-		else if((R848_INFO.SATELLITE_BW >62360)&&(R848_INFO.SATELLITE_BW<=67400))
-		{
+     UINT8 fine_tune=0;
+     UINT8 Coarse=0;
+    
+    if(R848_INFO.R848_Standard != R848_pre_standard[R848_Tuner_Num])
+    {
+        if(R848_InitReg(R848_Tuner_Num, R848_INFO.R848_Standard) != RT_Success)      
+             return RT_Fail;
+        
+         R848_pre_satellite_bw = 0; //initial bw value
+        
+        //Output Signal Mode    (  O is diff  ; 1 is single  )
+        if(R848_INFO.R848_SATELLITE_OutputSignal_Mode != SINGLEOUT)
+        {
+            R848_Array[R848_Tuner_Num][35] &=0x7F;
+        }
+        else
+        {
+            R848_Array[R848_Tuner_Num][35] |=0x80;  //R710 R11[4]    R848:R43[7]   43-8=35   43(0x2B) is addr ; [35] is data
+        }
+        
+        R848_I2C.RegAddr = 0x2B;
+        R848_I2C.Data = R848_Array[R848_Tuner_Num][35];
+        if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+        
+        
+        //AGC Type  //R13[4] Negative=0 ; Positive=1;
+        if(R848_INFO.R848_SATELLITE_AGC_Mode != AGC_POSITIVE)
+        {
+            R848_Array[R848_Tuner_Num][37] &= 0xF7;
+        }
+        else
+        {
+            R848_Array[R848_Tuner_Num][37] |= 0x08;  //R710 R13[4]    R848:R45[3]   45-8=37   45(0x2D) is addr ; [37] is data
+        }
+        R848_I2C.RegAddr = 0x2D;
+        R848_I2C.Data = R848_Array[R848_Tuner_Num][37];
+        if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+        
+        
+        //RT710_Vga_Sttenuator_Type
+        if(R848_INFO.R848_SATELLITE_AttenVga_Mode != ATTENVGAON)
+        {
+            R848_Array[R848_Tuner_Num][34] &= 0x7F;
+        }
+        else
+        {
+            R848_Array[R848_Tuner_Num][34] |= 0x80;
+        }
+        R848_I2C.RegAddr = 0x2A;
+        R848_I2C.Data = R848_Array[R848_Tuner_Num][34];
+        if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+        
+    
+        //R710_Fine_Gain_Type
+        switch(R848_INFO.R848_SATELLITE_FineGain)
+        {
+            case FINEGAIN_3DB:  
+                R848_Array[R848_Tuner_Num][38] = (R848_Array[R848_Tuner_Num][38] & 0x3F) | 0x00;
+            break;
+            case FINEGAIN_2DB:  
+                R848_Array[R848_Tuner_Num][38] = (R848_Array[R848_Tuner_Num][38] & 0x3F) | 0x40;
+            break;
+            case FINEGAIN_1DB:
+                R848_Array[R848_Tuner_Num][38] = (R848_Array[R848_Tuner_Num][38] & 0x3F) | 0x80;
+            break;
+            case FINEGAIN_0DB:
+                R848_Array[R848_Tuner_Num][38] = (R848_Array[R848_Tuner_Num][38] & 0x3F) | 0xC0;
+            break;
+            default:		
+                R848_Array[R848_Tuner_Num][38] = (R848_Array[R848_Tuner_Num][38] & 0x3F) | 0x00;
+            break;
+        }
+        R848_I2C.RegAddr = 0x2E;
+        R848_I2C.Data = R848_Array[R848_Tuner_Num][38];
+        if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+        
+        //Set GPO Low
+        R848_I2C.RegAddr = 0x17;	// R848:R23[4:2]  23-8=15  23(0x17) is addr ; [15] is data
+        R848_Array[R848_Tuner_Num][15] = (R848_Array[R848_Tuner_Num][15] & 0xFE);
+        R848_I2C.Data = R848_Array[R848_Tuner_Num][15];
+        if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+        
+        R848_pre_standard[R848_Tuner_Num] = R848_INFO.R848_Standard;
+    }
+    
+    if(R848_PLL(R848_Tuner_Num, R848_INFO.RF_KHz, R848_INFO.R848_Standard)!= RT_Success)
+    {
+        return RT_Fail;
+    }
+    
+    //VTH/VTL
+    if((R848_INFO.RF_KHz >= 1200000)&&(R848_INFO.RF_KHz <= 1750000))
+    {
+        R848_Array[R848_Tuner_Num][23]=(R848_Array[R848_Tuner_Num][23] & 0x00) | 0x93;			//R848:R31[7:0]    1.24/0.64
+    }
+    else
+    {	
+        R848_Array[R848_Tuner_Num][23]=(R848_Array[R848_Tuner_Num][23] & 0x00) | 0x83;			//R848:R31[7:0]   1.14/0.64
+    }
+    R848_I2C.RegAddr = 0x1F;
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][23];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+    
+    if(R848_INFO.RF_KHz >= 2000000) 
+    {
+        R848_Array[R848_Tuner_Num][38]=(R848_Array[R848_Tuner_Num][38] & 0xCF) | 0x20;			//R848:R46[4:5]
+    }
+    else
+    {
+        R848_Array[R848_Tuner_Num][38]=(R848_Array[R848_Tuner_Num][38] & 0xCF) | 0x30;			//R848:R46[4:5]
+    }
+    R848_I2C.RegAddr = 0x2E;
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][38];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+        return RT_Fail;
+    
+    if((R848_INFO.RF_KHz >= 1600000) && (R848_INFO.RF_KHz <= 1950000))
+    {
+        R848_Array[R848_Tuner_Num][35] |= 0x20; //LNA Mode with att   //R710 R2[6]    R848:R43[5]   43-8=35   43(0x2B) is addr ; [35] is data
+    }
+    else
+    {
+        R848_Array[R848_Tuner_Num][35] &= 0xDF; //LNA Mode no att
+    }
+    
+    R848_I2C.RegAddr = 0x2B;
+    R848_I2C.Data = R848_Array[R848_Tuner_Num][35];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+    return RT_Fail;
+    
+    
+    
+    if(R848_INFO.SATELLITE_BW != R848_pre_satellite_bw)
+    {
+        if (R848_INFO.SATELLITE_BW >67400)
+        {
+            fine_tune=1;
+            Coarse =(UINT8)(( R848_INFO.SATELLITE_BW -67400) /1600)+31;
+            if((( R848_INFO.SATELLITE_BW -67400) % 1600) > 0)
+            Coarse+=1;
+        }
+        
+        else if((R848_INFO.SATELLITE_BW >62360)&&(R848_INFO.SATELLITE_BW<=67400))
+        {
 			Coarse=31;
 			fine_tune=1;		
-		}
-		else if((R848_INFO.SATELLITE_BW >38000)&&(R848_INFO.SATELLITE_BW<=62360))
-		{
-			fine_tune=1;	
-			Coarse =(UINT8)(( R848_INFO.SATELLITE_BW -38000) /1740)+16;
-			if((( R848_INFO.SATELLITE_BW -38000) % 1740) > 0)
-			Coarse+=1;
+        }
+        else if((R848_INFO.SATELLITE_BW >38000)&&(R848_INFO.SATELLITE_BW<=62360))
+        {
+            fine_tune=1;	
+            Coarse =(UINT8)(( R848_INFO.SATELLITE_BW -38000) /1740)+16;
+            if((( R848_INFO.SATELLITE_BW -38000) % 1740) > 0)
+            Coarse+=1;
 					
-		}
-		else if(R848_INFO.SATELLITE_BW<=5000)
-		{	
-			Coarse=0;
-			fine_tune=0;
-		}
-		else if((R848_INFO.SATELLITE_BW>5000) && (R848_INFO.SATELLITE_BW<=8000))
-		{
-			Coarse=0;
-			fine_tune=1;
-		}
-		else if((R848_INFO.SATELLITE_BW>8000) && (R848_INFO.SATELLITE_BW<=10000))
-		{
-			Coarse=1;
-			fine_tune=1;
-		}
-		else if((R848_INFO.SATELLITE_BW>10000) && (R848_INFO.SATELLITE_BW<=12000))
-		{
-			Coarse=2;
-			fine_tune=1;
-		}
-		else if((R848_INFO.SATELLITE_BW>12000) && (R848_INFO.SATELLITE_BW<=14200))
-		{
-			Coarse=3;
-			fine_tune=1;
-		}
-		else if((R848_INFO.SATELLITE_BW>14200) && (R848_INFO.SATELLITE_BW<=16000))
-		{
-			Coarse=4;
-			fine_tune=1;
-		}
-		else if((R848_INFO.SATELLITE_BW>16000) && (R848_INFO.SATELLITE_BW<=17800))
-		{
-			Coarse=5;
-			fine_tune=0;
-		}
-		else if((R848_INFO.SATELLITE_BW>17800) && (R848_INFO.SATELLITE_BW<=18600))
-		{
-			Coarse=5;
-			fine_tune=1;
-		}
-		else if((R848_INFO.SATELLITE_BW>18600) && (R848_INFO.SATELLITE_BW<=20200))
-		{
-			Coarse=6;
-			fine_tune=1;
-		}
-		else if((R848_INFO.SATELLITE_BW>20200) && (R848_INFO.SATELLITE_BW<=22400))
-		{
-			Coarse=7;
-			fine_tune=1;
-		}
-		else if((R848_INFO.SATELLITE_BW>22400) && (R848_INFO.SATELLITE_BW<=24600))
-		{
-			Coarse=9;
-			fine_tune=1;
-		}
-		else if((R848_INFO.SATELLITE_BW>24600) && (R848_INFO.SATELLITE_BW<=25400))
-		{
-			Coarse=10;
-			fine_tune=0;
-		}
-		else if((R848_INFO.SATELLITE_BW>25400) && (R848_INFO.SATELLITE_BW<=26000))
-		{
-			Coarse=10;
-			fine_tune=1;
-		}
-		else if((R848_INFO.SATELLITE_BW>26000) && (R848_INFO.SATELLITE_BW<=27200))
-		{
-			Coarse=11;
-			fine_tune=0;
-		}
-		else if((R848_INFO.SATELLITE_BW>27200) && (R848_INFO.SATELLITE_BW<=27800))
-		{
-			Coarse=11;
-			fine_tune=1;
-		}
-		else if((R848_INFO.SATELLITE_BW>27800) && (R848_INFO.SATELLITE_BW<=30200))
-		{
-			Coarse=12;
-			fine_tune=1;
-		}
-		else if((R848_INFO.SATELLITE_BW>30200) && (R848_INFO.SATELLITE_BW<=32600))
-		{
-			Coarse=13;
-			fine_tune=1;
-		}
-		else if((R848_INFO.SATELLITE_BW>32600) && (R848_INFO.SATELLITE_BW<=33800))
-		{
-			Coarse=14;
-			fine_tune=1;
-		}
-		else if((R848_INFO.SATELLITE_BW>33800) && (R848_INFO.SATELLITE_BW<=36800))
-		{
-			Coarse=15;
-			fine_tune=1;
-		}
-		else if((R848_INFO.SATELLITE_BW>36800) && (R848_INFO.SATELLITE_BW<=38000))
-		{
-			Coarse=16;
-			fine_tune=1;
-		}
-
-		//Coarse_tune = (unsigned char) Coarse;//coras filter value
-
-		//fine tune and coras filter write		
-		R848_I2C.RegAddr = 0x2F;
-		R848_Array[R848_Tuner_Num][39] &= 0x00;		//47-8=39
-		R848_Array[R848_Tuner_Num][39] = ((R848_Array[R848_Tuner_Num][39] | ( fine_tune<< 6 ) ) | ( Coarse));
-		R848_I2C.Data = R848_Array[R848_Tuner_Num][39];
-		if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-			return RT_Fail;
-
-		R848_pre_satellite_bw = R848_INFO.SATELLITE_BW;
-	}
-
-	return RT_Success;
+        }
+        else if(R848_INFO.SATELLITE_BW<=5000)
+        {
+            Coarse=0;
+            fine_tune=0;
+        }
+        else if((R848_INFO.SATELLITE_BW>5000) && (R848_INFO.SATELLITE_BW<=8000))
+        {
+            Coarse=0;
+            fine_tune=1;
+        }
+        else if((R848_INFO.SATELLITE_BW>8000) && (R848_INFO.SATELLITE_BW<=10000))
+        {
+            Coarse=1;
+            fine_tune=1;
+        }
+        else if((R848_INFO.SATELLITE_BW>10000) && (R848_INFO.SATELLITE_BW<=12000))
+        {
+            Coarse=2;
+            fine_tune=1;
+        }
+        else if((R848_INFO.SATELLITE_BW>12000) && (R848_INFO.SATELLITE_BW<=14200))
+        {
+            Coarse=3;
+            fine_tune=1;
+        }
+        else if((R848_INFO.SATELLITE_BW>14200) && (R848_INFO.SATELLITE_BW<=16000))
+        {
+            Coarse=4;
+            fine_tune=1;
+        }
+        else if((R848_INFO.SATELLITE_BW>16000) && (R848_INFO.SATELLITE_BW<=17800))
+        {
+            Coarse=5;
+            fine_tune=0;
+        }
+        else if((R848_INFO.SATELLITE_BW>17800) && (R848_INFO.SATELLITE_BW<=18600))
+        {
+            Coarse=5;
+            fine_tune=1;
+        }
+        else if((R848_INFO.SATELLITE_BW>18600) && (R848_INFO.SATELLITE_BW<=20200))
+        {
+            Coarse=6;
+            fine_tune=1;
+        }
+        else if((R848_INFO.SATELLITE_BW>20200) && (R848_INFO.SATELLITE_BW<=22400))
+        {
+            Coarse=7;
+            fine_tune=1;
+        }
+        else if((R848_INFO.SATELLITE_BW>22400) && (R848_INFO.SATELLITE_BW<=24600))
+        {
+            Coarse=9;
+            fine_tune=1;
+        }
+        else if((R848_INFO.SATELLITE_BW>24600) && (R848_INFO.SATELLITE_BW<=25400))
+        {
+            Coarse=10;
+            fine_tune=0;
+        }
+        else if((R848_INFO.SATELLITE_BW>25400) && (R848_INFO.SATELLITE_BW<=26000))
+        {
+            Coarse=10;
+            fine_tune=1;
+        }
+        else if((R848_INFO.SATELLITE_BW>26000) && (R848_INFO.SATELLITE_BW<=27200))
+        {
+            Coarse=11;
+            fine_tune=0;
+        }
+        else if((R848_INFO.SATELLITE_BW>27200) && (R848_INFO.SATELLITE_BW<=27800))
+        {
+            Coarse=11;
+            fine_tune=1;
+        }
+        else if((R848_INFO.SATELLITE_BW>27800) && (R848_INFO.SATELLITE_BW<=30200))
+        {
+            Coarse=12;
+            fine_tune=1;
+        }
+        else if((R848_INFO.SATELLITE_BW>30200) && (R848_INFO.SATELLITE_BW<=32600))
+        {
+            Coarse=13;
+            fine_tune=1;
+        }
+        else if((R848_INFO.SATELLITE_BW>32600) && (R848_INFO.SATELLITE_BW<=33800))
+        {
+            Coarse=14;
+            fine_tune=1;
+        }
+        else if((R848_INFO.SATELLITE_BW>33800) && (R848_INFO.SATELLITE_BW<=36800))
+        {
+            Coarse=15;
+            fine_tune=1;
+        }
+        else if((R848_INFO.SATELLITE_BW>36800) && (R848_INFO.SATELLITE_BW<=38000))
+        {
+            Coarse=16;
+            fine_tune=1;
+        }
+        
+        //Coarse_tune = (unsigned char) Coarse;//coras filter value
+        
+        //fine tune and coras filter write		
+        R848_I2C.RegAddr = 0x2F;
+        R848_Array[R848_Tuner_Num][39] &= 0x00;		//47-8=39
+        R848_Array[R848_Tuner_Num][39] = ((R848_Array[R848_Tuner_Num][39] | ( fine_tune<< 6 ) ) | ( Coarse));
+        R848_I2C.Data = R848_Array[R848_Tuner_Num][39];
+        if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+            return RT_Fail;
+        
+        R848_pre_satellite_bw = R848_INFO.SATELLITE_BW;
+    }
+    
+    return RT_Success;
 }
+
 R848_ErrCode R848_SetPllData(R848_TUNER_NUM R848_Tuner_Num, R848_Set_Info R848_INFO)
 {
 	if(R848_Initial_done_flag[R848_Tuner_Num]==FALSE)
@@ -5167,16 +5179,26 @@ R848_ErrCode R848_SetPllData(R848_TUNER_NUM R848_Tuner_Num, R848_Set_Info R848_I
 
 R848_ErrCode R848_Standby(R848_TUNER_NUM R848_Tuner_Num)
 {
+	UINT8 i;
+
+	for(i=0; i<R848_REG_NUM; i++)
+	{
+		R848_SBY[R848_Tuner_Num][i]=R848_Array[R848_Tuner_Num][i];
+	}
 	 // R848:R8[7]   
 	 R848_Array[R848_Tuner_Num][0] = (R848_Array[R848_Tuner_Num][0] | 0x80);         //LNA off   All / LNA / Buffer PW off
-	//  R848:R37[3]  	
-	 R848_Array[R848_Tuner_Num][31] = R848_Array[R848_Tuner_Num][31] | 0x08;        //LNA det off
-
-
 	 R848_I2C.RegAddr = 0x08;	//  R848:R8[7]   
 	 R848_I2C.Data = R848_Array[R848_Tuner_Num][0];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
+
+	//  R848:R37[3]  
+	 R848_I2C.RegAddr = 37;	 
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x08;         //LNA det off
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+			return RT_Fail;
+
 
 	 //LT PW off
 	 R848_I2C.RegAddr = 0x09;	// R848:R9[0]   
@@ -5185,140 +5207,268 @@ R848_ErrCode R848_Standby(R848_TUNER_NUM R848_Tuner_Num)
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 
-
-	 //RF Buffer PW off
-	 R848_I2C.RegAddr = 0x09;	// R848:R9[0] 	
-	 R848_Array[R848_Tuner_Num][1] = R848_Array[R848_Tuner_Num][1] | 0x04;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][1];
-	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
-			return RT_Fail;
-
-	 //RF, Nrb Det PW off
+	 //RF, Nrb Det PW off   
 	 R848_I2C.RegAddr = 0x25;	// R848:R37[3] 
-	 R848_Array[R848_Tuner_Num][31] = R848_Array[R848_Tuner_Num][31] | 0x05;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][31];
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x05;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 
 	 //LNA current = lowest, R6[1:0]=11   
 	 R848_I2C.RegAddr = 0x0E;	// R848:R14[1:0] 
-	 R848_Array[R848_Tuner_Num][6] = R848_Array[R848_Tuner_Num][6] | 0x03;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][6];
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x03;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 
-
 	 //NAT PW off
 	 R848_I2C.RegAddr = 0x26;	// R848:R38[7]   
-	 R848_Array[R848_Tuner_Num][30] = R848_Array[R848_Tuner_Num][30] | 0x80;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][30];
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x80;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 
 	 //Mixer PW off
 	 R848_I2C.RegAddr = 0x0C;	// R848:R12[3]  
-	 R848_Array[R848_Tuner_Num][4] = R848_Array[R848_Tuner_Num][4] | 0x08;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][4];
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x08;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+			return RT_Fail;
+
+	 //RF Buffer PW off
+	 R848_I2C.RegAddr = 0x09;	// R848:R9[2] 	
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x04;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 
 
 	 //Filter PW off    //pwd_filt / all / vga / poly / amp
 	 R848_I2C.RegAddr = 0x12;	//  R848:R18[7]   
-	 R848_Array[R848_Tuner_Num][10] = R848_Array[R848_Tuner_Num][10] | 0x80;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][10];
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x80;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 
 	 //ADC PW off
 	 R848_I2C.RegAddr = 0x0F;	// R848:R15[7]   
-	 R848_Array[R848_Tuner_Num][7] = R848_Array[R848_Tuner_Num][7] | 0x80;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][7];
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x80;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 
-
      //PLL LDO A off
-	 R848_I2C.RegAddr = 0x15;	//  R848:R21[5:4]   
-	 R848_Array[R848_Tuner_Num][13] = R848_Array[R848_Tuner_Num][13] | 0x30;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][13];
+	 R848_I2C.RegAddr = 21;	//  R848:R21[5:4]   
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x30;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 
 	 //PLL DLDO 1& 2 off
-	 R848_I2C.RegAddr = 0x15;	//  R848:R21[3:0]   
-	 R848_Array[R848_Tuner_Num][13] = R848_Array[R848_Tuner_Num][13] | 0x0F;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][13];
+	 R848_I2C.RegAddr = 21;	//  R848:R21[3:0]   
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x0F;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 	
 	 //PLL SELS & SELT off
 	 R848_I2C.RegAddr = 0x18;	//  R848:R24[3]  
-	 R848_Array[R848_Tuner_Num][16] = R848_Array[R848_Tuner_Num][16] & 0xE7;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][16];
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] & 0xE7;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 
 	 //AGC off
 	 R848_I2C.RegAddr = 0x15;	//R848:R21[6]  
-	 R848_Array[R848_Tuner_Num][13] = R848_Array[R848_Tuner_Num][13] | 0x40;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][13];
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x40;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 
 	//RF_DET_POWER
 	 R848_I2C.RegAddr = 0x28;	//R848:R40[0]   
-	 R848_Array[R848_Tuner_Num][32] = R848_Array[R848_Tuner_Num][32] | 0x01;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][32];
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x01;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 
 	 //NET_DET PW
 	 R848_I2C.RegAddr = 0x28;	//R848:R40[3]   40-8=32   
-	 R848_Array[R848_Tuner_Num][32] = R848_Array[R848_Tuner_Num][32] | 0x08;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][32];
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x08;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 	
 	 //ALL_LNA_BUF PW
 	 R848_I2C.RegAddr = 0x28;	//R848:R40[3]   40-8=32  
-	 R848_Array[R848_Tuner_Num][32] = R848_Array[R848_Tuner_Num][32] | 0x10;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][32];
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x10;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 	
 	 //AMP_FILT PW
 	 R848_I2C.RegAddr = 0x28;	//R848:R40[6]   40-8=32  
-	 R848_Array[R848_Tuner_Num][32] = R848_Array[R848_Tuner_Num][32] | 0x40;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][32];
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x40;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 
 	//LNA PW
 	 R848_I2C.RegAddr = 0x28;	//R848:R40[6]   40-8=32   
-	 R848_Array[R848_Tuner_Num][32] = R848_Array[R848_Tuner_Num][32] | 0x80;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][32];
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x80;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
 	
 	//BYP_LPF
 	 R848_I2C.RegAddr = 0x0C;	//R848:R12[6]   12-8=4   
-	 R848_Array[R848_Tuner_Num][4] = R848_Array[R848_Tuner_Num][4] & 0xBF;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][4];
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] & 0xBF;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
-	
+/*	
 	 //XTAL LDO PW
 	 R848_I2C.RegAddr = 0x17;	//R848:R23[2]   23-8=15  
-	 R848_Array[R848_Tuner_Num][15] = R848_Array[R848_Tuner_Num][15] | 0x04;
-	 R848_I2C.Data = R848_Array[R848_Tuner_Num][15];
+	 R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x04;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
 	 if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
 			return RT_Fail;
+*/
+	 //Manual Gain
+	 //LNA auto off R13[7]=1
+     R848_I2C.RegAddr = 13;
+     R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x80;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+	       return RT_Fail;
+
+	//RFbuf R34[4]=1
+	 R848_I2C.RegAddr = 34;
+     R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x10;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+	       return RT_Fail;
+
+	 //Mixer R15[4]=0
+	 R848_I2C.RegAddr = 15;
+     R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] & 0xEF;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+	       return RT_Fail;
 	
+	 //LNA Gain =31 R13[4:0] =31
+	 R848_I2C.RegAddr = 13;
+     R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x1F;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+	       return RT_Fail;
+
+	 //RF Buf Gain=0 R34[3:0] = 0
+	 R848_I2C.RegAddr = 34;
+     R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] & 0xF0;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+	       return RT_Fail;
+
+	 //Mixer Gain=0 R15[3:0]=0
+	 R848_I2C.RegAddr = 15;
+     R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] & 0xF0;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+	       return RT_Fail;
+
+	 //set VGA pin, +32.5dB  R9[1]=0, R20[3:0]=15
+	 R848_I2C.RegAddr = 9;
+     R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] & 0xFD;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+	       return RT_Fail;
+	 R848_I2C.RegAddr = 20;
+     R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] | 0x0F;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+	       return RT_Fail;
+
+
+	 //set LO DC=lowest
+	 R848_I2C.RegAddr = 15;
+     R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] & 0x9F;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+	       return RT_Fail;
+
+	
+	 //set LNA band = high
+	 R848_I2C.RegAddr = 13;
+     R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] & 0x9F;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+	       return RT_Fail;
+
+
+	 //set Byp_lpf=bypass  R12[6]=0
+	 R848_I2C.RegAddr = 12;
+     R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] & 0xBF;
+	 R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+	       return RT_Fail;
+
+
 	return RT_Success;
 }
 
+R848_ErrCode R848_Wakeup(R848_TUNER_NUM R848_Tuner_Num)
+{
+	UINT8 i;
+	UINT8 PLL_LDO; //PLL_LDO_D1 R23[5:4], PLL_LDO_D1[3:2], PLL_LDO_D2[1:0]
 
+	PLL_LDO =  (R848_SBY[R848_Tuner_Num][13] & 0x3F);             //PLL_LDO_D1  R21[5:4], PLL_LDO_D1  R21[3:2], PLL_LDO_D2  R21[1:0]
+	
+	R848_SBY[R848_Tuner_Num][10] = (R848_SBY[R848_Tuner_Num][10] | 0x80) ;   //poly off, R18[7]=1
+	R848_SBY[R848_Tuner_Num][4] = (R848_SBY[R848_Tuner_Num][4] | 0x08) ;    //Mixer off, R12[3]=1
+	R848_SBY[R848_Tuner_Num][31] = (R848_SBY[R848_Tuner_Num][31] | 0x02) ;  //IQ gen off, R39[1]=1
+	R848_SBY[R848_Tuner_Num][13] = (R848_SBY[R848_Tuner_Num][13] | 0x3F);  //PLL_LDO_D1  R21[5:4], PLL_LDO_D1  R21[3:2], PLL_LDO_D2  R21[1:0]  ALL OFF
+
+	R848_I2C_Len.RegAddr = 8;
+	R848_I2C_Len.Len = R848_REG_NUM;
+	for(i = 0; i<R848_REG_NUM; i ++)
+	{
+		R848_I2C_Len.Data[i] = R848_SBY[R848_Tuner_Num][i];
+		R848_Array[R848_Tuner_Num][i] = R848_SBY[R848_Tuner_Num][i];
+	}
+	if(I2C_Write_Len(R848_Tuner_Num, &R848_I2C_Len) != RT_Success)
+		return RT_Fail;
+	
+	//poly on, R18[7]=0
+	R848_I2C.RegAddr = 18;
+    R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] & 0x7F;
+	R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+	      return RT_Fail;
+
+	//Mixer on, R12[3]=0
+	R848_I2C.RegAddr = 12;
+    R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] & 0xF7;
+	R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+	      return RT_Fail;
+
+	//IQ gen on,  R39[1]=0
+	R848_I2C.RegAddr = 39;
+    R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] & 0xFD;
+	R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+	      return RT_Fail;
+
+	//PLL_LDO_D1  R21[5:4], PLL_LDO_D1  R21[3:2], PLL_LDO_D2  R21[1:0] 
+	R848_I2C.RegAddr = 21;
+    R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] = (R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8] & 0xC0) | PLL_LDO;
+	R848_I2C.Data = R848_Array[R848_Tuner_Num][R848_I2C.RegAddr-8];
+    if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+	      return RT_Fail;
+
+	return RT_Success;
+}
 
 R848_ErrCode R848_GetRfGain(R848_TUNER_NUM R848_Tuner_Num, R848_RF_Gain_Info *pR848_rf_gain)
 {
@@ -5387,6 +5537,190 @@ R848_ErrCode R848_GetRfGain(R848_TUNER_NUM R848_Tuner_Num, R848_RF_Gain_Info *pR
     return RT_Success;
 }
 
+
+//----------------------------------------------------------------------//
+//  R848_GetRfRssi( ): Get RF RSSI                                      //
+//  1st parameter: input RF Freq    (KHz)                                //
+//  2nd parameter: input Standard                                           //
+//  3rd parameter: output signal level (dBm*1000)                    //
+//  4th parameter: output RF max gain indicator (1:max gain)    //
+//-----------------------------------------------------------------------//
+R848_ErrCode R848_GetRfRssi(R848_TUNER_NUM R848_Tuner_Num, UINT32 RF_Freq_Khz, R848_Standard_Type RT_Standard, signed int *RfLevelDbm, UINT8 *fgRfMaxGain)
+{ 	
+	//UINT8 bPulseFlag;
+	R848_RF_Gain_Info rf_gain_info;
+	UINT16  acc_lna_gain;
+	UINT16  acc_rfbuf_gain;
+	UINT16  acc_mixer_gain;
+	UINT16  rf_total_gain;
+	UINT8   u1FreqIndex;
+	//INT16  u2FreqFactor=0;
+	UINT8  u1LnaGainqFactorIdx;
+	signed int     rf_rssi;
+	signed int    fine_tune = 0;    //for find tune 
+	R848_I2C_Len.RegAddr = 0x00;
+	R848_I2C_Len.Len = 5;
+
+	//{50~135, 135~215, 215~265, 265~315, 315~325, 325~345, 345~950}
+	//INT8 R850_Start_Gain_Cal_By_Freq[7] = {10, -10, -30, -10, 20, 20, 20};
+
+	if(I2C_Read_Len(R848_Tuner_Num, &R848_I2C_Len) != RT_Success)
+	{
+		I2C_Read_Len(R848_Tuner_Num, &R848_I2C_Len);
+	}
+
+	rf_gain_info.RF_gain1 = (R848_I2C_Len.Data[4] & 0x1F);            //lna    //848:4[4:0]  
+	rf_gain_info.RF_gain2 = ((R848_I2C_Len.Data[3] & 0xF0) >> 4);     //rf	 //848:3[4:0]  
+	rf_gain_info.RF_gain3 = (R848_I2C_Len.Data[3] & 0x0F);             //mixer //848:3[4:0]  
+
+
+	if(R848_SATELLITE_FLAG==0)
+	{
+		//max gain indicator
+		if((rf_gain_info.RF_gain1==31) && (rf_gain_info.RF_gain2==15) && (rf_gain_info.RF_gain3==15))  
+		{
+			*fgRfMaxGain = 1;
+		}
+		else
+		{
+			*fgRfMaxGain = 0;
+		}
+
+		if(rf_gain_info.RF_gain1 > 22) 
+		{
+			rf_gain_info.RF_gain1 = 22;  //LNA gain max is 22
+		}
+
+		if(rf_gain_info.RF_gain3 > 10)
+		{
+			rf_gain_info.RF_gain3 = 10;  //MixerAmp gain max is 10
+		}
+
+		//coarse adjustment
+		if(RF_Freq_Khz<135000)   //<135M
+		{
+			u1FreqIndex = 0;
+			//u2FreqFactor = R850_Start_Gain_Cal_By_Freq[0];
+		}
+		else if((RF_Freq_Khz>=135000)&&(RF_Freq_Khz<215000))   //135~215M
+		{
+			u1FreqIndex = 0;
+			//u2FreqFactor = R850_Start_Gain_Cal_By_Freq[1];
+		}
+		else if((RF_Freq_Khz>=215000)&&(RF_Freq_Khz<265000))   //215~265M
+		{
+			u1FreqIndex = 1;
+			//u2FreqFactor = R850_Start_Gain_Cal_By_Freq[2];
+		}
+		else if((RF_Freq_Khz>=265000)&&(RF_Freq_Khz<315000))   //265~315M
+		{
+			u1FreqIndex = 1;
+			//u2FreqFactor = R850_Start_Gain_Cal_By_Freq[3];
+		}
+		else if((RF_Freq_Khz>=315000)&&(RF_Freq_Khz<325000))   //315~325M
+		{
+			u1FreqIndex = 1;
+			//u2FreqFactor = R850_Start_Gain_Cal_By_Freq[4];
+		}
+		else if((RF_Freq_Khz>=325000)&&(RF_Freq_Khz<345000))   //325~345M
+		{
+			u1FreqIndex = 1;
+			//u2FreqFactor = R850_Start_Gain_Cal_By_Freq[5];
+		}
+		else if((RF_Freq_Khz>=345000)&&(RF_Freq_Khz<420000))   //345~420M
+		{
+			u1FreqIndex = 1;
+			//u2FreqFactor = R850_Start_Gain_Cal_By_Freq[6];
+		}
+		else if((RF_Freq_Khz>=420000)&&(RF_Freq_Khz<710000))   //420~710M
+		{
+			u1FreqIndex = 2;
+			//u2FreqFactor = R850_Start_Gain_Cal_By_Freq[6];
+		}
+		else    // >=710
+		{
+			u1FreqIndex = 3;
+			//u2FreqFactor = R850_Start_Gain_Cal_By_Freq[6];
+		}
+
+
+		//LNA Gain
+		acc_lna_gain = R848_Lna_Acc_Gain[u1FreqIndex][rf_gain_info.RF_gain1];
+
+
+	//Method 2 : All frequencies are finely adjusted..
+						
+		if(rf_gain_info.RF_gain1 >= 10)
+		{
+			u1LnaGainqFactorIdx = (UINT8) ((RF_Freq_Khz-50000) / 10000);
+
+			if( ((RF_Freq_Khz-50000)  - (u1LnaGainqFactorIdx * 10000))>=5000)
+				u1LnaGainqFactorIdx +=1;
+			acc_lna_gain += (UINT16)(Lna_Acc_Gain_offset[u1LnaGainqFactorIdx]);
+
+		}
+
+		//RF buf
+		acc_rfbuf_gain = R848_Rf_Acc_Gain[rf_gain_info.RF_gain2];
+
+		//Mixer 
+		acc_mixer_gain = R848_Mixer_Acc_Gain [rf_gain_info.RF_gain3]  ;
+
+		//Add Rf Buf and Mixer Gain
+		rf_total_gain = acc_lna_gain + acc_rfbuf_gain + acc_mixer_gain;
+		
+	}
+	else //Satellite
+	{
+		//max gain indicator
+		if(rf_gain_info.RF_gain1==31)  
+		{
+			*fgRfMaxGain = 1;
+		}
+		else
+		{
+			*fgRfMaxGain = 0;
+		}
+		/*
+		  0~5: mixeramp
+		  6~7: mix-buf
+		  29~30:mix-buf
+		  other:lna
+		*/
+		if (rf_gain_info.RF_gain1 <= 2)
+		{
+			rf_gain_info.RF_gain1=0;
+		}
+		else if(rf_gain_info.RF_gain1 > 2 && rf_gain_info.RF_gain1 <= 9) 
+		{
+			rf_gain_info.RF_gain1 -=2;
+		}
+		else if(rf_gain_info.RF_gain1 > 9 && rf_gain_info.RF_gain1 <= 12)
+		{
+			rf_gain_info.RF_gain1 = 7;
+		}
+		else if(rf_gain_info.RF_gain1 > 12 && rf_gain_info.RF_gain1 <= 22)
+		{
+			rf_gain_info.RF_gain1 -= 5;
+		}
+		else if(rf_gain_info.RF_gain1 > 22)
+		{
+			rf_gain_info.RF_gain1 = 18;
+		}
+		
+		acc_lna_gain = Satellite_Lna_Acc_Gain[rf_gain_info.RF_gain1];
+
+		//Add Rf Buf and Mixer Gain
+		rf_total_gain = acc_lna_gain;
+
+	}
+	
+	//rf_rssi = fine_tune - (INT32) (rf_total_gain - u2FreqFactor);
+	rf_rssi = fine_tune - (signed int) (rf_total_gain);
+	*RfLevelDbm = rf_rssi*100;
+	
+    return RT_Success;
+}
 
 R848_ErrCode R848_RfGainMode(R848_TUNER_NUM R848_Tuner_Num, R848_RF_Gain_TYPE R848_RfGainType)
 {
@@ -5522,6 +5856,66 @@ UINT8 R848_PLL_Lock(R848_TUNER_NUM R848_Tuner_Num)
 
 	return fg_lock;
 }
+
+//------------------------------------------------------------------//
+//  R848_Get_VCO_Freq( ): Get VCO Frequency ,         //
+//	UINT : KHz
+//------------------------------------------------------------------//
+
+double R848_Get_VCO_Freq(R848_TUNER_NUM R848_Tuner_Num)
+{
+	double vco_freq = 0;
+	UINT32 u2PLL_Ref;
+    UINT8  u1Ni2c, u1Si2c;
+	UINT16 u1Nint;
+	UINT32 u4Nfrac;
+    UINT8  u1MixerDiv;
+	UINT8 dDivNum = 1;
+
+
+	R848_I2C_Len.RegAddr = 0x00;
+	R848_I2C_Len.Len = 48;
+	if(I2C_Read_Len(R848_Tuner_Num, &R848_I2C_Len) != RT_Success)
+	{
+	    I2C_Read_Len(R848_Tuner_Num, &R848_I2C_Len);
+	}
+
+
+    if(((R848_I2C_Len.Data[24] & 0x04)>>2) == 1)  //848:24[2]		
+		 u2PLL_Ref = R848_Xtal /2;
+	else
+         u2PLL_Ref = R848_Xtal;
+
+	u1MixerDiv = (R848_I2C_Len.Data[24] >> 5) + 1; //848:24[5:7]
+	while(u1MixerDiv > 0)
+	{
+	   dDivNum = dDivNum*2;
+	   u1MixerDiv--;
+	}
+
+	u1Si2c = ((R848_I2C_Len.Data[20] & 0x30) >> 4);  //848:20[5:4]
+	u1Ni2c = R848_I2C_Len.Data[28] & 0x7F; //848:28[6:0]
+    u1Nint = u1Ni2c*4 + 13 + u1Si2c;
+
+
+    u4Nfrac = (R848_I2C_Len.Data[30] << 8) + R848_I2C_Len.Data[29]; 
+	vco_freq = ((double)u4Nfrac* u2PLL_Ref/32768) + ((double)u1Nint*2*u2PLL_Ref); 
+
+	return vco_freq;
+}
+
+R848_ErrCode R848_AGC_Slow(R848_TUNER_NUM R848_Tuner_Num)
+{
+     //AGC CLK to 60hz
+     R848_I2C.RegAddr = 0x1A;
+     R848_Array[R848_Tuner_Num][18] = (R848_Array[R848_Tuner_Num][18] & 0xE3) | 0x18;  //[4:2]=110
+     R848_I2C.Data = R848_Array[R848_Tuner_Num][18];
+     if(I2C_Write(R848_Tuner_Num, &R848_I2C) != RT_Success)
+         return RT_Fail;
+
+    return RT_Success;
+}
+
 //-------------------------------------------------------------------------------------------------
 //  Global Functions
 //-------------------------------------------------------------------------------------------------
@@ -5647,6 +6041,14 @@ MS_BOOL R848_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE fuct
             SAT_PARAM = data;
             bret &= _R848_Decide_LNB_LO(SAT_PARAM);
             break;
+            
+        case TUNER_EXT_FUNC_RESET_RFAGC:
+            if( RT_Success != R848_AGC_Slow(u8TunerIndex))
+            {
+                return FALSE;
+            }
+
+            break;    
         default:
             printf("Request extension function (%x) does not exist\n",fuction_type);
             return TRUE;

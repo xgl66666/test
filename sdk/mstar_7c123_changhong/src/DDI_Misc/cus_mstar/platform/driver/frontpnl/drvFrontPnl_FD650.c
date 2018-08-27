@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (隆搂MStar Confidential Information隆篓) by the recipient.
+// (¨MStar Confidential Information〃) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -139,11 +139,11 @@ static const  led_bitmap bcd_decode_tab[LEDMAPNUM] =
  *
  *   Function Name:Led_Get_Code
  *
- *   Description:脳陋禄禄脳脰路没脦陋脢媒脗毛鹿脺碌脛脧脭脢戮脗毛拢卢脠莽脫枚碌陆脦脼路篓脳陋禄禄碌脛脳脰路没路碌禄脴0
+ *   Description:转换字符为数码管的显示码，如遇到无法转换的字符返回0
  *
- *   Parameter: cTemp  麓媒脳陋禄禄脦陋脧脭脢戮脗毛碌脛脳脰路没
+ *   Parameter: cTemp  待转换为显示码的字符
  *
- *   return拢潞脧脭脢戮脗毛脰碌
+ *   return：显示码值
 ****************************************************************/
 static MS_U8 MDrv_Led_Get_Code(MS_U8 cTemp)
 {
@@ -164,11 +164,11 @@ static MS_U8 MDrv_Led_Get_Code(MS_U8 cTemp)
 /// initialze Front Panel display control.
 /// Function Name:MDrv_FrontPnl_Update
 ///
-/// Description:录貌碌楼碌脛脢媒脗毛鹿脺脧脭脢戮脫娄脫脙脢戮脌媒
+/// Description:简单的数码管显示应用示例
 ///
-///  Parameter:  FPStr 脧脭脢戮碌脛脳脰路没麓庐拢禄
-///                  sec_flag驴陋脝么脨隆脢媒碌茫卤锚脰戮脦禄拢禄
-///  return拢潞脦脼
+///  Parameter:  FPStr 显示的字符串；
+///                  sec_flag开启小数点标志位；
+///  return：无
 //-------------------------------------------------------------------------------------------------
 void MDrv_FrontPnl_Update(MS_U8 *u8str, MS_BOOL sec_flag)
 {
@@ -190,17 +190,17 @@ void MDrv_FrontPnl_Update(MS_U8 *u8str, MS_BOOL sec_flag)
          data[i] = MDrv_Led_Get_Code(u8str[i]);
    }
 
-   MDrv_FD650_Write(FD650_SYSON_8);// 驴陋脝么脧脭脢戮潞脥录眉脜脤拢卢8露脦脧脭脢戮路陆脢陆
-   //路垄脧脭脢戮脢媒戮脻
-   MDrv_FD650_Write( FD650_DIG0 | (MS_U8)data[0] ); //碌茫脕脕碌脷脪禄赂枚脢媒脗毛鹿脺
+   MDrv_FD650_Write(FD650_SYSON_8);// 开启显示和键盘，8段显示方式
+   //发显示数据
+   MDrv_FD650_Write( FD650_DIG0 | (MS_U8)data[0] ); //点亮第一个数码管
 
    if(sec_flag)
-        MDrv_FD650_Write( FD650_DIG1 | (MS_U8)data[1] | FD650_DOT ); //碌茫脕脕碌脷露镁赂枚脢媒脗毛鹿脺
+        MDrv_FD650_Write( FD650_DIG1 | (MS_U8)data[1] | FD650_DOT ); //点亮第二个数码管
    else
         MDrv_FD650_Write( FD650_DIG1 | (MS_U8)data[1] );
 
-    MDrv_FD650_Write( FD650_DIG2 | (MS_U8)data[2]); //碌茫脕脕碌脷脠媒赂枚脢媒脗毛鹿脺
-    MDrv_FD650_Write( FD650_DIG3 | (MS_U8)data[3] ); //碌茫脕脕碌脷脣脛赂枚脢媒脗毛鹿脺
+    MDrv_FD650_Write( FD650_DIG2 | (MS_U8)data[2]); //点亮第三个数码管
+    MDrv_FD650_Write( FD650_DIG3 | (MS_U8)data[3] ); //点亮第四个数码管
 }
 
 //-------------------------------------------------------------------------------------------------

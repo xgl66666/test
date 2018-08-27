@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -128,7 +128,7 @@ typedef struct
 {
     MS_U16 u16Width;
     MS_U16 u16Height;
-	MS_U16 u16Pitch;
+    MS_U16 u16Pitch;
     MS_U32 u32YBufAddr;
     MS_U32 u32CBufAddr;
     EN_DDI_DIP_DATA_FMT enDataFmt;

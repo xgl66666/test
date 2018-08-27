@@ -118,7 +118,6 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDrvInit(UINT8 devId, void * oemDataPtr, MXL_HY
     // update initilized flag
     devHandlePtr->initialized = MXL_TRUE;
     devHandlePtr->deviceType = deviceType;
-
     devHandlePtr->intrMask = 0;
     devHandlePtr->features.chanBond = MXL_FALSE;
     devHandlePtr->tsMap = NULL;
@@ -142,6 +141,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDrvInit(UINT8 devId, void * oemDataPtr, MXL_HY
         devHandlePtr->tsMap = tsMap1_to_1;
         devHandlePtr->gpioMaxNum = MXL_HYDRA_DEV_5X1_GPIO_MAX;
         devHandlePtr->gpioInfoPtr = gpioPinInfo_5x1;
+        devHandlePtr->skuFamily = MXL_HYDRA_SKU_58X;
         break;
 
       case MXL_HYDRA_DEVICE_582:
@@ -153,6 +153,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDrvInit(UINT8 devId, void * oemDataPtr, MXL_HY
         devHandlePtr->tsMap = tsMap1_to_1;
         devHandlePtr->gpioMaxNum = MXL_HYDRA_DEV_5X2_GPIO_MAX;
         devHandlePtr->gpioInfoPtr = gpioPinInfo_5x2_5x4;
+        devHandlePtr->skuFamily = MXL_HYDRA_SKU_58X;
         break;
 
       case MXL_HYDRA_DEVICE_585:
@@ -163,6 +164,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDrvInit(UINT8 devId, void * oemDataPtr, MXL_HY
         devHandlePtr->tsMap = tsMap1_to_1;
         devHandlePtr->gpioMaxNum = MXL_HYDRA_DEV_5X2_GPIO_MAX;
         devHandlePtr->gpioInfoPtr = gpioPinInfo_5x2_5x4;
+        devHandlePtr->skuFamily = MXL_HYDRA_SKU_58X;
         break;
 
       case MXL_HYDRA_DEVICE_544:
@@ -173,6 +175,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDrvInit(UINT8 devId, void * oemDataPtr, MXL_HY
         devHandlePtr->tsMap = tsMap54x;
         devHandlePtr->gpioMaxNum = MXL_HYDRA_DEV_5X2_GPIO_MAX;
         devHandlePtr->gpioInfoPtr = gpioPinInfo_5x2_5x4;
+        devHandlePtr->skuFamily = MXL_HYDRA_SKU_54X;
         break;
 
       case MXL_HYDRA_DEVICE_541:
@@ -185,6 +188,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDrvInit(UINT8 devId, void * oemDataPtr, MXL_HY
         devHandlePtr->tsMap = tsMap54x;
         devHandlePtr->gpioMaxNum = MXL_HYDRA_DEV_5X1_GPIO_MAX;
         devHandlePtr->gpioInfoPtr = gpioPinInfo_5x1;
+        devHandlePtr->skuFamily = MXL_HYDRA_SKU_54X;
         break;
 
       case MXL_HYDRA_DEVICE_561:
@@ -196,6 +200,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDrvInit(UINT8 devId, void * oemDataPtr, MXL_HY
         devHandlePtr->tsMap = tsMap1_to_1;
         devHandlePtr->gpioMaxNum = MXL_HYDRA_DEV_5X1_GPIO_MAX;
         devHandlePtr->gpioInfoPtr = gpioPinInfo_5x1;
+        devHandlePtr->skuFamily = MXL_HYDRA_SKU_56X;
         break;
 
       case MXL_HYDRA_DEVICE_568:
@@ -207,6 +212,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDrvInit(UINT8 devId, void * oemDataPtr, MXL_HY
         devHandlePtr->tsMap = tsMap1_to_1;
         devHandlePtr->gpioMaxNum = MXL_HYDRA_DEV_5X1_GPIO_MAX;
         devHandlePtr->gpioInfoPtr = gpioPinInfo_5x1;
+        devHandlePtr->skuFamily = MXL_HYDRA_SKU_56X;
         break;
 
       case MXL_HYDRA_DEVICE_542:
@@ -218,6 +224,18 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDrvInit(UINT8 devId, void * oemDataPtr, MXL_HY
         devHandlePtr->tsMap = tsMap54x;
         devHandlePtr->gpioMaxNum = MXL_HYDRA_DEV_5X2_GPIO_MAX;
         devHandlePtr->gpioInfoPtr = gpioPinInfo_5x2_5x4;
+        devHandlePtr->skuFamily = MXL_HYDRA_SKU_54X;
+        break;
+
+      case MXL_HYDRA_DEVICE_532C:
+        devHandlePtr->features.clkOutAvailable = MXL_TRUE;
+        devHandlePtr->features.demodsCnt = 3;
+        devHandlePtr->features.tunersCnt = 3;
+        devHandlePtr->skuType = MXL_HYDRA_SKU_TYPE_532;
+        devHandlePtr->tsMap = tsMap54x;
+        devHandlePtr->gpioMaxNum = MXL_HYDRA_DEV_5X2_GPIO_MAX;
+        devHandlePtr->gpioInfoPtr = gpioPinInfo_5x2_5x4;
+        devHandlePtr->skuFamily = MXL_HYDRA_SKU_54X;
         break;
 
       case MXL_HYDRA_DEVICE_TEST:
@@ -230,6 +248,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDrvInit(UINT8 devId, void * oemDataPtr, MXL_HY
         devHandlePtr->tsMap = tsMap1_to_1;
         devHandlePtr->gpioMaxNum = MXL_HYDRA_DEV_5X2_GPIO_MAX;
         devHandlePtr->gpioInfoPtr = gpioPinInfo_5x2_5x4;
+        devHandlePtr->skuFamily = MXL_HYDRA_SKU_58X;
         break;
     }
 
@@ -385,30 +404,36 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDrvUnInit(UINT8 devId)
   status = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
   if (status == MXL_SUCCESS)
   {
-    // update initilized flag
-    devHandlePtr->initialized = MXL_FALSE;
-
-    devHandlePtr->intrMask = 0;
-
-    // store oem data pointer
-    MxL_HYDRA_OEM_DataPtr[devId] = (void *)0;
-
-    // update device features like, number of demods, tuners available for the given device type
-    devHandlePtr->features.demodsCnt = 0;
-    devHandlePtr->features.tunersCnt = 0;
-
-    status = MXL_SUCCESS;
-
     // Clear i2c access lock
-    status |= MxLWare_HYDRA_OEM_DeleteI2cAccessLock(devId);
+    status = MxLWare_HYDRA_OEM_DeleteI2cAccessLock(devId);
+    if (status == MXL_SUCCESS)
+    {
+      // update initilized flag
+      devHandlePtr->initialized = MXL_FALSE;
 
+      devHandlePtr->intrMask = 0;
+
+      // update device features like, number of demods, tuners available for the given device type
+      devHandlePtr->features.demodsCnt = 0;
+      devHandlePtr->features.tunersCnt = 0;
+
+
+      // delete oem data pointer
+      MxL_HYDRA_OEM_DataPtr[devId] = NULL;
+    }
+    MXLERR(
+    else 
+    {
+      MXL_HYDRA_ERROR("Cannot uninitialize the device\n");
+    }
+    )
   }
+  MXLERR(
   else if (status == MXL_NOT_INITIALIZED)
   {
-    status = MXL_NOT_INITIALIZED;
-    MXLERR(MXL_HYDRA_PRINT("[%s] The device%d is already initialized\n", __FUNCTION__, devId););
+    MXL_HYDRA_ERROR("[%s] The device%d is not initialized\n", __FUNCTION__, devId);
   }
-
+  )
   MXLEXITAPISTR(devId, status);
   return status;
 }

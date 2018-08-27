@@ -107,25 +107,67 @@
 // DDI
 #include "demo_pvr.h"
 #include "demo_dmx.h"
-#include "demo_vdec.h"
 #include "demo_av.h"
-#include "demo_xc.h"
 #include "demo_zapping.h"
+#include "demo_vdec.h"
+#include "demo_xc.h"
 
 #if(DEMO_AUDIO_TEST == 1)
+#include "apiAUDIO.h"
 #include "demo_audio.h"
-#endif
-
-#if(DEMO_AUDIO_MULTI_TEST == 1)
-#include "demo_audio_multi.h"
 #endif
 
 // UTPA
 #include "drvMVOP.h"
 #include "drvDTC.h"
 
+//msAPI
+#if (DEMO_XC_DUALXC_TEST == 1)
+#include "msAPI_XC_EX.h"
+#else
+#include "msAPI_XC.h"
+#endif
+
+#include "apiDAC.h"
+#include "msAPI_VE.h"
+
 // Porting Layer Video
 static POOL_VDEC_CURR_INFO stVideoCurrIndo[PVR_PLAYBACK_THREAD_NUM];
+static MSAPI_XC_DEVICE_ID g_stXC_DeviceId[2] = {{0, E_MSAPI_XC_DEVICE0}, {0, E_MSAPI_XC_DEVICE1}};
+
+/// XC check device ID
+#if (DEMO_XC_DUALXC_TEST == 1)
+#define PVRPL_XC_CHECK_DEVICE_ID(u32Id)                                         \
+    if ((E_MSAPI_XC_DEVICE_NUM)u32Id > E_MSAPI_XC_DEVICE1)                      \
+    {                                                                           \
+        printf("WANRING: Device ID %"DTC_MS_U32_d" exceeded \n", u32Id);        \
+        return FALSE;                                                           \
+    }
+#else
+#define PVRPL_XC_CHECK_DEVICE_ID(u32Id)                                         \
+    if ((E_MSAPI_XC_DEVICE_NUM)u32Id > E_MSAPI_XC_DEVICE0)                      \
+    {                                                                           \
+        printf("WANRING: Device ID %"DTC_MS_U32_d" exceeded \n", u32Id);        \
+        return FALSE;                                                           \
+    }
+#endif
+
+#define E_DECODER_NUMBER (4)
+static ST_AUDIO_DEC_INFO stDualDemoInfo[E_DECODER_NUMBER]={{.eDecID=AU_DEC_INVALID},{.eDecID=AU_DEC_INVALID},{.eDecID=AU_DEC_INVALID},{.eDecID=AU_DEC_INVALID}};
+
+MS_BOOL _Pool_Audio_GetDecInfo(MS_U32 u32DevIdx, ST_AUDIO_DEC_INFO *pstInfo)
+{
+    if (MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
+    {
+        if((u32DevIdx >= E_DECODER_NUMBER) || (pstInfo == NULL))
+        {
+            return FALSE;
+        }
+        memcpy((void *)pstInfo, (void *)&stDualDemoInfo[u32DevIdx], sizeof(ST_AUDIO_DEC_INFO));
+    }
+
+    return TRUE;
+}
 
 void Pool_SetMVOP(MS_U8 u8PathID,MS_BOOL bSet)
 {
@@ -141,9 +183,11 @@ void Pool_SetMVOP(MS_U8 u8PathID,MS_BOOL bSet)
         printf("Display Sub MVOP Disable\n");
     }
 #endif
-
 }
 
+// ******************************************************************************
+//Wrapper function for Porting Layer Using
+// ******************************************************************************
 MS_U32 Pool_GetMIUAddress(PVRPL_MIU enMiuID)
 {
     if(enMiuID == E_MEM_MIU0)
@@ -155,6 +199,102 @@ MS_U32 Pool_GetMIUAddress(PVRPL_MIU enMiuID)
         return (MS_U32)MIU_INTERVAL;
     }
 }
+
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to eable XC window on/off
+///           Please note that when x, y, width and height are 0s, original window size iskept.
+/// @param[in] *pu32XCDevice the XC Device
+/// @param[in] *pu32XCWindow the XC Window
+/// @param[in] *pu32Enable Enable/Disable window
+/// @param[in] *x Start Position of Y
+/// @param[in] *y Start Position of Y
+/// @param[in] *width Horizontal Size
+/// @param[in] *height Vertical Size
+/// @return TRUE: Get success.
+/// @return FALSE: Get fail.
+/// @sa
+/// @note
+/// Command: \b DigiTuner_GetIndex \n
+//------------------------------------------------------------------------------
+MS_BOOL PVRPL_XC_EnableWindow(MS_U32 *pu32XCDevice, MS_U32 *pu32XCWindow, MS_U32 *pu32Enable,
+                                    MS_U32 *pu32X, MS_U32 *pu32Y, MS_U32 *pu32Width, MS_U32 *pu32Height)
+{
+    MSAPI_XC_WINDOW_TYPE stWindowType = {(MS_U16)*pu32X, (MS_U16)*pu32Y, (MS_U16)*pu32Width, (MS_U16)*pu32Height};
+
+    PVRPL_XC_CHECK_DEVICE_ID(*pu32XCDevice)
+
+    if ((*pu32X == 0) && (*pu32Y == 0) && (*pu32Width == 0) && (*pu32Height == 0))
+    {
+        msAPI_XC_EnableWindow_EX(&g_stXC_DeviceId[*pu32XCDevice], (E_MSAPI_XC_WINDOW)*pu32XCWindow, (MS_BOOL)*pu32Enable, NULL);
+    }
+    else
+    {
+        msAPI_XC_EnableWindow_EX(&g_stXC_DeviceId[*pu32XCDevice], (E_MSAPI_XC_WINDOW)*pu32XCWindow, (MS_BOOL)*pu32Enable, &stWindowType);
+    }
+
+    return TRUE;
+}
+
+
+//------------------------------------------------------------------------------
+/// @brief Enable/disable video mute
+/// @param[in] *pu32XCDevice the XC Device
+/// @param[in] *pu32XCWindow the XC Window
+/// @param[in] *pu32Enable 1=ENABLE, 0=DISABLE
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Sample Command: \n
+///          \b XC_SetVideoMute 0 0 1\n
+///          \b XC_SetVideoMute 0 0 0\n
+//------------------------------------------------------------------------------
+MS_BOOL PVRPL_XC_SetVideoMute(MS_U32 *pu32XCDevice, MS_U32 *pu32XCWindow, MS_U32 *pu32Enable)
+{
+    PVRPL_XC_CHECK_DEVICE_ID(*pu32XCDevice)
+
+    if (*pu32XCDevice == E_MSAPI_XC_DEVICE1)
+    {
+        // If device is XC1 and its source is OP, do not mute XC1 to keep UI on SD output
+        E_MSAPI_XC_INPUT_SRC eXCInputSrc = E_MSAPI_XC_INPUT_SOURCE_NONE;
+        eXCInputSrc = msAPI_XC_GetConnect_EX(&g_stXC_DeviceId[*pu32XCDevice], *pu32XCWindow);
+        if (eXCInputSrc == E_MSAPI_XC_INPUT_SOURCE_SCALER_OP)
+        {
+           return TRUE;
+        }
+    }
+    msAPI_XC_SetVideoMute_EX(&g_stXC_DeviceId[*pu32XCDevice], *pu32Enable, *pu32XCWindow);
+    return TRUE;
+}
+
+
+//------------------------------------------------------------------------------
+/// @brief Enable/disable video mute
+/// @param[in] *pu32Enable 1=ENABLE, 0=DISABLE
+/// @return TRUE: Process success.
+/// @return FALSE: Process fail.
+/// @sa
+/// @note
+/// Sample Command: \n
+///          \b VE_SetVideoMute 0\n
+///          \b VE_SetVideoMute 1\n
+//------------------------------------------------------------------------------
+MS_BOOL PVRPL_VE_SetVideoMute(MS_U32 *pu32Enable)
+{
+    if ( msAPI_VE_GetSourceType() == E_MSAPI_VE_SOURCE_SCALER_OP2)
+    {
+        return TRUE;
+    }
+    msAPI_VE_SetVideoMute((MS_BOOL)*pu32Enable);
+
+    return TRUE;
+}
+
+
+// ******************************************************************************
+// End of Wrapper function
+// ******************************************************************************
 
 //Porting Layer Record
 DMX_PVR_ENG Pool_GetEng(MS_U8 u8PathID)
@@ -185,9 +325,8 @@ DMX_PVR_ENG Pool_GetEng(MS_U8 u8PathID)
 //TSIF source get
 DMX_TSIF Pool_GetSource(DMX_FLOW_INPUT *peDmxInput)
 {
-
-    EN_DEMO_DMX_FLOW ePlayback;
-    EN_DEMO_DMX_FLOW_INPUT DemoDmxInput;
+    EN_DEMO_DMX_FLOW ePlayback = E_DMX_FLOW_INVALID;
+    EN_DEMO_DMX_FLOW_INPUT DemoDmxInput = E_DMX_FLOW_INPUT_INVALID;
 
     Demo_PVR_GetRecFlowSet(&DemoDmxInput,&ePlayback);
 
@@ -238,7 +377,7 @@ DMX_TSIF Pool_GetSource(DMX_FLOW_INPUT *peDmxInput)
 
 DMX_PVR_ENG Pool_GetRecEng(void)
 {
-    EN_DEMO_DMX_PVR_ENG eDmxPvrEng;
+    EN_DEMO_DMX_PVR_ENG eDmxPvrEng = E_DMX_PVR_ENG_INVALID;
 
     Demo_PVR_GetRecEng(&eDmxPvrEng);
 
@@ -292,50 +431,28 @@ DMX_FLOW Pool_GetPVRDMXFlow(MS_U8 u8PathID)
 //Audio source mapping with play index
 DMX_FILTER_TYPE Pool_GetAFifoType(MS_U8 u8PathID)
 {
-/*
-#if(DEMO_AUDIO_MULTI_TEST == 1)
-
-    ST_AUDIO_DEC_INFO stAudioInfo;
-    Demo_Audio_GetDecInfo(u8PathID, &stAudioInfo);
-
-    switch(stAudioInfo.stAudioDecStatus_t.eAfifoSource)
+    if (MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
     {
-        case E_AFIFO_0:
-            return DMX_FILTER_TYPE_AUDIO;
-        case E_AFIFO_1:
-            return DMX_FILTER_TYPE_AUDIO2;
-        case E_AFIFO_2:
-            return DMX_FILTER_TYPE_AUDIO3;
-        default:
-            return DMX_FILTER_TYPE_AUDIO;
+        ST_AUDIO_DEC_INFO stAudioDecInfo;
+        _Pool_Audio_GetDecInfo(u8PathID,&stAudioDecInfo);
 
+        switch(stAudioDecInfo.stAudioDecStatus_t.eAfifoSource)
+        {
+            case E_AFIFO_0:
+                 return DMX_FILTER_TYPE_AUDIO;
+            case E_AFIFO_1:
+                 return DMX_FILTER_TYPE_AUDIO2;
+            case E_AFIFO_2:
+                 return DMX_FILTER_TYPE_AUDIO3;
+            default:
+                 printf("[%s][%s][%d][ERROR]Get Audio type fail!!!\n",__FILE__,__FUNCTION__,__LINE__);
+                 return DMX_FILTER_TYPE_AUDIO;
+        }
     }
-#else
-    return DMX_FILTER_TYPE_AUDIO;
-#endif
-*/
-
-#if(DEMO_AUDIO_MULTI_TEST == 1)
-    ST_AUDIO_DEC_INFO stAudioDecInfo;
-    Demo_Audio_GetDecInfo(u8PathID,&stAudioDecInfo);
-
-    switch(stAudioDecInfo.stAudioDecStatus_t.eAfifoSource)
+    else
     {
-        case E_AFIFO_0:
-             return DMX_FILTER_TYPE_AUDIO;
-        case E_AFIFO_1:
-             return DMX_FILTER_TYPE_AUDIO2;
-        case E_AFIFO_2:
-             return DMX_FILTER_TYPE_AUDIO3;
-        default:
-             printf("[%s][%s][%d][ERROR]Get Audio type fail!!!\n",__FILE__,__FUNCTION__,__LINE__);
-             return DMX_FILTER_TYPE_AUDIO;
+        return DMX_FILTER_TYPE_AUDIO;
     }
-#else
-    return DMX_FILTER_TYPE_AUDIO;
-#endif
-
-
 }
 
 //Depends on different Playback path get the different video fifo type
@@ -351,10 +468,10 @@ DMX_FILTER_TYPE Pool_GetVFifoType(MS_U8 u8PathID)
     }
 }
 
-void Pool_SetVideoCurrCmdSetting(MS_U8 u8PathID, MS_S16 speed, EN_VIDEO_CPL_DECODE_TYPE enDecodeType, EN_VIDEO_CPL_DATA_TYPE enDataType)
+void Pool_SetVideoCurrCmdSetting(MS_U8 u8PathID, MS_S32 s32Speed, EN_VIDEO_CPL_DECODE_TYPE enDecodeType, EN_VIDEO_CPL_DATA_TYPE enDataType)
 {
     stVideoCurrIndo[u8PathID].u8PathID = u8PathID;
-    stVideoCurrIndo[u8PathID].s16Speed = speed;
+    stVideoCurrIndo[u8PathID].s32Speed = s32Speed;
     stVideoCurrIndo[u8PathID].enDecodeType = enDecodeType;
     stVideoCurrIndo[u8PathID].enDataType = enDataType;
 }
@@ -368,11 +485,13 @@ VDEC_StreamId* Pool_GetVideoID(MS_U8 u8PathID)
     void *vStreamID = NULL;
     if(u8PathID == 0)
     {
-        vStreamID = Demo_VDEC_GetStreamID(E_VDEC_DEVICE_MAIN);
+        EN_VDEC_Device eDevice= E_VDEC_DEVICE_MAIN;
+        vStreamID = Demo_VDEC_GetStreamID(&eDevice);
     }
     else if(u8PathID == 1)
     {
-        vStreamID = Demo_VDEC_GetStreamID(E_VDEC_DEVICE_SUB);
+        EN_VDEC_Device eDevice= E_VDEC_DEVICE_SUB;
+        vStreamID = Demo_VDEC_GetStreamID(&eDevice);
     }
     else
     {
@@ -419,11 +538,12 @@ POOL_PCR_ENG Pool_GetPCREng(MS_U8 u8PathID)
 //Porting Layer Audio
 AUDIO_DEC_ID Pool_GetAudioID(MS_U8 u8PathID)
 {
-#if(DEMO_AUDIO_MULTI_TEST == 1)
-    ST_AUDIO_DEC_INFO stAudioDecInfo;
-    Demo_Audio_GetDecInfo(u8PathID,&stAudioDecInfo);
-    return stAudioDecInfo.eDecID;
-#endif
+    if (MApi_AUDIO_GetCommAudioInfo(Audio_Comm_infoType_Get_MultiPlayer_Capability) == 1)
+    {
+        ST_AUDIO_DEC_INFO stAudioDecInfo = {};
+        _Pool_Audio_GetDecInfo(u8PathID,&stAudioDecInfo);
+        return stAudioDecInfo.eDecID;
+    }
 
     return AU_DEC_ID1;
 }
@@ -449,29 +569,30 @@ MS_BOOL POOL_XC_Mute(MS_U8 u8PathID)
     {
         u32XCWindow = 1;
 
-        Demo_XC_EnableWindow(&u32XCDevice, &u32XCWindow, (MS_U32*)&bWindowEnable,
+        PVRPL_XC_EnableWindow(&u32XCDevice, &u32XCWindow, (MS_U32*)&bWindowEnable,
                              &u32X, &u32Y, &u32Width, &u32Height);
 
-        printf("[%s][%d]Demo_XC_EnableWindow:%"DTC_MS_U32_d" %"DTC_MS_U32_d" %d\n",__FUNCTION__, __LINE__,u32XCDevice,u32XCWindow,FALSE);
+        printf("[%s][%d]PVRPL_XC_EnableWindow:%"DTC_MS_U32_d" %"DTC_MS_U32_d" %d\n",__FUNCTION__, __LINE__,u32XCDevice,u32XCWindow,FALSE);
     }
 
-    Demo_Zapping_GetZappingType(&eZappingType);
+    EN_AV_Device eDevice = u8PathID;
+    Demo_Zapping_GetZappingType(&eDevice,&eZappingType);
 #if (DEMO_XC_SEAMLESS_ZAPPING_TEST == 1)
     if (((eZappingType == E_ZAPPING_XC_SEAMLESS) && (Demo_XC_SeamlessZapping_IsFreeze(&u32XCDevice, &u32XCWindow) == FALSE)) ||
         (eZappingType == E_ZAPPING_NORMAL))
 #endif
     {
 
-        Demo_XC_SetVideoMute(&u32XCDevice, &u32XCWindow, &u32DisplayMute); // Mute HDMI Main/Sub Window
-        printf("[%s][%d]Demo_XC_SetVideoMute:%"DTC_MS_U32_d" %"DTC_MS_U32_d" %"DTC_MS_U32_d"\n",__FUNCTION__, __LINE__,u32XCDevice,u32XCWindow,u32DisplayMute);
+        PVRPL_XC_SetVideoMute(&u32XCDevice, &u32XCWindow, &u32DisplayMute); // Mute HDMI Main/Sub Window
+        printf("[%s][%d]PVRPL_XC_SetVideoMute:%"DTC_MS_U32_d" %"DTC_MS_U32_d" %"DTC_MS_U32_d"\n",__FUNCTION__, __LINE__,u32XCDevice,u32XCWindow,u32DisplayMute);
 
         if(u8PathID == 0)
         {
             u32XCDevice = 1;
-            Demo_XC_SetVideoMute(&u32XCDevice, &u32XCWindow, &u32DisplayMute); // Mute CVBS Main Window
-            printf("[%s][%d]Demo_XC_SetVideoMute:%"DTC_MS_U32_d" %"DTC_MS_U32_d" %"DTC_MS_U32_d"\n",__FUNCTION__, __LINE__,u32XCDevice,u32XCWindow,u32DisplayMute);
-            Demo_VE_SetVideoMute(&u32DisplayMute);                        // Mute CVBS
-            printf("[%s][%d]Demo_VE_SetVideoMute:%"DTC_MS_U32_d"\n",__FUNCTION__, __LINE__,u32DisplayMute);
+            PVRPL_XC_SetVideoMute(&u32XCDevice, &u32XCWindow, &u32DisplayMute); // Mute CVBS Main Window
+            printf("[%s][%d]PVRPL_XC_SetVideoMute:%"DTC_MS_U32_d" %"DTC_MS_U32_d" %"DTC_MS_U32_d"\n",__FUNCTION__, __LINE__,u32XCDevice,u32XCWindow,u32DisplayMute);
+            PVRPL_VE_SetVideoMute(&u32DisplayMute);                        // Mute CVBS
+            printf("[%s][%d]PVRPL_VE_SetVideoMute:%"DTC_MS_U32_d"\n",__FUNCTION__, __LINE__,u32DisplayMute);
         }
     }
     return TRUE;

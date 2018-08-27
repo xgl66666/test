@@ -239,6 +239,179 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDemodDisable(UINT8 devId, MXL_HYDRA_DEMOD_ID_E
 /**
  ************************************************************************
  * @ingroup Tuner_and_Demodulator_APIs
+ * @brief MxLWare_HYDRA_HelperFn_CfgDemodChanTuneParamSetUp
+ *
+ * @param[in]   devId        Device ID
+ * @param[in]   devHandlePtr
+ * @param[in]   tunerId      Tuner ID
+ * @param[in]   demodId    Demod ID
+ * @param[in]   demodChanCfgPtr   Demod config parameters
+ * @param[in]   chanTuneParamsPtr   Channel tune parameters
+ *
+ * @author Mahee
+ *
+ * @date 06/12/2012 Initial release
+ *
+ * @detail This Helper Function is used to set-up the demod and channel tune parameters.
+ *
+ * @retval MXL_SUCCESS            - OK
+ * @retval MXL_FAILURE            - Failure
+ * @retval MXL_INVALID_PARAMETER  - Invalid parameter is passed
+ *
+ ************************************************************************/
+MXL_STATUS_E MxLWare_HYDRA_HelperFn_CfgDemodChanTuneParamSetUp(UINT8 devId, MXL_HYDRA_TUNER_ID_E tunerId, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_DEMOD_PARAM_T * demodChanCfgPtr, MXL_HYDRA_TUNE_PARAMS_T * chanTuneParamsPtr)
+{
+  MXL_HYDRA_CONTEXT_T * devHandlePtr;
+  MXL_STATUS_E mxlStatus = MXL_SUCCESS;
+
+  MXLENTERAPISTR(devId);
+
+  mxlStatus = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
+
+  if((MXL_SUCCESS == mxlStatus) && (devHandlePtr))
+  {
+    if ((chanTuneParamsPtr) && (demodChanCfgPtr) && (devHandlePtr))
+    {
+    // Validate input parameters
+    switch (chanTuneParamsPtr->standardMask)
+    {
+      case MXL_HYDRA_DSS:
+        demodChanCfgPtr->fecCodeRate = chanTuneParamsPtr->params.paramsDSS.fec;
+        if (chanTuneParamsPtr->params.paramsDSS.rollOff > MXL_HYDRA_ROLLOFF_0_35)
+        {
+          mxlStatus |= MXL_INVALID_PARAMETER;
+        }
+        break;
+
+      case MXL_HYDRA_DVBS:
+        // Validate rolloff
+        if (chanTuneParamsPtr->params.paramsS.rollOff > MXL_HYDRA_ROLLOFF_0_35)
+        {
+          mxlStatus |= MXL_INVALID_PARAMETER;
+        }
+
+        // Validate modulation
+        if ((chanTuneParamsPtr->params.paramsS.modulation != MXL_HYDRA_MOD_QPSK) && \
+              (chanTuneParamsPtr->params.paramsS.modulation != MXL_HYDRA_MOD_AUTO))
+        {
+          mxlStatus |= MXL_INVALID_PARAMETER;
+        }
+        else if (chanTuneParamsPtr->params.paramsS.modulation == MXL_HYDRA_MOD_AUTO)
+        {
+          chanTuneParamsPtr->params.paramsS.modulation = MXL_HYDRA_MOD_QPSK;
+        }
+        break;
+
+      case MXL_HYDRA_DVBS2:
+        // Validate rolloff
+        if (chanTuneParamsPtr->params.paramsS2.rollOff > MXL_HYDRA_ROLLOFF_0_35)
+        {
+          mxlStatus |= MXL_INVALID_PARAMETER;
+        }
+
+        // Validate modulation
+        if (chanTuneParamsPtr->params.paramsS2.modulation > MXL_HYDRA_MOD_8PSK)
+        {
+          mxlStatus |= MXL_INVALID_PARAMETER;
+        }
+
+        break;
+
+      default:
+        mxlStatus |= MXL_INVALID_PARAMETER;
+    }
+  }
+  else
+    mxlStatus |= MXL_INVALID_PARAMETER;
+
+  if ((mxlStatus == MXL_SUCCESS) && (chanTuneParamsPtr))
+  {
+    // Abort tune first
+    //MxLWare_HYDRA_API_CfgDemodAbortTune(devId, demodId);
+
+    // Configure channel settings & perform chan tune
+    demodChanCfgPtr->tunerIndex = (UINT32)tunerId;
+    demodChanCfgPtr->demodIndex = (UINT32)demodId;
+    demodChanCfgPtr->frequencyInHz = chanTuneParamsPtr->frequencyInHz;
+    demodChanCfgPtr->symbolRateInHz = (chanTuneParamsPtr->symbolRateKSps * 1000);
+    if(chanTuneParamsPtr->symbolRateKSps < MXL_HYDRA_SYMBOLRATE_KSPS_MIN)
+    {
+      mxlStatus |= MXL_INVALID_PARAMETER;
+    }
+
+    if ((chanTuneParamsPtr->freqSearchRangeKHz%1000))
+      demodChanCfgPtr->maxCarrierOffsetInMHz = (chanTuneParamsPtr->freqSearchRangeKHz/1000) + 1;
+    else
+      demodChanCfgPtr->maxCarrierOffsetInMHz = (chanTuneParamsPtr->freqSearchRangeKHz)/1000;
+
+    demodChanCfgPtr->spectrumInversion = (UINT32)chanTuneParamsPtr->spectrumInfo;
+    demodChanCfgPtr->standard = (UINT32)chanTuneParamsPtr->standardMask;
+
+    // update device context
+    devHandlePtr->bcastStd[demodId] = chanTuneParamsPtr->standardMask;
+
+    MXLDBG1(
+    MXL_HYDRA_PRINT(" tunerIndex : %d\n", demodChanCfgPtr->tunerIndex);
+    MXL_HYDRA_PRINT(" demodIndex : %d\n", demodChanCfgPtr->demodIndex);
+    MXL_HYDRA_PRINT(" frequencyInHz : %d\n", demodChanCfgPtr->frequencyInHz);
+    MXL_HYDRA_PRINT(" symbolRateInHz : %d\n", demodChanCfgPtr->symbolRateInHz);
+    MXL_HYDRA_PRINT(" maxCarrierOffsetInMHz : %d\n", demodChanCfgPtr->maxCarrierOffsetInMHz);
+    MXL_HYDRA_PRINT(" spectrumInversion : %d\n", demodChanCfgPtr->spectrumInversion);
+    );
+
+    // get standard specific tunning parameters
+    switch (chanTuneParamsPtr->standardMask)
+    {
+      case MXL_HYDRA_DSS:
+        demodChanCfgPtr->fecCodeRate = chanTuneParamsPtr->params.paramsDSS.fec;
+        demodChanCfgPtr->rollOff = chanTuneParamsPtr->params.paramsDSS.rollOff;
+
+        MXLDBG1(
+        MXL_HYDRA_PRINT(" fecCodeRate : %d\n", demodChanCfgPtr->fecCodeRate);
+        MXL_HYDRA_PRINT(" rollOff : %d\n", demodChanCfgPtr->rollOff);
+        );
+        break;
+
+      case MXL_HYDRA_DVBS:
+        demodChanCfgPtr->rollOff = chanTuneParamsPtr->params.paramsS.rollOff;
+        demodChanCfgPtr->modulationScheme = chanTuneParamsPtr->params.paramsS.modulation;
+        demodChanCfgPtr->fecCodeRate = chanTuneParamsPtr->params.paramsS.fec;
+
+        MXLDBG1(
+        MXL_HYDRA_PRINT(" fecCodeRate : %d\n", demodChanCfgPtr->fecCodeRate);
+        MXL_HYDRA_PRINT(" modulationScheme : %d\n", demodChanCfgPtr->modulationScheme);
+        MXL_HYDRA_PRINT(" rollOff : %d\n", demodChanCfgPtr->rollOff);
+        );
+        break;
+
+      case MXL_HYDRA_DVBS2:
+        demodChanCfgPtr->rollOff = chanTuneParamsPtr->params.paramsS2.rollOff;
+        demodChanCfgPtr->modulationScheme = chanTuneParamsPtr->params.paramsS2.modulation;
+        demodChanCfgPtr->fecCodeRate = chanTuneParamsPtr->params.paramsS2.fec;
+        demodChanCfgPtr->pilots = chanTuneParamsPtr->params.paramsS2.pilots;
+
+        MXLDBG1(
+        MXL_HYDRA_PRINT(" fecCodeRate : %d\n", demodChanCfgPtr->fecCodeRate);
+        MXL_HYDRA_PRINT(" modulationScheme : %d\n", demodChanCfgPtr->modulationScheme);
+        MXL_HYDRA_PRINT(" rollOff : %d\n", demodChanCfgPtr->rollOff);
+        );
+        break;
+
+      default:
+        mxlStatus |= MXL_INVALID_PARAMETER;
+        break;
+      }
+    }
+  }
+
+  MXLEXITAPISTR(devId, mxlStatus);
+  return mxlStatus;
+}
+
+
+/**
+ ************************************************************************
+ * @ingroup Tuner_and_Demodulator_APIs
  * @brief MxLWare_HYDRA_API_CfgDemodChanTune
  *
  * @param[in]   devId        Device ID
@@ -257,154 +430,27 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDemodDisable(UINT8 devId, MXL_HYDRA_DEMOD_ID_E
  * @retval MXL_INVALID_PARAMETER  - Invalid parameter is passed
  *
  ************************************************************************/
-
 MXL_STATUS_E MxLWare_HYDRA_API_CfgDemodChanTune(UINT8 devId, MXL_HYDRA_TUNER_ID_E tunerId, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_TUNE_PARAMS_T * chanTuneParamsPtr)
 {
   MXL_HYDRA_CONTEXT_T * devHandlePtr;
-  MXL_STATUS_E mxlStatus = MXL_SUCCESS;
   MXL_HYDRA_DEMOD_PARAM_T demodChanCfg;
   UINT8 cmdSize = sizeof(demodChanCfg);
   UINT8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
+  MXL_STATUS_E mxlStatus = MXL_SUCCESS;
 
   MXLENTERAPISTR(devId);
   MXLENTERAPI(MXL_HYDRA_PRINT("demodId=%d\n", demodId););
 
   mxlStatus = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
+
+  if((MXL_SUCCESS == mxlStatus) && (devHandlePtr))
+    mxlStatus |= MxLWare_HYDRA_HelperFn_CfgDemodChanTuneParamSetUp(devId, tunerId, demodId, &demodChanCfg, chanTuneParamsPtr);
+
   if (mxlStatus == MXL_SUCCESS)
   {
-    if (chanTuneParamsPtr)
-    {
-      // Validate input parameters
-      switch (chanTuneParamsPtr->standardMask)
-      {
-        case MXL_HYDRA_DSS:
-          demodChanCfg.fecCodeRate = chanTuneParamsPtr->params.paramsDSS.fec;
-          if (chanTuneParamsPtr->params.paramsDSS.rollOff > MXL_HYDRA_ROLLOFF_0_35)
-          {
-            mxlStatus |= MXL_INVALID_PARAMETER;
-          }
-          break;
-
-        case MXL_HYDRA_DVBS:
-          // Validate rolloff
-          if (chanTuneParamsPtr->params.paramsS.rollOff > MXL_HYDRA_ROLLOFF_0_35)
-          {
-            mxlStatus |= MXL_INVALID_PARAMETER;
-          }
-
-          // Validate modulation
-          if ((chanTuneParamsPtr->params.paramsS.modulation != MXL_HYDRA_MOD_QPSK) && \
-                (chanTuneParamsPtr->params.paramsS.modulation != MXL_HYDRA_MOD_AUTO))
-          {
-            mxlStatus |= MXL_INVALID_PARAMETER;
-          }
-          else if (chanTuneParamsPtr->params.paramsS.modulation == MXL_HYDRA_MOD_AUTO)
-          {
-            chanTuneParamsPtr->params.paramsS.modulation = MXL_HYDRA_MOD_QPSK;
-          }
-          break;
-
-        case MXL_HYDRA_DVBS2:
-          // Validate rolloff
-          if (chanTuneParamsPtr->params.paramsS2.rollOff > MXL_HYDRA_ROLLOFF_0_35)
-          {
-            mxlStatus |= MXL_INVALID_PARAMETER;
-          }
-
-          // Validate modulation
-          if (chanTuneParamsPtr->params.paramsS2.modulation > MXL_HYDRA_MOD_8PSK)
-          {
-            mxlStatus |= MXL_INVALID_PARAMETER;
-          }
-
-          break;
-
-        default:
-          mxlStatus |= MXL_INVALID_PARAMETER;
-      }
-    }
-    else
-      mxlStatus |= MXL_INVALID_PARAMETER;
-
-    if ((mxlStatus == MXL_SUCCESS) && (chanTuneParamsPtr))
-    {
-      // Abort tune first
-      //MxLWare_HYDRA_API_CfgDemodAbortTune(devId, demodId);
-
-      // Configure channel settings & perform chan tune
-      demodChanCfg.tunerIndex = (UINT32)tunerId;
-      demodChanCfg.demodIndex = (UINT32)demodId;
-      demodChanCfg.frequencyInHz = chanTuneParamsPtr->frequencyInHz;
-      demodChanCfg.symbolRateInHz = (chanTuneParamsPtr->symbolRateKSps * 1000);
-
-	  if(demodChanCfg.symbolRateInHz < 1000)
-	  {
-		  mxlStatus |= MXL_INVALID_PARAMETER;
-	  }
-
-      if ((chanTuneParamsPtr->freqSearchRangeKHz%1000))
-        chanTuneParamsPtr->freqSearchRangeKHz = (chanTuneParamsPtr->freqSearchRangeKHz/1000) + 1;
-      else
-        chanTuneParamsPtr->freqSearchRangeKHz = (chanTuneParamsPtr->freqSearchRangeKHz)/1000;
-
-      demodChanCfg.maxCarrierOffsetInMHz = (UINT32)(chanTuneParamsPtr->freqSearchRangeKHz);
-      demodChanCfg.spectrumInversion = (UINT32)chanTuneParamsPtr->spectrumInfo;
-      demodChanCfg.standard = (UINT32)chanTuneParamsPtr->standardMask;
-
-      // update device context
-      devHandlePtr->bcastStd[demodId] = chanTuneParamsPtr->standardMask;
-
-      MXL_HYDRA_PRINT(" tunerIndex : %d\n", demodChanCfg.tunerIndex);
-      MXL_HYDRA_PRINT(" demodIndex : %d\n", demodChanCfg.demodIndex);
-      MXL_HYDRA_PRINT(" frequencyInHz : %d\n", demodChanCfg.frequencyInHz);
-      MXL_HYDRA_PRINT(" symbolRateInHz : %d\n", demodChanCfg.symbolRateInHz);
-      MXL_HYDRA_PRINT(" maxCarrierOffsetInMHz : %d\n", demodChanCfg.maxCarrierOffsetInMHz);
-      MXL_HYDRA_PRINT(" spectrumInversion : %d\n", demodChanCfg.spectrumInversion);
-
-
-      // get standard specific tunning parameters
-      switch (chanTuneParamsPtr->standardMask)
-      {
-        case MXL_HYDRA_DSS:
-          demodChanCfg.fecCodeRate = chanTuneParamsPtr->params.paramsDSS.fec;
-          demodChanCfg.rollOff = chanTuneParamsPtr->params.paramsDSS.rollOff;
-          MXL_HYDRA_PRINT(" fecCodeRate : %d\n", demodChanCfg.fecCodeRate);
-          MXL_HYDRA_PRINT(" rollOff : %d\n", demodChanCfg.rollOff);
-          break;
-
-        case MXL_HYDRA_DVBS:
-          demodChanCfg.rollOff = chanTuneParamsPtr->params.paramsS.rollOff;
-          demodChanCfg.modulationScheme = chanTuneParamsPtr->params.paramsS.modulation;
-          demodChanCfg.fecCodeRate = chanTuneParamsPtr->params.paramsS.fec;
-
-          MXL_HYDRA_PRINT(" fecCodeRate : %d\n", demodChanCfg.fecCodeRate);
-          MXL_HYDRA_PRINT(" modulationScheme : %d\n", demodChanCfg.modulationScheme);
-          MXL_HYDRA_PRINT(" rollOff : %d\n", demodChanCfg.rollOff);
-          break;
-
-        case MXL_HYDRA_DVBS2:
-          demodChanCfg.rollOff = chanTuneParamsPtr->params.paramsS2.rollOff;
-          demodChanCfg.modulationScheme = chanTuneParamsPtr->params.paramsS2.modulation;
-          demodChanCfg.fecCodeRate = chanTuneParamsPtr->params.paramsS2.fec;
-          demodChanCfg.pilots = chanTuneParamsPtr->params.paramsS2.pilots;
-
-          MXL_HYDRA_PRINT(" fecCodeRate : %d\n", demodChanCfg.fecCodeRate);
-          MXL_HYDRA_PRINT(" modulationScheme : %d\n", demodChanCfg.modulationScheme);
-          MXL_HYDRA_PRINT(" rollOff : %d\n", demodChanCfg.rollOff);
-
-          break;
-
-        default:
-          mxlStatus |= MXL_INVALID_PARAMETER;
-      }
-
-      if (mxlStatus == MXL_SUCCESS)
-      {
-        // send command to the device
-        BUILD_HYDRA_CMD(MXL_HYDRA_DEMOD_SET_PARAM_CMD, MXL_CMD_WRITE, cmdSize, &demodChanCfg, cmdBuff);
-        mxlStatus |= MxLWare_HYDRA_SendCommand(devId, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
-      }
-    }
+    // send command to the device
+    BUILD_HYDRA_CMD(MXL_HYDRA_DEMOD_SET_PARAM_CMD, MXL_CMD_WRITE, cmdSize, &demodChanCfg, cmdBuff);
+    mxlStatus |= MxLWare_HYDRA_SendCommand(devId, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
   }
 
   MXLEXITAPISTR(devId, mxlStatus);
@@ -506,11 +552,13 @@ MXL_STATUS_E MxL_Ctrl_TunerPowerSpectrum(UINT8 devId,
   status = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
   if (status == MXL_SUCCESS)
   {
+    UINT32 errCode;
+
     // send command to calculate min AGC
     minAgc.demodIndex = demodId;
     minAgc.tunerIndex = tunerId;
     minAgc.startingFreqInkHz = freqStartInKHz;
-    minAgc.stepSizeInKHz = MXL_HYDRA_STEP_SIZE_24_XTAL_408_20KHZ;
+    minAgc.stepSizeInKHz = (UINT32) MXL_HYDRA_STEP_SIZE_24_XTAL_408_20KHZ;
     minAgc.totalSteps = numOfFreqSteps;
 
     // build command
@@ -528,22 +576,31 @@ MXL_STATUS_E MxL_Ctrl_TunerPowerSpectrum(UINT8 devId,
                             (DMD0_SPECTRUM_MIN_GAIN_STATUS + HYDRA_DMD_STATUS_OFFSET(demodId)),
                             &regData);
 
-      MXL_HYDRA_PRINT("Spectrum Status RegAddr = 0x%08X, Data = 0x%08X", (DMD0_SPECTRUM_MIN_GAIN_STATUS + HYDRA_DMD_STATUS_OFFSET(demodId)), regData);
+      MXLDBG3(MXL_HYDRA_PRINT("Spectrum Status RegAddr = 0x%08X, Data = 0x%08X\n", (DMD0_SPECTRUM_MIN_GAIN_STATUS + HYDRA_DMD_STATUS_OFFSET(demodId)), regData););
 
       MxLWare_HYDRA_OEM_GetCurrTimeInMs(&currTime);
 
     } while (((currTime - startTime) < 20000 /*  timeout of 20 secs */) && ((regData & 0xFFFFFFFF) == 0x0));
 
-    if (((regData & 0xFFFF) == 0x1) || ((regData & 0xFFFF) == 0x2))
+    errCode = regData & 0xffff;
+    if ((errCode == 0x1) || (errCode == 0x2))
       status = MXL_INVALID_PARAMETER;
-    else if (((regData & 0xFFFF) == 0x3) || ((regData & 0xFFFF) == 0x4) || ((regData & 0xFFFF) == 0x5))
+    else if ((errCode == 0x3) || (errCode == 0x4) || (errCode == 0x5))
       status = MXL_FAILURE;
 
-    *spectrumReadbackStatusPtr = (MXL_HYDRA_SPECTRUM_ERROR_CODE_E)(regData & 0xFFFF);
+    MXLERR(
+      if (errCode) 
+      {
+        MXL_HYDRA_PRINT("Error. gain status = %d\n", regData);
+      }
+    );
+
+    *spectrumReadbackStatusPtr = (MXL_HYDRA_SPECTRUM_ERROR_CODE_E)(errCode);
 
     // if regData <31:16> = 1 then spectrm agc data is ready
     if ((status == MXL_SUCCESS) && ((regData & 0xFFFF0000) == 0x10000))
     {
+      MXLDBG1(MXL_HYDRA_PRINT("Spectrum data available\n"););
       // Calculate end frequency
       endFreq = (freqStartInKHz * 1000) + (freqStep[MXL_HYDRA_STEP_SIZE_24_XTAL_408_20KHZ] * numOfFreqSteps);
       tmpNumOfSteps = numOfFreqSteps;
@@ -553,6 +610,8 @@ MXL_STATUS_E MxL_Ctrl_TunerPowerSpectrum(UINT8 devId,
       {
         tmpNumOfSteps -= totalSize;
         index += totalSize;
+
+        MXLDBG2(MXL_HYDRA_PRINT("Spectrum Loop. startFreq=%d, endFreq=%d\n", startFreq, endFreq););
 
         // if num of steps is not less than max allowed then step size should be valid max num of steps
         if (tmpNumOfSteps < maxNumOfSteps[MXL_HYDRA_STEP_SIZE_24_XTAL_408_20KHZ])
@@ -568,14 +627,14 @@ MXL_STATUS_E MxL_Ctrl_TunerPowerSpectrum(UINT8 devId,
           // build FW command
           pwrSpectrum.demodIndex = demodId;
           pwrSpectrum.tunerIndex = tunerId;
-          pwrSpectrum.stepSizeInKHz = MXL_HYDRA_STEP_SIZE_24_XTAL_408_20KHZ;
+          pwrSpectrum.stepSizeInKHz = (UINT32) MXL_HYDRA_STEP_SIZE_24_XTAL_408_20KHZ;
           pwrSpectrum.totalSteps = totalSize;
           pwrSpectrum.startingFreqInkHz = (UINT32)(startFreq/1000);
 
-          MXL_HYDRA_PRINT("tunerId = %d, demodId = %d freqStartInKHz = %d, numOfFreqSteps = %d\n",
+          MXLDBG2(MXL_HYDRA_PRINT("tunerId = %d, demodId = %d freqStartInKHz = %d, numOfFreqSteps = %d\n",
                                             tunerId, demodId,
                                             pwrSpectrum.startingFreqInkHz,
-                                            pwrSpectrum.totalSteps);
+                                            pwrSpectrum.totalSteps););
 
           // build command
           BUILD_HYDRA_CMD(MXL_HYDRA_TUNER_SPECTRUM_REQ_CMD, MXL_CMD_WRITE, cmdSize, &pwrSpectrum, cmdBuff);
@@ -597,7 +656,7 @@ MXL_STATUS_E MxL_Ctrl_TunerPowerSpectrum(UINT8 devId,
                                         (HYDRA_TUNER_SPECTRUM_STATUS_OFFSET + HYDRA_TUNER_STATUS_OFFSET(tunerId)),
                                         &regData);
 
-            MXL_HYDRA_PRINT("Spectrum Status RegAddr = 0x%08X, Data = 0x%08X", (HYDRA_TUNER_SPECTRUM_STATUS_OFFSET + HYDRA_TUNER_STATUS_OFFSET(tunerId)), regData);
+            MXLDBG3(MXL_HYDRA_PRINT("Spectrum Status RegAddr = 0x%08X, Data = 0x%08X\n", (HYDRA_TUNER_SPECTRUM_STATUS_OFFSET + HYDRA_TUNER_STATUS_OFFSET(tunerId)), regData););
 
             spectrumReadyFlag = MXL_FALSE;
 
@@ -623,10 +682,10 @@ MXL_STATUS_E MxL_Ctrl_TunerPowerSpectrum(UINT8 devId,
                                             (2 * 4), // 2 * 4 bytes - 2 32-bit registers
                                             (UINT8 *)&spectrumDataAddr[0]);
 
-              MXL_HYDRA_PRINT("RegAddr = 0x%08X, Data = 0x%08X Data = 0x%08X\n",
+              MXLDBG3(MXL_HYDRA_PRINT("RegAddr = 0x%08X, Data = 0x%08X Data = 0x%08X\n",
                                         (HYDRA_TUNER_SPECTRUM_BIN_SIZE_OFFSET + HYDRA_TUNER_STATUS_OFFSET(tunerId)),
                                         spectrumDataAddr[0], // Num of bins to read
-                                        spectrumDataAddr[1]); // Address
+                                        spectrumDataAddr[1]);) // Address
 
               // # bins should be greater than zero
               if (spectrumDataAddr[1])
@@ -649,13 +708,13 @@ MXL_STATUS_E MxL_Ctrl_TunerPowerSpectrum(UINT8 devId,
                                                         (numOfBinsInBytes), // # of bins * 2 bytes
                                                         (UINT8 *)&spectrumData[0]);
 
-                MXL_HYDRA_PRINT("Spectrum Data - Start\n");
+                MXLDBG2(MXL_HYDRA_PRINT("Spectrum Data - Start\n"););
 
                 // each spectrum value is 16 bits so the loop increment is +2
                 for (regData = 0; regData < totalSize; regData += 2)
                 {
                   powerBufPtr[index+regData] = spectrumData[regData+1];
-                  MXL_HYDRA_PRINT("%d    %d", (regData), powerBufPtr[index+regData]);
+                  MXLDBG3(MXL_HYDRA_PRINT("%d    %d", (regData), powerBufPtr[index+regData]););
 
                   /* check is the last reacod should be read or not
                      need this check because we read number of bytes as a factor of 4
@@ -663,10 +722,10 @@ MXL_STATUS_E MxL_Ctrl_TunerPowerSpectrum(UINT8 devId,
                   if ((regData+1) < totalSize)
                   {
                     powerBufPtr[index+(regData+1)] = spectrumData[regData];
-                    MXL_HYDRA_PRINT("%d    %d", (regData+1), powerBufPtr[index+(regData+1)]);
+                    MXLDBG3(MXL_HYDRA_PRINT("%d    %d", (regData+1), powerBufPtr[index+(regData+1)]););
                   }
                 }
-                MXL_HYDRA_PRINT("Spectrum Data - Done\n");
+                MXLDBG2(MXL_HYDRA_PRINT("Spectrum Data - Done\n"););
               }
               else
               {
@@ -739,6 +798,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_ReqTunerPowerSpectrum(UINT8 devId,
     }
     else
     {
+      MXLERR(
       if (maxNumOfSteps[MXL_HYDRA_STEP_SIZE_24_XTAL_408_20KHZ]*sizeof(SINT16) > MXL_HYDRA_OEM_MAX_BLOCK_WRITE_LENGTH)
       {
         MXL_HYDRA_PRINT("Cannot be executed due to memory limitation. Increase MXL_HYDRA_OEM_MAX_BLOCK_WRITE_LENGTH if possible\n");
@@ -747,6 +807,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_ReqTunerPowerSpectrum(UINT8 devId,
       {
         MXL_HYDRA_PRINT(" Invalid Parameter!");
       }
+      );
       status = MXL_INVALID_PARAMETER;
     }
   }
@@ -1474,19 +1535,19 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgRssiMonitor(UINT8 devId, MXL_HYDRA_TUNER_ID_E 
 
       //convert rssi to raw value
       monitorRssiParams.adcRssiThreshold = adcRssiThreshold;
-      monitorRssiParams.enable = enable;
-      monitorRssiParams.tunerId = tunerId;
-      MXL_HYDRA_DEBUG("Tuner %d RSSI Monitor threshold: %d\n", tunerId, adcRssiThreshold);
+      monitorRssiParams.enable = (UINT32) enable;
+      monitorRssiParams.tunerId = (UINT32) tunerId;
+      MXLDBG2(MXL_HYDRA_DEBUG("Tuner %d RSSI Monitor threshold: %d\n", tunerId, adcRssiThreshold););
       BUILD_HYDRA_CMD(MXL_HYDRA_RSSI_MONITOR_CMD, MXL_CMD_WRITE, sizeof(MXL_HYDRA_RSSI_MONITOR_INFO_T), &monitorRssiParams, cmdBuff);
 
       // send command to device
-	  mxlStatus = MxLWare_HYDRA_SendCommand(devId, sizeof(MXL_HYDRA_RSSI_MONITOR_INFO_T) + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
+  	  mxlStatus = MxLWare_HYDRA_SendCommand(devId, sizeof(MXL_HYDRA_RSSI_MONITOR_INFO_T) + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
     }
     else
     {
       // adcRssiThreshold not within valid range or Tuner is beyond tuners count.
-	  mxlStatus = MXL_INVALID_PARAMETER;
-	  MXL_HYDRA_DEBUG("Tuner %d RSSI Monitor threshold is out of bounds: %d\n", tunerId, adcRssiThreshold);
+  	  mxlStatus = MXL_INVALID_PARAMETER;
+  	  MXLERR(MXL_HYDRA_DEBUG("Tuner %d RSSI Monitor threshold is out of bounds: %d\n", tunerId, adcRssiThreshold););
     }
   }
   
@@ -1582,7 +1643,10 @@ MXL_STATUS_E MxLWare_HYDRA_API_ReqAdcRssiPower(UINT8 devId, MXL_HYDRA_TUNER_ID_E
   {
     if (adcRssiPwr)
     {
-      BUILD_HYDRA_CMD(MXL_HYDRA_DEV_REQ_PWR_FROM_ADCRSSI_CMD, MXL_CMD_WRITE, sizeof(MXL_HYDRA_TUNER_ID_E), &tunerId, cmdBuff);
+      UINT32 tunId;
+
+      tunId = (UINT32) tunerId;
+      BUILD_HYDRA_CMD(MXL_HYDRA_DEV_REQ_PWR_FROM_ADCRSSI_CMD, MXL_CMD_WRITE, sizeof(UINT32), &tunId, cmdBuff);
 
       // send command to device
       mxlStatus = MxLWare_HYDRA_SendCommand(devId, sizeof(MXL_HYDRA_TUNER_ID_E) + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
@@ -1590,6 +1654,65 @@ MXL_STATUS_E MxLWare_HYDRA_API_ReqAdcRssiPower(UINT8 devId, MXL_HYDRA_TUNER_ID_E
       MxLWare_HYDRA_OEM_SleepInMs(50);
 
       mxlStatus |= MxLWare_HYDRA_ReadRegister(devId, POWER_FROM_ADCRSSI_READBACK, (UINT32 *) adcRssiPwr);
+    }
+    else
+      mxlStatus = MXL_INVALID_PARAMETER;
+  }
+
+  MXLEXITAPISTR(devId, mxlStatus);
+  return mxlStatus;
+}
+
+/**
+ ************************************************************************
+ * @ingroup Tuner_and_Demodulator_APIs
+ * @brief MxLWare_HYDRA_API_ReqTunerSplitterAttenuation
+ *
+ * @param[in]   devId            Device ID
+ * @param[out]  splitterAttnPtr  Splitter Attenuation Return Pointer
+ *
+ * @author Cres R
+ *
+ * @date 03/08/2016 Initial release
+ *
+ * @detail This API should be used to calculate the splitter attenuation in dB.
+ *
+ * @retval MXL_SUCCESS            - OK
+ * @retval MXL_FAILURE            - Failure
+ * @retval MXL_INVALID_PARAMETER  - Invalid parameter is passed
+ *
+ ************************************************************************/
+MXL_STATUS_E MxLWare_HYDRA_API_ReqTunerSplitterAttenuation(UINT8 devId, UINT32 * splitterAttnPtr)
+{
+  MXL_HYDRA_CONTEXT_T * devHandlePtr;
+  MXL_STATUS_E mxlStatus = MXL_SUCCESS;
+  UINT32 afe_data = 0;
+  UINT32 wb_data = 0;
+  UINT32 rf1_msb;
+  UINT32 lna_msb;
+  UINT32 rf1;
+  UINT32 lna;
+
+  MXLENTERAPISTR(devId);
+
+  mxlStatus = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
+  if (mxlStatus == MXL_SUCCESS)
+  {
+    if (splitterAttnPtr)
+    {
+ 
+      mxlStatus = MxLWare_HYDRA_ReadRegister(devId, AFE_REG_D2A_TA_RFFE_LNA_BO_1P8_BASEADDR, &afe_data);
+      rf1_msb = afe_data & 0x00000020;   //Bit 5 of AFE Reg
+      lna_msb = afe_data & 0x00000010;   //Bit 4 of AFE Reg
+      
+      mxlStatus |= MxLWare_HYDRA_ReadRegister(devId, WB_DFE2_DFE_FB_LNA_BO_BASEADDR, &wb_data);
+      rf1 = wb_data & 0x00000007;       //Bits 0-2 of WB Reg
+      lna = wb_data & 0x00000300;       //Bits 8-9 of WB Reg
+
+      //Join the bit fields and add up the Back off steps
+      //Each Back off step represents 2 dB so multiply total by 2
+      *splitterAttnPtr = 2 * (((rf1_msb >> 2) | rf1) + ((lna_msb >> 2) | (lna >> 8)));
+      MXLDBG1(MXL_HYDRA_PRINT("Splitter attenuation calculated (in dB) is = %d\n", *splitterAttnPtr));
     }
     else
       mxlStatus = MXL_INVALID_PARAMETER;
@@ -1817,7 +1940,7 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgDemodSearchFreqOffset(UINT8 devId, MXL_HYDRA_D
   {
     // build Demod Frequency Offset Search command
     searchFreqRangeCmd.demodIndex = demodId;
-    searchFreqRangeCmd.searchType = searchFreqType;
+    searchFreqRangeCmd.searchType = (UINT32) searchFreqType;
     BUILD_HYDRA_CMD(MXL_HYDRA_DEMOD_FREQ_OFFSET_SEARCH_RANGE_CMD, MXL_CMD_WRITE, cmdSize, &searchFreqRangeCmd, cmdBuff);
 
     // send command to device
@@ -1868,10 +1991,12 @@ MXL_STATUS_E MxLWare_HYDRA_API_GainStepControl(UINT8 devId, MXL_HYDRA_TUNER_ID_E
     /* This is done to make a tuner ID swap for 5x2 SKUs 
        in order to meet the Data sheet requirements. 
        Look at Jira HYDRA-1925 for more details. */
-    if ((devHandlePtr->deviceType == MXL_HYDRA_DEVICE_582) || \
-        (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_582C) || \
-        (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_542) || \
-        (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_542C))
+    if ((devHandlePtr->deviceType == MXL_HYDRA_DEVICE_582) || 
+        (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_582C) ||
+        (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_542) ||
+        (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_542C) || 
+        (devHandlePtr->deviceType == MXL_HYDRA_DEVICE_532C)
+        )
     {
       if (tunerId == MXL_HYDRA_TUNER_ID_0)
         tunerId = MXL_HYDRA_TUNER_ID_2;

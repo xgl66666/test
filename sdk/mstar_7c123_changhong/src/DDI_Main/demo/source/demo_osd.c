@@ -238,6 +238,11 @@
 #include "apiJPEG.h"
 #include "drvMMIO.h"
 #include "drvDTC.h"
+#include "drvMVOP.h"
+#include "apiVDEC.h"
+#if defined(MSOS_TYPE_LINUX)
+#include "iniparser.h"
+#endif
 
 #if (DEMO_GOP_GOPSC_TEST == 1)
 #include "apiGOPSC_Ex.h"
@@ -249,6 +254,12 @@
 
 #if (DDI_DEMO_DIP_CAPTURE_TEST == 1)
 #include "apiXC_DWIN.h"
+#endif
+
+#if (DEMO_XC_DUALXC_TEST == 1)
+#include "msAPI_XC_EX.h"
+#else
+#include "msAPI_XC.h"
 #endif
 
 #include "demo_utility.h"
@@ -267,6 +278,10 @@
 #include "demo_gpd.h"
 #endif
 
+#if (DEMO_ZUI_TEST == 1)
+extern MS_U32 msAPI_OCP_GetBitmapInfo(MS_S16 handle, GFX_BitmapInfo* pinfo);
+extern MS_U32 msAPI_OCP_GetFontInfo(MS_S8 handle, GFX_FontInfo* pinfo);
+#endif
 //-------------------------------------------------------------------------------------------------
 // Local Defines
 //-------------------------------------------------------------------------------------------------
@@ -455,6 +470,18 @@ static MS_U16 u16gwin_fmt =(MS_U16) E_MS_FMT_ARGB4444;
 static MS_BOOL bSetClrFmt = TRUE;
 static GWinInfo gWinInfo[] = {{E_GOP_DST_OP0, 0xFF, 0xFF, 0xFF, 0, 0, E_MS_FMT_ARGB4444, {0}},
                         {E_GOP_DST_MIXER2VE, 0xFF, 0xFF, 0xFF, 0, 0, E_MS_FMT_ARGB4444, {0}}};
+#if (DEMO_GOP_ZORDER_TEST == 1)
+static GWinInfo cusGwinInfo[] = {
+                                    {E_GOP_DST_OP0, 0, 0xFF, 0xFF, 0, 0, E_MS_FMT_ARGB8888, {0}},
+                                    {E_GOP_DST_OP0, 1, 0xFF, 0xFF, 0, 0, E_MS_FMT_ARGB8888, {0}},
+                                    {E_GOP_DST_OP0, 2, 0xFF, 0xFF, 0, 0, E_MS_FMT_ARGB8888, {0}},
+                                    {E_GOP_DST_OP0, 3, 0xFF, 0xFF, 0, 0, E_MS_FMT_ARGB8888, {0}},
+                                    {E_GOP_DST_OP0, 4, 0xFF, 0xFF, 0, 0, E_MS_FMT_ARGB8888, {0}}
+                                };
+static MS_U32 s_u32VideoLayer = 0;
+static MS_U32 s_u32GOPNum = 0;
+static MS_U8 cfgFileName[] = "/config/DMS/dms_cfg.ini";
+#endif
 static MS_BOOL bGOPInit = FALSE;
 static MS_U8 u8DWinFbId = 0xFF;
 static GOP_MIXER_TIMINGTYPE gopMixerTimingType;
@@ -465,6 +492,8 @@ static PNL_DeviceId gDevId = {0,E_PNL_EX_DEVICE0};
 #endif
 
 #if (DDI_DEMO_DIP_CAPTURE_TEST == 1)
+#define DIP_Timeout 500 //(ms)
+static MS_U32 u32DIPStartTime = 0;
 static MS_BOOL bDwinInit = FALSE;
 static GOP_DwinProperty DwinProperty;
 static EN_GOP_DWIN_SRC_SEL SrcSlt =DWIN_SRC_OP;
@@ -491,7 +520,7 @@ MS_U32 u32PmBase = 0;
 #define REG16_NPM(addr)         *((volatile MS_U16*)(u32NonPmBase + (addr)))
 #define REG16_PM(addr )         *((volatile MS_U16*)(u32PmBase+ (addr)))
 
-extern void* Demo_VDEC_GetStreamID(EN_VDEC_Device edevice);
+extern void* Demo_VDEC_GetStreamID(EN_VDEC_Device* pedevice);
 #if 0
 void _appDemo_XC_WriteByte(MS_U32 u32Addr, MS_U8 u8Value)
 {
@@ -582,9 +611,8 @@ static void _GOP_ScalerInit(void)
 static MS_U32 _OSD_SetFBFmt(MS_U16 u16pitch, MS_PHY u32addr , MS_U16 u16fmt )
 {
     GFX_BufferInfo stdstbuf;
-
     printf("OSD set format\n");
-	printf("format = 0x%x\n",u16fmt);
+    printf("format = 0x%x\n",u16fmt);
     stdstbuf.u32ColorFmt = (GFX_Buffer_Format)(u16fmt&0xff);
     stdstbuf.u32Addr = u32addr;
     stdstbuf.u32Pitch = u16pitch;
@@ -651,7 +679,7 @@ static MS_BOOL _sc_is_interlace(void)
         return FALSE;
     }
 
-    stVDECSteamID = Demo_VDEC_GetStreamID(eSC0_Source);
+    stVDECSteamID = Demo_VDEC_GetStreamID((EN_VDEC_Device*)&eSC0_Source);
 
     memset(&stinfo, 0, sizeof(VDEC_EX_DispInfo));
 
@@ -680,7 +708,7 @@ static MS_BOOL _get_video_info(MS_U8 *u8Interlace, MS_U16 *u16HSize, MS_U16 *u16
         return FALSE;
     }
 
-    stVDECSteamID = Demo_VDEC_GetStreamID(eSC_Source);
+    stVDECSteamID = Demo_VDEC_GetStreamID((EN_VDEC_Device*)&eSC_Source);
 
     memset(&stinfo, 0, sizeof(VDEC_EX_DispInfo));
     eret = MApi_VDEC_EX_GetDispInfo(stVDECSteamID,&stinfo);
@@ -874,7 +902,7 @@ static void _Bitmap2Miu0(BMPITEM eBmpOpt)
         {
             memcpy((void*)MS_PA2KSEG1(u32Bmp3DLAddr), (void*)_3DLBMPBIN, BMP3DSIZE );
             Demo_OSD_RESOURCE_LoadBitmap(u32Bmp3DLAddr, BMP3DSIZE, BMP3DW, BMP3DH, BMP_FMT_ARGB8888);
-            bmpinfo[u8BmpCnt].BmpClrFmt = GFX_FMT_ARGB8888;           
+            bmpinfo[u8BmpCnt].BmpClrFmt = GFX_FMT_ARGB8888;
             break;
         }
         case E_BMP_3D_R:
@@ -978,7 +1006,7 @@ void _LoadBitmap(MS_U16 u16BmpItem)
                 _Bitmap2Miu0(E_BMP_I8);
                 printf("\nload hBmpI8:%d\n",hBmpI8);
                 break;
-#if (DEMO_GOP_3DOSD_TEST == 1)                
+#if (DEMO_GOP_3DOSD_TEST == 1)
             case L3DBMP:
                 _Bitmap2Miu0(E_BMP_3D_L);
                 break;
@@ -1175,6 +1203,24 @@ static void _ColorMapping(MS_U8 u8index, GFX_RgbColor *stcolor)
             (*stcolor).b = 0;
             (*stcolor).a = 255;
             break;
+        case 8:
+            (*stcolor).r = 255;
+            (*stcolor).g = 255;
+            (*stcolor).b = 0;
+            (*stcolor).a = 255;
+            break;
+        case 9:
+            (*stcolor).r = 0;
+            (*stcolor).g = 255;
+            (*stcolor).b = 255;
+            (*stcolor).a = 255;
+            break;
+        case 10:
+            (*stcolor).r = 255;
+            (*stcolor).g = 0;
+            (*stcolor).b = 255;
+            (*stcolor).a = 255;
+            break;
     }
 }
 
@@ -1311,13 +1357,13 @@ static void _SetupEnvByDstFmt(MS_U8 u8gwinFmt, MS_U32 *pu32pbmpAddr, MS_U16 *pu1
             *pu16bmpWidth = BMPRGBI8W;
             *pu16bmpHeight = BMPRGBI8H;
             for (u16Count=0; u16Count<GOP_PALETTE_ENTRY_NUM; u16Count++)
-    	    {
+            {
                 _gopI8Palette[u16Count].RGB.u8A =  _gopI8PaletteEntry[u16Count].RGB.u8A;
                 _gopI8Palette[u16Count].RGB.u8R =  _gopI8PaletteEntry[u16Count].RGB.u8R;
                 _gopI8Palette[u16Count].RGB.u8G =  _gopI8PaletteEntry[u16Count].RGB.u8G;
                 _gopI8Palette[u16Count].RGB.u8B =  _gopI8PaletteEntry[u16Count].RGB.u8B;
                 //printf("A:%d, R: %d, G: %d, B: %d\t", _gopI8Palette[i].RGB.u8A, _gopI8Palette[i].RGB.u8R, _gopI8Palette[i].RGB.u8G, _gopI8Palette[i].RGB.u8B);
-    	    }
+            }
             //Set GOP palette table when GOP output frame buffer is I8
             MApi_GOP_GWIN_SwitchGOP(u32GOP0);
             MApi_GOP_GWIN_SetPaletteOpt(_gopI8Palette, 0, GOP_PALETTE_ENTRY_NUM - 1, E_GOP_PAL_ARGB8888);
@@ -1359,24 +1405,24 @@ static SCALER_DIP_SOURCE_TYPE _DIPDWIN_Mapping(EN_GOP_DWIN_SRC_SEL eDDISource)
 
     switch(eDDISource)
     {
-		case DWIN_SRC_OP:
-			eDIPSource = SCALER_DIP_SOURCE_TYPE_OP_CAPTURE;
-			break;
-		case DWIN_SRC_IP:
-			eDIPSource = SCALER_DIP_SOURCE_TYPE_MAIN;
-			break;
+        case DWIN_SRC_OP:
+            eDIPSource = SCALER_DIP_SOURCE_TYPE_OP_CAPTURE;
+            break;
+        case DWIN_SRC_IP:
+            eDIPSource = SCALER_DIP_SOURCE_TYPE_MAIN;
+            break;
 #if (DEMO_XC_DUALXC_TEST == 1)
-		case DWIN_SRC_OP1:
-			eDIPSource = SCALER_DIP_SOURCE_TYPE_OP_SC1_CAPTURE;
-			break;
+        case DWIN_SRC_OP1:
+            eDIPSource = SCALER_DIP_SOURCE_TYPE_OP_SC1_CAPTURE;
+            break;
 #endif
         case DWIN_SRC_MVOP:
         case DWIN_SRC_SUBMVOP:
         case DWIN_SRC_GOPScaling:
-		default:
-			eDIPSource = SCALER_DIP_SOURCE_TYPE_OP_CAPTURE;
-			break;
-    }
+        default:
+            eDIPSource = SCALER_DIP_SOURCE_TYPE_OP_CAPTURE;
+            break;
+        }
 
     return eDIPSource;
 }
@@ -1477,6 +1523,20 @@ MS_BOOL Demo_OSD_Init(MS_U32 *pu32HD_GOP, MS_U32 *pu32SD_GOP, MS_U32 *pu32HD_DST
         MApi_GFX_Init(&stGFXcfg);
         printf("driver GE init ok\n");
 
+#if (DEMO_ZUI_TEST == 1)
+        //Set getting UI font and bitmap callback function
+        if(GFX_SUCCESS != MApi_GFX_RegisterGetFontCB(msAPI_OCP_GetFontInfo))
+        {
+             printf("[%s][%d] MApi_GFX_RegisterGetFontCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+
+        if(GFX_SUCCESS != MApi_GFX_RegisterGetBMPCB(msAPI_OCP_GetBitmapInfo))
+        {
+             printf("[%s][%d] MApi_GFX_RegisterGetBMPCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+#else
         //Set getting font and bitmap callback function
         if( GFX_SUCCESS != MApi_GFX_RegisterGetFontCB(Demo_OSD_RESOURCE_GetFontInfoGFX) )
         {
@@ -1488,7 +1548,7 @@ MS_BOOL Demo_OSD_Init(MS_U32 *pu32HD_GOP, MS_U32 *pu32SD_GOP, MS_U32 *pu32HD_DST
              printf("[%s][%d] MApi_GFX_RegisterGetBMPCB failed", __FUNCTION__, __LINE__);
              return FALSE;
         }
-
+#endif
         // -Initial GOP and Scaler
         //Initial Scaler
         //_GOP_ScalerInit();
@@ -1514,7 +1574,7 @@ MS_BOOL Demo_OSD_Init(MS_U32 *pu32HD_GOP, MS_U32 *pu32SD_GOP, MS_U32 *pu32HD_DST
              printf("[%s][%d] MApi_GOP_RegisterXCReduceBWForOSDCB failed", __FUNCTION__, __LINE__);
              return FALSE;
         }
-        
+
         stGopInit.u16PanelWidth = IPANEL(&gDevId ,Width);
         stGopInit.u16PanelHeight = IPANEL(&gDevId ,Height);
         stGopInit.u16PanelHStr = IPANEL(&gDevId ,HStart);
@@ -1528,7 +1588,7 @@ MS_BOOL Demo_OSD_Init(MS_U32 *pu32HD_GOP, MS_U32 *pu32SD_GOP, MS_U32 *pu32HD_DST
         stGopInit.u32GOPRegdmaAdr = MEM_ADR_BY_MIU(GOP_REG_DMA_BASE_ADR, GOP_REG_DMA_BASE_MEMORY_TYPE);
         stGopInit.u32GOPRegdmaLen = GOP_REG_DMA_BASE_LEN;
         stGopInit.bEnableVsyncIntFlip = FALSE;
-        
+
         if( GOP_API_SUCCESS != MApi_GOP_Init(&stGopInit) )
         {
              printf("[%s][%d] MApi_GOP_Init failed", __FUNCTION__, __LINE__);
@@ -1613,13 +1673,13 @@ MS_BOOL Demo_OSD_Init(MS_U32 *pu32HD_GOP, MS_U32 *pu32SD_GOP, MS_U32 *pu32HD_DST
 
 //For K3, GE line, rectangle..., use 2 GOP to draw. HD dst is GOPScaling, SD dst is VE.
 #if (DEMO_GOP_GOPSC_TEST == 1)
-        if((gWinInfo[0].eGopDest == E_GOP_DST_OP0) && (eDDIGOPSDDst == E_DDI_OSD_SD_DST_OP2VE))
-        {
-            u8GOPCount = 2;
-            u8DrawGOPCount = 1;
-            gWinInfo[0].eGopDest = E_GOP_DST_GOPScaling;
-            gWinInfo[1].eGopDest = E_GOP_DST_VE;
-        }
+    if((gWinInfo[0].eGopDest == E_GOP_DST_OP0) && (eDDIGOPSDDst == E_DDI_OSD_SD_DST_OP2VE))
+    {
+        u8GOPCount = 2;
+        u8DrawGOPCount = 1;
+        gWinInfo[0].eGopDest = E_GOP_DST_GOPScaling;
+        gWinInfo[1].eGopDest = E_GOP_DST_VE;
+    }
 #endif
     if((u8GOPCount == 2) && (u32GOP0 == u32GOP1))
     {
@@ -1627,6 +1687,16 @@ MS_BOOL Demo_OSD_Init(MS_U32 *pu32HD_GOP, MS_U32 *pu32SD_GOP, MS_U32 *pu32HD_DST
          return FALSE;
     }
     MApi_GOP_GWIN_SwitchGOP(u32GOP0);//use GOP 0
+#if ENABLE_MIU_1
+    if(MEM_ADR_BY_MIU(GOP_GWIN_RB_ADR, GOP_GWIN_RB_MEMORY_TYPE) > MIU_INTERVAL)
+    {
+        MApi_GOP_MIUSel(u32GOP0,E_GOP_SEL_MIU1);
+    }
+    else
+    {
+        MApi_GOP_MIUSel(u32GOP0,E_GOP_SEL_MIU0);
+    }
+#endif
     MApi_GOP_GWIN_EnableTransClr(GOPTRANSCLR_FMT0, FALSE);
     MApi_GOP_GWIN_OutputLayerSwitch(u32GOP0);//Set GOP0 show in the top layer (mux2)
 
@@ -1639,6 +1709,16 @@ MS_BOOL Demo_OSD_Init(MS_U32 *pu32HD_GOP, MS_U32 *pu32SD_GOP, MS_U32 *pu32HD_DST
     if(u8GOPCount == 2)
     {
         MApi_GOP_GWIN_SwitchGOP(u32GOP1);//use GOP 1
+#if ENABLE_MIU_1
+    if(MEM_ADR_BY_MIU(GOP_GWIN_RB_ADR, GOP_GWIN_RB_MEMORY_TYPE) > MIU_INTERVAL)
+    {
+        MApi_GOP_MIUSel(u32GOP1,E_GOP_SEL_MIU1);
+    }
+    else
+    {
+        MApi_GOP_MIUSel(u32GOP1,E_GOP_SEL_MIU0);
+    }
+#endif
         MApi_GOP_GWIN_EnableTransClr(GOPTRANSCLR_FMT0, FALSE);
         if(GOP_API_SUCCESS != MApi_GOP_GWIN_SetGOPDst(u32GOP1, gWinInfo[1].eGopDest))
         {
@@ -1662,8 +1742,8 @@ MS_BOOL Demo_OSD_Init(MS_U32 *pu32HD_GOP, MS_U32 *pu32SD_GOP, MS_U32 *pu32HD_DST
     }
 
     if( bGOPInit == FALSE)
-    {   
-#if (DEMO_GOP_3DOSD_TEST == 1)        
+    {
+#if (DEMO_GOP_3DOSD_TEST == 1)
         u16BmpItem |= (ARGB8888BMP |RGB565BMP |ARGB4444BMP| I8BMP| L3DBMP| R3DBMP);
 #else
         //add test bitmap here, in this demo code only these four bitmaps
@@ -1681,6 +1761,863 @@ MS_BOOL Demo_OSD_Init(MS_U32 *pu32HD_GOP, MS_U32 *pu32SD_GOP, MS_U32 *pu32HD_DST
     bGOPInit = TRUE;
     return TRUE;
 }
+
+#if (DEMO_GOP_ZORDER_TEST == 1)
+static MS_BOOL _ZOrder_InitGop(const MS_U32 u32GopId);
+static MS_BOOL _ZOrder_GetColorIndexByLayer(
+                                    const EN_DISPLAY_LAYER keDisplayLayer,
+                                    MS_U32 * const pu32ColorIndex);
+static MS_BOOL _ZOrder_GetAreaByLayer(
+                                    const MS_U32 u32Layer,
+                                    MS_U32 * const pu32X,
+                                    MS_U32 * const pu32Y,
+                                    MS_U32 * const pu32W,
+                                    MS_U32 * const pu32H);
+static MS_BOOL _ZOrder_OsdFillBlock(const MS_U32 *pu32Target, MS_U32 *pu32index, MS_U32 *pu32RectX, MS_U32 *pu32RectY, MS_U32 *pu32RectWidth, MS_U32 *pu32RectHeight);
+static MS_BOOL _ZOrder_SetVideoLayer(MS_U32* pu32VideoLayerOrder)
+{
+    E_VOP_OSD_LAYER_SEL vopOsdLayer = (E_VOP_OSD_LAYER_SEL)(*pu32VideoLayerOrder);
+    MSAPI_XC_DEVICE_ID kstXcSetWindowDeviceId = {0, E_MSAPI_XC_DEVICE_DIP_0};
+    MSAPI_XC_WINDOW_TYPE stXcCropWindow;
+    MSAPI_XC_WINDOW_TYPE stXcDestWindow;
+    MS_U32 u32VideoX = 0;
+    MS_U32 u32VideoY = 0;
+    MS_U32 u32VideoW = 0;
+    MS_U32 u32VideoH = 0;
+
+    // set layer
+    switch((*pu32VideoLayerOrder))
+    {
+    case 0:
+        vopOsdLayer = E_VOP_LAYER_FRAME_VIDEO_MUX1_MUX2_MUX3_MUX4;
+        break;
+    case 1:
+        vopOsdLayer = E_VOP_LAYER_FRAME_MUX1_VIDEO_MUX2_MUX3_MUX4;
+        break;
+    case 2:
+        vopOsdLayer = E_VOP_LAYER_FRAME_MUX1_MUX2_VIDEO_MUX3_MUX4;
+        break;
+    case 3:
+        vopOsdLayer = E_VOP_LAYER_FRAME_MUX1_MUX2_MUX3_VIDEO_MUX4;
+        break;
+    case 4:
+        vopOsdLayer = E_VOP_LAYER_FRAME_MUX1_MUX2_MUX3_MUX4_VIDEO;
+        break;
+    case 5:
+        vopOsdLayer = E_VOP_LAYER_FRAME_MUX1_MUX2_MUX3_MUX4_MUX5_VIDEO;
+        break;
+    default:
+        printf("Error! not support video layer = %u \n", (*pu32VideoLayerOrder));
+        break;
+    }
+
+    MApi_XC_SetOSDLayer(vopOsdLayer, MAIN_WINDOW);
+
+    // adjust window
+    _ZOrder_GetAreaByLayer(
+                            (*pu32VideoLayerOrder),
+                            &u32VideoX,
+                            &u32VideoY,
+                            &u32VideoW,
+                            &u32VideoH);
+
+    stXcCropWindow.x      = 0;
+    stXcCropWindow.y      = 0;
+    stXcCropWindow.width  = 720;    // depends on video size
+    stXcCropWindow.height = 576;    // depends on video size
+
+    stXcDestWindow.x      = u32VideoX;
+    stXcDestWindow.y      = u32VideoY;
+    stXcDestWindow.width  = u32VideoW;
+    stXcDestWindow.height = u32VideoH;
+
+    msAPI_XC_SetWin_EX(
+                        &kstXcSetWindowDeviceId,
+                        NULL,
+                        (&stXcCropWindow),
+                        &(stXcDestWindow),
+                        E_MSAPI_XC_MAIN_WINDOW);
+
+    return TRUE;
+}
+
+static MS_BOOL _ZOrder_SetGopLayer(
+                                    MS_U8* pu8Layer0Gop,
+                                    MS_U8* pu8Layer1Gop,
+                                    MS_U8* pu8Layer2Gop,
+                                    MS_U8* pu8Layer3Gop,
+                                    MS_U8* pu8Layer4Gop)
+{
+    MS_U32 u32GopLayerIndex  = 0;
+    MS_U32 u32FillRecX       = 0;
+    MS_U32 u32FillRecY       = 0;
+    MS_U32 u32FillRecW       = 0;
+    MS_U32 u32FillRecH       = 0;
+    MS_U32 u32FillColorIndex = 0;
+    GOP_LayerConfig stGopLayerConfig;
+    memset(&stGopLayerConfig, 0, sizeof(GOP_LayerConfig));
+
+    MApi_GOP_GWIN_GetLayer(&stGopLayerConfig, sizeof(GOP_LayerConfig));
+
+    if((stGopLayerConfig.u32LayerCounts > 0)
+    && (NULL != pu8Layer0Gop))
+    {
+        stGopLayerConfig.stGopLayer[0].u32GopIndex = (*pu8Layer0Gop);
+    }
+
+    if((stGopLayerConfig.u32LayerCounts > 1)
+    && (NULL != pu8Layer1Gop))
+    {
+        stGopLayerConfig.stGopLayer[1].u32GopIndex = (*pu8Layer1Gop);
+    }
+
+    if((stGopLayerConfig.u32LayerCounts > 2)
+    && (NULL != pu8Layer2Gop))
+    {
+        stGopLayerConfig.stGopLayer[2].u32GopIndex = (*pu8Layer2Gop);
+    }
+
+    if((stGopLayerConfig.u32LayerCounts > 3)
+    && (NULL != pu8Layer3Gop))
+    {
+        stGopLayerConfig.stGopLayer[3].u32GopIndex = (*pu8Layer3Gop);
+    }
+
+    if((stGopLayerConfig.u32LayerCounts > 4)
+    && (NULL != pu8Layer4Gop))
+    {
+        stGopLayerConfig.stGopLayer[4].u32GopIndex = (*pu8Layer4Gop);
+    }
+
+    printf("GOP set Layer: \n");
+    for(u32GopLayerIndex = 0; u32GopLayerIndex < stGopLayerConfig.u32LayerCounts; ++u32GopLayerIndex)
+    {
+        printf(" GopLayer[%d].GopIndex = %u \n",
+            u32GopLayerIndex,
+            stGopLayerConfig.stGopLayer[u32GopLayerIndex].u32GopIndex);
+        printf(" GopLayer[%d].u32LayerIndex = %u \n",
+            u32GopLayerIndex,
+            stGopLayerConfig.stGopLayer[u32GopLayerIndex].u32LayerIndex);
+    }
+
+    MApi_GOP_GWIN_SetLayer(&stGopLayerConfig, sizeof(GOP_LayerConfig));
+
+    // adjust GOPs window
+    for(u32GopLayerIndex = 0; u32GopLayerIndex < stGopLayerConfig.u32LayerCounts; ++u32GopLayerIndex)
+    {
+        MS_U32 u32GopDispLayer = 0;
+        MS_U32 u32GopId = stGopLayerConfig.stGopLayer[u32GopLayerIndex].u32GopIndex;
+        GOP_GwinFBAttr stDstFBInfo;
+
+        // DMS driver GOPId
+        if(u32GopId == *pu8Layer4Gop)
+        {
+            continue;
+        }
+
+        if(u32GopLayerIndex >= s_u32VideoLayer)
+        {
+            u32GopDispLayer = u32GopLayerIndex + 1;
+        }
+        else
+        {
+            u32GopDispLayer = u32GopLayerIndex;
+        }
+
+        printf("u32GopLayerIndex = %u \n", u32GopLayerIndex);
+        printf("s_u32VideoLayer = %u \n", s_u32VideoLayer);
+        printf("u32GopDispLayer = %u \n", u32GopDispLayer);
+
+        _ZOrder_GetAreaByLayer(
+                                u32GopDispLayer,
+                                &u32FillRecX,
+                                &u32FillRecY,
+                                &u32FillRecW,
+                                &u32FillRecH);
+        _ZOrder_GetColorIndexByLayer(u32GopLayerIndex, &u32FillColorIndex);
+        printf("[%s][%d] GOP[%u] fill color = %u, (X, Y, W, H) = (%u, %u, %u, %u) \n",
+                __FUNCTION__,
+                __LINE__,
+                u32GopId,
+                u32FillColorIndex,
+                u32FillRecX,
+                u32FillRecY,
+                u32FillRecW,
+                u32FillRecH);
+
+        MApi_GOP_GWIN_GetFBInfo(cusGwinInfo[u32GopId].u8FBId, &stDstFBInfo);
+        MApi_GFX_ClearFrameBuffer(stDstFBInfo.addr, stDstFBInfo.size, 0x00);
+        _ZOrder_OsdFillBlock(
+                        &u32GopId,
+                        &u32FillColorIndex,
+                        &u32FillRecX,
+                        &u32FillRecY,
+                        &u32FillRecW,
+                        &u32FillRecH);
+        MApi_GFX_FlushQueue();
+    }
+
+    return TRUE;
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to test Z-Order
+/// @return TRUE: success FALSE: failed
+/// Command: \b ZOrder_Init GOPId \n
+//------------------------------------------------------------------------------
+MS_BOOL Demo_ZOrder_Init(void)
+{
+    MS_U32 u32GOPNum = 0;
+    MS_U32 u32GopIndex = 0;
+    MS_U32 u32MaxGopNum = 0;
+    MS_U8 u8GopId[4] = {0};
+    MS_U8 u8IdIndex = 0;
+    GOP_InitInfo stGopInit;
+    GFX_Config stGFXcfg;
+#if defined(MSOS_TYPE_LINUX)
+    dictionary *dms_cfg_ini = NULL;
+#endif
+    memset(&stGopInit, 0, sizeof(GOP_InitInfo));
+    memset(&stGFXcfg, 0, sizeof(GFX_Config));
+
+    printf("Demo_ZOrder_Init. Need to init XC and VE before init OSD.\n");
+
+    u32MaxGopNum = MApi_GOP_GWIN_GetMaxGOPNum();
+#if defined(MSOS_TYPE_LINUX)
+    dms_cfg_ini = iniparser_load((const char *)cfgFileName);
+
+    if (dms_cfg_ini == NULL)
+    {
+        u32GOPNum = 2;
+        printf("Use default DMS GOP ID 2\n");
+    }
+    else
+    {
+        u32GOPNum = iniparser_getint(dms_cfg_ini, "DMS_GOP:dms_gop", NULL);
+        printf("DMS GOP ID %d\n", u32GOPNum);
+    }
+    iniparser_freedict(dms_cfg_ini);
+#else
+    u32GOPNum = 2;
+#endif
+
+    if (u32GOPNum >= u32MaxGopNum)
+    {
+        printf("WANRING: GOP Max Number is %d, GOP Number %d exceeded\n",u32MaxGopNum,u32GOPNum);
+        return FALSE;
+    }
+
+    s_u32GOPNum = u32GOPNum;
+
+    if( bGOPInit == FALSE)
+    {
+        if( FALSE == MDrv_SEM_Init() )
+        {
+             printf("[%s][%d] MDrv_SEM_Init failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+
+        // -Initial GE
+        stGFXcfg.bIsCompt = TRUE;
+        stGFXcfg.bIsHK    = TRUE;
+        MApi_GFX_Init(&stGFXcfg);
+        printf("driver GE init ok\n");
+#if (DEMO_ZUI_TEST == 1)
+        //Set getting UI font and bitmap callback function
+        if(GFX_SUCCESS != MApi_GFX_RegisterGetFontCB(msAPI_OCP_GetFontInfo))
+        {
+             printf("[%s][%d] MApi_GFX_RegisterGetFontCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+
+        if(GFX_SUCCESS != MApi_GFX_RegisterGetBMPCB(msAPI_OCP_GetBitmapInfo))
+        {
+             printf("[%s][%d] MApi_GFX_RegisterGetBMPCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+#else
+        //Set getting font and bitmap callback function
+        if( GFX_SUCCESS != MApi_GFX_RegisterGetFontCB(Demo_OSD_RESOURCE_GetFontInfoGFX) )
+        {
+             printf("[%s][%d] MApi_GFX_RegisterGetFontCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+        if( GFX_SUCCESS != MApi_GFX_RegisterGetBMPCB(Demo_OSD_RESOURCE_GetBitmapInfoGFX) )
+        {
+             printf("[%s][%d] MApi_GFX_RegisterGetBMPCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+#endif
+        // -Initial GOP and Scaler
+        //Initial Scaler
+        //_GOP_ScalerInit();
+
+        //Initial GOP
+        if( GOP_API_SUCCESS != MApi_GOP_RegisterFBFmtCB(_OSD_SetFBFmt) )
+        {
+             printf("[%s][%d] MApi_GOP_RegisterFBFmtCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+        if( GOP_API_SUCCESS != MApi_GOP_RegisterXCIsInterlaceCB(_sc_is_interlace) )
+        {
+             printf("[%s][%d] MApi_GOP_RegisterXCIsInterlaceCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+        if( GOP_API_SUCCESS != MApi_GOP_RegisterXCGetCapHStartCB(_sc_get_h_cap_start) )
+        {
+             printf("[%s][%d] MApi_GOP_RegisterXCGetCapHStartCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+        if( GOP_API_SUCCESS != MApi_GOP_RegisterXCReduceBWForOSDCB(_XC_Sys_PQ_ReduceBW_ForOSD) )
+        {
+             printf("[%s][%d] MApi_GOP_RegisterXCReduceBWForOSDCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+
+        stGopInit.u16PanelWidth = IPANEL(&gDevId ,Width);
+        stGopInit.u16PanelHeight = IPANEL(&gDevId ,Height);
+        stGopInit.u16PanelHStr = IPANEL(&gDevId ,HStart);
+
+        printf("[%s][%d]====u16PanelWidth=%d===\n",__FUNCTION__,__LINE__,stGopInit.u16PanelWidth);
+        printf("[%s][%d]====u16PanelHeight=%d===\n",__FUNCTION__,__LINE__,stGopInit.u16PanelHeight);
+        printf("[%s][%d]====u16PanelHStr=%d===\n",__FUNCTION__,__LINE__,stGopInit.u16PanelHStr);
+
+        stGopInit.u32GOPRBAdr         = MEM_ADR_BY_MIU(GOP_GWIN_RB_ADR, GOP_GWIN_RB_MEMORY_TYPE);
+        stGopInit.u32GOPRBLen         = GOP_GWIN_RB_LEN;
+        stGopInit.u32GOPRegdmaAdr     = MEM_ADR_BY_MIU(GOP_REG_DMA_BASE_ADR, GOP_REG_DMA_BASE_MEMORY_TYPE);
+        stGopInit.u32GOPRegdmaLen     = GOP_REG_DMA_BASE_LEN;
+        stGopInit.bEnableVsyncIntFlip = FALSE;
+
+        if( GOP_API_SUCCESS != MApi_GOP_Init(&stGopInit) )
+        {
+             printf("[%s][%d] MApi_GOP_Init failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+        printf("GOP_GWIN_RB_ADR : %"DTC_MS_PHY_x", GOP_REG_DMA_BASE_ADR: %"DTC_MS_PHY_x"\n", stGopInit.u32GOPRBAdr, stGopInit.u32GOPRegdmaAdr);
+        printf("driver GOP init ok\n");
+    }
+
+    for(u32GopIndex = 0; u32GopIndex < u32MaxGopNum; ++u32GopIndex)
+    {
+        // DMS driver hard code use GOP2, it will conflict when play video
+        if(u32GopIndex == s_u32GOPNum)
+        {
+            continue;
+        }
+
+        if(FALSE == _ZOrder_InitGop(u32GopIndex))
+        {
+            printf("[%s][%d] init gop%u fail \n", __FUNCTION__, __LINE__, u32GopIndex);
+            return FALSE;
+        }
+        u8GopId[u8IdIndex++] = u32GopIndex;
+    }
+
+    MApi_GOP_GWIN_OutputColor(GOPOUT_YUV);//FIXME
+
+    // initialize GOP layer (always keep DMS GOP on the top layer)
+    Demo_ZOrder_SetZOrder(
+                            &s_u32VideoLayer,
+                            &u8GopId[0],
+                            &u8GopId[1],
+                            &u8GopId[2],
+                            &u8GopId[3]);
+
+    bGOPInit = TRUE;
+    printf("[%s][%d] init ok \n", __FUNCTION__, __LINE__);
+    return TRUE;
+}
+
+static MS_BOOL _ZOrder_InitGop(const MS_U32 u32GopId)
+{
+    const EN_GOP_DST_TYPE GopDst = E_GOP_DST_OP0;
+    static MS_U8 s_u8DefaultLayer = 0;
+    MS_U16 u16StretchWinWidth     = IPANEL(&gDevId, Width);
+    MS_U16 u16StretchWinHeight    = IPANEL(&gDevId, Height);
+    MS_U32 u32StretchWinX         = 0;
+    MS_U32 u32StretchWinY         = 0;
+    MS_U16 u16FbWidth             = IPANEL(&gDevId, Width);
+    MS_U16 u16FbHeight            = IPANEL(&gDevId, Height);
+    MS_U16 u16FbFmt               = E_MS_FMT_ARGB8888;
+    MS_U32 u32FillRecX            = 0;
+    MS_U32 u32FillRecY            = 0;
+    MS_U32 u32FillRecW            = 0;
+    MS_U32 u32FillRecH            = 0;
+    MS_U32 u32FillColorIndex      = 0;
+
+    printf("s_u8DefaultLayer = %u \n", s_u8DefaultLayer);
+
+    MApi_GOP_GWIN_SwitchGOP(u32GopId);
+
+#if ENABLE_MIU_1
+    if(MEM_ADR_BY_MIU(GOP_GWIN_RB_ADR, GOP_GWIN_RB_MEMORY_TYPE) > MIU_INTERVAL)
+    {
+        MApi_GOP_MIUSel(u32GopId,E_GOP_SEL_MIU1);
+    }
+    else
+    {
+        MApi_GOP_MIUSel(u32GopId,E_GOP_SEL_MIU0);
+    }
+#endif
+
+    MApi_GOP_GWIN_EnableTransClr(GOPTRANSCLR_FMT0, FALSE);
+    MApi_GOP_GWIN_OutputLayerSwitch(u32GopId);
+    if(GOP_API_SUCCESS != MApi_GOP_GWIN_SetGOPDst(u32GopId, GopDst))
+    {
+         printf("[%s][%d] Set Gop = %u E_GOP_DST_OP0 failed", __FUNCTION__, __LINE__, u32GopId);
+         return FALSE;
+    }
+
+    MApi_GOP_GWIN_Set_STRETCHWIN(u32GopId, GopDst, u32StretchWinX, u32StretchWinY, u16StretchWinWidth, u16StretchWinHeight);
+
+    // Every time change resolution, the HStart should be set again
+    printf("Panel HStart = %d \n",IPANEL(&gDevId,HStart));
+    MApi_GOP_SetGOPHStart(u32GopId,IPANEL(&gDevId,HStart));
+
+    // Create FB
+    if( 0 != _GOP_Create_FB(&(cusGwinInfo[u32GopId].u8FBId), u16FbWidth, u16FbHeight, u16FbFmt))
+    {
+         printf("Create FB fail\n");
+         return FALSE;
+    }
+
+    // Create GWIN
+    if( 0 != _GOP_Create_GWin(u32GopId, &(cusGwinInfo[u32GopId].u8GeWinId), cusGwinInfo[u32GopId].u8FBId, u16FbFmt))
+    {
+         printf("Create GWin fail, GOPnum = %u, u8GWin = %u, FBId = %u, FBFmt = %u\n", u32GopId,  cusGwinInfo[u32GopId].u8GeWinId, cusGwinInfo[u32GopId].u8FBId, u16FbFmt);
+         return FALSE;
+    }
+
+    printf("Create GWin ok, GOPnum = %u, u8GWin = %u, FBId = %u, FBFmt = %u\n", u32GopId, cusGwinInfo[u32GopId].u8GeWinId, cusGwinInfo[u32GopId].u8FBId, u16FbFmt);
+
+    // Fill Rectangle to GWIN FB
+    _ZOrder_GetAreaByLayer(
+                            s_u8DefaultLayer,
+                            &u32FillRecX,
+                            &u32FillRecY,
+                            &u32FillRecW,
+                            &u32FillRecH);
+    _ZOrder_GetColorIndexByLayer(s_u8DefaultLayer, &u32FillColorIndex);
+    printf("[%s][%d] GOP[%u] fill color = %u, (X, Y, W, H) = (%u, %u, %u, %u) \n",
+            __FUNCTION__,
+            __LINE__,
+            u32GopId,
+            u32FillColorIndex,
+            u32FillRecX,
+            u32FillRecY,
+            u32FillRecW,
+            u32FillRecH);
+    _ZOrder_OsdFillBlock(&u32GopId, &u32FillColorIndex, &u32FillRecX, &u32FillRecY, &u32FillRecW, &u32FillRecH);
+
+    ++s_u8DefaultLayer;
+
+    return TRUE;
+}
+
+static MS_BOOL _ZOrder_GetAreaByLayer(
+                                    const MS_U32 u32Layer,
+                                    MS_U32 * const pu32X,
+                                    MS_U32 * const pu32Y,
+                                    MS_U32 * const pu32W,
+                                    MS_U32 * const pu32H)
+{
+    const MS_U32 u32UnitW = 320;
+    const MS_U32 u32UnitH = 160;
+    MS_U32 u32UnitX        = u32UnitW >> 1;
+    MS_U32 u32UnitY        = u32UnitH >> 1;
+
+    (*pu32X) = u32UnitX * u32Layer;
+    (*pu32Y) = u32UnitY * u32Layer;
+    (*pu32W) = u32UnitW;
+    (*pu32H) = u32UnitH;
+
+    printf("bound (W, H) = (%u, %u) \n", ((*pu32X) + (*pu32W)), ((*pu32Y) + (*pu32H)));
+    printf("panel (W, H) = (%u, %u) \n", IPANEL(&gDevId, Width), IPANEL(&gDevId, Height));
+
+    return TRUE;
+}
+
+static MS_BOOL _ZOrder_GetColorIndexByLayer(
+                                    const EN_DISPLAY_LAYER keDisplayLayer,
+                                    MS_U32 * const pu32ColorIndex)
+{
+    // color value in _ColorMapping()
+    switch(keDisplayLayer)
+    {
+    case E_DISPLAY_LAYER_0:
+        (*pu32ColorIndex) = 0;  //red
+        break;
+    case E_DISPLAY_LAYER_1:
+        (*pu32ColorIndex) = 8;  //yellow
+        break;
+    case E_DISPLAY_LAYER_2:
+        (*pu32ColorIndex) = 1;  //green
+        break;
+    case E_DISPLAY_LAYER_3:
+        (*pu32ColorIndex) = 2;  //blue
+        break;
+    case E_DISPLAY_LAYER_4:
+        (*pu32ColorIndex) = 9;  // light blue
+        break;
+    case E_DISPLAY_LAYER_5:
+        (*pu32ColorIndex) = 10; // purple
+        break;
+    default:
+        printf("[%s][%d] Error! \n", __FUNCTION__, __LINE__);
+        return FALSE;
+        break;
+    }
+    return TRUE;
+}
+
+static MS_BOOL _ZOrder_OsdFillBlock(const MS_U32 *pu32Target, MS_U32 *pu32index, MS_U32 *pu32RectX, MS_U32 *pu32RectY, MS_U32 *pu32RectWidth, MS_U32 *pu32RectHeight)
+{
+    GFX_RectFillInfo stgfxFillBlock;
+    GFX_Point stgfxPt0;
+    GFX_Point stgfxPt1;
+    GFX_BufferInfo stgfxDstBuf;
+    GOP_GwinFBAttr stDstFBInfo;
+    GFX_RgbColor stcolor_s;
+    GFX_RgbColor stcolor_e;
+    MS_U8 u8DstFBfmt;
+    MS_U32 u32Flag;
+
+    //Map color index to ARGB color
+    _ColorMapping(*pu32index, &stcolor_s);
+    _ColorMapping(*pu32index, &stcolor_e);
+
+    //get current GWIN fbInfo.
+    //MApi_GOP_GWIN_GetFBInfo(MApi_GOP_GWIN_GetFBfromGWIN(GeWinId), &DstFBInfo);
+    MApi_GOP_GWIN_GetFBInfo(cusGwinInfo[*pu32Target].u8FBId, &stDstFBInfo);
+
+    u8DstFBfmt = (MS_U8)stDstFBInfo.fbFmt;
+
+    //Set Dst buffer
+    stgfxDstBuf.u32ColorFmt = stDstFBInfo.fbFmt;
+    stgfxDstBuf.u32Addr     = stDstFBInfo.addr;
+    stgfxDstBuf.u32Pitch    = stDstFBInfo.pitch;
+    stgfxDstBuf.u32Width    = stDstFBInfo.width;
+    stgfxDstBuf.u32Height   = stDstFBInfo.height;
+    MApi_GFX_SetDstBufferInfo(&stgfxDstBuf, 0);
+    printf("[%s][%d] Dst buffer addr = 0x%llx\n", __FUNCTION__, __LINE__,stDstFBInfo.addr);
+    printf("[%s][%d] Dst buffer size = 0x%x\n", __FUNCTION__, __LINE__,stDstFBInfo.size);
+
+    stgfxPt0.x = 0;
+    stgfxPt0.y = 0;
+    stgfxPt1.x = stDstFBInfo.width;
+    stgfxPt1.y = stDstFBInfo.height;
+    //Set Clip window for rendering
+    MApi_GFX_SetClip(&stgfxPt0, &stgfxPt1);
+    MApi_GFX_SetAlphaSrcFrom(ABL_FROM_ASRC);
+
+    u32Flag = GFXRECT_FLAG_COLOR_CONSTANT;
+
+    _SetupGfxRectFillInfo(&stgfxFillBlock, *pu32RectX, *pu32RectY, *pu32RectWidth, *pu32RectHeight,
+                                u8DstFBfmt, stcolor_s, stcolor_e, u32Flag);
+    MApi_GFX_RectFill(&stgfxFillBlock);
+
+    if( GOP_API_SUCCESS != MApi_GOP_GWIN_Enable(cusGwinInfo[*pu32Target].u8GeWinId, TRUE) )
+    {
+         printf("[%s][%d] MApi_GOP_GWIN_Enable failed", __FUNCTION__, __LINE__);
+         return FALSE;
+    }
+
+    return TRUE;
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to test Z-Order
+/// @param[in] video layer: 0(BOTTOM) ~ 4(TOP)
+/// @param[in] Gop Id of Gop layer0
+/// @param[in] Gop Id of Gop layer1
+/// @param[in] Gop Id of Gop layer2
+/// @param[in] Gop Id of Gop layer3
+/// @return TRUE: success FALSE: failed
+/// @note DO NOT use DMS driver GOPId
+/// Command: \b ZOrder_SetZOrder 0 0 1 3 4 \n
+//------------------------------------------------------------------------------
+MS_BOOL Demo_ZOrder_SetZOrder(
+                                MS_U32* pu32VideoLayerOrder,
+                                MS_U8* pu8Layer0Gop,
+                                MS_U8* pu8Layer1Gop,
+                                MS_U8* pu8Layer2Gop,
+                                MS_U8* pu8Layer3Gop)
+{
+
+    s_u32VideoLayer = (*pu32VideoLayerOrder);
+    MS_U8 u8DmsGop = s_u32GOPNum;
+    _ZOrder_SetGopLayer(
+                            pu8Layer0Gop,
+                            pu8Layer1Gop,
+                            pu8Layer2Gop,
+                            pu8Layer3Gop,
+                            &u8DmsGop);
+
+    _ZOrder_SetVideoLayer(pu32VideoLayerOrder);
+
+    return TRUE;
+}
+#endif
+
+
+#if (DEMO_ZUI_TEST == 1)
+//---------------------------------------------------------------------------------------------
+/// @brief The sample code to initial GOP and GE for UI. Need to init XC and VE before init OSD.
+/// @return None
+/// @note
+/// Command: \b OSD_Init \n
+//---------------------------------------------------------------------------------------------
+MS_BOOL Demo_UI_GEGOPInit(MS_U32 *pu32HD_GOP, MS_U32 *pu32SD_GOP, MS_U32 *pu32HD_DST, MS_U32 *pu32SD_DST)
+{
+    printf("Demo_OSD_Init. Need to init XC and VE before init OSD.\n");
+
+    GOP_InitInfo stGopInit;
+    GFX_Config stGFXcfg;
+    EN_DDI_OSD_HD_DST_TYPE eDDIGOPHDDst = (EN_DDI_OSD_HD_DST_TYPE)(*pu32HD_DST);
+    EN_DDI_OSD_SD_DST_TYPE eDDIGOPSDDst = (EN_DDI_OSD_SD_DST_TYPE)(*pu32SD_DST);
+    memset(&stGopInit, 0, sizeof(GOP_InitInfo));
+    memset(&stGFXcfg, 0, sizeof(GFX_Config));
+
+    if( bGOPInit == FALSE)
+    {
+        if( FALSE == MDrv_SEM_Init() )
+        {
+             printf("[%s][%d] MDrv_SEM_Init failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+
+        // -Initial GE
+        stGFXcfg.bIsCompt = TRUE;
+        stGFXcfg.bIsHK = TRUE;
+        MApi_GFX_Init(&stGFXcfg);
+        printf("driver GE init ok\n");
+
+        //Set getting UI font and bitmap callback function
+        if(GFX_SUCCESS != MApi_GFX_RegisterGetFontCB(msAPI_OCP_GetFontInfo))
+        {
+             printf("[%s][%d] MApi_GFX_RegisterGetFontCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+
+        if(GFX_SUCCESS != MApi_GFX_RegisterGetBMPCB(msAPI_OCP_GetBitmapInfo))
+        {
+             printf("[%s][%d] MApi_GFX_RegisterGetBMPCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+
+        //Initial GOP
+        if( GOP_API_SUCCESS != MApi_GOP_RegisterFBFmtCB(_OSD_SetFBFmt) )
+        {
+             printf("[%s][%d] MApi_GOP_RegisterFBFmtCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+        if( GOP_API_SUCCESS != MApi_GOP_RegisterXCIsInterlaceCB(_sc_is_interlace) )
+        {
+             printf("[%s][%d] MApi_GOP_RegisterXCIsInterlaceCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+        if( GOP_API_SUCCESS != MApi_GOP_RegisterXCGetCapHStartCB(_sc_get_h_cap_start) )
+        {
+             printf("[%s][%d] MApi_GOP_RegisterXCGetCapHStartCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+        if( GOP_API_SUCCESS != MApi_GOP_RegisterXCReduceBWForOSDCB(_XC_Sys_PQ_ReduceBW_ForOSD) )
+        {
+             printf("[%s][%d] MApi_GOP_RegisterXCReduceBWForOSDCB failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+
+        stGopInit.u16PanelWidth = IPANEL(&gDevId ,Width);
+        stGopInit.u16PanelHeight = IPANEL(&gDevId ,Height);
+        stGopInit.u16PanelHStr = IPANEL(&gDevId ,HStart);
+
+        printf("[%s][%d]====u16PanelWidth=%d===\n",__FUNCTION__,__LINE__,stGopInit.u16PanelWidth);
+        printf("[%s][%d]====u16PanelHeight=%d===\n",__FUNCTION__,__LINE__,stGopInit.u16PanelHeight);
+        printf("[%s][%d]====u16PanelHStr=%d===\n",__FUNCTION__,__LINE__,stGopInit.u16PanelHStr);
+
+        stGopInit.u32GOPRBAdr = MEM_ADR_BY_MIU(GOP_GWIN_RB_ADR, GOP_GWIN_RB_MEMORY_TYPE);
+        stGopInit.u32GOPRBLen = GOP_GWIN_RB_LEN;
+        stGopInit.u32GOPRegdmaAdr = MEM_ADR_BY_MIU(GOP_REG_DMA_BASE_ADR, GOP_REG_DMA_BASE_MEMORY_TYPE);
+        stGopInit.u32GOPRegdmaLen = GOP_REG_DMA_BASE_LEN;
+        stGopInit.bEnableVsyncIntFlip = FALSE;
+
+        if( GOP_API_SUCCESS != MApi_GOP_Init(&stGopInit) )
+        {
+             printf("[%s][%d] MApi_GOP_Init failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+        printf("GOP_GWIN_RB_ADR : %"DTC_MS_PHY_x", GOP_REG_DMA_BASE_ADR: %"DTC_MS_PHY_x"\n", stGopInit.u32GOPRBAdr, stGopInit.u32GOPRegdmaAdr);
+        printf("driver GOP init ok\n");
+    }
+
+    if((*pu32HD_GOP < MApi_GOP_GWIN_GetMaxGOPNum()) && (*pu32SD_GOP < MApi_GOP_GWIN_GetMaxGOPNum()))
+    {
+        u32GOP0  = *pu32HD_GOP;
+        u32GOP1 = *pu32SD_GOP;
+    }
+    else
+    {
+       printf("Error GOP Number HD:%"DTC_MS_U32_d" SD:%"DTC_MS_U32_d"\n",*pu32HD_GOP,*pu32SD_GOP);
+       return FALSE;
+    }
+
+    //Use two GOPs, here we use GOP2 to display for HD and use GOP2 to display for SD
+    u8GOPCount = 2;
+    u8DrawGOPCount = 2;
+
+    //--------------To HD---------------//
+    switch(eDDIGOPHDDst)
+    {
+        case E_DDI_OSD_HD_DST_OP0:
+            gWinInfo[0].eGopDest = E_GOP_DST_OP0;
+            break;
+        case E_DDI_OSD_HD_DST_IP0:
+            gWinInfo[0].eGopDest = E_GOP_DST_IP0;
+            break;
+        case E_DDI_OSD_HD_DST_VOP:
+            gWinInfo[0].eGopDest = E_GOP_DST_VOP;
+            break;
+        case E_DDI_OSD_HD_DST_VOP_SUB:
+            gWinInfo[0].eGopDest = E_GOP_DST_VOP_SUB;
+            break;
+        case E_DDI_OSD_HD_DST_IP_SUB:
+            gWinInfo[0].eGopDest = E_GOP_DST_IP_SUB;
+            break;
+#if (DEMO_GOP_GOPSC_TEST == 1)
+        case E_DDI_OSD_HD_DST_GOPScaling:
+            gWinInfo[0].eGopDest = E_GOP_DST_GOPScaling;
+            break;
+#endif
+        default:
+            printf("[%s][%d]Not supported HD path:%"DTC_MS_U32_d"\n",__FUNCTION__,__LINE__,*pu32HD_DST);
+            return FALSE;
+    }
+
+    /*If use 'GOP2' and the destination of GOP is 'OP',
+      use this to change GOP output layer to the last one.
+      The input is the GOP number
+    */
+    //MApi_GOP_GWIN_OutputLayerSwitch(2);
+
+    //---------------To SD---------------//
+    switch(eDDIGOPSDDst)
+    {
+        case E_DDI_OSD_SD_DST_OP1:
+            gWinInfo[1].eGopDest = E_GOP_DST_OP1;
+            break;
+        case E_DDI_OSD_SD_DST_IP1:
+            gWinInfo[1].eGopDest = E_GOP_DST_IP1;
+            break;
+        case E_DDI_OSD_SD_DST_VE:
+            gWinInfo[1].eGopDest = E_GOP_DST_VE;
+            break;
+        case E_DDI_OSD_SD_DST_MIXER2VE:
+            gWinInfo[1].eGopDest = E_GOP_DST_MIXER2VE;
+            break;
+        case E_DDI_OSD_SD_DST_OP2VE://OP2VE
+            u8GOPCount = 1;
+            u8DrawGOPCount = 1;
+            break;
+        default:
+            printf("[%s][%d]Not supported SD path:%"DTC_MS_U32_d"\n",__FUNCTION__,__LINE__,*pu32SD_DST);
+            return FALSE;
+    }
+
+    if((u8GOPCount == 2) && (u32GOP0 == u32GOP1))
+    {
+         printf("[%s][%d] Do not use the same GOP to set HDMI and CVBS.", __FUNCTION__, __LINE__);
+         return FALSE;
+    }
+    MApi_GOP_GWIN_SwitchGOP(u32GOP0);//use GOP 0
+#if ENABLE_MIU_1
+    if(MEM_ADR_BY_MIU(GOP_GWIN_RB_ADR, GOP_GWIN_RB_MEMORY_TYPE) > MIU_INTERVAL)
+    {
+        MApi_GOP_MIUSel(u32GOP0,E_GOP_SEL_MIU1);
+    }
+    else
+    {
+        MApi_GOP_MIUSel(u32GOP0,E_GOP_SEL_MIU0);
+    }
+#endif
+    MApi_GOP_GWIN_EnableTransClr(GOPTRANSCLR_FMT0, TRUE);
+    MApi_GOP_GWIN_OutputLayerSwitch(u32GOP0);//Set GOP0 show in the top layer (mux2)
+
+    if(GOP_API_SUCCESS != MApi_GOP_GWIN_SetGOPDst(u32GOP0, gWinInfo[0].eGopDest))
+    {
+         printf("[%s][%d] HD MApi_GOP_GWIN_SetGOPDst failed", __FUNCTION__, __LINE__);
+         return FALSE;
+    }
+
+    if(u8GOPCount == 2)
+    {
+        MApi_GOP_GWIN_SwitchGOP(u32GOP1);//use GOP 1
+#if ENABLE_MIU_1
+    if(MEM_ADR_BY_MIU(GOP_GWIN_RB_ADR, GOP_GWIN_RB_MEMORY_TYPE) > MIU_INTERVAL)
+    {
+        MApi_GOP_MIUSel(u32GOP1,E_GOP_SEL_MIU1);
+    }
+    else
+    {
+        MApi_GOP_MIUSel(u32GOP1,E_GOP_SEL_MIU0);
+    }
+#endif
+        MApi_GOP_GWIN_EnableTransClr(GOPTRANSCLR_FMT0, TRUE);
+        if(GOP_API_SUCCESS != MApi_GOP_GWIN_SetGOPDst(u32GOP1, gWinInfo[1].eGopDest))
+        {
+             printf("[%s][%d] SD MApi_GOP_GWIN_SetGOPDst failed", __FUNCTION__, __LINE__);
+             return FALSE;
+        }
+    }
+
+    // for CVBS output, use VE
+    // To choose video to VE mux
+    if(eDDIGOPSDDst == E_DDI_OSD_SD_DST_OP2VE)
+    {
+        // Set OP can through VE output to CVBS
+        MApi_XC_SetOSD2VEMode(E_VOP_SEL_OSD_LAST);
+        // Disable blackScreen. If video enable black screen, OP2VE mode can't show graph on CVBS.
+        MDrv_VE_SetBlackScreen(FALSE);
+    }
+    else
+    {
+        MApi_XC_SetOSD2VEMode(E_VOP_SEL_OSD_BLEND1);
+    }
+
+    bGOPInit = TRUE;
+    return TRUE;
+}
+
+MS_U8 Demo_OSD_GetHDGOPDst(void)
+{
+    return gWinInfo[0].eGopDest;
+}
+
+MS_U8 Demo_OSD_GetSDGOPDst(void)
+{
+    return gWinInfo[1].eGopDest;
+}
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to get HD GOP Number
+/// @return HD GOP Number
+/// @note
+/// Command: \b Demo_OSD_GetHDGOPNum \n
+//------------------------------------------------------------------------------
+MS_U8 Demo_OSD_GetHDGOPNum(void)
+{
+    return (MS_U8)u32GOP0;
+}
+//------------------------------------------------------------------------------
+/// @brief The sample code to get SD GOP Number
+/// @return SD GOP Number
+/// @note
+/// Command: \b Demo_OSD_GetSDGOPNum \n
+//------------------------------------------------------------------------------
+MS_U8 Demo_OSD_GetSDGOPNum(void)
+{
+    return (MS_U8)u32GOP1;
+}
+#endif
 
 //------------------------------------------------------------------------------
 /// @brief The sample code to do OSD_Init and set palette GOP automatically. Need to init XC and VE before init OSD.
@@ -2068,9 +3005,9 @@ static MS_BOOL _OSD_Draw3DBmp(void)
     GFX_DrawRect bitbltInfo[2];
     GFX_Point gfxPt0[2];
     GFX_Point gfxPt1[2];
-    MS_U32 u32Flag = GFXDRAW_FLAG_SCALE; 
+    MS_U32 u32Flag = GFXDRAW_FLAG_SCALE;
     MS_U8 u8SubFB = 0;
-    MS_U32 u32SrcColorFmt = E_MS_FMT_ARGB8888;//Source 3D color format 
+    MS_U32 u32SrcColorFmt = E_MS_FMT_ARGB8888;//Source 3D color format
 
     //Create another frame buffer for 3D right picture. The width and height is the same as left picture.
     if( 0 != _GOP_Create_FB(&u8SubFB, gWinInfo[0].u16GopBitmapWidth, gWinInfo[0].u16GopBitmapHeight, gWinInfo[0].u16GeDstFmt))
@@ -2098,10 +3035,10 @@ static MS_BOOL _OSD_Draw3DBmp(void)
         MApi_GFX_SetClip(&gfxPt0[i], &gfxPt1[i]);
 
         MApi_GOP_GWIN_Switch2FB( gWinInfo[i].u8FBId );  //set dst buffer
- 
+
         // Bitble the bitmap to DRAM of GE
         srcbuf[i].u32ColorFmt = u32SrcColorFmt;
-        srcbuf[i].u32Addr = gWinInfo[i].stbmpInfo.u32BmpDramRblkStart;        
+        srcbuf[i].u32Addr = gWinInfo[i].stbmpInfo.u32BmpDramRblkStart;
         srcbuf[i].u32Width = BMP3DW;
         srcbuf[i].u32Height = BMP3DH;
         srcbuf[i].u32Pitch = _CalcPitch(u32SrcColorFmt, BMP3DW);
@@ -2111,7 +3048,7 @@ static MS_BOOL _OSD_Draw3DBmp(void)
         bitbltInfo[i].srcblk.y = 0;
         bitbltInfo[i].srcblk.width = BMP3DW;
         bitbltInfo[i].srcblk.height = BMP3DH;
- 
+
         bitbltInfo[i].dstblk.x = 0;
         bitbltInfo[i].dstblk.y = 0;
         bitbltInfo[i].dstblk.width = gWinInfo[0].u16GopBitmapWidth;
@@ -2125,7 +3062,7 @@ static MS_BOOL _OSD_Draw3DBmp(void)
          printf("[%s][%d] MApi_GOP_GWIN_Enable failed", __FUNCTION__, __LINE__);
          return GWIN_FAIL;
     }
-    
+
     return TRUE;
 }
 //------------------------------------------------------------------------------
@@ -2252,6 +3189,17 @@ MS_BOOL Demo_OSD_DWinCapture(MS_U32 *pu32CaptureOneFrame, MS_U32 *pu32GWinDsipCo
         MApi_XC_DIP_InitByDIP(DIP_WINDOW);
     }
     bDwinInit = TRUE;
+
+    u32DIPStartTime = MsOS_GetSystemTime();
+    while(MApi_XC_DIP_GetResource(DIP_WINDOW) == E_APIXC_RET_FAIL)
+    {
+        if(MsOS_GetSystemTime() - u32DIPStartTime > DIP_Timeout)
+        {
+            printf("[%s][%d] DIP Timeout!\n",__FUNCTION__,__LINE__);
+            return FALSE;
+        }
+        MsOS_DelayTask(1);
+    }
 #else
     MApi_GOP_DWIN_Init();
 #endif
@@ -2411,7 +3359,7 @@ MS_BOOL Demo_OSD_DWinCapture(MS_U32 *pu32CaptureOneFrame, MS_U32 *pu32GWinDsipCo
 
         MApi_XC_DIP_DisableInputSource(DISABLE,DIP_WINDOW);
         stDIPWinProperty.u8BufCnt = 1;
-        stDIPWinProperty.enSource = _DIPDWIN_Mapping(SrcSlt);   
+        stDIPWinProperty.enSource = _DIPDWIN_Mapping(SrcSlt);
         stDIPWinProperty.u32BufStart = stdwinProperty.u32fbaddr0;
         stDIPWinProperty.u32BufEnd = stdwinProperty.u32fbaddr1;
         stDIPWinProperty.u16Width = stdwinProperty.u16w;
@@ -2609,15 +3557,16 @@ MS_BOOL Demo_OSD_DWinCapture(MS_U32 *pu32CaptureOneFrame, MS_U32 *pu32GWinDsipCo
     {
         MApi_GOP_GWIN_GetFBInfo(gWinInfo[u8Count].u8FBId, &gwinattr);
         u32FBAddr0[u8Count] = gwinattr.addr;
+        #if ENABLE_MIU_1
         if(u32FBAddr0[u8Count] > MIU_INTERVAL)
         {
             u8MIUSELAddr0 = E_GOP_SEL_MIU1;
         }
-
+        #endif
         if(u32DispCount > 1 || u32DispCount == 0)
         {
-            MS_U32 u32wordunit;
-            MApi_GOP_GetChipCaps(E_GOP_CAP_WORD_UNIT,&u32wordunit,0);
+            MS_U32 u32wordunit = 0;
+            MApi_GOP_GetChipCaps(E_GOP_CAP_WORD_UNIT,&u32wordunit,sizeof(MS_U32));
             dualgopbuf[u8Count] = MsOS_AllocateMemory(_CalcPitch(gWinInfo[u8Count].u16GeDstFmt,gWinInfo[u8Count].u16GopBitmapWidth)*gWinInfo[u8Count].u16GopBitmapHeight + u32wordunit,s32MstarNonCachedPoolID);
 
             if(dualgopbuf[u8Count] == NULL)
@@ -2627,12 +3576,14 @@ MS_BOOL Demo_OSD_DWinCapture(MS_U32 *pu32CaptureOneFrame, MS_U32 *pu32GWinDsipCo
             }
 
             //Adjust address alignment to avoid graph shift
-            u32FBAddr1[u8Count] = (MsOS_VA2PA((MS_U32)dualgopbuf[u8Count]) + u32wordunit ) &(~(u32wordunit-1));//0x80000000 + 
+            u32FBAddr1[u8Count] = (MsOS_VA2PA((MS_U32)dualgopbuf[u8Count]) + u32wordunit ) &(~(u32wordunit-1));//0x80000000 +
+            #if ENABLE_MIU_1
             if(u32FBAddr1[u8Count] > MIU_INTERVAL)
             {
                 u8MIUSELAddr1 = E_GOP_SEL_MIU1;
             }
-        }
+            #endif
+       }
     }
 
     do{
@@ -2683,7 +3634,7 @@ MS_BOOL Demo_OSD_DWinCapture(MS_U32 *pu32CaptureOneFrame, MS_U32 *pu32GWinDsipCo
             stsrcbuf[u8Count].u32Height = u16dWinBufHeight;
             stsrcbuf[u8Count].u32Pitch = _CalcPitch(E_MS_FMT_YUV422, u16dWinBufWidth);
             MApi_GFX_SetSrcBufferInfo(&stsrcbuf[u8Count], 0);
-           
+
             stbitbltInfo[u8Count].srcblk.x = 0;
             stbitbltInfo[u8Count].srcblk.y = 0;
             stbitbltInfo[u8Count].srcblk.width = u16dWinBufWidth;
@@ -2699,26 +3650,22 @@ MS_BOOL Demo_OSD_DWinCapture(MS_U32 *pu32CaptureOneFrame, MS_U32 *pu32GWinDsipCo
 
             //After GE bitblt then enable the GWin
             MApi_GOP_GWIN_SwitchGOP(gWinInfo[u8Count].u8GOPId);
-
+            MApi_GOP_GWIN_UpdateRegOnce(TRUE);
             if(1 == (u32DispCount % 2))
             {
                 GOP_GwinInfo stGWin;
                 MApi_GOP_GWIN_GetWinInfo(gWinInfo[u8Count].u8GeWinId,&stGWin);
                 stGWin.u32DRAMRBlkStart = u32FBAddr0[u8Count];
-                MApi_GOP_GWIN_UpdateRegOnce(TRUE);
                 MApi_GOP_GWIN_SetWinInfo(gWinInfo[u8Count].u8GeWinId,&stGWin);
                 MApi_GOP_MIUSel(MApi_GOP_GWIN_GetCurrentGOP(),u8MIUSELAddr0);
-                MApi_GOP_GWIN_UpdateRegOnce(FALSE);
             }
             else
             {
                 GOP_GwinInfo stGWin;
                 MApi_GOP_GWIN_GetWinInfo(gWinInfo[u8Count].u8GeWinId,&stGWin);
                 stGWin.u32DRAMRBlkStart = u32FBAddr1[u8Count];
-                MApi_GOP_GWIN_UpdateRegOnce(TRUE);
                 MApi_GOP_GWIN_SetWinInfo(gWinInfo[u8Count].u8GeWinId,&stGWin);
                 MApi_GOP_MIUSel(MApi_GOP_GWIN_GetCurrentGOP(),u8MIUSELAddr1);
-                MApi_GOP_GWIN_UpdateRegOnce(FALSE);
             }
 
             if( GOP_API_SUCCESS != MApi_GOP_GWIN_Enable(gWinInfo[u8Count].u8GeWinId, TRUE) )
@@ -2726,9 +3673,14 @@ MS_BOOL Demo_OSD_DWinCapture(MS_U32 *pu32CaptureOneFrame, MS_U32 *pu32GWinDsipCo
                  printf("[%s][%d] MApi_GOP_GWIN_Enable failed: GOP%d\n", __FUNCTION__, __LINE__, gWinInfo[u8Count].u8GeWinId);
                  return GWIN_FAIL;
             }
+            MApi_GOP_GWIN_UpdateRegOnce(FALSE);
         }
 
     }while( --u32DispCount > 0 );
+
+#if (DDI_DEMO_DIP_CAPTURE_TEST == 1)
+    MApi_XC_DIP_ReleaseResource(DIP_WINDOW);
+#endif
 
     //Before leaving this function, FB has been created must delete
     for(u8Count = 0; u8Count < u8GOPCount; u8Count++)
@@ -4009,6 +4961,8 @@ MS_BOOL Demo_OSD_GOPSC_HVScalingProcess(MS_U32 *pu32Enable, MS_U32 *pu32SrcW, MS
 #include "porting_sysinfo.h"
 #endif
 
+static MS_BOOL _gbStartDrawPhoto = FALSE;
+
 /// Command: \b OSD_ClearPhoto \n
 MS_BOOL Demo_MM_ClearPhoto(void)
 {
@@ -4064,6 +5018,12 @@ MS_BOOL Demo_MM_Photo_SetGwinFmt(MS_U16 *pu16pfmt)
 /// Command: \b OSD_DrawPhoto \n
 MS_BOOL Demo_MM_DrawPhoto(void)
 {
+    if(!Demo_MM_IsPlay())
+    {
+        _gbStartDrawPhoto = FALSE;
+        return TRUE;
+    }
+
     GFX_Point stgfxPt0;
     GFX_Point stgfxPt1;
 
@@ -4087,27 +5047,27 @@ MS_BOOL Demo_MM_DrawPhoto(void)
     MS_U16 u16Format = 0;
     MS_U8 u8Count = 0;
 
-    //Demo_MM_Get_DrawPhotoInfo(&u16Width,&u16Height,&u16Pitch,&u16Format);
+    Demo_MM_Get_DrawPhotoInfo(&u16Width,&u16Height,&u16Pitch,&u16Format);
     switch(u16Format)
     {
         case E_MMSDK_COLOR_FORMAT_YUV422:
             u32ColorFmt=GFX_FMT_YUV422;
-            printf("GFX_FMT_YUV422\n");
+            db_print("GFX_FMT_YUV422\n");
             break;
         case E_MMSDK_COLOR_FORMAT_ARGB8888:
             u32ColorFmt=GFX_FMT_ARGB8888;
-            printf("GFX_FMT_ARGB8888\n");
+            db_print("GFX_FMT_ARGB8888\n");
             break;
         case E_MMSDK_COLOR_FORMAT_ARGB1555:
             u32ColorFmt=GFX_FMT_ARGB1555;
-            printf("GFX_FMT_ARGB1555\n");
+            db_print("GFX_FMT_ARGB1555\n");
             break;
         default:
             return FALSE;
             break;
     }
 
-    stsrcBufInfo.u32Addr = 0;//Demo_MM_GetOutAdr();
+    stsrcBufInfo.u32Addr = Demo_MM_GetOutAdr();
     stsrcBufInfo.u32Width = u16Width;
     stsrcBufInfo.u32Height = u16Height;
     stsrcBufInfo.u32Pitch = u16Pitch;
@@ -4148,26 +5108,34 @@ MS_BOOL Demo_MM_DrawPhoto(void)
         stdrawBuf.dstblk.x = (stdrawBuf.dstblk.x >> 1) << 1;
     }
 
-    printf("[%s]Blitter from (x,y,w,h) = (%d,%d,%d,%d) to (x,y,w,h) = (%d,%d,%d,%d)\n", __FUNCTION__,
+
+    db_print("[%s]Blitter from (x,y,w,h) = (%d,%d,%d,%d) to (x,y,w,h) = (%d,%d,%d,%d)\n", __FUNCTION__,
         0, 0, stdrawBuf.srcblk.width, stdrawBuf.srcblk.height,
         0, 0, stdrawBuf.dstblk.width, stdrawBuf.dstblk.height);
-
     MApi_GFX_SetDC_CSC_FMT(0, 0, GFX_YUV_IN_255, GFX_YUV_YVYU, (u16Format == 3)? GFX_YUV_YUYV : GFX_YUV_YVYU);
     u32Status = MApi_GFX_BitBlt(&stdrawBuf, GFXDRAW_FLAG_SCALE);
+
+
     for(u8Count = 0; u8Count < u8GOPCount; u8Count++)
     {
         if( GOP_API_SUCCESS != MApi_GOP_GWIN_Enable(gWinInfo[u8Count].u8GeWinId, TRUE) )
         {
-             printf("[%s][%d] MApi_GOP_GWIN_Enable failed", __FUNCTION__, __LINE__);
+             db_print("[%s][%d] MApi_GOP_GWIN_Enable failed", __FUNCTION__, __LINE__);
              return FALSE;
         }
     }
-    MApi_GFX_FlushQueue();
 
+    MApi_GFX_FlushQueue();
     printf("%d %s MApi_GFX_BitBlt = %"DTC_MS_U32_u"\n", __LINE__, __FUNCTION__, u32Status);
 
     PhotoDispDone = true;
+    _gbStartDrawPhoto = TRUE;
     return TRUE;
+}
+
+MS_BOOL Demo_MM_StartDrawPhoto(void)
+{
+    return _gbStartDrawPhoto;
 }
 #endif
 
@@ -4233,4 +5201,3 @@ MS_BOOL Demo_OSD_Draw3D(const MS_U32* PhyAddr, const MS_U32 *width, const MS_U32
 #endif
 
 #endif
-

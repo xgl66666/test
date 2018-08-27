@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -327,6 +327,7 @@ static void _appDemo_FrontPnl_Task(MS_U32 argc, void *argv)
 {
 
     MS_U32 u32KeyValue = 0;
+    // coverity[no_escape]
     while(1)
     {
         MDrv_FrontPnl_ReadKeyPad(&u32KeyValue);
@@ -356,6 +357,7 @@ static void _appDemo_Timer_Task(MS_U32 argc, void *argv)
     MS_BOOL arLedEnable[3];
     MS_U8 arDigital[4];
 
+    // coverity[no_escape]
     while(1)
     {
         MsOS_WaitEvent(_s32EventId,

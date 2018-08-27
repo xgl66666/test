@@ -1,0 +1,8 @@
+#define MODULE_NAME "DDI_MISC"
+#define MAJOR_ID "00"
+#define MINOR_ID "00"
+#define RELEASE_COUNT "00"
+#define P4_CL "$Change: 1424783 $"
+
+char DDI_MISC_VERSION[50] = MODULE_NAME"-"MAJOR_ID"."MINOR_ID"."RELEASE_COUNT"."P4_CL;
+

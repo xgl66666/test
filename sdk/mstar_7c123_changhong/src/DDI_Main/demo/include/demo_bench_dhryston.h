@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -100,5 +100,8 @@
 
 
 MS_BOOL Demo_Bench_Dhryston_Run(MS_U32 *pLoop, MS_U32 *pDelayTime, MS_U32 *pbBackground);
+MS_BOOL execute_cpu_load(void);
+MS_BOOL bench_set_delay(MS_U32 *delay);
+MS_BOOL execute_cpu_unload(void);
 #endif // end _APPDEMO_DHRYSTON_H_
 

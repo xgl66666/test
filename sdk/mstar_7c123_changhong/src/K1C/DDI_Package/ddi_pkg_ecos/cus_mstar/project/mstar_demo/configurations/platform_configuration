@@ -1,0 +1,158 @@
+
+#BD_MST290A_D01A
+#BD_MST290A_D01A_S
+#BD_MST290B_D01A
+#BD_MST290B_D01A_S
+#BD_MST290C_D01A_S
+
+# Board type select
+CFG_BOARD       = BD_MST290B_D01A
+
+# package name select:
+#      PN_MSD7TXXXX,PN_MSA3XXXX
+#   SD:PN_MSD7X321C,PN_MSA3T251
+CFG_PARTNAME    = PN_MSD7TXXXX
+CFG_DVB_TYPE    = DVBC
+
+# **********************************************
+# Build Configuration
+# **********************************************
+
+# Build Type: debug / retail
+BLT_TYPE    ?= retail
+
+# OS: ecos / linux / nos
+OS_TYPE     = ecos
+
+# Chip: u2 / u3 / t2 / t3
+CHIP        = k1c
+
+# CPU: arm / mips
+CPU        = mips
+
+# Project name
+PROJNAME    = MSTAR
+
+# Image name
+IMAGENAME   = $(CHIP)_$(OS_TYPE)
+
+# TFTP update support
+TFTP_UPDATE = enable
+
+# RELEASE_MW_LIB: enable / disable
+RELEASE_MW_LIB   = enable
+
+# static got some problems
+# Link Type: static / dynamic
+LINK_TYPE = static
+
+# **********************************************
+# End Build Configuration
+# **********************************************
+# Frontend auto test : enable /disable
+CFG_FE_AUTO_TEST = disable
+#**************************************************************
+# Module Options
+#**************************************************************
+# Local Frontend Detection List : enable /disable
+CFG_FE_LOCAL_DETECTION_LIST = enable
+#**************************************************************
+# DDR freq (for diff MIU setting)
+#   1. 1866
+#   2. 1333 (DDR2)
+# Memory Map
+#   1.  MMAP_128MB
+#   2.  MMAP_64MB (DDR2)
+#**************************************************************
+ifeq ($(CFG_BOARD), BD_MST290C_D01A_S)
+CFG_DDR_FREQ = 1200
+CFG_MEMORY_MAP = MMAP_32MB
+else
+CFG_DDR_FREQ = 1866
+CFG_MEMORY_MAP = MMAP_128MB
+endif
+#**************************************************************
+# DDR size (for diff dram size setting)
+#   1. 512M
+#   2. 256M
+#   3. 128M
+#   4. 64M
+#   5. 32M
+#**************************************************************
+CFG_DDR_SIZE=512M
+#**************************************************************
+# TV function
+#   1. TVfunc_Normal
+#   2. TVfunc_MpegSD
+#
+# LCN Configuration
+#   1. enable
+#   2. disable
+#
+# MIPS 288
+#   1. enable
+#   2. disable
+#
+# New EPG scheme
+#   1. enable
+#   2. disable
+#
+# Mosaic program
+#   -  add this config to support mosaic program related function
+#   1.  enable
+#   2.  disable
+#
+# LOGO decode type
+#   1. LOGO_DECODE_TYPE_MPEG    (decode with MPEG)
+#   2. LOGO_DECODE_TYPE_JPEG    (decode with JPD)
+#   3. LOGO_DECODE_TYPE_H264    (decode with H264 but not implement)
+#**************************************************************
+CFG_TVfunc = TVfunc_Normal
+CFG_MIPS_288 = disable
+
+#**************************************************************
+# USB
+#   1. enable
+#   2. disable
+#**************************************************************
+CFG_USB_ENABLE = enable
+# Load demod firmware via MSPI : enable /disable
+CFG_DEMOD_USE_MSPI = disable
+# Performance test : enable / disable
+PERFORMANCE_TEST = disable
+# **********************************************
+# Module Configuration
+# **********************************************
+# MI integraion interafces: enable / disable
+MI_BSP = disable
+ifeq ($(MI_BSP), enable)
+CFG_CC_OPTS += -D'MI_ENABLE=1'
+else
+CFG_CC_OPTS += -D'MI_ENABLE=0'
+endif
+
+#HawkEye UI: enable / disable
+HAWKEYE_UI = disable
+ifeq ($(HAWKEYE_UI),enable)
+CFG_CC_OPTS += -D'MI_HAWKEYE_UI_ENABLE=1'
+else
+CFG_CC_OPTS += -D'MI_HAWKEYE_UI_ENABLE=0'
+endif
+MI_HAWKEYE_BENCH = disable
+ifeq ($(MI_HAWKEYE_BENCH), enable)
+CFG_CC_OPTS += -D'MI_HAWKEYE_BENCH_ENABLE=1'
+else
+CFG_CC_OPTS += -D'MI_HAWKEYE_BENCH_ENABLE=0'
+endif
+
+# utopia type: UTOPIA (including utopia2) / UTOPIA2L
+UTOPIA_TYPE = UTOPIA
+
+App_Dram_Address = 0x80000180
+App_Reset_Vector_Dram_Address = 0x80000224
+LZMA_BUF_Address = 0x80B00000
+
+#**************************************************************
+# Command for USB update
+#**************************************************************
+USB_UPDATE_CMD=udstar

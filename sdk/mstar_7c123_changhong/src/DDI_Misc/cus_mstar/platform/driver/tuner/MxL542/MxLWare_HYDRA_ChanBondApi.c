@@ -120,6 +120,7 @@ static MXL_BOOL_E MxL_Ctrl_checkIfDemodIsPartOfBondedGroup(UINT8 devId, MXL_HYDR
   UINT32 j = 0;
 
   MXLENTERSTR;
+  MXLENTER(MXL_HYDRA_PRINT("demodId=%d\n", demodId););
 
   mxlStatus = MxLWare_HYDRA_Ctrl_GetDeviceContext(devId, &devHandlePtr);
 
@@ -135,14 +136,14 @@ static MXL_BOOL_E MxL_Ctrl_checkIfDemodIsPartOfBondedGroup(UINT8 devId, MXL_HYDR
           if (devHandlePtr->cbBondedGroup[i].cbDemodId[j] == demodId)
           {
             partOfBondedGroup = MXL_TRUE;
-            MXL_HYDRA_PRINT("Demod is part of Bond Group %d\n", i);
+            MXLDBG2(MXL_HYDRA_PRINT("Demod is part of Bond Group %d\n", i););
             break;
           }
         }
       }
     }
   }
-  MXL_HYDRA_PRINT("Demod: partOfBondedGroup=%d\n", partOfBondedGroup);
+  MXLEXIT(MXL_HYDRA_PRINT("Demod: partOfBondedGroup=%d\n", partOfBondedGroup););
   MXLEXITSTR( mxlStatus);
   return partOfBondedGroup;
 }
@@ -290,7 +291,10 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgCBTune(UINT8 devId, MXL_HYDRA_TUNER_ID_E tuner
   {
     if ((chanBondTunePtr) && (bondId < MXL_HYDRA_CB_GROUP_MAX) && \
         (devHandlePtr->cbBondedGroup[bondId].numOfDemodsInCB <= MXL_HYDRA_CB_DEMODS_MAX) && \
-        (devHandlePtr->cbBondedGroup[bondId].numOfTsPorts <= MXL_HYDRA_CB_TS_PORTS_MAX))
+        (devHandlePtr->cbBondedGroup[bondId].numOfDemodsInCB > 0) &&
+        (devHandlePtr->cbBondedGroup[bondId].numOfTsPorts <= MXL_HYDRA_CB_TS_PORTS_MAX) && 
+        (devHandlePtr->cbBondedGroup[bondId].numOfTsPorts > 0) && 
+        (chanBondTunePtr->symbolRateKSps >= MXL_HYDRA_SYMBOLRATE_KSPS_MIN))
     {
       // Packing the Channel Bond Tune parameters for Firmware
       demodChanCfg.tunerId = tunerId;
@@ -328,10 +332,12 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgCBTune(UINT8 devId, MXL_HYDRA_TUNER_ID_E tuner
         else
           demodChanCfg.tuneCfgParams[i].freqSearchRangeKHz = (chanBondTunePtr->cbDemodList[i].freqSearchRangeKHz)/1000;
 
-        MXLDBG1(MXL_HYDRA_PRINT("Demod: %d\n", chanBondTunePtr->cbDemodList[i].demodId););
-        MXLDBG1(MXL_HYDRA_PRINT("frequencyInHz=%d\n", chanBondTunePtr->cbDemodList[i].frequencyInHz););
-        MXLDBG1(MXL_HYDRA_PRINT("scrambleCode=%d\n", chanBondTunePtr->cbDemodList[i].scrambleCode););
-        MXLDBG1(MXL_HYDRA_PRINT("standardMask=%d\n", chanBondTunePtr->cbDemodList[i].standardMask);)
+        MXLDBG1(
+        MXL_HYDRA_PRINT("Demod: %d\n", chanBondTunePtr->cbDemodList[i].demodId);
+        MXL_HYDRA_PRINT("frequencyInHz=%d\n", chanBondTunePtr->cbDemodList[i].frequencyInHz);
+        MXL_HYDRA_PRINT("scrambleCode=%d\n", chanBondTunePtr->cbDemodList[i].scrambleCode);
+        MXL_HYDRA_PRINT("standardMask=%d\n", chanBondTunePtr->cbDemodList[i].standardMask);
+        );
       }
 
       demodChanCfg.numOfTsPorts = devHandlePtr->cbBondedGroup[bondId].numOfTsPorts;
@@ -674,8 +680,12 @@ MXL_STATUS_E MxLWare_HYDRA_API_CfgCBClearIOStats(UINT8 devId, MXL_HYDRA_CB_CLEAR
   {
     if (clearIOStatsPtr)
     {
+      UINT32 clearStatsCmd[2];
+
+      clearStatsCmd[0] = (clearIOStatsPtr->clearInputStats == MXL_TRUE)?1:0;
+      clearStatsCmd[1] = (clearIOStatsPtr->clearOutputStats == MXL_TRUE)?1:0;
       // send command to the device
-      BUILD_HYDRA_CMD(MXL_XCPU_CLEAR_CB_STATS_CMD, MXL_CMD_WRITE, cmdSize, clearIOStatsPtr, cmdBuff);
+      BUILD_HYDRA_CMD(MXL_XCPU_CLEAR_CB_STATS_CMD, MXL_CMD_WRITE, 2*sizeof(UINT32), clearStatsCmd, cmdBuff);
       mxlStatus = MxLWare_HYDRA_SendCommand(devId, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
     }
     else mxlStatus = MXL_INVALID_PARAMETER;

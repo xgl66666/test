@@ -89,67 +89,59 @@ Information is unlawful and strictly prohibited. MStar hereby reserves the
 rights to any and all damages, losses, costs and expenses resulting therefrom.
  **********************************************************************/
 
+#ifdef MSOS_TYPE_LINUX_KERNEL
+#include <linux/string.h>
+#else
+#include <string.h>
 #include <math.h>
+#endif
 #include "MsCommon.h"
 #include "drvIIC.h"
 #include "MsOS.h"
-#include "Board.h"
 #include "drvTuner.h"
 #include "drvDemod.h"
 #include "drvDemodNull.h"
 #include "drvGPIO.h"
 #include "drvSYS.h"
-#include <string.h>
 #define USE_UTOPIA
 
 #if IF_THIS_DEMOD_INUSE(DEMOD_MSB1245)
 #include "drvDMD_EXTERN_MSB124x.h"
-#include "device_demodulator_msb124x.h"
 #include "device_demodulator_msb1245.h"
 #include "apiDMX.h"
-
-#if defined(SUPPORT_MSPI_LOAD_CODE) && (SUPPORT_MSPI_LOAD_CODE == 1)
 #include "drvDMD_common.h"
 #include "drvMSPI.h"
-#ifndef USE_SPI_LOAD_TO_SDRAM
-#define USE_SPI_LOAD_TO_SDRAM
-#endif
-#endif
-
+static MS_U8      u8max_dev_num = 0;
 static MS_U8      _u8ToneBurstFlag=0;
-#if MSB1245_TS_DATA_SWAP //for DVBS
-static MS_BOOL    _bTSDataSwap=FALSE;
-#endif
 
-#define IQ_SWAP                  FRONTEND_DEMOD_IQ_SWAP
-#if TS_PARALLEL_OUTPUT
-#define MSB1245_TS_SERIAL               0x00
-#else
-#define MSB1245_TS_SERIAL               0x01
-#endif
 #define TS_CLK_SEL         0x00
 #define TS_DATA_SWAP       0x00
-#define TS_OUT_INV         TS_CLK_INV
 
+static MS_BOOL bTS_SERIAL = FALSE;
 static MS_BOOL* pDemodRest = NULL;
+static MS_BOOL* pbTimerEn = NULL;
+
 MDvr_CofdmDmd_CONFIG* pstMSB1245 = NULL;
 MDvr_CofdmDmd_CONFIG MSB1245_Init =
 {
-    FALSE,
-    FALSE,
-    -1,
-    0,
-    0,
-    FALSE,
-    0,
-    {NULL},
-    0xF2,
-    FALSE,
-    -1,
-    FALSE
+    FALSE, //bInited
+    FALSE, //bOpen
+    -1,    //s32_MSB1245_Mutex
+    0,     //u8sramCode
+    0,     //u32CurrFreq
+    FALSE, //bFECLock
+    0,     //u8ScanStatus
+    {NULL},//MSB1245_InitParam
+    0xF2,  //u8SlaveID
+    FALSE, //bIsDVBS2
+    -1,    //s32DemodHandle
+    0,     //u32DmxInputPath;
+    FALSE, //bIsMCP_DMD
+    FALSE, //bDiSeqc_Tx22K_Off
 };
 
-SLAVE_ID_TBL* pstMSB1245_slave_ID_TBL = NULL;
+
+SLAVE_ID_USAGE* pstMSB1245_slave_ID_TBL = NULL;
 static SLAVE_ID_USAGE MSB1245_possible_slave_ID[3] =
 {
     {0xF2, FALSE},
@@ -168,7 +160,64 @@ static  MS_U32                       _u32DemodStartTime=0;
 static  MS_U16                       _u16ChannelInfoArray[2][1000];
 
 static MS_U8 u8MSB1245_DevCnt = 0;
-static MS_BOOL _MSB1245_SetReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 u8Data);
+static MS_BOOL msb1245_SetReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 u8Data);
+
+//interrupt usage
+static MS_U8  u8StackBuffer[MSB1245_EVT_TASK_STACK_SIZE];
+static MS_S32 _s32DmdEventTaskId = -1;
+static MS_S32 _s32DmdEventId = -1;
+static MS_U32 u32Events;
+static MS_U8 u8TS_VLD_cnt = 0;
+
+static MS_BOOL _mdrv_dmd_msb1245_get_IntNum(MS_U8 u8DemodIndex, InterruptNum* pIntNum);
+
+static MS_BOOL get_i2c_port(MS_U8 u8DemodIndex, MS_IIC_PORT* ePort)
+{
+    MDvr_CofdmDmd_CONFIG *pMSB1245;
+
+    if(pstMSB1245 == NULL)
+        return FALSE;
+    else
+    {
+        pMSB1245 = pstMSB1245 + u8DemodIndex;
+        *ePort = pMSB1245->MSB1245_InitParam.stDMDCon.eI2C_PORT;
+        return TRUE;
+    }
+}
+
+static MS_S32* ps32msb1245_TimerID = NULL;
+static void _mdrv_dmd_msb1245_timer_cb(MS_U32 u32StTimer, MS_U32 u32TimerID)
+{
+    MDvr_CofdmDmd_CONFIG *pMSB1245 = NULL;
+    EN_LOCK_STATUS eLockStatus = E_DEMOD_UNLOCK;
+    InterruptNum IntNum;
+    MS_U8 i;
+    MS_S32* ps32TimerID = NULL;
+
+    for(i = 0; i<u8max_dev_num; i++)
+    {
+       ps32TimerID = ps32msb1245_TimerID + i;
+       if(*ps32TimerID == (MS_S32)u32TimerID)
+       {
+         MSB1245_Demod_GetLock(i, &eLockStatus);
+         if(pstMSB1245 != NULL)
+         {
+            pMSB1245 = (pstMSB1245 + i);
+            if((pMSB1245->MSB1245_InitParam.fpCB != NULL) && (eLockStatus != E_DEMOD_LOCK))
+            {
+                pMSB1245->MSB1245_InitParam.fpCB(pMSB1245->MSB1245_InitParam.u8FrontendIndex,2);
+                MsOS_StopTimer (*ps32TimerID);
+                if(_mdrv_dmd_msb1245_get_IntNum(i, &IntNum))
+                {
+                    u8TS_VLD_cnt = 0;
+                    MsOS_EnableInterrupt(IntNum);
+                }
+            }
+         }
+         break;
+       }
+    }
+}
 
 
 #if(TIMING_VERIFICATION == 1)
@@ -197,58 +246,200 @@ MS_BOOL MSB1245_DiSEqC_Init(MS_U8 u8DemodIndex);
 #endif
 
 static float g_MSB1245_fSNR = 0.0;
+static MS_BOOL _mdrv_dmd_msb1245_get_IntNum(MS_U8 u8DemodIndex, InterruptNum* pIntNum)
+{
+    MDvr_CofdmDmd_CONFIG *pMSB1245 = NULL;
+
+    if(pstMSB1245 == NULL)
+        return FALSE;
+    else
+        pMSB1245 = pstMSB1245 + u8DemodIndex;
+
+    if(pMSB1245->MSB1245_InitParam.stDMDCon.u32TSVLDInterrupt == DMD_CON_INFO_NOT_DEFINE)
+        return FALSE;
+    else
+    {
+        *pIntNum = (InterruptNum)pMSB1245->MSB1245_InitParam.stDMDCon.u32TSVLDInterrupt;
+    }
+
+    return TRUE;
+}
+
+static MS_BOOL _mdrv_dmd_msb1245_IntNum2DemodIndex(MS_U8* pu8DemodIndex, InterruptNum IntNum)
+{
+    MDvr_CofdmDmd_CONFIG *pMSB1245 = NULL;
+    MS_U8 u8DemodIndex;
+
+    if(pstMSB1245 == NULL)
+        return FALSE;
+
+    for(u8DemodIndex=0;u8DemodIndex<u8max_dev_num;u8DemodIndex++)
+    {
+        pMSB1245 = pstMSB1245 + u8DemodIndex;
+        if(pMSB1245->MSB1245_InitParam.stDMDCon.u32TSVLDInterrupt ==IntNum)
+        {
+            *pu8DemodIndex = u8DemodIndex;
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+
+static void _mdrv_dmd_msb1245_event_task(MS_U32 argc, void *argv)
+{
+  MDvr_CofdmDmd_CONFIG *pMSB1245 = NULL;
+  MS_U32 u32WaitEventFlag;
+  MS_U8 u8DemodIndex = 0;
+
+  u32WaitEventFlag = MSB1245_EVT_PORT0INT|MSB1245_EVT_PORT1INT|MSB1245_EVT_PORT2INT|MSB1245_EVT_PORT3INT;
+  do
+  {
+     MsOS_WaitEvent(_s32DmdEventId, u32WaitEventFlag,&u32Events, E_OR_CLEAR, MSOS_WAIT_FOREVER);
+     switch(u32Events)
+     {
+         case MSB1245_EVT_PORT0INT:
+            u8DemodIndex = 0;
+            break;
+         case MSB1245_EVT_PORT1INT:
+            u8DemodIndex = 1;
+            break;
+         case MSB1245_EVT_PORT2INT:
+            u8DemodIndex = 2;
+            break;
+         case MSB1245_EVT_PORT3INT:
+            u8DemodIndex = 3;
+            break;
+         default:
+            break;
+     }
+
+     if(pstMSB1245 != NULL)
+     {
+         pMSB1245 = (pstMSB1245 + u8DemodIndex);
+         if(*(pbTimerEn+u8DemodIndex))
+         {
+             if(ps32msb1245_TimerID != NULL)
+                 MsOS_StartTimer (*(ps32msb1245_TimerID + u8DemodIndex));
+         }
+
+         if(pMSB1245->MSB1245_InitParam.fpCB != NULL)
+             pMSB1245->MSB1245_InitParam.fpCB(pMSB1245->MSB1245_InitParam.u8FrontendIndex,1);
+     }
+
+  }while(1);
+}
+
+static void _mdrv_dmd_msb1245_cb(InterruptNum irq)
+{
+    MS_U8 u8DemodIndex=0;
+
+    u8TS_VLD_cnt++;
+    if(u8TS_VLD_cnt < 3)
+    {
+        MsOS_EnableInterrupt(irq);
+    }
+    else
+    {
+        MsOS_DisableInterrupt(irq);
+        if(_mdrv_dmd_msb1245_IntNum2DemodIndex(&u8DemodIndex, irq))
+        {
+            MsOS_ClearEvent(_s32DmdEventId, MSB1245_EVT_MASK);
+            MsOS_SetEvent(_s32DmdEventId, (1<<u8DemodIndex));
+        }
+    }
+}
 
 static MS_BOOL MSB1245_Variables_alloc(void)
 {
-    MS_U8 i;
+    MS_U8 i,j;
     MDvr_CofdmDmd_CONFIG *pMSB1245 = NULL;
-    SLAVE_ID_TBL* pSlaveIDTBL = NULL;
+    SLAVE_ID_USAGE* pSlaveIDTBL = NULL;
+    MS_U8 u8MaxI2CPort;
+
+    u8MaxI2CPort = (MS_U8)((E_MS_IIC_SW_PORT_0/8) + (E_MS_IIC_PORT_NOSUP - E_MS_IIC_SW_PORT_0));
 
     if(NULL == pstMSB1245)
     {
-        pstMSB1245 = (MDvr_CofdmDmd_CONFIG *)malloc(sizeof(MDvr_CofdmDmd_CONFIG) * MAX_FRONTEND_NUM);
+        pstMSB1245 = (MDvr_CofdmDmd_CONFIG *)malloc(sizeof(MDvr_CofdmDmd_CONFIG) * u8max_dev_num);
         if(NULL == pstMSB1245)
         {
             return FALSE;
         }
         else
         {
-            for(i=0; i< MAX_FRONTEND_NUM; i++)
+            for(i=0; i< u8max_dev_num; i++)
             {
                 pMSB1245 = (pstMSB1245 + i);
                 memcpy(pMSB1245, &MSB1245_Init, sizeof(MDvr_CofdmDmd_CONFIG));
+                pMSB1245->MSB1245_InitParam.stDMDCon.u32TSVLDInterrupt = DMD_CON_INFO_NOT_DEFINE;
             }
         }
     }
 
     if(NULL == pDemodRest)
     {
-        pDemodRest = (MS_BOOL*)malloc(sizeof(MS_BOOL) * MAX_FRONTEND_NUM);
+        pDemodRest = (MS_BOOL*)malloc(sizeof(MS_BOOL) * u8max_dev_num);
         if(NULL == pDemodRest)
         {
             return FALSE;
         }
         else
         {
-            for(i=0; i< MAX_FRONTEND_NUM; i++)
+            for(i=0; i< u8max_dev_num; i++)
                 *(pDemodRest + i) = TRUE;
+        }
+    }
+
+    if(NULL == pbTimerEn)
+    {
+        pbTimerEn = (MS_BOOL*)malloc(sizeof(MS_BOOL) * u8max_dev_num);
+        if(NULL == pbTimerEn)
+        {
+            return FALSE;
+        }
+        else
+        {
+            for(i=0; i< u8max_dev_num; i++)
+                *(pbTimerEn + i) = FALSE;
         }
     }
 
 
     if(NULL == pstMSB1245_slave_ID_TBL)
     {
-        pstMSB1245_slave_ID_TBL = (SLAVE_ID_TBL *)malloc(sizeof(SLAVE_ID_TBL) * MSB1245_MAX_IIC_PORT_CNT);
+        pstMSB1245_slave_ID_TBL = (SLAVE_ID_USAGE *)malloc(sizeof(MSB1245_possible_slave_ID) * u8MaxI2CPort);
         if(NULL == pstMSB1245_slave_ID_TBL)
         {
             return FALSE;
         }
         else
         {
-            for(i=0; i< MSB1245_MAX_IIC_PORT_CNT; i++)
+            for(i=0; i< u8MaxI2CPort; i++)
             {
-                pSlaveIDTBL = (pstMSB1245_slave_ID_TBL + i);
-                memcpy(&(pSlaveIDTBL->stID_Tbl), &MSB1245_possible_slave_ID, sizeof(MSB1245_possible_slave_ID));
+                for(j=0; j< (sizeof(MSB1245_possible_slave_ID)/sizeof(SLAVE_ID_USAGE)); j++)
+                {
+                    pSlaveIDTBL = (pstMSB1245_slave_ID_TBL + i*sizeof(MSB1245_possible_slave_ID)/sizeof(SLAVE_ID_USAGE) + j);
+                    memcpy(pSlaveIDTBL, &MSB1245_possible_slave_ID[j], sizeof(SLAVE_ID_USAGE));
+                 }
+            }
+
+        }
+    }
+
+    if(NULL == ps32msb1245_TimerID)
+    {
+        ps32msb1245_TimerID = (MS_S32 *)malloc(sizeof(MS_S32) * u8max_dev_num);
+        if(NULL == ps32msb1245_TimerID)
+        {
+            return FALSE;
+        }
+        else
+        {
+            for(i=0; i< u8max_dev_num; i++)
+            {
+              *(ps32msb1245_TimerID + i) = (-1);
             }
         }
     }
@@ -257,25 +448,23 @@ static MS_BOOL MSB1245_Variables_alloc(void)
 
 }
 
+static void _variable_free(void** pp)
+{
+    if(NULL != *pp)
+    {
+        free(*pp);
+        *pp = NULL;
+    }
+}
+
 static MS_BOOL MSB1245_Variables_free(void)
 {
-    if(NULL != pstMSB1245)
-    {
-        free(pstMSB1245);
-        pstMSB1245 = NULL;
-    }
+    _variable_free((void*)&pstMSB1245);
+    _variable_free((void*)&pDemodRest);
+    _variable_free((void*)&pbTimerEn);
+    _variable_free((void*)&pstMSB1245_slave_ID_TBL);
+    _variable_free((void*)&ps32msb1245_TimerID);
 
-    if(NULL != pDemodRest)
-    {
-        free(pDemodRest);
-        pDemodRest = NULL;
-    }
-
-    if(NULL != pstMSB1245_slave_ID_TBL)
-    {
-        free(pstMSB1245_slave_ID_TBL);
-        pstMSB1245_slave_ID_TBL = NULL;
-    }
     return TRUE;
 }
 
@@ -284,7 +473,7 @@ static MS_BOOL _GetDemodIndexByHandle(MS_S32 s32Handle, MS_U8* pu8DemodIndex)
 {
     MS_U8 u8DemodIndex;
     MDvr_CofdmDmd_CONFIG *pMSB1245;
-    for(u8DemodIndex=0; u8DemodIndex< MAX_FRONTEND_NUM; u8DemodIndex++)
+    for(u8DemodIndex=0; u8DemodIndex< u8max_dev_num; u8DemodIndex++)
     {
         pMSB1245 = (pstMSB1245 + u8DemodIndex);
         if(pMSB1245->s32DemodHandle == s32Handle)
@@ -300,19 +489,19 @@ static MS_BOOL _GetDemodIndexByHandle(MS_S32 s32Handle, MS_U8* pu8DemodIndex)
 static void _msb1245_hw_reset(MS_U8 u8DemodIndex)
 {
     MDvr_CofdmDmd_CONFIG *pMSB1245 = (pstMSB1245 + u8DemodIndex);
-#ifdef GPIO_DEMOD_RST
-    int rst_pin = 9999;
-    rst_pin = GPIO_DEMOD_RST;
-    if(pMSB1245->bIsMCP_DMD)
-    {
-        mdrv_gpio_set_high(rst_pin);
-        MsOS_DelayTask(5);
-        mdrv_gpio_set_low(rst_pin);
-        MsOS_DelayTask(10);
-        mdrv_gpio_set_high(rst_pin);
-        MsOS_DelayTask(5);
-    }
-#endif
+    int rstPin;
+
+    if((pstMSB1245 == NULL) || (pDemodRest == NULL))
+        return;
+
+    rstPin = (int)(pMSB1245->MSB1245_InitParam.stDMDCon.u32HW_ResetPin);
+    mdrv_gpio_set_high(rstPin);
+    MsOS_DelayTask(5);
+    mdrv_gpio_set_low(rstPin);
+    MsOS_DelayTask(10);
+    mdrv_gpio_set_high(rstPin);
+    MsOS_DelayTask(5);
+
     pMSB1245->bInited = FALSE;
     pMSB1245->bOpen = FALSE;
     *(pDemodRest + u8DemodIndex) = TRUE;
@@ -320,7 +509,20 @@ static void _msb1245_hw_reset(MS_U8 u8DemodIndex)
 
 }
 
-#ifdef USE_SPI_LOAD_TO_SDRAM
+static void _msb1245_power_onoff(MS_U8 u8DemodIndex, MS_BOOL bOn)
+{
+    MDvr_CofdmDmd_CONFIG *pMSB1245 = (pstMSB1245 + u8DemodIndex);
+    int rst_pin;
+    rst_pin = pMSB1245->MSB1245_InitParam.stDMDCon.u32HW_ResetPin;
+    if(pMSB1245->bIsMCP_DMD)
+    {
+        if(bOn)
+            mdrv_gpio_set_high(rst_pin);
+        else
+            mdrv_gpio_set_low(rst_pin);
+    }
+}
+
 static void msb1245_SPIPAD_TS0_En(MS_BOOL bOnOff);
 static void msb1245_SPIPAD_TS1_En(MS_BOOL bOnOff);
 static void msb1245_SPIPAD_TS2_En(MS_BOOL bOnOff);
@@ -336,7 +538,7 @@ static void msb1245_SPIPAD_TS0_En(MS_BOOL bOnOff)
     }
     else
     {
-       if(MSB1245_TS_SERIAL)
+       if(bTS_SERIAL)
            MDrv_SYS_SetPadMux(E_TS0_PAD_SET, E_SERIAL_IN);
        else
            MDrv_SYS_SetPadMux(E_TS0_PAD_SET, E_PARALLEL_IN);
@@ -350,11 +552,11 @@ static void msb1245_SPIPAD_TS1_En(MS_BOOL bOnOff)
         MDrv_SYS_SetPadMux(E_TS1_PAD_SET, E_MSPI_PAD_ON);
     else
     {
-       if(MSB1245_TS_SERIAL)
+       if(bTS_SERIAL)
           MDrv_SYS_SetPadMux(E_TS1_PAD_SET, E_SERIAL_IN);
        else
           MDrv_SYS_SetPadMux(E_TS1_PAD_SET, E_PARALLEL_IN);
-    } 
+    }
 }
 
 static void msb1245_SPIPAD_TS2_En(MS_BOOL bOnOff)
@@ -363,14 +565,12 @@ static void msb1245_SPIPAD_TS2_En(MS_BOOL bOnOff)
         MDrv_SYS_SetPadMux(E_TS2_PAD_SET, E_MSPI_PAD_ON);
     else
     {
-       if(MSB1245_TS_SERIAL)
+       if(bTS_SERIAL)
           MDrv_SYS_SetPadMux(E_TS2_PAD_SET, E_SERIAL_IN);
        else
           MDrv_SYS_SetPadMux(E_TS2_PAD_SET, E_PARALLEL_IN);
-    } 
+    }
 }
-
-#endif
 
 static MS_BOOL msb1245_AGC_Info(MS_U8 u8DemodIndex, MS_U8 u8dbg_mode, MS_U16* pu16Data)
 {
@@ -421,14 +621,14 @@ static MS_BOOL msb1245_ADCPLL_IQ_SWAP(MS_U8 u8DemodIndex)
        (pMSB1245->MSB1245_InitParam.pstTunertab->data == TUNER_AV2012) || \
        (pMSB1245->MSB1245_InitParam.pstTunertab->data == TUNER_RDA5815M))
     {
-       if(pMSB1245->u8SlaveID == 0xF2) // for MCP demod, MSB1245_ADCPLL_IQ_SWAP = 1
+       if(pMSB1245->bIsMCP_DMD) // for MCP demod, MSB1245_ADCPLL_IQ_SWAP = 1
             u8Data |= (0x10);
        else
             u8Data &= (0xEF);
     }
     else
     {
-       if(pMSB1245->u8SlaveID == 0xD2)
+       if(!pMSB1245->bIsMCP_DMD)
             u8Data |= (0x10);
        else
             u8Data &= (0xEF);
@@ -483,6 +683,19 @@ static MS_BOOL  msb1245_ReadMailbox(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8* u
     return status;
 }
 
+static MS_BOOL msb1245_SetInnerDBGPort(MS_U8 u8DemodIndex, MS_U8 u8Port)
+{
+    MS_BOOL bRet = TRUE;
+    MS_U16 u16Address;
+    MS_U8 u8Data;
+    MDvr_CofdmDmd_CONFIG *pMSB1245 = (pstMSB1245 + u8DemodIndex);
+
+    u16Address=0x1B09;
+    bRet&=MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
+    u8Data = (u8Data & (~0x3F))|u8Port;
+    bRet&=MSB1245_WriteReg(pMSB1245, u16Address, u8Data);
+    return bRet;
+}
 
 /*================================================
 ==                       IIC write/read interface
@@ -493,13 +706,16 @@ MS_BOOL MSB1245_WriteBytes_demod(MS_U8 u8DemodIndex, MS_U8 u8AddrSize, MS_U8 *pu
 {
     MS_BOOL bRet = 0;
     MDvr_CofdmDmd_CONFIG *pMSB1245 = (pstMSB1245 + u8DemodIndex);
+    MS_IIC_PORT ePort;
+
     if (!pMSB1245)
     {
         DMD_ERR(("pMSB124X error !\n"));
         return FALSE;
     }
 
-    bRet = MDrv_IIC_Write(pMSB1245->u8SlaveID, pu8Addr, u8AddrSize, pu8Data, u16Size);
+    get_i2c_port(u8DemodIndex, &ePort);
+    bRet = MDrv_IIC_WriteBytes(ePort, (MS_U16)pMSB1245->u8SlaveID, u8AddrSize, pu8Addr, u16Size, pu8Data);
     if (FALSE == bRet)
     {
         DMD_ERR(("Demod IIC write error\n"));
@@ -511,49 +727,17 @@ MS_BOOL MSB1245_ReadBytes_demod(MS_U8 u8DemodIndex, MS_U8 u8AddrSize, MS_U8 *pu8
 {
     MS_BOOL bRet = 0;
     MDvr_CofdmDmd_CONFIG *pMSB1245 = (pstMSB1245 + u8DemodIndex);
+    MS_IIC_PORT ePort;
+
     if (!pMSB1245)
     {
         DMD_ERR(("pMSB124X error !\n"));
         return FALSE;
     }
 
-    bRet = MDrv_IIC_Read(pMSB1245->u8SlaveID, pu8Addr, u8AddrSize, pu8Data, u16Size);
-    if (FALSE == bRet)
-    {
-        DMD_ERR(("Demod IIC read error\n"));
-    }
-    return bRet;
-}
+    get_i2c_port(u8DemodIndex, &ePort);
+    bRet = MDrv_IIC_ReadBytes(ePort, (MS_U16)pMSB1245->u8SlaveID, u8AddrSize, pu8Addr, u16Size, pu8Data);
 
-MS_BOOL MSB1245_WriteBytes_demod1(MS_U8 u8DemodIndex,MS_U8 u8AddrSize, MS_U8 *pu8Addr, MS_U16 u16Size, MS_U8 *pu8Data)
-{
-    MS_BOOL bRet = 0;
-    MDvr_CofdmDmd_CONFIG *pMSB1245 = (pstMSB1245 + u8DemodIndex);
-    if (!pMSB1245)
-    {
-        DMD_ERR(("pMSB124X error !\n"));
-        return FALSE;
-    }
-
-    bRet = MDrv_IIC1_Write(pMSB1245->u8SlaveID, pu8Addr, u8AddrSize, pu8Data, u16Size);
-    if (FALSE == bRet)
-    {
-        DMD_ERR(("Demod IIC write error\n"));
-    }
-    return bRet;
-}
-
-MS_BOOL MSB1245_ReadBytes_demod1(MS_U8 u8DemodIndex, MS_U8 u8AddrSize, MS_U8 *pu8Addr, MS_U16 u16Size, MS_U8 *pu8Data)
-{
-    MS_BOOL bRet = 0;
-    MDvr_CofdmDmd_CONFIG *pMSB1245 = (pstMSB1245 + u8DemodIndex);
-    if (!pMSB1245)
-    {
-        DMD_ERR(("pMSB124X error !\n"));
-        return FALSE;
-    }
-
-    bRet = MDrv_IIC1_Read(pMSB1245->u8SlaveID, pu8Addr, u8AddrSize, pu8Data, u16Size);
     if (FALSE == bRet)
     {
         DMD_ERR(("Demod IIC read error\n"));
@@ -575,16 +759,6 @@ static mapi_i2c* mapi_i2c_GetI2C_Dev(void)
     handler = &DemodI2Chandler;
     handler->WriteBytes = MSB1245_WriteBytes_demod;
     handler->ReadBytes = MSB1245_ReadBytes_demod;
-    return handler;
-}
-
-static mapi_i2c* mapi_i2c1_GetI2C_Dev(void)
-{
-    mapi_i2c *handler;
-
-    handler = &DemodI2Chandler;
-    handler->WriteBytes = MSB1245_WriteBytes_demod1;
-    handler->ReadBytes = MSB1245_ReadBytes_demod1;
     return handler;
 }
 
@@ -610,42 +784,6 @@ static MS_BOOL msb1245_I2C_Access(eDMD_MSB124X_DemodI2CSlaveID eSlaveID, eDMD_MS
         {
         case E_DMD_MSB124X_DEMOD_I2C_WRITE_BYTES:
             bRet = i2c_iptr->WriteBytes(u8DemodIndex,u8AddrSize, pu8Addr, u16Size, pu8Data);
-            break;
-        case E_DMD_MSB124X_DEMOD_I2C_READ_BYTES:
-            bRet = i2c_iptr->ReadBytes(u8DemodIndex, u8AddrSize, pu8Addr, u16Size, pu8Data);
-        default:
-            break;
-        }
-    }
-    else
-    {
-        bRet = FALSE;
-    }
-
-    return bRet;
-}
-
-static MS_BOOL msb1245_I2C1_Access(eDMD_MSB124X_DemodI2CSlaveID eSlaveID, eDMD_MSB124X_DemodI2CMethod eMethod, MS_U8 u8AddrSize, MS_U8 *pu8Addr, MS_U16 u16Size, MS_U8 *pu8Data)
-{
-    MS_BOOL bRet = TRUE;
-    mapi_i2c *i2c_iptr;
-    MS_U8 u8DemodIndex = 0;
-
-    i2c_iptr = mapi_i2c1_GetI2C_Dev();
-
-#if defined(SUPPORT_MULTI_DEMOD) && (SUPPORT_MULTI_DEMOD == 1)
-    if(!_GetDemodIndexByHandle(MDrv_DMD_MSB124X_GetCurrentHandle(), &u8DemodIndex))
-    {
-        DMD_ERR(("124X_I2C_Access get demod index FAIL\n"));
-    }
-#endif
-
-    if (i2c_iptr != NULL)
-    {
-        switch (eMethod)
-        {
-        case E_DMD_MSB124X_DEMOD_I2C_WRITE_BYTES:
-            bRet = i2c_iptr->WriteBytes(u8DemodIndex, u8AddrSize, pu8Addr, u16Size, pu8Data);
             break;
         case E_DMD_MSB124X_DEMOD_I2C_READ_BYTES:
             bRet = i2c_iptr->ReadBytes(u8DemodIndex, u8AddrSize, pu8Addr, u16Size, pu8Data);
@@ -705,23 +843,10 @@ MS_BOOL MSB1245_I2C_CH_Reset(MS_U8 u8DemodIndex, MS_U8 ch_num)
 {
     MS_BOOL bRet = TRUE;
     MS_U8     data[5] = {0x53, 0x45, 0x52, 0x44, 0x42};
-    HWI2C_PORT hwi2c_port;
     mapi_i2c *iptr;
 
-    hwi2c_port = getI2CPort(u8DemodIndex);
-    if (hwi2c_port < E_HWI2C_PORT_1)
-    {
-        iptr = mapi_i2c_GetI2C_Dev();
-    }
-    else if (hwi2c_port < E_HWI2C_PORT_2)
-    {
-        iptr = mapi_i2c1_GetI2C_Dev();
-    }
-    else
-    {
-        DMD_ERR(("hwi2c_port number exceeds limitation\n"));
-        return FALSE;
-    }
+
+     iptr = mapi_i2c_GetI2C_Dev();
 
     // ch_num, 0: for MIU access, 3: for RIU access
     DMD_DBG(("[MSB1245][beg]MSB1245_I2C_CH_Reset, CH=0x%x\n", ch_num));
@@ -736,12 +861,13 @@ MS_BOOL MSB1245_I2C_CH_Reset(MS_U8 u8DemodIndex, MS_U8 ch_num)
 
     if (*(pDemodRest + u8DemodIndex))
     {
-        *(pDemodRest + u8DemodIndex) = FALSE;
-
         // 8'hb2(SRID)->8,h53(PWD1)->8,h45(PWD2)->8,h52(PWD3)->8,h44(PWD4)->8,h42(PWD5)
         data[0] = 0x53;
         // Don't check Ack because this passward only ack one time for the first time.
-        iptr->WriteBytes(u8DemodIndex, 0, NULL, 5, data);
+        if(iptr->WriteBytes(u8DemodIndex, 0, NULL, 5, data))
+            *(pDemodRest + u8DemodIndex) = FALSE;
+        else
+            return FALSE;
     }
 
     // 8'hb2(SRID)->8,h71(CMD)  //TV.n_iic_
@@ -898,6 +1024,14 @@ MS_BOOL dvbs2_MSB1245_TS_Enable(MS_U8 u8DemodIndex, MS_BOOL bTsEnable)
         DMD_ERR(("[%s]pMSB1245 have not inited !!!\n", __FUNCTION__));
         return FALSE;
     }
+    u16Address=0x2A40;
+    bRet &= MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
+#if MSB1245_TS_DATA_SWAP
+    u8Data |= (0x20);
+#else
+    u8Data &= (~0x20);
+#endif
+    bRet&=MSB1245_WriteReg(pMSB1245, u16Address, u8Data);
 
     if (bTsEnable == TRUE)
     {
@@ -913,7 +1047,7 @@ MS_BOOL dvbs2_MSB1245_TS_Enable(MS_U8 u8DemodIndex, MS_BOOL bTsEnable)
 #if MSB1245_TS_INV
     u8Data |= (0x20);
 #else
-    u8Data ~= (0x20);
+    u8Data &= (~0x20);
 #endif
     bRet&=MSB1245_WriteReg(pMSB1245, u16Address, u8Data);
     return bRet;
@@ -963,23 +1097,6 @@ MS_BOOL MSB1245_Lock_S(MS_U8 u8DemodIndex)
         {
             bRet = FALSE;
         }
-#if MSB1245_TS_DATA_SWAP
-        if (bRet==FALSE)
-        {
-            _bTSDataSwap=FALSE;
-        }
-        else
-        {
-            if (_bTSDataSwap==FALSE)
-            {
-                _bTSDataSwap= TRUE;
-                u16Address=0x2A40;
-                bRet&=MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
-                u8Data^=0x20;
-                bRet&=MSB1245_WriteReg(pMSB1245, u16Address, u8Data);
-            }
-        }
-#endif
     }
     else
     {
@@ -1313,8 +1430,8 @@ MS_U16  MSB1245_DTV_GetSignalStrength(MS_U8 u8DemodIndex)
              }
              else
              {
-                DMD_DBG(("GOT Signal Strength from RT710!!!\n"));
-                RfLevelDbm = (-1)*(RfLevelDbm/100); //RT710 return dBm*1000, and here return dBm*10
+                DMD_DBG(("GOT Signal Strength from RT710, %d!!!\n", RfLevelDbm));
+                RfLevelDbm = (-1)*(RfLevelDbm*10);
                 u16RetData = (MS_U16)RfLevelDbm;
                 MSB1245_IIC_Bypass_Mode(u8DemodIndex, FALSE);
                 return u16RetData;
@@ -1343,7 +1460,7 @@ MS_U16  MSB1245_DTV_GetSignalStrength(MS_U8 u8DemodIndex)
             {
                 // to avoid search error when signal level is close to bounary of tuner AGC active area,
                 // if power level has too large variance, return previous data
-                if((u8Index != u8Index_1st) && ((u16RetData - u16SignalLevel[u8Index][0]) < SIGNAL_LEVEL_VAR_MAX))
+                if((u8Index != u8Index_1st) && ((u16RetData - u16SignalLevel[u8Index][1]) < SIGNAL_LEVEL_VAR_MAX))
                 {
                     u16RetData = u16SignalLevel[u8Index][1];
                 }
@@ -1355,7 +1472,11 @@ MS_U16  MSB1245_DTV_GetSignalStrength(MS_U8 u8DemodIndex)
         // RT710 would do more estimation by AGC error mean
         if(TUNER_RT710 == pMSB1245->MSB1245_InitParam.pstTunertab->data)
         {
-           if(RfGainflag == 1) //Tuner RFAGC max
+           if((u16AGCMean <= 0x1F4) || (u16AGCMean >= 0xFE00))
+           {
+              DMD_DBG(("[MSB1245] AGC error mean is close to Zero, estimated by IF AGC only\n"));
+           }
+           else if(RfGainflag == 1) //Tuner RFAGC max
            {
               if((65535 - u16AGCOut) < u16SignalLevel[u8Index_1st][0])
               {
@@ -1671,18 +1792,18 @@ MS_BOOL MSB1245_Demod_I2C_ByPass(MS_U8 u8DemodIndex,MS_BOOL bOn)
     {
 
         bret &= MSB1245_I2C_CH_Reset(u8DemodIndex,3);
-        bret &= _MSB1245_SetReg(u8DemodIndex,0x0951, 0x00);
-        bret &= _MSB1245_SetReg(u8DemodIndex,0x090C, 0x10);
-        bret &= _MSB1245_SetReg(u8DemodIndex,0x090E, 0x10);
+        bret &= msb1245_SetReg(u8DemodIndex,0x0951, 0x00);
+        bret &= msb1245_SetReg(u8DemodIndex,0x090C, 0x10);
+        bret &= msb1245_SetReg(u8DemodIndex,0x090E, 0x10);
         if(bOn)
         {
             DMD_DBG(("set MSB1245 I2C bypass ON\n"));
-            bret &= _MSB1245_SetReg(u8DemodIndex,0x0910, 0x10);
+            bret &= msb1245_SetReg(u8DemodIndex,0x0910, 0x10);
         }
         else
         {
             DMD_DBG(("set MSB1245 I2C bypass OFF\n"));
-            bret &= _MSB1245_SetReg(u8DemodIndex,0x0910, 0x00);
+            bret &= msb1245_SetReg(u8DemodIndex,0x0910, 0x00);
         }
         return bret;
     }
@@ -1871,6 +1992,63 @@ MS_BOOL MSB1245_Demod_GetPWR(MS_U8 u8DemodIndex, MS_S32 *ps32Signal)
     return bret;
 }
 
+MS_BOOL MSB1245_Demod_GetSSI(MS_U8 u8DemodIndex, MS_U16 *pu16SSI)
+{
+    MDvr_CofdmDmd_CONFIG *pMSB1245 = (pstMSB1245 + u8DemodIndex);
+    MS_BOOL bret = TRUE;
+    MS_S32 RfLevelDbm = 0;
+
+
+    if (!pMSB1245)
+    {
+        DMD_ERR(("pMSB1245 error !\n"));
+        return FALSE;
+    }
+    if ((!pMSB1245->bInited) || (!pMSB1245->bOpen))
+    {
+        DMD_ERR(("[%s]pMSB1245 have not inited !!!\n", __FUNCTION__));
+        return FALSE;
+    }
+    if (MsOS_ObtainMutex(pMSB1245->s32_MSB1245_Mutex, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+        DMD_ERR(("MDrv_Demod_GetPWR:Obtain mutex failed !!!\n"));
+        return FALSE;
+    }
+    else
+    {
+        *pu16SSI = 0;
+        if (E_DEMOD_LOCK == MSB1245_DTV_GetLockStatus(u8DemodIndex))
+        {
+            RfLevelDbm=(MS_S32)MSB1245_DTV_GetSignalStrength(u8DemodIndex);
+            RfLevelDbm=(-1)*(RfLevelDbm)/10;
+        }
+
+        if(RfLevelDbm == 0)
+        {
+           DMD_DBG(("Get Signal Level ERROR, DMD unlock or Tuner Power Table Not Ready !!\n"));
+           bret = FALSE;
+        }
+
+        if (RfLevelDbm >= -20)
+        {
+           *pu16SSI=100;
+        }
+        else if(RfLevelDbm < -86)
+        {
+           *pu16SSI= 0 ;
+        }
+        else
+        {
+            *pu16SSI=(MS_U16)((RfLevelDbm*1000+80000)*90/60000+10);
+        }
+
+    }
+
+    MsOS_ReleaseMutex(pMSB1245->s32_MSB1245_Mutex);
+    return bret;
+}
+
+
 MS_BOOL MSB1245_Demod_GetSignalQuality(MS_U8 u8DemodIndex, MS_U16 *pu16quality)
 {
 
@@ -1938,6 +2116,8 @@ MS_BOOL MSB1245_Demod_GetLock(MS_U8 u8DemodIndex, EN_LOCK_STATUS *peLockStatus)
 }
 
 
+
+
 MS_BOOL MSB1245_DVBS_S2_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM *pParam)
 {
     MS_BOOL bRet=TRUE;
@@ -1948,6 +2128,8 @@ MS_BOOL MSB1245_DVBS_S2_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PA
     MS_U16 u16CenterFreq;
     #endif
     MDvr_CofdmDmd_CONFIG *pMSB1245 = (pstMSB1245 + u8DemodIndex);
+    InterruptNum IntNum;
+
 
     if (!pMSB1245)
     {
@@ -1965,6 +2147,11 @@ MS_BOOL MSB1245_DVBS_S2_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PA
         return FALSE;
     }
 
+
+    if(_mdrv_dmd_msb1245_get_IntNum(u8DemodIndex, &IntNum))
+    {
+        MsOS_DisableInterrupt(IntNum);
+    }
 
     u16SymbolRate=(pParam->SatParam.u32SymbolRate/1000);
 #if (DMD_DEBUG_OPTIONS & DMD_EN_DBG)
@@ -2000,7 +2187,7 @@ MS_BOOL MSB1245_DVBS_S2_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PA
     //TS serial mode
     u16Address= 0x2A40;
     bRet&= MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
-    if(MSB1245_TS_SERIAL==1)
+    if(!pMSB1245->MSB1245_InitParam.stDMDCon.bTSIsParallel)//MSB1245_TS_SERIAL==1
         u8Data |= (0x01);
     else
         u8Data &= (0xFE);
@@ -2014,7 +2201,14 @@ MS_BOOL MSB1245_DVBS_S2_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PA
 #if MS_DVBS_INUSE
     bRet&= MSB1245_DiSEqC_Init(u8DemodIndex);
 #endif
+    u8TS_VLD_cnt = 0;
+    if(_mdrv_dmd_msb1245_get_IntNum(u8DemodIndex, &IntNum))
+    {
+       MsOS_EnableInterrupt(IntNum);
+    }
+
     MsOS_ReleaseMutex(pMSB1245->s32_MSB1245_Mutex);
+
     return bRet;
 }
 
@@ -2053,7 +2247,46 @@ MS_BOOL MSB1245_Demod_ClearStatus(MS_U8 u8DemodIndex)
 
 MS_BOOL MSB1245_Demod_Restart(MS_U8 u8DemodIndex, DEMOD_MS_FE_CARRIER_PARAM *pParam, MS_U32 u32BroadCastType)
 {
-    return MSB1245_DVBS_S2_Demod_Restart(u8DemodIndex, pParam);
+    MS_BOOL bRet = TRUE;
+    char cTimerName[]="msb1245_timerX";
+    MS_S32* ps32TimerID = NULL;
+
+    if((ps32msb1245_TimerID!=NULL) && (pbTimerEn!=NULL))
+    {
+        ps32TimerID = ps32msb1245_TimerID + u8DemodIndex;
+        if(*ps32TimerID > 0)
+            MsOS_StopTimer (*ps32TimerID);
+    }
+    else
+    {
+        return FALSE;
+    }
+
+    bRet &= MSB1245_DVBS_S2_Demod_Restart(u8DemodIndex, pParam);
+
+
+    if(*ps32TimerID < 0)
+    {
+        if(*(pbTimerEn+u8DemodIndex))
+        {
+            cTimerName[13] = u8DemodIndex + '0';
+            *ps32TimerID = MsOS_CreateTimer (_mdrv_dmd_msb1245_timer_cb,
+                                              MSB1245_LOCK_TIMEOUT,
+                                              MSB1245_STATUS_CHK_PERIOD,
+                                              TRUE,
+                                              cTimerName);
+           if (*ps32TimerID > 0)
+               printf("[%s][%d] %s create ok\n",__FUNCTION__,__LINE__, cTimerName);
+           else
+               printf("[%s][%d] create timer failed \n",__FUNCTION__,__LINE__);
+        }
+    }
+    else
+    {
+        MsOS_StartTimer (*ps32TimerID);
+    }
+
+    return bRet;
 }
 
 
@@ -2063,8 +2296,8 @@ MS_BOOL MSB1245_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
 
     MS_BOOL     status = TRUE;
     sDMD_MSB124X_InitData sMSB1245_InitData;
-    HWI2C_PORT hwi2c_port;
     MDvr_CofdmDmd_CONFIG *pMSB1245 = (pstMSB1245 + u8DemodIndex);
+    InterruptNum IntNum;
 
     if(NULL == pParam)
         return FALSE;
@@ -2072,14 +2305,21 @@ MS_BOOL MSB1245_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
     if (pMSB1245->bInited)
         return TRUE;
 
-    pMSB1245->MSB1245_InitParam.pstTunertab = pParam->pstTunertab;
-#ifdef USE_SPI_LOAD_TO_SDRAM
-#if defined(MSPI_PATH_DETECT) && (MSPI_PATH_DETECT == 1)
-    DMD_DBG(("MSPI path is set by detected result\n"));
-#else
-    pMSB1245->u32DmxInputPath = pParam->u32DmxInputPath;
-#endif
-#endif
+    memcpy(&pMSB1245->MSB1245_InitParam, pParam,sizeof(DEMOD_MS_INIT_PARAM));
+   if(pMSB1245->MSB1245_InitParam.stDMDCon.bSupportMSPILoad)
+   {
+       if(pMSB1245->MSB1245_InitParam.stDMDCon.bEnMSPIPathDet)
+       {
+           DMD_DBG(("MSPI path is set by detected result\n"));
+       }
+       else
+           pMSB1245->u32DmxInputPath = pParam->u32DmxInputPath;
+   }
+
+   if(pMSB1245->MSB1245_InitParam.stDMDCon.u32TSVLDInterrupt != DMD_CON_INFO_NOT_DEFINE)
+   {
+      *(pbTimerEn+u8DemodIndex) = TRUE;
+   }
 
 #if defined(SUPPORT_MULTI_DEMOD) && (SUPPORT_MULTI_DEMOD == 1)
     if (pMSB1245->s32DemodHandle == -1)
@@ -2113,20 +2353,7 @@ MS_BOOL MSB1245_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
     //void MApi_Demod_HWReset(void);
     //MApi_Demod_HWReset();
 
-    hwi2c_port = getI2CPort(u8DemodIndex);
-    if (hwi2c_port < E_HWI2C_PORT_1)
-    {
-        sMSB1245_InitData.fpMSB124X_I2C_Access = msb1245_I2C_Access;
-    }
-    else if (hwi2c_port < E_HWI2C_PORT_2)
-    {
-        sMSB1245_InitData.fpMSB124X_I2C_Access = msb1245_I2C1_Access;
-    }
-    else
-    {
-        DMD_ERR(("hwi2c_port number exceeds limitation\n"));
-        return FALSE;
-    }
+    sMSB1245_InitData.fpMSB124X_I2C_Access = msb1245_I2C_Access;
     sMSB1245_InitData.u8WO_SPI_Flash = TRUE;
     sMSB1245_InitData.bPreloadDSPCodeFromMainCHIPI2C = FALSE;
     sMSB1245_InitData.bFlashWPEnable = TRUE;
@@ -2135,34 +2362,32 @@ MS_BOOL MSB1245_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
     sMSB1245_InitData.pDVBT_DSP_REG = NULL;
     sMSB1245_InitData.pDVBT2_DSP_REG = NULL;
     sMSB1245_InitData.u8WO_Sdram = TRUE;
+    sMSB1245_InitData.bEnableSPILoadCode = FALSE;
+    sMSB1245_InitData.fpMSB124x_SPIPAD_En = NULL;
 
-#ifdef USE_SPI_LOAD_TO_SDRAM
-#if defined(MSPI_PATH_DETECT) && (MSPI_PATH_DETECT == 1)
-    if(MSPI_PATH_NONE != pMSB1245->u32DmxInputPath)
-    {
-        sMSB1245_InitData.bEnableSPILoadCode = TRUE;
-        sMSB1245_InitData.fpMSB124x_SPIPAD_En = SPIPAD_EN[pMSB1245->u32DmxInputPath];
-    }
-    else
-#else
-    if(DMX_INPUT_EXT_INPUT0 == pMSB1245->u32DmxInputPath)
-    {
-        sMSB1245_InitData.bEnableSPILoadCode = TRUE;
-        sMSB1245_InitData.fpMSB124x_SPIPAD_En = msb1245_SPIPAD_TS0_En;
-    }
-    else if(DMX_INPUT_EXT_INPUT1 == pMSB1245->u32DmxInputPath)
-    {
-        sMSB1245_InitData.bEnableSPILoadCode = TRUE;
-        sMSB1245_InitData.fpMSB124x_SPIPAD_En = msb1245_SPIPAD_TS1_En;
-    }
-    else
-#endif
-#endif
-    {
-        sMSB1245_InitData.bEnableSPILoadCode = FALSE;
-        sMSB1245_InitData.fpMSB124x_SPIPAD_En = NULL;
-    }
+    bTS_SERIAL = !(pMSB1245->MSB1245_InitParam.stDMDCon.bTSIsParallel);
 
+    if(pMSB1245->MSB1245_InitParam.stDMDCon.bSupportMSPILoad)
+    {
+       if(pMSB1245->MSB1245_InitParam.stDMDCon.bEnMSPIPathDet == TRUE)
+       {
+          if(EXT_DMD_MSPI_PATH_NONE != pMSB1245->u32DmxInputPath)
+          {
+              sMSB1245_InitData.bEnableSPILoadCode = TRUE;
+              sMSB1245_InitData.fpMSB124x_SPIPAD_En = SPIPAD_EN[pMSB1245->u32DmxInputPath];
+          }
+       }
+       else if(DMX_INPUT_EXT_INPUT0 == pMSB1245->u32DmxInputPath)//manual set
+       {
+          sMSB1245_InitData.bEnableSPILoadCode = TRUE;
+          sMSB1245_InitData.fpMSB124x_SPIPAD_En = SPIPAD_EN[0];
+       }
+       else if(DMX_INPUT_EXT_INPUT1 == pMSB1245->u32DmxInputPath)
+       {
+          sMSB1245_InitData.bEnableSPILoadCode = TRUE;
+          sMSB1245_InitData.fpMSB124x_SPIPAD_En = SPIPAD_EN[1];
+       }
+    }
 
     status &= MDrv_DMD_MSB124X_Init_EX(pMSB1245->s32DemodHandle, &sMSB1245_InitData, sizeof(sDMD_MSB124X_InitData));
     if (status)
@@ -2190,39 +2415,71 @@ MS_BOOL MSB1245_Demod_Init(MS_U8 u8DemodIndex,DEMOD_MS_INIT_PARAM* pParam)
         return FALSE;
     }
 
-#if TS_PARALLEL_OUTPUT
-    MSB1245_DTV_Serial_Control(u8DemodIndex, FALSE);
-#else
-    MSB1245_DTV_Serial_Control(u8DemodIndex, TRUE);
-#endif
+    if(pMSB1245->MSB1245_InitParam.stDMDCon.bTSIsParallel)
+        MSB1245_DTV_Serial_Control(u8DemodIndex, FALSE);
+    else
+        MSB1245_DTV_Serial_Control(u8DemodIndex, TRUE);
 
     status &= msb1245_ADCPLL_IQ_SWAP(u8DemodIndex);
+    if(_mdrv_dmd_msb1245_get_IntNum(u8DemodIndex, &IntNum))
+    {
+        GET_DEMOD_ENTRY_NODE(DEMOD_MSB1245).SupportINT = TRUE;
+        MsOS_AttachInterrupt(IntNum, _mdrv_dmd_msb1245_cb);
+        MsOS_DisableInterrupt(IntNum);
 
+        if (_s32DmdEventId < 0)
+        {
+            _s32DmdEventId = MsOS_CreateEventGroup("MSB1245_Event");
+            if (_s32DmdEventId > 0)
+            {
+                DMD_DBG(("[%s][%d] Event create ok\n",__FUNCTION__,__LINE__));
+            }
+            else
+            {
+                DMD_ERR(("[%s][%d] create failed \n",__FUNCTION__,__LINE__));
+                pMSB1245->bInited = FALSE;
+                pMSB1245->bOpen= FALSE;
+                MsOS_DeleteMutex(pMSB1245->s32_MSB1245_Mutex);
+
+                return FALSE;
+            }
+        }
+
+        if(_s32DmdEventTaskId < 0)
+        {
+           _s32DmdEventTaskId = MsOS_CreateTask(_mdrv_dmd_msb1245_event_task,
+                                                0,
+                                                E_TASK_PRI_HIGHEST,
+                                                TRUE,
+                                                u8StackBuffer,
+                                                MSB1245_EVT_TASK_STACK_SIZE,
+                                                "MSB1245_EVT_TASK");
+            if (_s32DmdEventTaskId > 0)
+            {
+                DMD_DBG(("[%s][%d] Event task create ok\n",__FUNCTION__,__LINE__));
+            }
+            else
+            {
+                DMD_ERR(("[%s][%d] create task failed \n",__FUNCTION__,__LINE__));
+                pMSB1245->bInited = FALSE;
+                pMSB1245->bOpen= FALSE;
+                MsOS_DeleteMutex(pMSB1245->s32_MSB1245_Mutex);
+                MsOS_DeleteEventGroup(_s32DmdEventId);
+
+                return FALSE;
+            }
+        }
+    }
     return status;
 }
 
-static MS_BOOL _MSB1245_GetReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 *pu8Data)
+static MS_BOOL msb1245_GetReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 *pu8Data)
 {
     MS_BOOL bRet=TRUE;
     MS_U8 u8MsbData[6];
-    HWI2C_PORT hwi2c_port;
     mapi_i2c *iptr;
 
-    hwi2c_port = getI2CPort(u8DemodIndex);
-    if (hwi2c_port < E_HWI2C_PORT_1)
-    {
-        iptr = mapi_i2c_GetI2C_Dev();
-    }
-    else if (hwi2c_port < E_HWI2C_PORT_2)
-    {
-        iptr = mapi_i2c1_GetI2C_Dev();
-    }
-    else
-    {
-        DMD_ERR(("hwi2c_port number exceeds limitation\n"));
-        return FALSE;
-    }
-
+    iptr = mapi_i2c_GetI2C_Dev();
     if (iptr == NULL)
     {
         return FALSE;
@@ -2247,25 +2504,15 @@ static MS_BOOL _MSB1245_GetReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 *pu8Dat
     return bRet;
 }
 
-static MS_BOOL _MSB1245_SetReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 u8Data)
+static MS_BOOL msb1245_SetReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 u8Data)
 {
     MS_BOOL bRet=TRUE;
     MS_U8 u8MsbData[6];
-    HWI2C_PORT hwi2c_port;
     mapi_i2c *iptr;
 
-    hwi2c_port = getI2CPort(u8DemodIndex);
-    if (hwi2c_port < E_HWI2C_PORT_1)
+    iptr = mapi_i2c_GetI2C_Dev();
+    if (iptr == NULL)
     {
-        iptr = mapi_i2c_GetI2C_Dev();
-    }
-    else if (hwi2c_port < E_HWI2C_PORT_2)
-    {
-        iptr = mapi_i2c1_GetI2C_Dev();
-    }
-    else
-    {
-        DMD_ERR(("hwi2c_port number exceeds limitation\n"));
         return FALSE;
     }
 
@@ -2292,19 +2539,17 @@ static MS_BOOL _MSB1245_SetReg(MS_U8 u8DemodIndex, MS_U16 u16Addr, MS_U8 u8Data)
     return bRet;
 }
 
-#ifdef USE_SPI_LOAD_TO_SDRAM
-#if defined(MSPI_PATH_DETECT) && (MSPI_PATH_DETECT == 1)
-static MS_BOOL _MSB1245_SetReg2Bytes(MS_U8 u8DemodIndex,MS_U16 u16Addr, MS_U16 u16Data)
+
+static MS_BOOL msb1245_SetReg2Bytes(MS_U8 u8DemodIndex,MS_U16 u16Addr, MS_U16 u16Data)
 {
     MS_BOOL bRet=TRUE;
 
-    bRet &= _MSB1245_SetReg(u8DemodIndex, u16Addr, (MS_U8)u16Data&0x00ff);
-    bRet &= _MSB1245_SetReg(u8DemodIndex, u16Addr + 0x0001, (MS_U8)(u16Data>>8)&0x00ff);
+    bRet &= msb1245_SetReg(u8DemodIndex, u16Addr, (MS_U8)u16Data&0x00ff);
+    bRet &= msb1245_SetReg(u8DemodIndex, u16Addr + 0x0001, (MS_U8)(u16Data>>8)&0x00ff);
 
     return bRet;
 }
-#endif
-#endif
+
 
 MS_U16 MSB1245_Demod_ReadReg(MS_U8 u8DemodIndex, MS_U16 RegAddr)
 {
@@ -2336,24 +2581,34 @@ MS_BOOL MSB1245_Demod_WriteReg(MS_U8 u8DemodIndex,MS_U16 RegAddr, MS_U16 RegData
 }
 
 #define MSB1245_CHIP_ID 0x91
+static MS_BOOL _msb1245_I2C_CH3_reset(MS_U8 u8DemodIndex)
+{
+    //Reset twice to check if reset pin is correct
+    _msb1245_hw_reset(u8DemodIndex);
+    if(!MSB1245_I2C_CH_Reset(u8DemodIndex,3))
+    {
+        DMD_ERR(("[MSB124X] I2C_CH_Reset fail \n"));
+        return FALSE;
+    }
+    else
+    {
+        _msb1245_hw_reset(u8DemodIndex);
+        if(!MSB1245_I2C_CH_Reset(u8DemodIndex,3))
+        {
+            DMD_ERR(("[MSB124X] I2C_CH_Reset fail \n"));
+            return FALSE;
+        }
+   }
+   return TRUE;
+}
+
 MS_BOOL MSB1245_Check_Exist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
 {
     MS_U8 u8_tmp = 0;
     MS_U8 i, u8I2C_Port = 0;
     MDvr_CofdmDmd_CONFIG *pMSB1245;
-    SLAVE_ID_TBL *pMSB1245_ID_TBL;
-    HWI2C_PORT hwi2c_port;
-
-    hwi2c_port = getI2CPort(u8DemodIndex);
-    if (hwi2c_port < E_HWI2C_PORT_1)
-    {
-        u8I2C_Port = 0;
-    }
-    else if (hwi2c_port < E_HWI2C_PORT_2)
-    {
-        u8I2C_Port = 1;
-    }
-
+    SLAVE_ID_USAGE *pMSB1245_ID_TBL;
+    MS_IIC_PORT ePort = 0;
 
     if(!MSB1245_Variables_alloc())
     {
@@ -2363,56 +2618,65 @@ MS_BOOL MSB1245_Check_Exist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
     else
     {
         pMSB1245 = (pstMSB1245 + u8DemodIndex);
-        pMSB1245_ID_TBL = (pstMSB1245_slave_ID_TBL + u8I2C_Port);
     }
 
-    for(i=0 ; i<(sizeof(pMSB1245_ID_TBL->stID_Tbl)/sizeof(SLAVE_ID_USAGE)); i++)
+    get_i2c_port(u8DemodIndex, &ePort);
+    if((int)ePort < (int)E_MS_IIC_SW_PORT_0)
     {
+       u8I2C_Port = (MS_U8)ePort/8;
+    }
+    else if((int)ePort < (int)E_MS_IIC_PORT_NOSUP)//sw i2c
+    {
+       u8I2C_Port = E_MS_IIC_SW_PORT_0/8 + (ePort - E_MS_IIC_SW_PORT_0);
+    }
+
+    i=0;
+    do
+    {
+        pMSB1245_ID_TBL = pstMSB1245_slave_ID_TBL + u8I2C_Port*sizeof(MSB1245_possible_slave_ID)/sizeof(SLAVE_ID_USAGE) + i;
         DMD_DBG(("### %x\n",i));
-        if(pMSB1245_ID_TBL->stID_Tbl[i].u8SlaveID == 0xFF)
+        if(pMSB1245_ID_TBL->u8SlaveID == 0xFF)
         {
             DMD_DBG(("[MSB1245] All Slave ID have tried but not detect\n"));
-            return FALSE;
+            break;
         }
 
-        if(pMSB1245_ID_TBL->stID_Tbl[i].bInUse)
+        if(pMSB1245_ID_TBL->bInUse)
         {
-            DMD_DBG(("[MSB1245] Slave ID 0x%x have been used\n", pMSB1245_ID_TBL->stID_Tbl[i].u8SlaveID));
+            DMD_DBG(("[MSB1245] Slave ID 0x%x have been used\n", pMSB1245_ID_TBL->u8SlaveID));
+            i++;
             continue;
         }
         else
         {
-            pMSB1245->u8SlaveID = pMSB1245_ID_TBL->stID_Tbl[i].u8SlaveID;
-            DMD_DBG(("[MSB1245] Try slave ID 0x%x\n",pMSB1245_ID_TBL->stID_Tbl[i].u8SlaveID));
+            pMSB1245->u8SlaveID = pMSB1245_ID_TBL->u8SlaveID;
+            DMD_DBG(("[MSB1245] Try slave ID 0x%x\n",pMSB1245_ID_TBL->u8SlaveID));
         }
 
-        _msb1245_hw_reset(u8DemodIndex);
-        if(!MSB1245_I2C_CH_Reset(u8DemodIndex,3))
+        if(_msb1245_I2C_CH3_reset(u8DemodIndex))
         {
-            DMD_ERR(("[MSB1245] I2C_CH_Reset fail \n"));
-        }
-        else
-        {
-            DMD_DBG(("[MSB1246] I2C slave id :%x \n",pMSB1245->u8SlaveID ));
-            if(_MSB1245_GetReg(u8DemodIndex,0x0900,&u8_tmp))
+            DMD_DBG(("[MSB1245] I2C slave id :%x \n",pMSB1245->u8SlaveID ));
+            if(msb1245_GetReg(u8DemodIndex,0x0900,&u8_tmp))
             {
                 DMD_DBG(("[MSB1245] read id :%x \n",u8_tmp ));
                 if(u8_tmp == MSB1245_CHIP_ID)
-                {                     
-                    pMSB1245_ID_TBL->stID_Tbl[i].bInUse = TRUE;
+                {
+                    pMSB1245_ID_TBL->bInUse = TRUE;
                     break;
                 }
             }
         }
-    }
+
+        i++;
+    }while((pMSB1245_ID_TBL->u8SlaveID) != 0xFF);
 
 
     if(u8_tmp == MSB1245_CHIP_ID)
     {
         u8MSB1245_DevCnt++;
         *pu8SlaveID = pMSB1245->u8SlaveID;
-        _MSB1245_GetReg(u8DemodIndex,0x0905,&u8_tmp);
-                
+        msb1245_GetReg(u8DemodIndex,0x0905,&u8_tmp);
+
         if((u8_tmp>>2) & 0x01)
         {
             DMD_DBG(("[MSB1245] This is External DMD \n"));
@@ -2424,61 +2688,63 @@ MS_BOOL MSB1245_Check_Exist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
             pMSB1245->bIsMCP_DMD = TRUE;
         }
 
-#ifdef USE_SPI_LOAD_TO_SDRAM
-#if defined(MSPI_PATH_DETECT) && (MSPI_PATH_DETECT == 1)
-        //check TS path
-        MDrv_DMD_SSPI_Init(0);
-        MDrv_MasterSPI_CsPadConfig(0, 0xff);
-        MDrv_MasterSPI_MaxClkConfig(0, 27);
-
-        _MSB1245_SetReg2Bytes(u8DemodIndex,0x0900+(0x28)*2, 0x0000);
-        _MSB1245_SetReg2Bytes(u8DemodIndex,0x0900+(0x2d)*2, 0x00ff);
-        // ------enable to use TS_PAD as SSPI_PAD
-        // [0:0] reg_en_sspi_pad
-        // [1:1] reg_ts_sspi_en, 1: use TS_PAD as SSPI_PAD
-        _MSB1245_SetReg2Bytes(u8DemodIndex,0x0900+(0x3b)*2, 0x0002);
-
-        // ------- MSPI protocol setting
-        // [8] cpha
-        // [9] cpol
-        _MSB1245_GetReg(u8DemodIndex,0x0900+(0x3a)*2+1,&u8_tmp);
-        u8_tmp &= 0xFC;
-        _MSB1245_SetReg(u8DemodIndex,0x0900+(0x3a)*2+1, u8_tmp);
-
-        // ------- MSPI driving setting
-        _MSB1245_SetReg2Bytes(u8DemodIndex,0x0900+(0x2c)*2, 0x07ff);
-
-
-        for(i=0; i<MSPI_PATH_MAX; i++)
+        if(pMSB1245->MSB1245_InitParam.stDMDCon.bSupportMSPILoad)
         {
-            SPIPAD_EN[i](TRUE);        
-
-            MDrv_DMD_SSPI_RIU_Read8(0x900, &u8_tmp);
-            MDrv_DMD_SSPI_RIU_Read8(0x900, &u8_tmp);
-            
-            if(u8_tmp == MSB1245_CHIP_ID)
+            if(pMSB1245->MSB1245_InitParam.stDMDCon.bEnMSPIPathDet)
             {
-                pMSB1245->u32DmxInputPath = (MS_U32)i;
-                SPIPAD_EN[i](FALSE);
-                DMD_DBG(("Get MSB1245 chip ID by MSPI on TS%d\n", (int)pMSB1245->u32DmxInputPath));
-                break;
-            }
-            else
-            {
-                DMD_DBG(("Cannot get MSB1245 chip ID by MSPI on TS%x\n", i));
-                if( i == (MSPI_PATH_MAX - 1))
-                    pMSB1245->u32DmxInputPath = MSPI_PATH_NONE;
-            }
+                    //check TS path
+                    MDrv_DMD_SSPI_Init(0);
+                    MDrv_MasterSPI_CsPadConfig(0, 0xff);
+                    MDrv_MasterSPI_MaxClkConfig(0, 27);
 
-            SPIPAD_EN[i](FALSE);
+                    msb1245_SetReg2Bytes(u8DemodIndex,0x0900+(0x28)*2, 0x0000);
+                    msb1245_SetReg2Bytes(u8DemodIndex,0x0900+(0x2d)*2, 0x00ff);
+                    // ------enable to use TS_PAD as SSPI_PAD
+                    // [0:0] reg_en_sspi_pad
+                    // [1:1] reg_ts_sspi_en, 1: use TS_PAD as SSPI_PAD
+                    msb1245_SetReg2Bytes(u8DemodIndex,0x0900+(0x3b)*2, 0x0002);
+
+                    // ------- MSPI protocol setting
+                    // [8] cpha
+                    // [9] cpol
+                    msb1245_GetReg(u8DemodIndex,0x0900+(0x3a)*2+1,&u8_tmp);
+                    u8_tmp &= 0xFC;
+                    msb1245_SetReg(u8DemodIndex,0x0900+(0x3a)*2+1, u8_tmp);
+
+                    // ------- MSPI driving setting
+                    msb1245_SetReg2Bytes(u8DemodIndex,0x0900+(0x2c)*2, 0x07ff);
+
+
+                    for(i=0; i<EXT_DMD_MSPI_PATH_MAX; i++)
+                    {
+                        SPIPAD_EN[i](TRUE);
+
+                        MDrv_DMD_SSPI_RIU_Read8(0x900, &u8_tmp);
+                        MDrv_DMD_SSPI_RIU_Read8(0x900, &u8_tmp);
+
+                        if(u8_tmp == MSB1245_CHIP_ID)
+                        {
+                            pMSB1245->u32DmxInputPath = (MS_U32)i;
+                            SPIPAD_EN[i](FALSE);
+                            DMD_DBG(("Get MSB1245 chip ID by MSPI on TS%d\n", (int)pMSB1245->u32DmxInputPath));
+                            break;
+                        }
+                        else
+                        {
+                            DMD_DBG(("Cannot get MSB1245 chip ID by MSPI on TS%x\n", i));
+                            if( i == (EXT_DMD_MSPI_PATH_MAX - 1))
+                                pMSB1245->u32DmxInputPath = EXT_DMD_MSPI_PATH_NONE;
+                        }
+
+                        SPIPAD_EN[i](FALSE);
+                    }
+
+                    // ------disable to use TS_PAD as SSPI_PAD after load code
+                    // [0:0] reg_en_sspi_pad
+                    // [1:1] reg_ts_sspi_en, 1: use TS_PAD as SSPI_PAD
+                    msb1245_SetReg2Bytes(u8DemodIndex, 0x0900 + (0x3b) * 2, 0x0001);
+            }
         }
-
-        // ------disable to use TS_PAD as SSPI_PAD after load code
-        // [0:0] reg_en_sspi_pad
-        // [1:1] reg_ts_sspi_en, 1: use TS_PAD as SSPI_PAD
-        _MSB1245_SetReg2Bytes(u8DemodIndex, 0x0900 + (0x3b) * 2, 0x0001);
-#endif //MSPI_PATH_DETECT
-#endif
         return TRUE;
     }
     else
@@ -2490,26 +2756,176 @@ MS_BOOL MSB1245_Check_Exist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
 
 }
 
-MS_BOOL MSB1245_Demod_GetRollOff(MS_U8 u8DemodIndex, MS_U8 *pRollOff)
+MS_BOOL MSB1245_Demod_GetTSBitRate(MS_U8 u8DemodIndex,MS_U16* u16TsBitRate)
 {
-    MS_BOOL bRet = TRUE;
-    MS_U16 u16Address;
-    MS_U8 u8Data;
+    MS_BOOL bRet=true;
+    MS_BOOL bPilot;
+    MS_U8 u8Data,u8Constellation;
+    MS_U16 u16Address,u16SymbolRate;
+    float CR, BitRate, kbch;
     MDvr_CofdmDmd_CONFIG *pMSB1245 = (pstMSB1245 + u8DemodIndex);
 
-    u16Address = 0x1B1E;
-    bRet &= MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
+    if (!pMSB1245)
+    {
+        DMD_ERR(("pMSB1245 error !\n"));
+        return FALSE;
+    }
+    if ((!pMSB1245->bInited) || (!pMSB1245->bOpen))
+    {
+        DMD_ERR(("[%s]pMSB1245 have not inited !!!\n", __FUNCTION__));
+        return FALSE;
+    }
 
-    if ((u8Data & 0x03) == 0x00)
-        *pRollOff = 0;  //Rolloff 0.35
-    else if (((u8Data & 0x03) == 0x01) || ((u8Data & 0x03) == 0x03))
-        *pRollOff = 1;  //Rolloff 0.25
+    if (MsOS_ObtainMutex(pMSB1245->s32_MSB1245_Mutex, COFDMDMD_MUTEX_TIMEOUT) == FALSE)
+    {
+        DMD_ERR(("MSB1245_Demod_GetTSBitRate:Obtain mutex failed !!!\n"));
+        return FALSE;
+    }
+    if(!MSB1245_Lock_S(u8DemodIndex))
+    {
+        MsOS_ReleaseMutex(pMSB1245->s32_MSB1245_Mutex);
+        return FALSE;
+    }
+
+    //get SR
+    u16Address=0x0B53;//DIG_DBG_2
+    bRet&=MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
+    u16SymbolRate=u8Data;
+    u16Address=0x0B52;//DIG_DBG_3
+    bRet&=MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
+    u16SymbolRate=(u16SymbolRate<<8) | u8Data;
+
+    //get parameter
+    if(pMSB1245->bIsDVBS2)
+    {
+       //get pilot on/off
+       u16Address=0x1b60;
+       bRet&=MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
+       if((u8Data & 0x10) == 0x10)
+       {
+           bPilot=1;
+       }
+       else
+       {
+           bPilot=0;
+       }
+       //get Mod
+       u16Address=0x1B80;
+       bRet&=MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
+       switch((u8Data & 0x30) >> 4)
+       {
+           case 0x00:
+                u8Constellation= 2;
+                break;
+           case 0x01:
+                u8Constellation= 3;
+                break;
+           case 0x02:
+                u8Constellation= 4;
+           default:
+                u8Constellation= 2;
+                bRet = FALSE;
+                break;
+       }
+
+       //get kbch
+       u16Address=0x1BD7;
+       bRet&=MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
+       switch(u8Data & 0x3C)
+       {
+           case 0x00:
+                kbch = 16008;
+                break;
+           case 0x04:
+                kbch = 21408;
+                break;
+           case 0x08:
+                kbch = 25728;
+                break;
+           case 0x0C:
+                kbch = 32208;
+                break;
+           case 0x10:
+                kbch = 38688;
+                break;
+           case 0x14:
+                kbch = 43040;
+                break;
+           case 0x18:
+                kbch = 48408;
+                break;
+           case 0x1C:
+                kbch = 51648;
+                break;
+           case 0x20:
+                kbch = 53840;
+                break;
+           case 0x24:
+                kbch = 57472;
+                break;
+           case 0x28:
+                kbch = 58192;
+                break;
+           default:
+                kbch = 16008;
+                bRet = FALSE;
+                break;
+       }
+       //calculate Bit Rate
+       if (bPilot == 1)
+       {
+             if (u8Constellation==2)
+             {
+                 BitRate = (kbch-80)/((float)(64800/u8Constellation+90+36*22)/(float)u16SymbolRate);
+             }
+             else
+             {
+                 BitRate = (kbch-80)/((float)(64800/u8Constellation+90+36*(15-1))/(float)u16SymbolRate);
+             }
+       }
+       else
+       {
+            BitRate = (kbch-80)/((float)(64800/u8Constellation+90)/(float)u16SymbolRate);
+       }
+    }
     else
-        *pRollOff = 2;  //Rolloff 0.20
+    {
+       //get CR
+       u16Address=0x1C84;
+       bRet&=MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
+       switch(u8Data & 0x07)
+       {
+           case 0x00:
+                CR = (1.0/2.0);
+                break;
+           case 0x01:
+                CR = (2.0/3.0);
+                break;
+           case 0x02:
+                CR = (3.0/4.0);
+                break;
+           case 0x03:
+                CR = (5.0/6.0);
+                break;
+           case 0x04:
+                CR = (7.0/8.0);
+                break;
+           default:
+                CR = (1.0/2.0);
+                bRet = FALSE;
+                break;
+       }
+       //get Mod
+       u8Constellation= 2;
+       //calculate Bit Rate
+       BitRate =CR*(188.0/204.0)*(float)u16SymbolRate*(float)u8Constellation;
+    }
 
-    DMD_DBG(("MDrv_Demod_GetRollOff:%d\n", *pRollOff));
+    * u16TsBitRate=BitRate;
+    //DMD_DBG(("MSB1245_Demod_GetTSBitRate: %d\n", * u16TsBitRate));
+
+    MsOS_ReleaseMutex(pMSB1245->s32_MSB1245_Mutex);
     return bRet;
-
 }
 
 
@@ -2518,6 +2934,9 @@ MS_BOOL MSB1245_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE f
 {
     MS_BOOL bret = TRUE;
     MDvr_CofdmDmd_CONFIG *pMSB1245 = (pstMSB1245 + u8DemodIndex);
+    DEMOD_EXT_FUNCTION_PARAM* pstData;
+    DEMOD_CON_CONFIG* pstCon;
+    InterruptNum IntNum;
 
     switch(fuction_type)
     {
@@ -2528,6 +2947,13 @@ MS_BOOL MSB1245_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE f
         bret &= MSB1245_Demod_Close(u8DemodIndex);
         break;
     case DEMOD_EXT_FUNC_FINALIZE:
+        if(!pstMSB1245)
+        {
+          DMD_ERR(("pMSB1245 error !\n"));
+          bret = FALSE;
+          break;
+        }
+
         if(pMSB1245->s32_MSB1245_Mutex >= 0)
         {
             bret &= MsOS_DeleteMutex(pMSB1245->s32_MSB1245_Mutex);
@@ -2543,8 +2969,57 @@ MS_BOOL MSB1245_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE f
         break;
     case DEMOD_EXT_FUNC_GET_PACKGE_INFO:
         *(MS_BOOL *)(data) = pMSB1245->bIsMCP_DMD;
-        break;    
-           
+        break;
+    case DEMOD_EXT_FUNC_POWER_ON_OFF:
+        _msb1245_power_onoff(u8DemodIndex, *(MS_BOOL*)(data));
+        break;
+
+#if MS_DVBS_INUSE
+    case DEMOD_EXT_FUNC_SET_DISEQC_TX_22K_OFF:
+        if(!pstMSB1245)
+        {
+          DMD_ERR(("pMSB1245 error !\n"));
+          bret = FALSE;
+          break;
+        }
+        pMSB1245->bDiSeqc_Tx22K_Off = *(MS_BOOL*)(data);
+        if(pMSB1245->bInited == TRUE)
+        {
+            bret &= MSB1245_DiSEqC_Init(u8DemodIndex);
+        }
+        break;
+#endif
+    case DEMOD_EXT_FUNC_GET_IFAGC_OUT:
+        bret &= msb1245_AGC_Info(u8DemodIndex, DBG_AGC_OUT, (MS_U16*)(data));
+        break;
+
+    case DEMOD_EXT_FUNC_GET_BIT_RATE:
+        bret &= MSB1245_Demod_GetTSBitRate(u8DemodIndex, (MS_U16*)(data));
+        break;
+    case DEMOD_EXT_FUNC_SET_INTERRUPT_CALLBACK:
+        pMSB1245->MSB1245_InitParam.fpCB= (fpDemodCB)(data);
+        break;
+
+    case DEMOD_EXT_FUNC_SET_CON_INFO:
+        pstData = (DEMOD_EXT_FUNCTION_PARAM*)data;
+        u8max_dev_num = pstData->u32Param1;
+        pstCon = (DEMOD_CON_CONFIG*)(pstData->pParam);
+        if(!MSB1245_Variables_alloc())
+        {
+            MSB1245_Variables_free();
+            return FALSE;
+        }
+        else
+        {
+            pMSB1245 = (pstMSB1245 + u8DemodIndex);
+            memcpy(&pMSB1245->MSB1245_InitParam.stDMDCon, pstCon,sizeof(DEMOD_CON_CONFIG));
+            if(_mdrv_dmd_msb1245_get_IntNum(u8DemodIndex, &IntNum))
+            {
+                GET_DEMOD_ENTRY_NODE(DEMOD_MSB1245).SupportINT = TRUE;
+            }
+            bTS_SERIAL = !pMSB1245->MSB1245_InitParam.stDMDCon.bTSIsParallel;//Will be used in MSPI path detection only
+        }
+        break;
     default:
         DMD_DBG(("Request extension function (%x) does not exist\n",fuction_type));
         break;
@@ -2583,10 +3058,14 @@ MS_BOOL MSB1245_DiSEqC_Init(MS_U8 u8DemodIndex)
        u8Data=(u8Data&(~0x01));
        bRet&=MSB1245_WriteReg(pMSB1245, 0x976, u8Data);
     }
-    //Disable DiSeqc tone mode, depend on LNB control IC
-    bRet&=MSB1245_ReadReg(pMSB1245, 0xDD7, &u8Data);
-    u8Data|= 0x80;
-    bRet&=MSB1245_WriteReg(pMSB1245, 0xDD7, u8Data);
+
+    if(pMSB1245->bDiSeqc_Tx22K_Off)
+    {
+        //Disable DiSeqc tone mode, depend on LNB control IC
+        bRet&=MSB1245_ReadReg(pMSB1245, 0xDD7, &u8Data);
+        u8Data|= 0x80;
+        bRet&=MSB1245_WriteReg(pMSB1245, 0xDD7, u8Data);
+    }
     return bRet;
 }
 
@@ -3208,7 +3687,7 @@ MS_BOOL MSB1245_Demod_GetParam(MS_U8 u8DemodIndex,DEMOD_MS_FE_CARRIER_PARAM* pPa
     MS_BOOL bRet=TRUE;
     MDvr_CofdmDmd_CONFIG *pMSB1245 = (pstMSB1245 + u8DemodIndex);
     MS_U16 u16Address;
-    MS_U8 u8Data, u8RollOff;
+    MS_U8 u8Data;
 
     if (!pMSB1245)
     {
@@ -3237,6 +3716,14 @@ MS_BOOL MSB1245_Demod_GetParam(MS_U8 u8DemodIndex,DEMOD_MS_FE_CARRIER_PARAM* pPa
 
     if(pParam->SatParam.bIsDVBS2)
     {
+       //spectrum inverse
+       bRet&=msb1245_SetInnerDBGPort(u8DemodIndex, 0x0A);
+       u16Address=0x1B65;
+       bRet&=MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
+       pParam->SatParam.eIQ_Mode = (DEMOD_EN_SAT_IQ_MODE)((u8Data&0x40)>>6);
+
+
+       bRet&=msb1245_SetInnerDBGPort(u8DemodIndex, 0x00);
        u16Address=0x1BD7;
        bRet&=MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
        switch(u8Data & 0x3C)
@@ -3282,6 +3769,23 @@ MS_BOOL MSB1245_Demod_GetParam(MS_U8 u8DemodIndex,DEMOD_MS_FE_CARRIER_PARAM* pPa
        u16Address=0x1B80;
        bRet&=MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
        pParam->SatParam.eConstellation= (DEMOD_EN_SAT_CONSTEL_TYPE)((u8Data & 0x30) >> 4);
+
+       u16Address = 0x2986;
+       bRet &= MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
+       switch((u8Data & 0xC0)>>6)
+       {
+            case 0:
+                pParam->SatParam.eRollOff = DEMOD_SAT_RO_35;
+                break;
+            case 1:
+                pParam->SatParam.eRollOff = DEMOD_SAT_RO_25;
+                break;
+            case 2:
+                pParam->SatParam.eRollOff = DEMOD_SAT_RO_20;
+                break;
+            default:
+                break;
+       }
     }
     else
     {
@@ -3289,11 +3793,16 @@ MS_BOOL MSB1245_Demod_GetParam(MS_U8 u8DemodIndex,DEMOD_MS_FE_CARRIER_PARAM* pPa
        bRet&=MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
        pParam->SatParam.eCodeRate = (DEMOD_EN_CONV_CODE_RATE_TYPE)(u8Data & 0x07);
        pParam->SatParam.eConstellation= DEMOD_SAT_QPSK;
+       pParam->SatParam.eRollOff = DEMOD_SAT_RO_35;
+
+       //spectrum inverse
+       u16Address=0x1C82;
+       bRet&=MSB1245_ReadReg(pMSB1245, u16Address, &u8Data);
+       pParam->SatParam.eIQ_Mode = (DEMOD_EN_SAT_IQ_MODE)((u8Data&0x04)>>2);
+
     }
 
     pParam->SatParam.fCFO = MSB1245_Demod_CarrierFrequencyOffset(u8DemodIndex);
-    bRet&=MSB1245_Demod_GetRollOff(u8DemodIndex, &u8RollOff);
-    pParam->SatParam.eRollOff=(DEMOD_EN_SAT_ROLL_OFF_TYPE)u8RollOff;
     //DMD_DBG(("Is DVBS2: %x\n", pParam->SatParam.bIsDVBS2));
     //DMD_DBG(("DEMOD_EN_CONV_CODE_RATE_TYPE: %x\n", pParam->SatParam.eCodeRate));
     //DMD_DBG(("DEMOD_EN_SAT_CONSTEL_TYPE: %x\n", pParam->SatParam.eConstellation));
@@ -3301,16 +3810,30 @@ MS_BOOL MSB1245_Demod_GetParam(MS_U8 u8DemodIndex,DEMOD_MS_FE_CARRIER_PARAM* pPa
     return bRet;
 }
 
+#ifdef FE_AUTO_TEST
+MS_BOOL  MSB1245_Demod_AutoTestReadReg(MS_U8 u8DemodIndex, MS_U16 RegAddr, MS_U8 *pu8Data)
+{
+    *pu8Data = (MS_U8)MSB1245_Demod_ReadReg(u8DemodIndex, RegAddr);
+    return TRUE;
+}
+
+MS_BOOL MSB1245_Demod_AutoTestWriteReg(MS_U8 u8DemodIndex, MS_U16 RegAddr, MS_U16 RegData)
+{
+    return MSB1245_Demod_WriteReg(u8DemodIndex, RegAddr, RegData);
+}
+#endif
 
 DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB1245) DDI_DRV_TABLE_ENTRY(demodtab) =
 {
     .name                         = "DEMOD_MSB1245",
     .data                         = DEMOD_MSB1245,
+    .SupportINT                   = FALSE,
     .init                         = MSB1245_Demod_Init,
     .GetLock                      = MSB1245_Demod_GetLock,
     .GetSNR                       = MSB1245_Demod_GetSNR,
     .GetBER                       = MSB1245_Demod_GetBER,
     .GetPWR                       = MSB1245_Demod_GetPWR,
+    .GetSSI                       = MSB1245_Demod_GetSSI,
     .GetQuality                   = MSB1245_Demod_GetSignalQuality,
     .GetParam                     = MSB1245_Demod_GetParam,
     .Restart                      = MSB1245_Demod_Restart,
@@ -3320,6 +3843,10 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB1245) DDI_DRV_TABLE_ENTRY(dem
     .Extension_Function           = MSB1245_Extension_Function,
     .Extension_FunctionPreSetting = NULL,
     .Get_Packet_Error             = MSB1245_Get_Packet_Error,
+#ifdef FE_AUTO_TEST
+     .ReadReg                     = MSB1245_Demod_AutoTestReadReg,
+     .WriteReg                    = MSB1245_Demod_AutoTestWriteReg,
+#endif
 #if MS_DVBT2_INUSE
     .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
     .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
@@ -3342,7 +3869,10 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_MSB1245) DDI_DRV_TABLE_ENTRY(dem
     .DiSEqCGetLNBOut              = MSB1245_DiSEqC_GetLNBOut,
     .DiSEqCSet22kOnOff            = MSB1245_DiSEqC_Set22kOnOff,
     .DiSEqCGet22kOnOff            = MSB1245_DiSEqC_Get22kOnOff,
-    .DiSEqC_SendCmd               = MSB1245_DiSEqC_SendCmd
+    .DiSEqC_SendCmd               = MSB1245_DiSEqC_SendCmd,
+    .DiSEqC_GetReply              = MDrv_Demod_null_DiSEqC_GetReply,
+    .GetISIDInfo                  = MDrv_Demod_null_GetVCM_ISID_INFO,
+    .SetISID                      = MDrv_Demod_null_SetVCM_ISID
 #endif
 };
 

@@ -116,7 +116,7 @@ int MxL603_init_main(MS_U8 u8TunerIndex)
 
     status = MxLWare603_API_CfgDrvInit(devId, (void *) &device_context[devId]);
 
-    // if you donÂ’t want to pass any oem data, just use NULL as a parameter:
+    // if you don’t want to pass any oem data, just use NULL as a parameter:
     // status = MxLWare603_API_CfgDrvInit(devId, NULL);
     }
 

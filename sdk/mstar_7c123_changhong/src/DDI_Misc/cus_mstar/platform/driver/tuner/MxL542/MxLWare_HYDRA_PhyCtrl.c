@@ -28,7 +28,7 @@
 #include "MxLWare_HYDRA_Commands.h"
 #include "MxLWare_HYDRA_Registers.h"
 
-static MXL_HYDRA_CONTEXT_T mxlware_hydra_devices[MXL_HYDRA_MAX_NUM_DEVICES];
+static MXL_HYDRA_CONTEXT_T mxlware_hydra_devices[MXL_HYDRA_MAX_NUM_DEVICES] = {{0, }, };
 
 /**
  ************************************************************************
@@ -68,7 +68,35 @@ MXL_STATUS_E MxL_Ctrl_GetTsID(MXL_HYDRA_CONTEXT_T *devHandlePtr, MXL_HYDRA_DEMOD
   else
     mxlStatus = MXL_INVALID_PARAMETER;
   // return right physical TS id connected to corrsponding logical demod id
-  MXL_HYDRA_PRINT("%s: TSID = dev%d log%d phys%d\n", __FUNCTION__, devHandlePtr->deviceType, logicalDemodId, *physicalDemodId);
+  MXLDBG2(MXL_HYDRA_PRINT("%s: TSID = dev%d log%d phys%d\n", __FUNCTION__, devHandlePtr->deviceType, logicalDemodId, *physicalDemodId););
+  return mxlStatus;
+}
+
+MXL_STATUS_E MxL_Ctrl_GetPhyTsID(UINT8 devId, MXL_HYDRA_DEMOD_ID_E physicalDemodId, MXL_HYDRA_TS_ID_E *physicalTsId)
+{
+  MXL_STATUS_E mxlStatus = MXL_SUCCESS;
+  UINT32 xbarSetting;
+  MXLDBG2(UINT32 i;)
+  MXL_HYDRA_TS_ID_E tsId;
+  UINT8 count = 0;
+
+  mxlStatus = MxLWare_HYDRA_ReadRegister(devId, XPT_DMD0_BASEADDR, &xbarSetting);
+  if (mxlStatus == MXL_SUCCESS)
+  {
+    for (tsId = MXL_HYDRA_TS_ID_0; tsId < MXL_HYDRA_TS_MAX; tsId++)
+    {  
+      if ((xbarSetting & 0x7) == physicalDemodId) {
+        physicalTsId[++count] = tsId;
+      }
+      xbarSetting = xbarSetting >> 4;
+    }
+    physicalTsId[0] = count;
+  }
+
+  MXLDBG2(MXL_HYDRA_PRINT("%s: phyDmd: %d ", __FUNCTION__, physicalDemodId);
+  for (i = 0; i < count; i++)
+    MXL_HYDRA_PRINT("phyTs: %d\n", physicalTsId[i]);
+    );
   return mxlStatus;
 }
 
@@ -141,7 +169,7 @@ MXL_STATUS_E MxLWare_HYDRA_SendCommand(UINT8 devId, UINT32 size, UINT8 *cmdBuffP
 
     mxlStatus |= MxLWare_HYDRA_OEM_Lock(devId);
 
-    //MXL_HYDRA_PRINT("%s: Command Id = %d  0x%02X\n", __FUNCTION__, cmdBuffPtr[3], cmdBuffPtr[3]);
+    MXLDBG2(MXL_HYDRA_PRINT("%s: Command Id = %d  0x%02X\n", __FUNCTION__, cmdBuffPtr[3], cmdBuffPtr[3]););
 
     mxlStatus |= MxLWare_HYDRA_OEM_I2cWrite(devId, (UINT16)size, cmdBuffPtr);
 
@@ -198,7 +226,7 @@ MXL_STATUS_E MxLWare_HYDRA_WriteRegister(UINT8 devId, UINT32 regAddress, UINT32 
 
   mxlStatus |= MxLWare_HYDRA_OEM_I2cWrite(devId, (MXL_HYDRA_REG_WRITE_LEN), &data[0]);
 
-  //MXL_HYDRA_PRINT("\n%s: Reg Addr = 0x%08X - 0x%08X\n", __FUNCTION__, regAddress, regData);
+  MXLDBG3(MXL_HYDRA_PRINT("\n%s: Reg Addr = 0x%08X - 0x%08X\n", __FUNCTION__, regAddress, regData););
 
   mxlStatus |= MxLWare_HYDRA_OEM_Unlock(devId);
 
@@ -250,7 +278,7 @@ MXL_STATUS_E MxLWare_HYDRA_ReadRegister(UINT8 devId, UINT32 regAddress, UINT32 *
   mxlStatus |= MxLWare_HYDRA_OEM_I2cRead(devId, (MXL_HYDRA_REG_SIZE_IN_BYTES), (UINT8 *)regDataPtr);
   MxL_CovertDataForEndianness(MXL_ENABLE_BIG_ENDIAN, MXL_HYDRA_REG_SIZE_IN_BYTES, (UINT8 *)regDataPtr);
 
-  //MXL_HYDRA_PRINT("(%d) %s: RegAddr = 0x%08X Data = 0x%08X\n", mxlStatus, __FUNCTION__, regAddress, *regDataPtr);
+  MXLDBG3(MXL_HYDRA_PRINT("(%d) %s: RegAddr = 0x%08X Data = 0x%08X\n", mxlStatus, __FUNCTION__, regAddress, *regDataPtr););
 
   mxlStatus |= MxLWare_HYDRA_OEM_Unlock(devId);
 
@@ -442,12 +470,13 @@ MXL_STATUS_E MxLWare_HYDRA_ReadRegisterBlock(UINT8 devId, UINT32 regAddress, UIN
     {
       mxlStatus = MxLWare_HYDRA_OEM_I2cRead(devId, (UINT16)(size), (UINT8 *)regDataPtr);
       MxL_CovertDataForEndianness(MXL_ENABLE_BIG_ENDIAN, size, (UINT8 *)regDataPtr);
-      //MXL_HYDRA_PRINT("%s: RegAddr = 0x%08X Size = %d\n", __FUNCTION__, regAddress, size);
+      MXLDBG2(MXL_HYDRA_PRINT("%s: RegAddr = 0x%08X Size = %d\n", __FUNCTION__, regAddress, size););
 
     }
+    MXLERR(
     else
       MXL_HYDRA_PRINT("%s: RegAddr = 0x%08X - Error\n", __FUNCTION__, regAddress);
-
+    );
     mxlStatus |= MxLWare_HYDRA_OEM_Unlock(devId);
 
   }
@@ -545,7 +574,7 @@ MXL_STATUS_E MxLWare_HYDRA_CheckForCmdResponse(UINT8 devId, MXL_HYDRA_CONTEXT_T 
       if (respCmd > 0xE0)
         continue;
 
-      MXL_HYDRA_PRINT("[%s] length = %d CMDID = %d\r\n", __FUNCTION__, dataLen, respCmd);
+      MXLDBG2(MXL_HYDRA_PRINT("[%s] length = %d CMDID = %d\r\n", __FUNCTION__, dataLen, respCmd););
 
       // invalid coomand ID, then contiue next read
       if (respCmd != cmdId)
@@ -692,13 +721,13 @@ MXL_STATUS_E MxLWare_HYDRA_Ctrl_GetDeviceContext(UINT8 devId, MXL_HYDRA_CONTEXT_
     if (mxlware_hydra_devices[devId].initialized != MXL_TRUE)
     {
       status = MXL_NOT_INITIALIZED;
-      //MXLERR(MXL_HYDRA_PRINT("[%s] Device #%d is not initialized\n", __FUNCTION__, devId););
+      MXLERR(MXL_HYDRA_PRINT("[%s] Device #%d is not initialized\n", __FUNCTION__, devId););
     }
   }
   else
   {
     status = MXL_INVALID_PARAMETER;
-    //MXLERR(MXL_HYDRA_PRINT("[%s] Device id#%d is greater than max number of devices (%d)\n", __FUNCTION__, devId, MXL_HYDRA_MAX_NUM_DEVICES););
+    MXLERR(MXL_HYDRA_PRINT("[%s] Device id#%d is greater than max number of devices (%d)\n", __FUNCTION__, devId, MXL_HYDRA_MAX_NUM_DEVICES););
   }
 
   return status;

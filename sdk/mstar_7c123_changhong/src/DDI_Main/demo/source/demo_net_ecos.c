@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (!Â¡Â±MStar Confidential Information!Â¡L) by the recipient.
+// (!¡±MStar Confidential Information!¡L) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -122,6 +122,7 @@
 #define DEMO_EVENT_WAIT_FOREVER 0xffffffff
 
 #define LAN_DHCP_START 0x1
+#define LAN_DHCP_OVER 0x2
 
 //-------------------------------------------------------------------------------------------------
 // Macros
@@ -153,6 +154,7 @@ typedef struct
 /// @return FALSE: Process fail.
 //------------------------------------------------------------------------------
 static MS_S32  _s32LanEventId = 0;
+static MS_S32  _s32DhcpEventId = 0;
 static Task_Info _appLan_DHCPTask = {-1, E_TASK_PRI_LOW, NULL, 4096, "DHCP Task"};
 static MS_BOOL _bDHCP = FALSE;
 
@@ -192,8 +194,9 @@ static void _Demo_Net_LanDhcp_task(MS_U32 argc, VOID *argv)
                 FUNC_DBG("DHCP Failed\n");
             }
             MApi_LAN_DhcpConfig(0);
+            MsOS_SetEvent(_s32DhcpEventId, LAN_DHCP_OVER);
         }
-        
+
         if (!_bDHCP)
             return;
     }
@@ -211,28 +214,29 @@ MS_BOOL Demo_Net_DHCP(MS_U32* u32DHCP)
     if (*u32DHCP == 0)
     {
         _bDHCP = FALSE;
+        printf ("DHCP flag off\n");
     }
     else
     {
         _bDHCP = TRUE;
+        printf ("DHCP flag on\n");
     }
     return TRUE;
 }
 
 static MS_BOOL _Demo_Net_LanInit(void) //move to Tv Let Logo show first
 {
-    MS_S32 s32MstarCachedPoolID;
+    MS_S32 s32MstarCachedPoolID = 0;
+    MS_U32 u32OverEvent;
+
     printf("before Demo_Util_GetSystemPoolID \n");
     Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&s32MstarCachedPoolID);
     printf("after Demo_Util_GetSystemPoolID \n");
     // Check if EMAC is initialized then bring up all network interfaces.
+    //printf("MApi_LAN_EthReady()=%d\n\n");
     while (FALSE == MApi_LAN_EthReady());
-    {
-        FUNC_DBG("in MApi_LAN_IntfReset loops \n");
 
-        printf("in MApi_LAN_IntfReset loops \n");
-        MApi_LAN_IntfReset();
-    }
+    MApi_LAN_IntfReset();
 
     printf("after MApi_LAN_IntfReset loops \n");
 
@@ -281,17 +285,24 @@ static MS_BOOL _Demo_Net_LanInit(void) //move to Tv Let Logo show first
 
             /// - Create OS Event Flag
             _s32LanEventId = MsOS_CreateEventGroup("Lan DHCP");
+            _s32DhcpEventId = MsOS_CreateEventGroup("DHCP DONE");
 
-            if (_s32LanEventId < 0)
+            if (_s32LanEventId < 0 || _s32DhcpEventId < 0)
             {
                 return FALSE;
             }
-
-
         }
 
         FUNC_DBG("nodify LAN task Start......\n");
         MsOS_SetEvent(_s32LanEventId, LAN_DHCP_START);
+        if(MsOS_WaitEvent(_s32DhcpEventId,
+                           LAN_DHCP_OVER,
+                           &u32OverEvent,
+                           E_AND_CLEAR,
+                           DEMO_EVENT_WAIT_FOREVER))
+        {
+            printf("\nDHCP OVER\n\n");
+        }
     }
     else
     {
@@ -301,7 +312,8 @@ static MS_BOOL _Demo_Net_LanInit(void) //move to Tv Let Logo show first
 
         //MApi_LAN_DhcpConfig(0);
         // IP config
-        sprintf((char*)au8Buf,"%d.%d.%d.%d",\
+        snprintf((char*)au8Buf, sizeof(au8Buf),\
+                "%d.%d.%d.%d",\
                 stLanSetting.u8IpAdr[0],\
                 stLanSetting.u8IpAdr[1],\
                 stLanSetting.u8IpAdr[2],\
@@ -310,7 +322,8 @@ static MS_BOOL _Demo_Net_LanInit(void) //move to Tv Let Logo show first
         MApi_LAN_IpConfig(au8Buf);
 
         // Subnet config
-        sprintf((char*)au8Buf,"%d.%d.%d.%d",\
+        snprintf((char*)au8Buf, sizeof(au8Buf),\
+                "%d.%d.%d.%d",\
                 stLanSetting.u8SubNet[0],\
                 stLanSetting.u8SubNet[1],\
                 stLanSetting.u8SubNet[2],\
@@ -319,7 +332,8 @@ static MS_BOOL _Demo_Net_LanInit(void) //move to Tv Let Logo show first
         MApi_LAN_SubnetConfig(au8Buf);
 
         // Gate way config
-        sprintf((char*)au8Buf,"%d.%d.%d.%d",\
+        snprintf((char*)au8Buf, sizeof(au8Buf),\
+                "%d.%d.%d.%d",\
                 stLanSetting.u8GatWay[0],\
                 stLanSetting.u8GatWay[1],\
                 stLanSetting.u8GatWay[2],\
@@ -335,6 +349,7 @@ static MS_BOOL _Demo_Net_LanInit(void) //move to Tv Let Logo show first
     }
 
         MApi_LAN_ShowIntf();
+
     return TRUE;
 }
 
@@ -353,7 +368,7 @@ MS_BOOL Demo_Net_Init(void)
 	{
 		printf("MApi_LAN_init failed\n");
 	}
-		
+
     return _Demo_Net_LanInit();
 }
 
@@ -446,7 +461,16 @@ MS_BOOL Demo_Net_Ping(MS_U8* ipaddr)
 MS_BOOL Demo_Net_Help(void)
 {
     printf ("------------------------------------Network Help--------------------------------------\n");
-    printf ("press \"Net_Init\" to Initial Network\n");
+    printf ("Initial Network:\n");
+    printf ("press \"Demo_Net_SetMac (macaddr)\" to Set Mac Address\n");
+    printf ("press \"Demo_Net_DHCP 1\" to Set DHCP Flag\n");
+    printf ("press \"Demo_Net_Init\" to Initial Network\n");
+    printf ("Ping:\n");
+    printf ("press \"Demo_Net_Ping (ipaddr)\" to Ping target IP\n");
+    printf ("Check Status:\n");
+    printf ("press \"Demo_Net_GetMac\" to Get Mac Address\n");
+    printf ("press \"Demo_Net_GetConnectionStatus\" to Get Connection Status\n");
+    printf ("press \"Demo_Net_GetDHCPStatus\" to Get DHCP Status\n");
     printf ("---------------------------------End of Network Help----------------------------------\n");
 
     return TRUE;

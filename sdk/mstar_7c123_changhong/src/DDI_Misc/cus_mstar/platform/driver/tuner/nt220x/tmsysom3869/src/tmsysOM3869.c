@@ -875,7 +875,7 @@ OM3869Reset
         if (err != TM_OK)
         {
             tmDBGPRINTEx(DEBUGLVL_ERROR, "tmbslNT220xReset(0x%08X) failed.", pObj->tUnitNT220x);
-            /* Open IÂ²C switch to stop Tuner access */
+            /* Open I²C switch to stop Tuner access */
             (void)tmsysOM3869SetI2CSwitchState(pObj->tUnit, tmsysFrontEndI2CSwitchStateReset);
         }
     }

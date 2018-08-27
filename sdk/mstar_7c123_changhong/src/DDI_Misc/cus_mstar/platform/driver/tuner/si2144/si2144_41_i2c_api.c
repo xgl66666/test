@@ -128,7 +128,7 @@ BOOL SI214X_ucI2cReadOnly(U8 aSlaveAddr, U8 *apData, U16 aDataSize)
     //if(MDrv_IIC_Read(_u8SlaveAddr, &aSlaveAddr, 1, apData, aDataSize)==FALSE)
     //if (platform_I2CRead(0xff,aSlaveAddr,NULL,0,apData,aDataSize) == 0)
     {
-        printf("%s(): [IIC] TUNER READ : NG, aSlaveAddr=0x%x\n", __FUNCTION__, aSlaveAddr);
+        printf("%s(): [IIC] TUNER READ : NG, aSlaveAddr=0x%x\n", __FUNCTION__, _u8SlaveAddr);
     }
     else
     {
@@ -164,7 +164,7 @@ BOOL SI214X_ucI2cWriteOnly(U8 aSlaveAddr, U8 *apData, U16 aDataSize)
     //if(MDrv_IIC_Write(_u8SlaveAddr, &aSlaveAddr, 1, apData, aDataSize)==FALSE)
     //if (platform_I2CWrite(0xff,aSlaveAddr,NULL,0,apData,aDataSize) == 0)
     {
-        printf("%s(): [IIC] TUNER WRITE : NG, aSlaveAddr=0x%x\n", __FUNCTION__, aSlaveAddr);
+        printf("%s(): [IIC] TUNER WRITE : NG, aSlaveAddr=0x%x\n", __FUNCTION__, _u8SlaveAddr);
     }
     else
     {

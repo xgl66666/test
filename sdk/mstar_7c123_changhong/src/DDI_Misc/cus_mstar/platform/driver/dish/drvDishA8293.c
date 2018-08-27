@@ -76,19 +76,19 @@
 //******************************************************************************
 //<MStar Software>
 
-#include "Board.h"
 #include "MsCommon.h"
-#include "HbCommon.h"
 #include "drvDish.h"
 #include "drvDishNull.h"
 #include "drvDemod.h"
 #include "drvIIC.h"
 
+#if MS_DVBS_INUSE
+/*
 #if(DISH_TYPE == DISH_A8293) ||\
    (defined(DISH_TYPE1) && (DISH_TYPE1 == DISH_A8293)) || \
    (defined(DISH_TYPE2) && (DISH_TYPE2 == DISH_A8293)) || \
    (defined(DISH_TYPE3) && (DISH_TYPE3 == DISH_A8293))
-
+*/
 
 #define A8293_SLAVE_ADDR  0x10
 
@@ -131,7 +131,7 @@
 #define CMD_READ                          (CMD_PREFIX | ADDRESS_READ | READ_CMD)
 #define CMD_WRITE                        (CMD_PREFIX | ADDRESS_LNB_POWER | WRITE_CMD)
 
-#define DATA_LNBPOWER_OFF       (DATA_POWER_13V | BIT_ODT)					//  BIT_LNB_ENABLE
+#define DATA_LNBPOWER_OFF       (DATA_POWER_13V | BIT_ODT)//  BIT_LNB_ENABLE
 #define DATA_13V_OUT                  (DATA_POWER_13V | BIT_ODT  | BIT_LNB_ENABLE)
 #define DATA_14V_OUT                  (DATA_POWER_14V | BIT_ODT  | BIT_LNB_ENABLE)
 #define DATA_18V_OUT                  (DATA_POWER_18V | BIT_ODT  | BIT_LNB_ENABLE)
@@ -150,55 +150,15 @@
 #define DATA_22K_OFF     (TONE_PREFIX | TGATE_OFF  | TMODE_EXTERNAL)
 #define DATA_22K_ON       (TONE_PREFIX | TGATE_ON   | TMODE_EXTERNAL)
 
-static DISH_MS_INIT_PARAM DishInitParam[MAX_FRONTEND_NUM];
-#ifdef DISH_IIC_PORT
-#define A8293_IIC_PORT DISH_IIC_PORT
-#else
-#define A8293_IIC_PORT FRONTEND_TUNER_PORT
-#endif
+static DISH_MS_INIT_PARAM DishInitParam[MAX_LNB_SUPPORT];
 
-#ifdef DISH_IIC_PORT1
-#define A8293_IIC_PORT1 DISH_IIC_PORT1
-#else
-#define A8293_IIC_PORT1 FRONTEND_TUNER_PORT1
-#endif
-
-#ifdef DISH_IIC_PORT2
-#define A8293_IIC_PORT2 DISH_IIC_PORT2
-#else
-#define A8293_IIC_PORT2 FRONTEND_TUNER_PORT2
-#endif
-
-#ifdef DISH_IIC_PORT3
-#define A8293_IIC_PORT3 DISH_IIC_PORT3
-#else
-#define A8293_IIC_PORT3 FRONTEND_TUNER_PORT3
-#endif
-
-static HWI2C_PORT _get_I2C_port(MS_U8 u8DishIndex)
+static MS_IIC_PORT _get_I2C_port(MS_U8 u8DishIndex)
 {
-    HWI2C_PORT ehwI2c_port;
-    switch(u8DishIndex)
-    {
-        case 1:
-            ehwI2c_port = A8293_IIC_PORT1;
-            break;
-        case 2:
-            ehwI2c_port = A8293_IIC_PORT2;
-            break;
-        case 3:
-            ehwI2c_port = A8293_IIC_PORT3;
-            break;
-        case 0:
-        default:    
-            ehwI2c_port = A8293_IIC_PORT;
-            break;
-    }
-    return ehwI2c_port;
+   return DishInitParam[u8DishIndex].stLNBCon.eI2C_PORT;
 }
 
 
-MS_BOOL MDrv_Dish_Init(MS_U8 u8DishIndex, DISH_MS_INIT_PARAM* pParam)
+MS_BOOL MDrv_Dish_A8293_Init(MS_U8 u8DishIndex, DISH_MS_INIT_PARAM* pParam)
 {
     MS_U8 u8Data ;
     HWI2C_PORT ePort;
@@ -206,7 +166,10 @@ MS_BOOL MDrv_Dish_Init(MS_U8 u8DishIndex, DISH_MS_INIT_PARAM* pParam)
     if(pParam->pstDemodtab== NULL)
         return FALSE;
     else
+    {
         DishInitParam[u8DishIndex].pstDemodtab = pParam->pstDemodtab;
+        DishInitParam[u8DishIndex].stLNBCon.eI2C_PORT= pParam->stLNBCon.eI2C_PORT;
+    }
         
     u8Data = DATA_22K_OFF;
 
@@ -214,25 +177,25 @@ MS_BOOL MDrv_Dish_Init(MS_U8 u8DishIndex, DISH_MS_INIT_PARAM* pParam)
 
     if(!MDrv_IIC_WriteBytes(ePort, A8293_SLAVE_ADDR, 0, NULL, 1, &u8Data))
     {
-         HB_printf("\n MDrv_Dish_Init failed1!");
+         DISH_ERR(("\n MDrv_Dish_Init failed1!"));
          return FALSE;
     }
 
     u8Data = EN_LNBPWR_TYPE_13V;
     if(!MDrv_IIC_WriteBytes(ePort, A8293_SLAVE_ADDR, 0, NULL, 1, &u8Data))
     {
-         HB_printf("\n MDrv_Dish_Init failed2!");
+         DISH_ERR(("\n MDrv_Dish_Init failed2!"));
          return FALSE;
     }
 
-    if(MDrv_IIC_ReadBytes(FRONTEND_TUNER_PORT, A8293_SLAVE_ADDR, 0, NULL, 1, &u8Data))
+    if(MDrv_IIC_ReadBytes(ePort, A8293_SLAVE_ADDR, 0, NULL, 1, &u8Data))
     {
-         HB_printf("\n MDrv_Dish_Init Read 0x%X\n",u8Data);
+         DISH_ERR(("\n MDrv_Dish_Init Read 0x%X\n",u8Data));
     }
     return TRUE;
 }
 
-MS_BOOL MDrv_Dish_SetTone(MS_U8 u8DishIndex, EN_TONEBURST_TYPE enToneType)
+MS_BOOL MDrv_Dish_A8293_SetTone(MS_U8 u8DishIndex, EN_TONEBURST_TYPE enToneType)
 {
       switch(enToneType)
       {
@@ -245,13 +208,13 @@ MS_BOOL MDrv_Dish_SetTone(MS_U8 u8DishIndex, EN_TONEBURST_TYPE enToneType)
                return DishInitParam[u8DishIndex].pstDemodtab->DiSEqCSetTone(u8DishIndex,TRUE);
                break;
            default:
-               HB_printf("----%s error type %d----",__FUNCTION__,enToneType);
+               DISH_ERR(("----%s error type %d----",__FUNCTION__,enToneType));
                break;
       }
       return FALSE;
 }
 
-MS_BOOL MDrv_Dish_SetLNBPower(MS_U8 u8DishIndex, DISH_LNBPWR_TYPE enLNBPwr)
+MS_BOOL MDrv_Dish_A8293_SetLNBPower(MS_U8 u8DishIndex, DISH_LNBPWR_TYPE enLNBPwr)
 {
     MS_U8 u8Data = DATA_13V_OUT;
     HWI2C_PORT ePort;
@@ -277,13 +240,13 @@ MS_BOOL MDrv_Dish_SetLNBPower(MS_U8 u8DishIndex, DISH_LNBPWR_TYPE enLNBPwr)
             u8Data = DATA_19V_OUT;
            break;
         default:
-           HB_printf("----%s error type %d ----",__FUNCTION__,enLNBPwr);
+           DISH_ERR(("----%s error type %d ----",__FUNCTION__,enLNBPwr));
            return FALSE;
     }
     return MDrv_IIC_WriteBytes(ePort, A8293_SLAVE_ADDR, 0, NULL, 1, &u8Data);
 }
 
-MS_BOOL MDrv_Dish_Set22k(MS_U8 u8DishIndex, DISH_LNB22K_TYPE enLNB22k)
+MS_BOOL MDrv_Dish_A8293_Set22k(MS_U8 u8DishIndex, DISH_LNB22K_TYPE enLNB22k)
 {
     MS_U8 u8Data = DATA_22K_OFF ;
     HWI2C_PORT ePort;
@@ -304,13 +267,13 @@ MS_BOOL MDrv_Dish_Set22k(MS_U8 u8DishIndex, DISH_LNB22K_TYPE enLNB22k)
            DishInitParam[u8DishIndex].pstDemodtab->DiSEqCSet22kOnOff(u8DishIndex, TRUE);
            break;
        default:
-           HB_printf("----%s error type %d----",__FUNCTION__,enLNB22k);
+           DISH_ERR(("----%s error type %d----",__FUNCTION__,enLNB22k));
            return FALSE;
     }
     return MDrv_IIC_WriteBytes(ePort, A8293_SLAVE_ADDR, 0, NULL, 1, &u8Data);
 }
 
-MS_BOOL MDrv_Dish_SendCmd(MS_U8 u8DishIndex, MS_U8* pCmd,MS_U8 u8CmdSize)
+MS_BOOL MDrv_Dish_A8293_SendCmd(MS_U8 u8DishIndex, MS_U8* pCmd,MS_U8 u8CmdSize)
 {
     MS_U8 u8Data = DATA_22K_ON;
     HWI2C_PORT ePort;
@@ -322,7 +285,7 @@ MS_BOOL MDrv_Dish_SendCmd(MS_U8 u8DishIndex, MS_U8* pCmd,MS_U8 u8CmdSize)
     return DishInitParam[u8DishIndex].pstDemodtab->DiSEqC_SendCmd(u8DishIndex, pCmd,u8CmdSize);
 }
 
-MS_BOOL MDrv_Dish_IsOverCurrent(MS_U8 u8DishIndex)
+MS_BOOL MDrv_Dish_A8293_IsOverCurrent(MS_U8 u8DishIndex)
 {
     MS_U8 u8Status=0;
     HWI2C_PORT ePort;
@@ -339,7 +302,7 @@ MS_BOOL MDrv_Dish_IsOverCurrent(MS_U8 u8DishIndex)
     return FALSE;
 }
 
-MS_BOOL MDrv_Dish_SetCable(MS_U8 u8DishIndex, EN_CABLE_SELECT eCableIndex)
+MS_BOOL MDrv_Dish_A8293_SetCable(MS_U8 u8DishIndex, EN_CABLE_SELECT eCableIndex)
 {       
    return FALSE;
 }
@@ -347,13 +310,13 @@ MS_BOOL MDrv_Dish_SetCable(MS_U8 u8DishIndex, EN_CABLE_SELECT eCableIndex)
 
 
 DISHTAB_ENTRY(dish_entry_DISH_A8293,"DISH_A8293", DISH_A8293,
-            MDrv_Dish_Init,
-            MDrv_Dish_SetTone,
-            MDrv_Dish_SetLNBPower,
-            MDrv_Dish_Set22k,
-            MDrv_Dish_SendCmd,
-            MDrv_Dish_IsOverCurrent,
-            MDrv_Dish_SetCable
+            MDrv_Dish_A8293_Init,
+            MDrv_Dish_A8293_SetTone,
+            MDrv_Dish_A8293_SetLNBPower,
+            MDrv_Dish_A8293_Set22k,
+            MDrv_Dish_A8293_SendCmd,
+            MDrv_Dish_A8293_IsOverCurrent,
+            MDrv_Dish_A8293_SetCable
 );
 
 

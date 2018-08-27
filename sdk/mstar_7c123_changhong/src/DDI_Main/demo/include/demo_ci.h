@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -104,9 +104,14 @@ MS_BOOL Demo_CI_CIProtectionNotify(MS_U16* u16ONID, MS_U16* u16TSID, MS_U16* u16
 
 void Demo_CI_DoMonitor(MS_U32 argc, void *argv);
 MS_BOOL Demo_CI_Start(void);
+MS_BOOL Demo_CI_SetPath(void);
 MS_BOOL Demo_CI_MMI_EnterMenu(void);
 MS_BOOL Demo_CI_MMI_AnwsMenu(MS_U32 *u32index);
 MS_BOOL Demo_CI_MMI_AnwsEnq(MS_U32 *u32Digi0,MS_U32 *u32Digi1,MS_U32 *u32Digi2,MS_U32 *u32Digi3);
 MS_BOOL Demo_CI_MMI_BacktoMenu(void);
+//MS_BOOL Demo_OTP_GetChipID(void);
+MS_BOOL Demo_OTP_GetChipID(void);
+MS_BOOL Demo_OTP_VerifyPartialOTP(void);
+
 #endif
 

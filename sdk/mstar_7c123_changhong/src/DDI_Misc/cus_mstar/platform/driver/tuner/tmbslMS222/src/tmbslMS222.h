@@ -188,7 +188,7 @@ tmbslMS222_GetIFLevel(
 tmErrorCode_t
 tmbslMS222_GetPowerLevel(
     tmUnitSelect_t  tUnit,      /* I: Unit number */
-    Int32*          pPowerLevel /* O: Power Level in (x100) dBÂµVrms */
+    Int32*          pPowerLevel /* O: Power Level in (x100) dBµVrms */
 );
 
 tmErrorCode_t

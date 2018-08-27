@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -183,6 +183,13 @@ MS_BOOL MDRV_Tuner_Null_GetTunerIF(MS_U8 u8TunerIndex, MS_U32* pu32IF_Freq)
     TUNER_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
     return FALSE;
 }
+
+MS_BOOL MDrv_Tuner_Null_SetATVTuner(MS_U8 u8TunerIndex, MS_U32 u32FreqKHz,TUNER_EN_RFBAND eBand, MS_U8 u8OtherMode)
+{
+    TUNER_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
+    return FALSE;
+}
+
 DRV_TUNER_TABLE_TYPE GET_TUNER_ENTRY_NODE(TUNER_NULL) DDI_DRV_TUNER_TABLE_ENTRY(tunertab) =      
 {                                                                       
     .name               = "TUNER_NULL",          // demod system name
@@ -194,7 +201,8 @@ DRV_TUNER_TABLE_TYPE GET_TUNER_ENTRY_NODE(TUNER_NULL) DDI_DRV_TUNER_TABLE_ENTRY(
     .SetTuner           = MDrv_Tuner_Null_SetTuner,
     .CheckExist         = MDrv_Tuner_Null_CheckExist,
     .GetTunerIF         = MDRV_Tuner_Null_GetTunerIF,
-    .Extension_Function = MDrv_Tuner_Null_Extension_Function
+    .Extension_Function = MDrv_Tuner_Null_Extension_Function,
+    .SetATVTuner        = MDrv_Tuner_Null_SetATVTuner,
 };
 
 #endif

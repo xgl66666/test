@@ -108,5 +108,12 @@
 #include "mapi_types.h"
 #include "pvr_base_interface.h"
 
+typedef enum
+{
+    E_PVRPL_AV_SYNC_PCR_MASTER = 0,
+    E_PVRPL_AV_SYNC_AUDIO_MASTER,
+    E_PVRPL_AV_SYNC_FREE_RUN,
+    E_PVRPL_AV_SYNC_MODE_MAX,
+}EN_PVRPL_AVSYNC_MODE;
 #endif //__API_PVRPL_COMMON_H__
 

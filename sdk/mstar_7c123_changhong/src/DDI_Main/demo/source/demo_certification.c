@@ -117,11 +117,6 @@
 #include "demo_audio.h"
 #endif
 
-#if (DEMO_AUDIO_MULTI_TEST == 1)
-#include "apiAUDIO.h"
-#include "demo_audio_multi.h"
-#endif
-
 #include "demo_cec.h"
 
 //Api
@@ -135,6 +130,7 @@
 #include "apiHDMITx.h"
 #include "apiVDEC_EX.h"
 #include "apiACP.h"
+#include "apiCEC.h"
 
 #if (DEMO_XC_DUALXC_TEST == 1)
 #include "apiXC_EX.h"
@@ -160,6 +156,12 @@
 #include "demo_eeprom.h"
 #include "demo_certification.h"
 #include "demo_utility.h"
+#include "mmsdk_interface_def.h"
+#include "demo_mm.h"
+#include "drvDTC.h"
+#include <ctype.h>
+#include <string.h>
+
 //-------------------------------------------------------------------------------------------------
 //                                MACROS
 //-------------------------------------------------------------------------------------------------
@@ -203,6 +205,7 @@ extern MS_S32 gs32MstarNonCachedPoolID;
 #define REG16_PM(addr )         *((volatile MS_U16*)(u32PmBase+ (addr)))
 
 #define MAX_CMD_SIZE   16 //file size < 100KB
+#define MAX_CEC_OPERAND_SIZE 14
 
 typedef enum
 {
@@ -222,6 +225,7 @@ typedef enum{
     E_CERTIFICATION_CEC ,
     E_CERTIFICATION_EDID,
     E_CERTIFICATION_DBG ,
+    E_CERTIFICATION_HDMI_UI,
 }EN_CERTIFICATION_TYPE;
 
 typedef enum{
@@ -236,6 +240,7 @@ typedef enum{
   E_CERTIFICATION_HDMISETTING_INVALID=0xFF,
   E_CERTIFICATION_HDMISETTING_TXMODE=1,
   E_CERTIFICATION_HDMISETTING_COLORSPACE,
+  E_CERTIFICATION_HDMISETTING_AVIEXTENDEDCOLORIMETRY
 }EN_CERTIFICATION_HDMISETTING_TYPE;
 
 typedef enum{
@@ -334,7 +339,7 @@ typedef enum{
   E_3D_RESOLUTION_1920x1080i50Hz_SIDE_BY_SIDE,
   E_3D_RESOLUTION_1920x1080p23d98Hz_24Hz_TOP_BOTTOM,
   E_3D_RESOLUTION_1280x720p59d94Hz_60Hz_TOP_BOTTOM,
-  E_3D_RESOLUTION_1280x720p50Hz_TOP_BOTTOM, 
+  E_3D_RESOLUTION_1280x720p50Hz_TOP_BOTTOM,
   E_3D_RESOLUTION_1280x720p59d94Hz_60Hz_SIDE_BY_SIDE, //Primary
   E_3D_RESOLUTION_1280x720p50Hz_SIDE_BY_SIDE,
   E_3D_RESOLUTION_1920x1080p23d98Hz_24Hz_SIDE_BY_SIDE,
@@ -360,6 +365,17 @@ typedef enum{
 }EN_CERTIFICATION_OUTPUTCOLORSPACE;
 
 typedef enum{
+    E_CERT_COLORIMETRY_XVYCC601           = 0,
+    E_CERT_COLORIMETRY_XVYCC709           = 1,
+    E_CERT_COLORIMETRY_SYCC601            = 2,
+    E_CERT_COLORIMETRY_ADOBEYCC601        = 3,
+    E_CERT_COLORIMETRY_ADOBERGB           = 4,
+    E_CERT_COLORIMETRY_BT2020CYCC         = 5, //mapping to ext. colorimetry format BT2020Y'cC'bcC'rc
+    E_CERT_COLORIMETRY_BT2020YCC          = 6, //mapping to ext. colorimetry format BT2020 RGB or YCbCr
+    E_CERT_COLORIMETRY_BT2020RGB          = 7  //mapping to ext. colorimetry format BT2020 RGB or YCbCr
+}EN_CERTIFICATION_OUTPUTCOLORMETRY;
+
+typedef enum{
   E_CERT_DVI=1,
   E_CERT_HDMI,
 }EN_CERTIFICATION_OUTTYPE;
@@ -378,6 +394,310 @@ typedef enum{
     E_CERTIFICATION_EDID_ON =1,
     E_CERTIFICATION_EDID_OFF=2,
 }EN_CERTIFICATION_EDID_TYPE;
+
+typedef enum{
+    E_CERTIFICATION_HDMI_UI_TX =1,
+    E_CERTIFICATION_HDMI_UI_REPEATER =2,
+    E_CERTIFICATION_HDMI_UI_HDCP =3,
+    E_CERTIFICATION_HDMI_UI_CEC =4,
+    E_CERTIFICATION_HDMI_UI_EDIDPARSING =5,
+    E_CERTIFICATION_HDMI_UI_INVALID =0xFF,
+}EN_CERTIFICATION_HDMI_UI_TYPE;
+
+/*=============================HDMI UI Mainitems enum  START==================================*/
+typedef enum{
+    E_CERT_TX_SETCOLORFORMAT = 1,
+    E_CERT_TX_SETCOLORDEPTH,
+    E_CERT_TX_SETOUTPUTMODE,
+    E_CERT_TX_SETOUTPUTTIMING,
+    E_CERT_TX_SETASPECTRATIO,
+    E_CERT_TX_SET3DSTRUCTURE,
+    E_CERT_TX_SETAUDIO,
+    E_CERT_TX_SETCOLORMETRY,
+    E_CERT_TX_SETAVMUTE,
+    E_CERT_TX_SETQUANTIZATIONRANGE,
+    E_CERT_TX_SHOWTXINFO,
+    E_CERT_TX_INVALID = 0xFF,
+}EN_CERTIFICATION_TX;
+
+typedef enum{
+    E_CERT_REPEATER_TXONLY = 1,
+    E_CERT_REPEATER_CONVERTER,
+    E_CERT_REPEATER_BYPASS,
+    E_CERT_REPEATER_SHOWRXINFO,
+    E_CERT_REPEATER_INVALID = 0xFF,
+}EN_CERTIFICATION_REPEATER;
+
+typedef enum{
+    E_CERT_HDCP_ON = 1,
+    E_CERT_HDCP_OFF,
+    E_CERT_HDCP_SHOWHDCPINFO,
+    E_CERT_HDCP_INVALID = 0xFF,
+}EN_CERTIFICATION_HDCP;
+
+typedef enum{
+    E_CERT_CEC_TX_ONETOUCHPLAY = 1,
+    E_CERT_CEC_TX_STANDBY,
+    E_CERT_CEC_TX_GIVEDEVICEPOWERSTATUS,
+    E_CERT_CEC_TX_SYSTEMAUDIOMODEREQUESTON,
+    E_CERT_CEC_TX_SYSTEMAUDIOMODEREQUESTOFF,
+    E_CERT_CEC_TX_CMD,
+    E_CERT_CEC_RX_SHOWCMD,
+    E_CERT_CEC_INVALID = 0xFF,
+}EN_CERTIFICATION_CEC;
+
+typedef enum{
+    E_CERT_CEC_CMD_DSTLA = 1,
+    E_CERT_CEC_CMD_OPCODE,
+    E_CERT_CEC_CMD_OPERAND,
+    E_CERT_CEC_CMD_FIRE,
+    E_CERT_CEC_CMD_INVALID = 0xFF,
+}EN_CERTIFICATION_CEC_CMD;
+
+typedef enum{
+    E_CERT_EDIDPARSING_SHOWINFO = 1,
+    E_CERT_EDIDPARSING_INVALID = 0xFF,
+}EN_CERTIFICATION_EDIDPRASING;
+
+
+/*=============================HDMI UI Mainitems enum  END====================================*/
+
+
+/*=============================HDMI UI Subitems enum  START==================================*/
+
+typedef enum{
+  E_CERT_TX_COLORFORMAT_RGB444 =1,
+  E_CERT_TX_COLORFORMAT_YUV422,
+  E_CERT_TX_COLORFORMAT_YUV444,
+  E_CERT_TX_COLORFORMAT_YUV420,
+}EN_CERTIFICATION_TX_COLORFORMAT;
+
+typedef enum{
+  E_CERT_TX_COLORDEPTH_8BITS =1,
+  E_CERT_TX_COLORDEPTH_10BITS,
+  E_CERT_TX_COLORDEPTH_12BITS,
+  E_CERT_TX_COLORDEPTH_16BITS,
+}EN_CERTIFICATION_TX_COLORDEPTH;
+
+typedef enum{
+  E_CERT_TX_OUTPUTMODE_HDMI =1,
+  E_CERT_TX_OUTPUTMODE_DVI,
+}EN_CERTIFICATION_TX_OUTPUTMODE;
+
+typedef enum{
+  E_CERT_TX_OUTPUTTIMING_720X480_60I =1,
+  E_CERT_TX_OUTPUTTIMING_720X480_60P,
+  E_CERT_TX_OUTPUTTIMING_720X576_50I,
+  E_CERT_TX_OUTPUTTIMING_720X576_50P,
+  E_CERT_TX_OUTPUTTIMING_1280X720_50P,
+  E_CERT_TX_OUTPUTTIMING_1280X720_60P,
+  E_CERT_TX_OUTPUTTIMING_1920X1080_50I,
+  E_CERT_TX_OUTPUTTIMING_1920X1080_60I,
+  E_CERT_TX_OUTPUTTIMING_1920X1080_24P,
+  E_CERT_TX_OUTPUTTIMING_1920X1080_25P,
+  E_CERT_TX_OUTPUTTIMING_1920X1080_30P,
+  E_CERT_TX_OUTPUTTIMING_1920X1080_50P,
+  E_CERT_TX_OUTPUTTIMING_1920X1080_60P,
+  E_CERT_TX_OUTPUTTIMING_3840X2160_24P,
+  E_CERT_TX_OUTPUTTIMING_3840X2160_25P,
+  E_CERT_TX_OUTPUTTIMING_3840X2160_30P,
+  E_CERT_TX_OUTPUTTIMING_3840X2160_50P,
+  E_CERT_TX_OUTPUTTIMING_3840X2160_60P,
+  E_CERT_TX_OUTPUTTIMING_4096X2160_24P,
+  E_CERT_TX_OUTPUTTIMING_4096X2160_25P,
+  E_CERT_TX_OUTPUTTIMING_4096X2160_30P,
+  E_CERT_TX_OUTPUTTIMING_4096X2160_50P,
+  E_CERT_TX_OUTPUTTIMING_4096X2160_60P,
+  E_CERT_TX_OUTPUTTIMING_MAX,
+}EN_CERTIFICATION_TX_OUTPUTTIMING;
+
+typedef enum{
+  E_CERT_TX_ASPECTRATIO_4_3 =1,
+  E_CERT_TX_ASPECTRATIO_16_9,
+}EN_CERTIFICATION_TX_ASPECTRATIO;
+
+typedef enum{
+  E_CERT_TX_3DSTRUCTURE_1920x1080p23d98Hz_24Hz_FRAME_PACKING =1,
+  E_CERT_TX_3DSTRUCTURE_1280x720p59d94Hz_60Hz_FRAME_PACKING,
+  E_CERT_TX_3DSTRUCTURE_1280x720p50Hz_FRAME_PACKING,
+  E_CERT_TX_3DSTRUCTURE_1920x1080i59d94HZ_60Hz_SIDE_BY_SIDE,
+  E_CERT_TX_3DSTRUCTURE_1920x1080i50Hz_SIDE_BY_SIDE,
+  E_CERT_TX_3DSTRUCTURE_1920x1080p23d98Hz_24Hz_TOP_BOTTOM,
+  E_CERT_TX_3DSTRUCTURE_1280x720p59d94Hz_60Hz_TOP_BOTTOM,
+  E_CERT_TX_3DSTRUCTURE_1280x720p50Hz_TOP_BOTTOM,
+  E_CERT_TX_3DSTRUCTURE_1280x720p59d94Hz_60Hz_SIDE_BY_SIDE,
+  E_CERT_TX_3DSTRUCTURE_1280x720p50Hz_SIDE_BY_SIDE,
+  E_CERT_TX_3DSTRUCTURE_1920x1080p23d98Hz_24Hz_SIDE_BY_SIDE,
+  E_CERT_TX_3DSTRUCTURE_1920x1080p59d94Hz_60Hz_TOP_BOTTOM,
+  E_CERT_TX_3DSTRUCTURE_1920x1080p50Hz_TOP_BOTTOM,
+  E_CERT_TX_3DSTRUCTURE_1920x1080p29d97Hz_30Hz_TOP_BOTTOM,
+}EN_CERTIFICATION_TX_3DSTRUCTURE;
+
+typedef enum{
+  E_CERT_TX_AUDIO_PCM =1,
+  E_CERT_TX_AUDIO_NONPCM,
+  E_CERT_TX_AUDIO_NONPCM_DDPBypass,
+}EN_CERTIFICATION_TX_AUDIO;
+
+typedef enum{
+  E_CERT_TX_COLORMETRY_NODATA =1,
+  E_CERT_TX_COLORMETRY_ITU601,
+  E_CERT_TX_COLORMETRY_ITU709,
+  E_CERT_TX_COLORMETRY_EXTEND_XVYCC601 ,
+  E_CERT_TX_COLORMETRY_EXTEND_XVYCC709,
+  E_CERT_TX_COLORMETRY_EXTEND_SYCC601,
+  E_CERT_TX_COLORMETRY_EXTEND_ADOBEYCC601,
+  E_CERT_TX_COLORMETRY_EXTEND_ADOBERGB,
+  E_CERT_TX_COLORMETRY_EXTEND_BT2020CYCC,
+  E_CERT_TX_COLORMETRY_EXTEND_BT2020YCC,
+  E_CERT_TX_COLORMETRY_EXTEND_BT2020RGB,
+}EN_CERTIFICATION_TX_COLORMETRY;
+
+typedef enum{
+  E_CERT_TX_AVMUTE_ON =1,
+  E_CERT_TX_AVMUTE_OFF,
+}EN_CERTIFICATION_TX_AVMute;
+
+typedef enum{
+  E_CERT_TX_QUANTIZATIONRANGE_RGB444_LIMIT =1,
+  E_CERT_TX_QUANTIZATIONRANGE_YUV422_LIMIT,
+  E_CERT_TX_QUANTIZATIONRANGE_YUV444_LIMIT,
+  E_CERT_TX_QUANTIZATIONRANGE_RGB444_FULL,
+  E_CERT_TX_QUANTIZATIONRANGE_YUV422_FULL,
+  E_CERT_TX_QUANTIZATIONRANGE_YUV444_FULL,
+}EN_CERTIFICATION_TX_QUANTIZATIONRANGE;
+
+typedef enum{
+  E_CERT_TX_SHOWINFO =1,
+  E_CERT_TX_SHOWMM_VIDEO,
+  E_CERT_TX_SHOWMM_AUDIO_32K_DD,
+  E_CERT_TX_SHOWMM_AUDIO_44K1_DD,
+  E_CERT_TX_SHOWMM_AUDIO_48K_DD,
+  E_CERT_TX_SHOWMM_AUDIO_44K1_DDP,
+  E_CERT_TX_SHOWMM_AUDIO_48K_DDP,
+}EN_CERTIFICATION_TX_SHOWTXINFO;
+
+typedef enum{
+  E_CERT_CEC_CMD_DSTLA_TV = 0,
+  E_CERT_CEC_CMD_DSTLA_RECORDING_DEVICE_1 = 1,
+  E_CERT_CEC_CMD_DSTLA_RECORDING_DEVICE_2 = 2,
+  E_CERT_CEC_CMD_DSTLA_TUNER_1 = 3,
+  E_CERT_CEC_CMD_DSTLA_PLAYBACK_DEVICE_1 = 4,
+  E_CERT_CEC_CMD_DSTLA_AUDIOSYSTEM = 5,
+  E_CERT_CEC_CMD_DSTLA_TUNER_2 = 6,
+  E_CERT_CEC_CMD_DSTLA_TUNER_3 = 7,
+  E_CERT_CEC_CMD_DSTLA_PLAYBACK_DEVICE_2 = 8,
+  E_CERT_CEC_CMD_DSTLA_RECORDING_DEVICE_3 = 9,
+  E_CERT_CEC_CMD_DSTLA_TUNER_4 = 10,
+  E_CERT_CEC_CMD_DSTLA_PLAYBACK_DEVICE_3 = 11,
+  E_CERT_CEC_CMD_DSTLA_RESERVED1 = 12,
+  E_CERT_CEC_CMD_DSTLA_RESERVED2 = 13,
+  E_CERT_CEC_CMD_DSTLA_SPECIFIC_USE = 14,
+  E_CERT_CEC_CMD_DSTLA_BROADCAST = 15,
+}EN_CERTIFICATION_CEC_CMD_DSTLA;
+
+typedef enum{
+//----- One Touch Play ----------------------------
+    E_CERT_CEC_OPCODE_ACTIVE_SOURCE                         = 0x82,
+    E_CERT_CEC_OPCODE_OTP_IMAGE_VIEW_ON                     = 0x04,
+    E_CERT_CEC_OPCODE_OTP_TEXT_VIEW_ON                      = 0x0D,
+//----- Routing Control ---------------------------
+    E_CERT_CEC_OPCODE_RC_INACTIVE_SOURCE                    = 0x9D,
+    E_CERT_CEC_OPCODE_RC_REQUEST_ACTIVE_SOURCE              = 0x85,
+    E_CERT_CEC_OPCODE_RC_ROUTING_CHANGE                     = 0x80,
+    E_CERT_CEC_OPCODE_RC_ROUTING_INFORMATION                = 0x81,
+    E_CERT_CEC_OPCODE_RC_SET_STREM_PATH                     = 0x86,
+//----- Standby Command ---------------------------
+    E_CERT_CEC_OPCODE_STANDBY                               = 0x36,
+//----- One Touch Record---------------------------
+    E_CERT_CEC_OPCODE_OTR_RECORD_OFF                        = 0x0B,
+    E_CERT_CEC_OPCODE_OTR_RECORD_ON                         = 0x09,
+    E_CERT_CEC_OPCODE_OTR_RECORD_STATUS                     = 0x0A,
+    E_CERT_CEC_OPCODE_OTR_RECORD_TV_SCREEN                  = 0x0F,
+//----- Timer programmer -------------------------- CEC1.3a
+    E_CERT_CEC_OPCODE_TP_CLEAR_ANALOGUE_TIMER               = 0x33,
+    E_CERT_CEC_OPCODE_TP_CLEAR_DIGITAL_TIMER                = 0x99,
+    E_CERT_CEC_OPCODE_TP_CLEAR_EXTERNAL_TIMER               = 0xA1,
+    E_CERT_CEC_OPCODE_TP_SET_ANALOGUE_TIMER                 = 0x34,
+    E_CERT_CEC_OPCODE_TP_SET_DIGITAL_TIMER                  = 0x97,
+    E_CERT_CEC_OPCODE_TP_SET_EXTERNAL_TIMER                 = 0xA2,
+    E_CERT_CEC_OPCODE_TP_SET_TIMER_PROGRAM_TITLE            = 0x67,
+    E_CERT_CEC_OPCODE_TP_TIMER_CLEARD_STATUS                = 0x43,
+    E_CERT_CEC_OPCODE_TP_TIMER_STATUS                       = 0x35,
+//----- System Information ------------------------
+    E_CERT_CEC_OPCODE_SI_CEC_VERSION                        = 0x9E,       //1.3a
+    E_CERT_CEC_OPCODE_SI_GET_CEC_VERSION                    = 0x9F,       //1.3a
+    E_CERT_CEC_OPCODE_SI_GIVE_PHYSICAL_ADDRESS              = 0x83,
+    E_CERT_CEC_OPCODE_SI_GET_MENU_LANGUAGE                  = 0x91,
+    E_CERT_CEC_OPCODE_SI_REPORT_PHYSICAL_ADDRESS            = 0x84,
+    E_CERT_CEC_OPCODE_SI_SET_MENU_LANGUAGE                  = 0x32,
+//----- Deck Control Feature-----------------------
+    E_CERT_CEC_OPCODE_DC_DECK_CONTROL                       = 0x42,
+    E_CERT_CEC_OPCODE_DC_DECK_STATUS                        = 0x1B,
+    E_CERT_CEC_OPCODE_DC_GIVE_DECK_STATUS                   = 0x1A,
+    E_CERT_CEC_OPCODE_DC_PLAY                               = 0x41,
+//----- Tuner Control ------------------------------
+    E_CERT_CEC_OPCODE_TC_GIVE_TUNER_DEVICE_STATUS           = 0x08,
+    E_CERT_CEC_OPCODE_TC_SEL_ANALOGUE_SERVICE               = 0x92,
+    E_CERT_CEC_OPCODE_TC_SELECT_DIGITAL_SERVICE             = 0x93,
+    E_CERT_CEC_OPCODE_TC_TUNER_DEVICE_STATUS                = 0x07,
+    E_CERT_CEC_OPCODE_TC_TUNER_STEP_DECREMENT               = 0x06,
+    E_CERT_CEC_OPCODE_TC_TUNER_STEP_INCREMENT               = 0x05,
+//---------Vendor Specific -------------------------
+    E_CERT_CEC_OPCODE_VS_DEVICE_VENDOR_ID                   = 0x87,
+    E_CERT_CEC_OPCODE_VS_GIVE_DEVICE_VENDOR_ID              = 0x8C,
+    E_CERT_CEC_OPCODE_VS_VENDOR_COMMAND                     = 0x89,
+    E_CERT_CEC_OPCODE_VS_VENDOR_COMMAND_WITH_ID             = 0xA0,      //1.3a
+    E_CERT_CEC_OPCODE_VS_VENDOR_REMOTE_BUTTON_DOWN          = 0x8A,
+    E_CERT_CEC_OPCODE_VS_VENDOR_REMOTE_BUTTON_UP            = 0x8B,
+//----- OSD Display --------------------------------
+    E_CERT_CEC_OPCODE_SET_OSD_STRING                        = 0x64,
+//----- Device OSD Name Transfer  -------------------------
+    E_CERT_CEC_OPCODE_OSDNT_GIVE_OSD_NAME                   = 0x46,
+    E_CERT_CEC_OPCODE_OSDNT_SET_OSD_NAME                    = 0x47,
+//----- Device Menu Control ------------------------
+    E_CERT_CEC_OPCODE_DMC_MENU_REQUEST                      = 0x8D,
+    E_CERT_CEC_OPCODE_DMC_MENU_STATUS                       = 0x8E,
+    E_CERT_CEC_OPCODE_DMC_USER_CONTROL_PRESSED              = 0x44,
+    E_CERT_CEC_OPCODE_DMC_USER_CONTROL_RELEASED             = 0x45,
+//----- Remote Control Passthrough ----------------
+//----- UI Message --------------------------------
+//----- Power Status  ------------------------------
+    E_CERT_CEC_OPCODE_PS_GIVE_DEVICE_POWER_STATUS           = 0x8F,
+    E_CERT_CEC_OPCODE_PS_REPORT_POWER_STATUS                = 0x90,
+//----- General Protocal Message ------------------
+//----- Feature Abort -----------------------------
+    E_CERT_CEC_OPCODE_FEATURE_ABORT                         = 0x00,
+//----- Abort Message -----------------------------
+    E_CERT_CEC_OPCODE_ABORT_MESSAGE                         = 0xFF,
+//----- System Audio Control ------------------
+    E_CERT_CEC_OPCODE_SAC_GIVE_AUDIO_STATUS                 = 0x71,
+    E_CERT_CEC_OPCODE_SAC_GIVE_SYSTEM_AUDIO_MODE_STATUS     = 0x7D,
+    E_CERT_CEC_OPCODE_SAC_REPORT_AUDIO_STATUS               = 0x7A,
+    E_CERT_CEC_OPCODE_SAC_REPORT_SHORT_AUDIO_DESCRIPTOR     = 0xA3,
+    E_CERT_CEC_OPCODE_SAC_REQUEST_SHORT_AUDIO_DESCRIPTOR    = 0xA4,
+    E_CERT_CEC_OPCODE_SAC_SET_SYSTEM_AUDIO_MODE             = 0x72,
+    E_CERT_CEC_OPCODE_SAC_SYSTEM_AUDIO_MODE_REQUEST         = 0x70,
+    E_CERT_CEC_OPCODE_SAC_SYSTEM_AUDIO_MODE_STATUS          = 0x7E,
+//----- System Audio Control ------------------
+    E_CERT_CEC_OPCODE_SAC_SET_AUDIO_RATE                    = 0x9A,
+//----- Audio Return Channel  Control ------------------
+    E_CERT_CEC_OPCODE_ARC_INITIATE_ARC                      = 0xC0,
+    E_CERT_CEC_OPCODE_ARC_REPORT_ARC_INITIATED              = 0xC1,
+    E_CERT_CEC_OPCODE_ARC_REPORT_ARC_TERMINATED             = 0xC2,
+    E_CERT_CEC_OPCODE_ARC_REQUEST_ARC_INITIATION            = 0xC3,
+    E_CERT_CEC_OPCODE_ARC_REQUEST_ARC_TERMINATION           = 0xC4,
+    E_CERT_CEC_OPCODE_ARC_TERMINATE_ARC                     = 0xC5,
+//----- Capability Discovery and Control ------------------
+    E_CERT_CEC_OPCODE_CDC_CDC_MESSAGE                       = 0xF8,
+}EN_CERTIFICATION_CEC_CMD_OPCODE;
+
+typedef enum{
+  E_CERT_CEC_CMD_OPERAND_A =1,
+}EN_CERTIFICATION_CEC_CMD_OPERAND;
+
+
+/*=============================HDMI UI Subitems enum  END====================================*/
 
 //-------------------------------------------------------------------------------------------------
 //  Local Structures
@@ -403,12 +723,18 @@ static MS_BOOL _bXC_Init = FALSE;
 static MS_U32 u32Layer = E_CERTIFICATION_LAYER0;
 
 static MS_U8 u8TestItem = E_CERTIFICATION_INVALID;
-//static E_CERTIFICATION_TIMING_SOURCE_TYPE srctiming = E_CERTIFICATION_SOURCE_INVALID;
+static MS_U8 u8TestItemLayer1 = E_CERTIFICATION_INVALID;
+
+//static EN_CERTIFICATION_TIMING_SOURCE_TYPE srctiming = E_CERTIFICATION_SOURCE_INVALID;
 
 static MS_BOOL _bEDID = FALSE;
 static MS_U8 _u8Edid[128];
 
 static MS_U8 _u8HDMI_TEST_TYPE;
+static MS_U8 _u8HDMI_UI_TEST_TYPE;
+static MS_U8 _u8HDMI_UI_Subitems_TEST_TYPE;
+
+
 static HDMITX_VIDEO_TIMING _3DTiming = HDMITX_RES_MAX;
 
 static MS_BOOL _bFinished3DSetting = FALSE;
@@ -426,6 +752,12 @@ static MS_S32       _s32TxHPD_Event = -1;
 static MS_U8        _u8TxHPDTaskStack[TX_HPD_TASK_SIZE];
 static Task_Info    _s32TxHPD_Task = {-1, E_TASK_PRI_MEDIUM, (void *)_u8TxHPDTaskStack, TX_HPD_TASK_SIZE, "TxHPD Rec Task"};
 #endif
+
+static MS_U8 _CECTargetLA = 0; //Logic address
+static MS_U8 _CECOpcode = 0;
+static MS_U8 _CECLength = 0;
+static MS_U8 _CECOperand[MAX_CEC_OPERAND_SIZE] = {0};
+
 
 //-------------------------------------------------------------------------------------------------
 //  Local Functions
@@ -446,6 +778,39 @@ void _Demo_Certification_HDMIConfiguration(void)
         }
 
     }
+}
+
+MS_BOOL _Demo_Certification_WaitUARTInput(char chInput)
+{
+    MS_U8 u8CMDArray[MAX_CMD_SIZE];
+    struct timeval timeout = {0};
+    MS_U8 STDIN = 0;
+    fd_set readfds;
+    char chInput2;
+
+    // Lower/Upper converter
+    if(islower(chInput))
+    {
+        chInput2 = toupper(chInput);
+    }
+    else
+    {
+        chInput2 = tolower(chInput);
+    }
+
+    FD_ZERO(&readfds);
+    FD_SET(STDIN, &readfds);
+    select(STDIN+1, &readfds, NULL, NULL, &timeout);
+
+    //break condition
+    if((FD_ISSET(STDIN, &readfds)) && (NULL != (fgets((char*)u8CMDArray, MAX_CMD_SIZE, stdin))))
+    {
+        if ((u8CMDArray[0] == chInput) || (u8CMDArray[0] == chInput2))
+        {
+            return TRUE;
+        }
+    }
+    return FALSE;
 }
 
 char *_Demo_Certification_3D2String(E_MSAPI_XC_3D_OUTPUT_MODE eMode)
@@ -605,7 +970,7 @@ char * _Demo_Certification_Out2String(MS_U32 u32Out)
     return ("unknown output resolution");
 }
 
-char * _Demo_Certification_Type2String( E_CERTIFICATION_TYPE etype)
+char * _Demo_Certification_Type2String( EN_CERTIFICATION_LAYER etype)
 {
 
     switch (etype)
@@ -657,7 +1022,7 @@ char * _Demo_Certification_CD2string(MS_U32 cd)
     return ("unknown bit");
 
 }
-char * _Demo_Certification_3Dresolution2string(E_CERTIFICATION_3DRESOLUTION eTiming)
+char * _Demo_Certification_3Dresolution2string(EN_CERTIFICATION_3DRESOLUTION eTiming)
 {
     switch (eTiming)
     {
@@ -713,7 +1078,7 @@ char * _Demo_Certification_3Dresolution2string(E_CERTIFICATION_3DRESOLUTION eTim
 
 }
 
-char * _Demo_Certification_resolution2string(E_CERTIFICATION_RESOLUTION eTiming)
+char * _Demo_Certification_resolution2string(EN_CERTIFICATION_RESOLUTION eTiming)
 {
     switch (eTiming)
     {
@@ -970,7 +1335,7 @@ char * _Demo_Certification_resolution2string(E_CERTIFICATION_RESOLUTION eTiming)
             return ("4096x2160p_60Hz_16_9_36bit ");
             break;
         case E_RESOLUTION_4096x2160p_60Hz_16_9_48bit:
-            return ("4096x2160p_60Hz_16_9_48bit ");	
+            return ("4096x2160p_60Hz_16_9_48bit ");
             break;
         default:
             break;
@@ -979,7 +1344,7 @@ char * _Demo_Certification_resolution2string(E_CERTIFICATION_RESOLUTION eTiming)
     return ("unknown normal resolution");
 }
 
-char * _Demo_Certification_Txmode2string(E_CERTIFICATION_OUTTYPE eTxMode)
+char * _Demo_Certification_Txmode2string(EN_CERTIFICATION_OUTTYPE eTxMode)
 {
     switch (eTxMode)
     {
@@ -995,7 +1360,7 @@ char * _Demo_Certification_Txmode2string(E_CERTIFICATION_OUTTYPE eTxMode)
     return ("unknown Tx mode");
 }
 
-char * _Demo_Certification_ColorSpace2string(E_CERTIFICATION_OUTPUTCOLORSPACE eColorSpace)
+char * _Demo_Certification_ColorSpace2string(EN_CERTIFICATION_OUTPUTCOLORSPACE eColorSpace)
 {
     switch (eColorSpace)
     {
@@ -1010,11 +1375,45 @@ char * _Demo_Certification_ColorSpace2string(E_CERTIFICATION_OUTPUTCOLORSPACE eC
             break;
         case E_CERT_YCBCR420:
             return ("YCbCr 420");
-            break;	
+            break;
         default:
             break;
     }
     return ("unknown Color Space");
+}
+
+char * _Demo_Certification_Colormetry2string(EN_CERTIFICATION_OUTPUTCOLORMETRY eColormetry)
+{
+    switch (eColormetry)
+    {
+        case E_CERT_COLORIMETRY_XVYCC601:
+            return ("xvYCC601");
+            break;
+        case E_CERT_COLORIMETRY_XVYCC709:
+            return ("xvYCC709");
+            break;
+        case E_CERT_COLORIMETRY_SYCC601:
+            return ("sYCC601");
+            break;
+        case E_CERT_COLORIMETRY_ADOBEYCC601:
+            return ("AdobeYCC601");
+            break;
+        case E_CERT_COLORIMETRY_ADOBERGB:
+            return ("AdobeRGB");
+            break;
+        case E_CERT_COLORIMETRY_BT2020CYCC:
+            return ("BT2020cYCC");
+            break;
+        case E_CERT_COLORIMETRY_BT2020YCC:
+            return ("BT2020YCC");
+            break;
+        case E_CERT_COLORIMETRY_BT2020RGB:
+            return ("BT2020RGB");
+            break;
+        default:
+            break;
+    }
+    return ("unknown Colormetry ");
 }
 
 E_ASPECT_RATIO_TYPE _Demo_Certification_GetAS(HDMITX_VIDEO_ASPECT_RATIO eAS)
@@ -1582,6 +1981,839 @@ HDMITX_VIDEO_COLOR_FORMAT _Demo_Certification_getOutColorFromEdid(void)
     return output_color;
 }
 
+
+/*=============================HDMI UI Process function  START==================================*/
+MS_BOOL _Demo_Certification_TX_SetColorFormat(MS_U32 u32Sel)
+{
+    MS_U32 u32XCColorFormatOutput = E_MSAPI_XC_HDMITX_OUTPUT_YUV444;
+    MS_U32 u32XCColorFormatInput = E_MSAPI_XC_HDMITX_OUTPUT_YUV444;
+    MS_BOOL bForceEnable = FALSE;
+
+    if((E_CERT_TX_COLORFORMAT_RGB444>u32Sel) || (u32Sel>E_CERT_TX_COLORFORMAT_YUV420))
+    {
+        printf("[%s][%d] Invalid Tx ColorFormat %"DTC_MS_U32_u"\n",__FUNCTION__,__LINE__,u32Sel);
+        return FALSE;
+    }
+
+    switch(u32Sel)
+    {
+        case E_CERT_TX_COLORFORMAT_RGB444:
+            u32XCColorFormatOutput = E_MSAPI_XC_HDMITX_OUTPUT_RGB444;
+            break;
+        case E_CERT_TX_COLORFORMAT_YUV422:
+            u32XCColorFormatOutput = E_MSAPI_XC_HDMITX_OUTPUT_YUV422;
+            break;
+        case E_CERT_TX_COLORFORMAT_YUV444:
+            u32XCColorFormatOutput = E_MSAPI_XC_HDMITX_OUTPUT_YUV444;
+            break;
+        case E_CERT_TX_COLORFORMAT_YUV420:
+            u32XCColorFormatOutput = E_MSAPI_XC_HDMITX_OUTPUT_YUV420;
+            break;
+        default:
+            printf("[%s][%d] Set HDMITx ColorFormat Fail\n", __FUNCTION__, __LINE__);
+            return FALSE;
+            break;
+    }
+
+    return Demo_HDMI_SetOutputColorFormat(&u32XCColorFormatInput,&u32XCColorFormatOutput,&bForceEnable);
+}
+
+MS_BOOL _Demo_Certification_TX_SetColorDepth(MS_U32 u32Sel)
+{
+    MS_U32 u32XCColorDepth = E_MSAPI_XC_HDMITX_CD_8BITS;
+
+    if((E_CERT_TX_COLORDEPTH_8BITS>u32Sel) || (u32Sel>E_CERT_TX_COLORDEPTH_16BITS))
+    {
+        printf("[%s][%d] Invalid Tx ColorDepth %"DTC_MS_U32_u"\n",__FUNCTION__,__LINE__,u32Sel);
+        return FALSE;
+    }
+
+    switch(u32Sel)
+    {
+        case E_CERT_TX_COLORDEPTH_8BITS:
+            u32XCColorDepth = E_MSAPI_XC_HDMITX_CD_8BITS;
+            break;
+        case E_CERT_TX_COLORDEPTH_10BITS:
+            u32XCColorDepth = E_MSAPI_XC_HDMITX_CD_10BITS;
+            break;
+        case E_CERT_TX_COLORDEPTH_12BITS:
+            u32XCColorDepth = E_MSAPI_XC_HDMITX_CD_12BITS;
+            break;
+        case E_CERT_TX_COLORDEPTH_16BITS:
+            u32XCColorDepth = E_MSAPI_XC_HDMITX_CD_16BITS;
+            break;
+        default:
+            printf("[%s][%d] Set HDMITx ColorDepth Fail\n", __FUNCTION__, __LINE__);
+            return FALSE;
+            break;
+    }
+
+    return Demo_HDMI_SetOutputColorDepth(&u32XCColorDepth);
+}
+
+MS_BOOL _Demo_Certification_TX_SetOuputMode(MS_U32 u32Sel)
+{
+    MS_U32 u32XCOutputMode = 0;
+
+    if((E_CERT_TX_OUTPUTMODE_HDMI>u32Sel) || (u32Sel>E_CERT_TX_OUTPUTMODE_DVI))
+    {
+        printf("[%s][%d] Invalid Tx OutputMode %"DTC_MS_U32_u"\n",__FUNCTION__,__LINE__,u32Sel);
+        return FALSE;
+    }
+
+    switch(u32Sel)
+    {
+        case E_CERT_TX_OUTPUTMODE_HDMI:
+            u32XCOutputMode = E_MSAPI_XC_HDMITX_OUTPUT_HDMI;
+            break;
+        case E_CERT_TX_OUTPUTMODE_DVI:
+            u32XCOutputMode = E_MSAPI_XC_HDMITX_OUTPUT_DVI;
+            break;
+        default:
+            printf("[%s][%d] Set HDMITx %s OutputMode Fail\n", __FUNCTION__, __LINE__, (u32Sel==E_CERT_TX_OUTPUTMODE_HDMI)?"HDMI":"DVI");
+            return FALSE;
+            break;
+    }
+
+    return Demo_HDMI_SetTxOutputMode(&u32XCOutputMode);
+}
+
+MS_BOOL _Demo_Certification_TX_SetOutputTiming(MS_U32 u32Sel)
+{
+    MS_U32 u32XCDevice = E_MSAPI_XC_DEVICE0;
+    MS_U32 u32XCOutputTiming = E_OUTPUT_TIMING_720X480_60P;
+
+    if((E_CERT_TX_OUTPUTTIMING_720X480_60I>u32Sel) || (u32Sel>=E_CERT_TX_OUTPUTTIMING_MAX))
+    {
+        printf("[%s][%d] Invalid Tx OutputTiming %"DTC_MS_U32_u"\n",__FUNCTION__,__LINE__,u32Sel);
+        return FALSE;
+    }
+
+    switch(u32Sel)
+    {
+        case  E_CERT_TX_OUTPUTTIMING_720X480_60I:
+            u32XCOutputTiming = E_OUTPUT_TIMING_720X480_60I;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_720X480_60P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_720X480_60P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_720X576_50I:
+            u32XCOutputTiming = E_OUTPUT_TIMING_720X576_50I;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_720X576_50P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_720X576_50P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_1280X720_50P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_1280X720_50P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_1280X720_60P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_1280X720_60P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_1920X1080_50I:
+            u32XCOutputTiming = E_OUTPUT_TIMING_1920X1080_50I;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_1920X1080_60I:
+            u32XCOutputTiming = E_OUTPUT_TIMING_1920X1080_60I;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_1920X1080_24P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_1920X1080_24P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_1920X1080_25P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_1920X1080_25P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_1920X1080_30P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_1920X1080_30P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_1920X1080_50P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_1920X1080_50P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_1920X1080_60P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_1920X1080_60P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_3840X2160_24P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_3840X2160_24P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_3840X2160_25P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_3840X2160_25P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_3840X2160_30P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_3840X2160_30P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_3840X2160_50P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_3840X2160_50P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_3840X2160_60P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_3840X2160_60P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_4096X2160_24P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_4096X2160_24P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_4096X2160_25P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_4096X2160_25P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_4096X2160_30P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_4096X2160_30P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_4096X2160_50P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_4096X2160_50P;
+            break;
+        case  E_CERT_TX_OUTPUTTIMING_4096X2160_60P:
+            u32XCOutputTiming = E_OUTPUT_TIMING_4096X2160_60P;
+            break;
+        default:
+            printf("[%s][%d] Set HDMITx OutputTiming Fail\n", __FUNCTION__, __LINE__);
+            return FALSE;
+            break;
+    }
+
+    return Demo_XC_SetOutputTiming(&u32XCDevice,&u32XCOutputTiming);
+}
+
+MS_BOOL _Demo_Certification_TX_SetAspectRatio(MS_U32 u32Sel)
+{
+    MS_U32 u32AspectRatio = E_ASPECT_RATIO_NORMAL;
+
+    if((E_CERT_TX_ASPECTRATIO_4_3>u32Sel) || (u32Sel>E_CERT_TX_ASPECTRATIO_16_9))
+    {
+        printf("[%s][%d] Invalid Aspect Ratio %"DTC_MS_U32_u"\n",__FUNCTION__,__LINE__,u32Sel);
+        return FALSE;
+    }
+
+    switch(u32Sel)
+    {
+        case E_CERT_TX_ASPECTRATIO_4_3:
+            u32AspectRatio = E_ASPECT_RATIO_4_3;
+            break;
+        case E_CERT_TX_ASPECTRATIO_16_9:
+            u32AspectRatio = E_ASPECT_RATIO_16_9;
+            break;
+        default:
+            printf("[%s][%d] Set HDMITx Aspect Ratio Fail\n", __FUNCTION__, __LINE__);
+            return FALSE;
+            break;
+    }
+
+    return Demo_HDMI_SetAspectRatio(&u32AspectRatio);
+}
+
+MS_BOOL _Demo_Certification_TX_Set3DStructure(MS_U32 u32Sel)
+{
+    MS_U32 u32XC3DStructure = E_3D_OUTPUT_TIMING_1920x1080p23d98Hz_24Hz_FRAME_PACKING;
+
+    if((E_CERT_TX_3DSTRUCTURE_1920x1080p23d98Hz_24Hz_FRAME_PACKING>u32Sel) || (u32Sel>E_CERT_TX_3DSTRUCTURE_1920x1080p29d97Hz_30Hz_TOP_BOTTOM))
+    {
+        printf("[%s][%d] Invalid 3D Structure %"DTC_MS_U32_u"\n",__FUNCTION__,__LINE__,u32Sel);
+        return FALSE;
+    }
+
+    switch(u32Sel)
+    {
+        case E_CERT_TX_3DSTRUCTURE_1920x1080p23d98Hz_24Hz_FRAME_PACKING:
+            u32XC3DStructure = E_3D_OUTPUT_TIMING_1920x1080p23d98Hz_24Hz_FRAME_PACKING;
+            break;
+        case E_CERT_TX_3DSTRUCTURE_1280x720p59d94Hz_60Hz_FRAME_PACKING:
+            u32XC3DStructure = E_3D_OUTPUT_TIMING_1280x720p59d94Hz_60Hz_FRAME_PACKING;
+            break;
+        case E_CERT_TX_3DSTRUCTURE_1280x720p50Hz_FRAME_PACKING:
+            u32XC3DStructure = E_3D_OUTPUT_TIMING_1280x720p50Hz_FRAME_PACKING;
+            break;
+        case E_CERT_TX_3DSTRUCTURE_1920x1080i59d94HZ_60Hz_SIDE_BY_SIDE:
+            u32XC3DStructure = E_3D_OUTPUT_TIMING_1920x1080i59d94HZ_60Hz_SIDE_BY_SIDE;
+            break;
+         case E_CERT_TX_3DSTRUCTURE_1920x1080i50Hz_SIDE_BY_SIDE:
+            u32XC3DStructure = E_3D_OUTPUT_TIMING_1920x1080i50Hz_SIDE_BY_SIDE;
+            break;
+          case E_CERT_TX_3DSTRUCTURE_1920x1080p23d98Hz_24Hz_TOP_BOTTOM:
+            u32XC3DStructure = E_3D_OUTPUT_TIMING_1920x1080p23d98Hz_24Hz_TOP_BOTTOM;
+            break;
+          case E_CERT_TX_3DSTRUCTURE_1280x720p59d94Hz_60Hz_TOP_BOTTOM:
+            u32XC3DStructure = E_3D_OUTPUT_TIMING_1280x720p59d94Hz_60Hz_TOP_BOTTOM;
+            break;
+          case E_CERT_TX_3DSTRUCTURE_1280x720p50Hz_TOP_BOTTOM:
+            u32XC3DStructure = E_3D_OUTPUT_TIMING_1280x720p50Hz_TOP_BOTTOM;
+            break;
+          case E_CERT_TX_3DSTRUCTURE_1280x720p59d94Hz_60Hz_SIDE_BY_SIDE:
+            u32XC3DStructure = E_3D_OUTPUT_TIMING_1280x720p59d94Hz_60Hz_SIDE_BY_SIDE;
+            break;
+          case E_CERT_TX_3DSTRUCTURE_1280x720p50Hz_SIDE_BY_SIDE:
+            u32XC3DStructure = E_3D_OUTPUT_TIMING_1280x720p50Hz_SIDE_BY_SIDE;
+            break;
+          case E_CERT_TX_3DSTRUCTURE_1920x1080p23d98Hz_24Hz_SIDE_BY_SIDE:
+            u32XC3DStructure = E_3D_OUTPUT_TIMING_1920x1080p23d98Hz_24Hz_SIDE_BY_SIDE;
+            break;
+          case E_CERT_TX_3DSTRUCTURE_1920x1080p59d94Hz_60Hz_TOP_BOTTOM:
+            u32XC3DStructure = E_3D_OUTPUT_TIMING_1920x1080p59d94Hz_60Hz_TOP_BOTTOM;
+            break;
+          case E_CERT_TX_3DSTRUCTURE_1920x1080p50Hz_TOP_BOTTOM:
+            u32XC3DStructure = E_3D_OUTPUT_TIMING_1920x1080p50Hz_TOP_BOTTOM;
+            break;
+          case E_CERT_TX_3DSTRUCTURE_1920x1080p29d97Hz_30Hz_TOP_BOTTOM:
+            u32XC3DStructure = E_3D_OUTPUT_TIMING_1920x1080p29d97Hz_30Hz_TOP_BOTTOM;
+            break;
+        default:
+            printf("[%s][%d] Set HDMITx 3D Structure Fail\n", __FUNCTION__, __LINE__);
+            return FALSE;
+            break;
+    }
+
+    return Demo_HDMI_Set3DStructure(&u32XC3DStructure);
+}
+
+MS_BOOL _Demo_Certification_TX_SetAudio(MS_U32 u32Sel)
+{
+    MS_U32 u32AudioType = E_AUDIO_OUTPUT_PCM;
+
+    if((E_CERT_TX_AUDIO_PCM>u32Sel) || (u32Sel>E_CERT_TX_AUDIO_NONPCM_DDPBypass))
+    {
+        printf("[%s][%d] Invalid Audio Type %"DTC_MS_U32_u"\n",__FUNCTION__,__LINE__,u32Sel);
+        return FALSE;
+    }
+
+    switch(u32Sel)
+    {
+        case E_CERT_TX_AUDIO_PCM:
+            u32AudioType = E_AUDIO_OUTPUT_PCM;
+            break;
+        case E_CERT_TX_AUDIO_NONPCM:
+            u32AudioType = E_AUDIO_OUTPUT_NONPCM;
+            break;
+        case E_CERT_TX_AUDIO_NONPCM_DDPBypass:
+            u32AudioType = E_AUDIO_OUTPUT_NONPCM_DDPBypass;
+            break;
+        default:
+            printf("[%s][%d] Set HDMITx Audio Fail\n", __FUNCTION__, __LINE__);
+            return FALSE;
+            break;
+    }
+
+    return Demo_HDMI_SetAudio(&u32AudioType);
+}
+
+MS_BOOL _Demo_Certification_TX_SetColorimetry(MS_U32 u32Sel)
+{
+    MS_U32 u32Colorimetry = E_MSAPI_XC_HDMI_COLOR_NODATA;
+    MS_U32 u32ExtendColorimetry = E_MSAPI_XC_HDMI_EXT_COLOR_XVYCC601;
+
+    if((E_CERT_TX_COLORMETRY_NODATA>u32Sel) || (u32Sel>E_CERT_TX_COLORMETRY_EXTEND_BT2020RGB))
+    {
+        printf("[%s][%d] Invalid Colormetry %"DTC_MS_U32_u"\n",__FUNCTION__,__LINE__,u32Sel);
+        return FALSE;
+    }
+
+    switch(u32Sel)
+    {
+        case E_CERT_TX_COLORMETRY_NODATA:
+            u32Colorimetry = E_MSAPI_XC_HDMI_COLOR_NODATA;
+            break;
+        case E_CERT_TX_COLORMETRY_ITU601:
+            u32Colorimetry = E_MSAPI_XC_HDMI_COLOR_ITU601;
+            break;
+        case E_CERT_TX_COLORMETRY_ITU709:
+            u32Colorimetry = E_MSAPI_XC_HDMI_COLOR_ITU709;
+            break;
+        case E_CERT_TX_COLORMETRY_EXTEND_XVYCC601:
+            u32Colorimetry          = E_MSAPI_XC_HDMI_COLOR_EXTEND_VALID;
+            u32ExtendColorimetry    = E_MSAPI_XC_HDMI_EXT_COLOR_XVYCC601;
+            break;
+        case E_CERT_TX_COLORMETRY_EXTEND_XVYCC709:
+            u32Colorimetry          = E_MSAPI_XC_HDMI_COLOR_EXTEND_VALID;
+            u32ExtendColorimetry    = E_MSAPI_XC_HDMI_EXT_COLOR_XVYCC709;
+            break;
+        case E_CERT_TX_COLORMETRY_EXTEND_SYCC601:
+            u32Colorimetry          = E_MSAPI_XC_HDMI_COLOR_EXTEND_VALID;
+            u32ExtendColorimetry    = E_MSAPI_XC_HDMI_EXT_COLOR_SYCC601;
+            break;
+        case E_CERT_TX_COLORMETRY_EXTEND_ADOBEYCC601:
+            u32Colorimetry          = E_MSAPI_XC_HDMI_COLOR_EXTEND_VALID;
+            u32ExtendColorimetry    = E_MSAPI_XC_HDMI_EXT_COLOR_ADOBEYCC601;
+            break;
+        case E_CERT_TX_COLORMETRY_EXTEND_ADOBERGB:
+            u32Colorimetry          = E_MSAPI_XC_HDMI_COLOR_EXTEND_VALID;
+            u32ExtendColorimetry    = E_MSAPI_XC_HDMI_EXT_COLOR_ADOBERGB;
+            break;
+        case E_CERT_TX_COLORMETRY_EXTEND_BT2020CYCC:
+            u32Colorimetry          = E_MSAPI_XC_HDMI_COLOR_EXTEND_VALID;
+            u32ExtendColorimetry    = E_MSAPI_XC_HDMI_EXT_COLOR_BT2020CYCC;
+            break;
+        case E_CERT_TX_COLORMETRY_EXTEND_BT2020YCC:
+            u32Colorimetry          = E_MSAPI_XC_HDMI_COLOR_EXTEND_VALID;
+            u32ExtendColorimetry    = E_MSAPI_XC_HDMI_EXT_COLOR_BT2020YCC;
+            break;
+        case E_CERT_TX_COLORMETRY_EXTEND_BT2020RGB:
+            u32Colorimetry          = E_MSAPI_XC_HDMI_COLOR_EXTEND_VALID;
+            u32ExtendColorimetry    = E_MSAPI_XC_HDMI_EXT_COLOR_BT2020RGB;
+            break;
+        default:
+            printf("[%s][%d] Set HDMITx Colorimetry Fail\n", __FUNCTION__, __LINE__);
+            return FALSE;
+            break;
+    }
+
+    return Demo_HDMI_SetColorimetry(&u32Colorimetry,&u32ExtendColorimetry);
+}
+
+MS_BOOL _Demo_Certification_TX_SetAVMute(MS_U32 u32Sel)
+{
+    MS_U32 u32AVMuteEnable = FALSE;
+
+     if((E_CERT_TX_AVMUTE_ON>u32Sel) || (u32Sel>E_CERT_TX_AVMUTE_OFF))
+    {
+        printf("[%s][%d] Invalid AV Mute %"DTC_MS_U32_u"\n",__FUNCTION__,__LINE__,u32Sel);
+        return FALSE;
+    }
+
+    switch(u32Sel)
+    {
+        case E_CERT_TX_AVMUTE_ON:
+            u32AVMuteEnable = TRUE;
+            break;
+        case E_CERT_TX_AVMUTE_OFF:
+            u32AVMuteEnable = FALSE;
+            break;
+        default:
+            printf("[%s][%d] Set HDMITx AV Mute Fail\n", __FUNCTION__, __LINE__);
+            return FALSE;
+            break;
+    }
+
+    return Demo_HDMI_SetAVMute(&u32AVMuteEnable);
+}
+
+MS_BOOL _Demo_Certification_TX_SetQuantizationRange(MS_U32 u32Sel)
+{
+    MS_U32 u32OutColorRange = E_MSAPI_XC_HDMITX_OUTPUT_QUANT_LIMIT;
+    MS_U32 u32OutColorFormat = E_MSAPI_XC_HDMITX_OUTPUT_RGB444;
+    MS_U32 u32InColorFormat = E_MSAPI_XC_HDMITX_OUTPUT_YUV444;
+    MS_U32 u32InColorRange = E_MSAPI_XC_HDMITX_OUTPUT_QUANT_LIMIT;
+
+   if((E_CERT_TX_QUANTIZATIONRANGE_RGB444_LIMIT>u32Sel) || (u32Sel>E_CERT_TX_QUANTIZATIONRANGE_YUV444_FULL))
+    {
+        printf("[%s][%d] Invalid Quantization Range %"DTC_MS_U32_u"\n",__FUNCTION__,__LINE__,u32Sel);
+        return FALSE;
+    }
+
+    switch(u32Sel)
+    {
+        case E_CERT_TX_QUANTIZATIONRANGE_RGB444_LIMIT:
+            u32OutColorFormat = E_MSAPI_XC_HDMITX_OUTPUT_RGB444;
+            u32OutColorRange = E_MSAPI_XC_HDMITX_OUTPUT_QUANT_LIMIT;
+            break;
+        case E_CERT_TX_QUANTIZATIONRANGE_YUV422_LIMIT:
+            u32OutColorFormat = E_MSAPI_XC_HDMITX_OUTPUT_YUV422;
+            u32OutColorRange = E_MSAPI_XC_HDMITX_OUTPUT_QUANT_LIMIT;
+            break;
+        case E_CERT_TX_QUANTIZATIONRANGE_YUV444_LIMIT:
+            u32OutColorFormat = E_MSAPI_XC_HDMITX_OUTPUT_YUV444;
+            u32OutColorRange = E_MSAPI_XC_HDMITX_OUTPUT_QUANT_LIMIT;
+            break;
+        case E_CERT_TX_QUANTIZATIONRANGE_RGB444_FULL:
+            u32OutColorFormat = E_MSAPI_XC_HDMITX_OUTPUT_RGB444;
+            u32OutColorRange = E_MSAPI_XC_HDMITX_OUTPUT_QUANT_FULL;
+            break;
+        case E_CERT_TX_QUANTIZATIONRANGE_YUV422_FULL:
+            u32OutColorFormat = E_MSAPI_XC_HDMITX_OUTPUT_YUV422;
+            u32OutColorRange = E_MSAPI_XC_HDMITX_OUTPUT_QUANT_FULL;
+            break;
+        case E_CERT_TX_QUANTIZATIONRANGE_YUV444_FULL:
+            u32OutColorFormat = E_MSAPI_XC_HDMITX_OUTPUT_YUV444;
+            u32OutColorRange = E_MSAPI_XC_HDMITX_OUTPUT_QUANT_FULL;
+            break;
+        default:
+            printf("[%s][%d] Set HDMITx Quantization Range Fail\n", __FUNCTION__, __LINE__);
+            return FALSE;
+            break;
+    }
+
+    return Demo_HDMI_SetOutputColorRange(&u32InColorFormat,&u32OutColorFormat,
+                                                  &u32InColorRange,&u32OutColorRange);
+}
+
+MS_BOOL _Demo_Certification_TX_ShowTXInfo(MS_U32 u32Sel)
+{
+    MS_U32 u32FileOption = 0;
+    MS_U8  u8FileName[] = "/mnt/sda1/Ref_997_200_32k_20dB_dd.trp";
+    MS_U32 u32On = TRUE;
+
+    if((E_CERT_TX_SHOWINFO>u32Sel) || (u32Sel>E_CERT_TX_SHOWMM_AUDIO_48K_DDP))
+    {
+        printf("[%s][%d] Invalid Show HDMITx Info %"DTC_MS_U32_u"\n",__FUNCTION__,__LINE__,u32Sel);
+        return FALSE;
+    }
+
+    switch(u32Sel)
+    {
+        case E_CERT_TX_SHOWINFO:
+            break;
+        case E_CERT_TX_SHOWMM_VIDEO:
+            sprintf((char*)u8FileName, "/mnt/sda1/8185.ts");
+            break;
+        case E_CERT_TX_SHOWMM_AUDIO_32K_DD:
+            sprintf((char*)u8FileName, "/mnt/sda1/Ref_997_200_32k_20dB_dd.trp");
+            break;
+        case E_CERT_TX_SHOWMM_AUDIO_44K1_DD:
+            sprintf((char*)u8FileName, "/mnt/sda1/Ref_997_200_44k1_20dB_dd.trp");
+            break;
+        case E_CERT_TX_SHOWMM_AUDIO_48K_DD:
+            sprintf((char*)u8FileName, "/mnt/sda1/Ref_997_200_48k_20dB_dd.trp");
+            break;
+        case E_CERT_TX_SHOWMM_AUDIO_44K1_DDP:
+            sprintf((char*)u8FileName, "/mnt/sda1/Ref_997_200_44k1_20dB_ddp.trp");
+            break;
+        case E_CERT_TX_SHOWMM_AUDIO_48K_DDP:
+            sprintf((char*)u8FileName, "/mnt/sda1/Ref_997_200_48k_20dB_ddp.trp");
+            break;
+        default:
+            printf("[%s][%d] Show HDMITx Info Fail\n", __FUNCTION__, __LINE__);
+            return FALSE;
+            break;
+    }
+
+    switch(u32Sel)
+    {
+        case E_CERT_TX_SHOWINFO:
+            while(1)
+            {
+                //show info
+                Demo_HDMI_ShowHDMITxOutputInfo();
+
+                // Wait input to leave
+                if (_Demo_Certification_WaitUARTInput(CERTIFICATION_EXIT) == TRUE)
+                {
+                    printf(UARTCOLOR_LIGHT_RED"[TX] Exit Show TX Info \n"UARTCOLOR_NONE);
+                    break;
+                }
+
+                MsOS_DelayTask(1000); //Show Infomation every 1s
+            }
+            break;
+        case E_CERT_TX_SHOWMM_VIDEO:
+        case E_CERT_TX_SHOWMM_AUDIO_32K_DD:
+        case E_CERT_TX_SHOWMM_AUDIO_44K1_DD:
+        case E_CERT_TX_SHOWMM_AUDIO_48K_DD:
+        case E_CERT_TX_SHOWMM_AUDIO_44K1_DDP:
+        case E_CERT_TX_SHOWMM_AUDIO_48K_DDP:
+            if(Demo_MM_Stop() == FALSE)
+            {
+                printf("[%s][%d] MM stop fail !\n",__FUNCTION__,__LINE__);
+                return FALSE;
+            }
+
+            if(Demo_MM_Play(&u32FileOption, u8FileName) == FALSE)
+            {
+                printf("[%s][%d] MM play fail !\n",__FUNCTION__,__LINE__);
+                return FALSE;
+            }
+
+            if(Demo_MM_Repeat(&u32On) == FALSE)
+            {
+                printf("[%s][%d] MM Repeat fail !\n",__FUNCTION__,__LINE__);
+                return FALSE;
+            }
+            break;
+        default:
+            printf("[%s][%d] Show HDMITx Info Fail\n", __FUNCTION__, __LINE__);
+            return FALSE;
+            break;
+    }
+
+    return TRUE;
+}
+
+EN_CERTIFICATION_REPEATER eRepeaterMode = E_CERT_REPEATER_CONVERTER;
+MS_BOOL _Demo_Certification_Repeater_Reset(EN_CERTIFICATION_REPEATER eCurrentMode)
+{
+#if (DEMO_XC_HDMIRX_TEST == 1)
+    MS_U32 u32RXbyPassEnable = FALSE;
+#endif
+
+    switch(eRepeaterMode)
+    {
+        case E_CERT_REPEATER_TXONLY:
+            if(Demo_MM_Stop() == FALSE)
+            {
+                printf("[%s][%d] MM stop fail !\n",__FUNCTION__,__LINE__);
+                return FALSE;
+            }
+            break;
+        case E_CERT_REPEATER_BYPASS:
+#if (DEMO_XC_HDMIRX_TEST == 1)
+            if(Demo_HDMI_SetRxBypass(&u32RXbyPassEnable) == FALSE)
+#endif
+            {
+                printf("[%s][%d] Disable bypass mode fail !\n",__FUNCTION__,__LINE__);
+                return FALSE;
+            }
+            break;
+        case E_CERT_REPEATER_CONVERTER:
+        default:
+            break;
+    }
+
+    eRepeaterMode = eCurrentMode;
+    return TRUE;
+}
+
+MS_BOOL _Demo_Certification_Repeater_SetTXOnlyMode(void)
+{
+    MS_U32 u32FileOption = 0;
+    MS_U8  u8FileName[] = "/mnt/sda/SNSD_1080i@30.tp";
+    MS_U32 u32On = TRUE;
+    MS_U32 u32Type = AUDIO_APP_ES_PLAY;
+
+    _Demo_Certification_Repeater_Reset(E_CERT_REPEATER_TXONLY);
+
+    Demo_Audio_Init(&u32Type);
+
+    if(Demo_MM_Play(&u32FileOption, u8FileName) == FALSE)
+    {
+        printf("[%s][%d] MM play fail !\n",__FUNCTION__,__LINE__);
+        return FALSE;
+    }
+
+    if(Demo_MM_Repeat(&u32On) == FALSE)
+    {
+        printf("[%s][%d] MM play fail !\n",__FUNCTION__,__LINE__);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+#if (DEMO_XC_HDMIRX_TEST == 1)
+MS_BOOL _Demo_Certification_Repeater_SetConverterMode(void)
+{
+    MS_U32 u32XCDevice = 0;
+    MS_U32 u32XCWindow = 0;
+    MS_U32 u32XCInputSrc = E_DDI_XC_INPUT_SOURCE_HDMI;
+    MS_U32 u32Type = AUDIO_APP_HDMI_RX;
+
+    _Demo_Certification_Repeater_Reset(E_CERT_REPEATER_CONVERTER);
+
+    Demo_Audio_Init(&u32Type);
+
+    if(Demo_XC_PlayVideo(&u32XCDevice, &u32XCWindow, &u32XCInputSrc) == FALSE)
+    {
+        printf("[%s][%d] Set Converter Mode fail !\n",__FUNCTION__,__LINE__);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+MS_BOOL _Demo_Certification_Repeater_SetByPassMode(void)
+{
+    MS_U32 u32RXbyPassEnable = TRUE;
+
+    _Demo_Certification_Repeater_Reset(E_CERT_REPEATER_BYPASS);
+
+    if(Demo_HDMI_SetRxBypass(&u32RXbyPassEnable) == FALSE)
+    {
+        printf("[%s][%d] Disable bypass mode fail !\n",__FUNCTION__,__LINE__);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+MS_BOOL _Demo_Certification_Repeater_ShowRXInfo(void)
+{
+    while(1)
+    {
+        //show info
+        Demo_HDMI_GetRXPacketInfo();
+
+        // Wait input to leave
+        if (_Demo_Certification_WaitUARTInput(CERTIFICATION_EXIT) == TRUE)
+        {
+            printf(UARTCOLOR_LIGHT_RED"[Repeater] Exit Show RX Info \n"UARTCOLOR_NONE);
+            break;
+        }
+
+        MsOS_DelayTask(1000); //Show Infomation every 1s
+    }
+    return TRUE;
+}
+#endif
+
+MS_BOOL _Demo_Certification_HDCP_Enable(MS_BOOL bEn)
+{
+    MS_BOOL bRet = E_MSAPI_XC_FAIL;
+    MS_U32 u32HDCPStartTime = MsOS_GetSystemTime();
+    MS_U16 u16HDCPTxWaitTime = 5000;
+    E_MSAPI_XC_HDMITX_HDCP_STATUS_INFO eHDCPStatus = E_MSAPI_XC_HDMITX_HDCP_STATUS_DISABLE;
+    E_MSAPI_XC_HDMITX_HDCP_INFO eHDCPInfo = E_MSAPI_XC_HDMITX_HDCP_GET_STATUS;
+    MS_U32 u32HDMIMode = (MS_U32)E_MSAPI_XC_HDMITX_OUTPUT_HDMI; // HDMI mode
+    if (bEn)
+    {
+        printf(UARTCOLOR_LIGHT_RED"[HDCPTX] Enable HDCP \n"UARTCOLOR_NONE);
+        u32HDMIMode = (MS_U32)E_MSAPI_XC_HDMITX_OUTPUT_HDMI_HDCP; //HDMI_HDCP mode
+        bRet = Demo_HDMI_SetTxOutputMode(&u32HDMIMode);
+        // Wait HDCP Tx Done
+        while(eHDCPStatus != E_MSAPI_XC_HDMITX_HDCP_STATUS_SUCCESS)
+        {
+            msAPI_XC_GetHDMITxHDCPStatus(eHDCPInfo, (void*)&eHDCPStatus);
+            if (MsOS_Timer_DiffTimeFromNow(u32HDCPStartTime) > u16HDCPTxWaitTime)
+            {
+                printf(UARTCOLOR_LIGHT_RED"[HDCPTX] HDCP Authentication Failed \n"UARTCOLOR_NONE);
+                u32HDMIMode = (MS_U32)E_MSAPI_XC_HDMITX_OUTPUT_HDMI; // HDMI mode
+                Demo_HDMI_SetTxOutputMode(&u32HDMIMode);
+                return FALSE;
+            }
+            MsOS_DelayTask(50);
+        }
+    }
+    else
+    {
+        printf(UARTCOLOR_LIGHT_RED"[HDCPTX] Disable HDCP \n"UARTCOLOR_NONE);
+        bRet = Demo_HDMI_SetTxOutputMode(&u32HDMIMode);
+    }
+    return bRet;
+}
+
+MS_BOOL _Demo_Certification_HDCP_ShowHDCPInfo(void)
+{
+    printf(UARTCOLOR_LIGHT_RED"[HDCP] Show HDCP Information and enter Q to leave \n"UARTCOLOR_NONE);
+
+    while(1)
+    {
+        // Show info
+        Demo_HDMI_ShowHDCPInfo();
+
+        // Wait input to leave
+        if (_Demo_Certification_WaitUARTInput(CERTIFICATION_EXIT) == TRUE)
+        {
+            printf(UARTCOLOR_LIGHT_RED"[HDCP] Exit Show HDCP Info \n"UARTCOLOR_NONE);
+            break;
+        }
+
+        MsOS_DelayTask(1000); //Show Infomation every 1s
+    }
+    return TRUE;
+}
+
+MS_BOOL _Demo_Certification_CEC_TX_OneTouchPlay(void)
+{
+    return Demo_CEC_OneTouchPlay();
+}
+
+MS_BOOL _Demo_Certification_CEC_TX_Standby(void)
+{
+    MS_U32 u32DeviceLA = 0;//TV
+    return Demo_CEC_Standby(&u32DeviceLA);
+}
+
+MS_BOOL _Demo_Certification_CEC_TX_GiveDevicePowerStatus(void)
+{
+    MS_U32 u32DeviceLA = 0;//TV
+    return Demo_CEC_GiveDevicePowerStatus(&u32DeviceLA);
+}
+
+MS_BOOL _Demo_Certification_CEC_TX_SystemAudioModeRequestOn(void)
+{
+    MS_U32 u32Enable = TRUE;
+    return Demo_CEC_SystemAudioModeRequest(&u32Enable);
+}
+
+MS_BOOL _Demo_Certification_CEC_TX_SystemAudioModeRequestOff(void)
+{
+    MS_U32 u32Enable = FALSE;
+    return Demo_CEC_SystemAudioModeRequest(&u32Enable);
+}
+
+MS_BOOL _Demo_Certification_CEC_TX_SendCMD(void)
+{
+    MS_U8 u8index = 0;
+    printf("[CEC TX] Dest LA = 0x%X Opcode = 0x%2x _CECLength = %d \n", _CECTargetLA, _CECOpcode, _CECLength);
+    printf("[CEC TX] Operand = ");
+    for(u8index = 0; u8index < _CECLength; ++u8index)
+    {
+        printf("0x%2X ",_CECOperand[u8index]);
+    }
+    printf("\n");
+
+    return MApi_CEC_TxSendMsg(_CECTargetLA, _CECOpcode, _CECOperand, _CECLength);
+}
+
+MS_BOOL _Demo_Certification_CEC_RX_ShowCMD(void)
+{
+    printf(UARTCOLOR_LIGHT_RED"[CEC] Show received CEC message and enter Q to leave \n"UARTCOLOR_NONE);
+
+    while(1)
+    {
+        // Show info
+        Demo_CEC_ShowMessageBuffer();
+
+        // Wait input to leave
+        if (_Demo_Certification_WaitUARTInput(CERTIFICATION_EXIT) == TRUE)
+        {
+            printf(UARTCOLOR_LIGHT_RED"[CEC] Exit Show CEC Info \n"UARTCOLOR_NONE);
+            break;
+        }
+
+        MsOS_DelayTask(1000); //Show Infomation every 1s
+    }
+    return TRUE;
+}
+
+MS_BOOL _Demo_Certification_CEC_TX_SetOperand(void)
+{
+    MS_U8 u8CECOperand[MAX_CEC_OPERAND_SIZE] = {0};
+    MS_U8 u8index = 0;
+    MS_U8 u8Operand = 0;
+
+    printf(UARTCOLOR_LIGHT_RED"[CEC TX] Enter Length of Operand(1~%d) \n"UARTCOLOR_NONE, MAX_CEC_OPERAND_SIZE);
+    if(NULL != (fgets((char*)u8CECOperand, MAX_CEC_OPERAND_SIZE, stdin)))
+    {
+        _CECLength = atoi((const char *)u8CECOperand);
+
+        if((_CECLength > 1) && (_CECLength < MAX_CEC_OPERAND_SIZE))
+        {
+            // Get input Operand
+            while(u8index < _CECLength)
+            {
+                printf("[CEC TX] Enter operand[%d] \n",u8index);
+                if(NULL != (fgets((char*)u8CECOperand, MAX_CEC_OPERAND_SIZE, stdin)))
+                {
+                    // string to hex
+                    u8Operand = strtoul((const char *)u8CECOperand, NULL, 16);
+                    _CECOperand[u8index] = u8Operand;
+                    u8index++;
+                }
+            }
+
+            printf(UARTCOLOR_LIGHT_RED"\n [CEC TX] Enter q to leave set operand page \n"UARTCOLOR_NONE);
+        }
+        else
+        {
+            printf("[CEC TX] Invalid length of operand! \n");
+            _CECLength = 0;
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+void _Demo_Certification_CEC_TX_Reset(void)
+{
+    printf("[CEC TX] Reset CEC TX Command! \n");
+    memset(_CECOperand, 0, MAX_CEC_OPERAND_SIZE);
+    _CECLength = 0;
+    _CECTargetLA = 0;
+    _CECOpcode = 0;
+}
+
+MS_BOOL _Demo_Certification_EDIDPrasing_ShowInfo(void)
+{
+    MS_U32 u32EDIDBlock = 0; //Block 0
+    Demo_HDMI_GetEDIDInfo(&u32EDIDBlock);
+    u32EDIDBlock = 1; //Block1
+    Demo_HDMI_GetEDIDInfo(&u32EDIDBlock);
+    return TRUE;
+}
+
+
+/*=============================HDMI UI Process function  END==================================*/
+
 #if (HDMI_CTS_CERTIFICATION_HDCP_SOURCE || HDMI_CTS_CERTIFICATION_HDCP_REPEATER)
 MS_BOOL Demo_HDMI_InitHDCP(MS_BOOL *bHDCP)
 {
@@ -1610,6 +2842,7 @@ void Demo_Certification_Init(void)
     printf("\t(%d) CEC \n",E_CERTIFICATION_CEC);
     printf("\t(%d) EDID \n",E_CERTIFICATION_EDID);
     printf("\t(%d) DBG \n",E_CERTIFICATION_DBG);
+    printf("\t(%d) HDMI_UI \n",E_CERTIFICATION_HDMI_UI);
     printf("\t(%c) Exit \n",CERTIFICATION_EXIT);
     printf("Please select Test item:");
     u32Layer= E_CERTIFICATION_LAYER0;
@@ -1673,6 +2906,22 @@ void Demo_Certification_SelectOutputColorSpace(void)
 
 }
 
+void Demo_Certification_SelectOutputColormetry(void)
+{
+    printf("Output Color Space Selection:   \n");
+    printf("\t(%d) xvYCC601\n",             E_CERT_COLORIMETRY_XVYCC601);
+    printf("\t(%d) xvYCC709\n",             E_CERT_COLORIMETRY_XVYCC709);
+    printf("\t(%d) sYCC601\n",              E_CERT_COLORIMETRY_SYCC601);
+    printf("\t(%d) AdobeYCC601\n",          E_CERT_COLORIMETRY_ADOBEYCC601);
+    printf("\t(%d) AdobeRGB\n",             E_CERT_COLORIMETRY_ADOBERGB);
+    printf("\t(%d) BT.2020CYCC\n",          E_CERT_COLORIMETRY_BT2020CYCC);
+    printf("\t(%d) BT.2020YCC\n",           E_CERT_COLORIMETRY_BT2020YCC);
+    printf("\t(%d) BT.2020RGB\n",           E_CERT_COLORIMETRY_BT2020RGB);
+    printf("\t(%c) Exit\n",            CERTIFICATION_EXIT);
+    printf("Please select Test item:");
+    u32Layer= E_CERTIFICATION_LAYER3;
+
+}
 
 void Demo_Certification_SelectTiming(void)
 {
@@ -1803,12 +3052,82 @@ void Demo_Certification_Select4K2KTiming(void)
     u32Layer= E_CERTIFICATION_LAYER2;
 }
 
+void Demo_Certification_SelectTXTestItem(void)
+{
+
+    printf("TX item Selection:   \n");
+    printf("\t(%2d) SetColorFormat\n",             E_CERT_TX_SETCOLORFORMAT);
+    printf("\t(%2d) SetColorDepth\n",              E_CERT_TX_SETCOLORDEPTH);
+    printf("\t(%2d) SetOuputMode\n",               E_CERT_TX_SETOUTPUTMODE);
+    printf("\t(%2d) SetOutputTiming\n",            E_CERT_TX_SETOUTPUTTIMING);
+    printf("\t(%2d) SetAspectRatio\n",             E_CERT_TX_SETASPECTRATIO);
+    printf("\t(%2d) Set3DStructure\n",             E_CERT_TX_SET3DSTRUCTURE);
+    printf("\t(%2d) SetAudio\n",                   E_CERT_TX_SETAUDIO);
+    printf("\t(%2d) SetColormetry\n",              E_CERT_TX_SETCOLORMETRY);
+    printf("\t(%2d) SetAVMute\n",                  E_CERT_TX_SETAVMUTE);
+    printf("\t(%2d) SetQuantizationRange\n",       E_CERT_TX_SETQUANTIZATIONRANGE);
+    printf("\t(%2d) ShowTXInfo\n",                 E_CERT_TX_SHOWTXINFO);
+    printf("\t(%c)  Exit with Timing Reset\n",     CERTIFICATION_EXIT);
+    printf("Please select Test item:");
+    u32Layer= E_CERTIFICATION_LAYER2;
+}
+
+void Demo_Certification_SelectRepeaterTestItem(void)
+{
+    printf("Repeater item Selection:   \n");
+    printf("\t(%2d) TXOnly mode\n",                E_CERT_REPEATER_TXONLY);
+    printf("\t(%2d) Converter mode\n",             E_CERT_REPEATER_CONVERTER);
+    printf("\t(%2d) ByPass mode\n",                E_CERT_REPEATER_BYPASS);
+    printf("\t(%2d) ShowRXInfo\n",                 E_CERT_REPEATER_SHOWRXINFO);
+    printf("\t(%c)  Exit with Timing Reset\n",     CERTIFICATION_EXIT);
+    printf("Please select Test item:");
+    u32Layer= E_CERTIFICATION_LAYER2;
+}
+
+void Demo_Certification_SelectHDCPTestItem(void)
+{
+    printf("HDCP item Selection:   \n");
+    printf("\t(%2d) HDCP ON\n",                    E_CERT_HDCP_ON);
+    printf("\t(%2d) HDCP OFF\n",                   E_CERT_HDCP_OFF);
+    printf("\t(%2d) HDCP Status report\n",         E_CERT_HDCP_SHOWHDCPINFO);
+    printf("\t(%c)  Exit with Timing Reset\n",     CERTIFICATION_EXIT);
+    printf("Please select Test item:");
+    u32Layer= E_CERTIFICATION_LAYER2;
+}
+
+void Demo_Certification_SelectCECTestItem(void)
+{
+    printf("CEC item Selection:   \n");
+    printf("\t(%2d) CEC TX One Touch Play \n",                 E_CERT_CEC_TX_ONETOUCHPLAY);
+    printf("\t(%2d) CEC TX Standby \n",                        E_CERT_CEC_TX_STANDBY);
+    printf("\t(%2d) CEC TX Give Device Power Status \n",       E_CERT_CEC_TX_GIVEDEVICEPOWERSTATUS);
+    printf("\t(%2d) CEC TX System Audio Mode Requese [On] \n", E_CERT_CEC_TX_SYSTEMAUDIOMODEREQUESTON);
+    printf("\t(%2d) CEC TX System Audio Mode Requese [Off] \n",E_CERT_CEC_TX_SYSTEMAUDIOMODEREQUESTOFF);
+    printf("\t(%2d) CEC TX CMD\n",                             E_CERT_CEC_TX_CMD);
+    printf("\t(%2d) CEC RX Show Received CMD\n",               E_CERT_CEC_RX_SHOWCMD);
+    printf("\t(%c)  Exit with Timing Reset\n",                 CERTIFICATION_EXIT);
+    printf("Please select Test item:");
+    u32Layer= E_CERTIFICATION_LAYER2;
+}
+
+void Demo_Certification_SelectEDIDParsingTestItem(void)
+{
+    printf("EDID Parsing item Selection:   \n");
+    printf("\t(%2d) Show EDID Parsing info\n",     E_CERT_EDIDPARSING_SHOWINFO);
+    printf("\t(%c)  Exit with Timing Reset\n",     CERTIFICATION_EXIT);
+    printf("Please select Test item:");
+    u32Layer= E_CERTIFICATION_LAYER2;
+}
+
+
+
 void Demo_Certification_SelectHDMISetting(void)
 {
 
     printf("Timing Selection:\n");
     printf("\t(%d) HDMI Setting: Tx Mode\n",             E_CERTIFICATION_HDMISETTING_TXMODE);
     printf("\t(%d) HDMI Setting: Color Space\n",         E_CERTIFICATION_HDMISETTING_COLORSPACE);
+    printf("\t(%d) HDMI Setting: AVI Extend Colormetry\n",E_CERTIFICATION_HDMISETTING_AVIEXTENDEDCOLORIMETRY);
     printf("\t(%c) Exit\n",                             CERTIFICATION_EXIT);
     printf("\t(%c) Exit without Timing Reset\n",        CERTIFICATION_EXIT_WITHOUT_TIMING_RESET);
     printf("Please select Test item:");
@@ -1852,6 +3171,21 @@ void Demo_Certification_EDID(void)
     printf("Please select Test item:");
     u32Layer= E_CERTIFICATION_LAYER1;
 }
+
+void Demo_Certification_HDMI_UI(void)
+{
+    printf("HDMI_UI Test Page Selection:\n");
+    printf("\t(%d) TX\n",E_CERTIFICATION_HDMI_UI_TX);
+    printf("\t(%d) Repeater\n",E_CERTIFICATION_HDMI_UI_REPEATER);
+    printf("\t(%d) HDCP\n",E_CERTIFICATION_HDMI_UI_HDCP);
+    printf("\t(%d) CEC\n",E_CERTIFICATION_HDMI_UI_CEC);
+    printf("\t(%d) EDIDParsing\n",E_CERTIFICATION_HDMI_UI_EDIDPARSING);
+    printf("\t(%c) Exit\n",CERTIFICATION_EXIT);
+    printf("Please select Test item:");
+    u32Layer= E_CERTIFICATION_LAYER1;
+
+}
+
 
 MS_BOOL Demo_Certification_Monitor(void)
 {
@@ -3075,6 +4409,353 @@ MS_BOOL Demo_Certification_Change2NormalResolution(MS_U32 u32Timing)
 
 }
 
+MS_BOOL Demo_Certification_SelectTXPageSubItems(MS_U32 u32Sel)
+{
+    switch(u32Sel)
+    {
+        case E_CERT_TX_SETCOLORFORMAT:
+            printf("ColorFolrmat Selection:\n");
+            printf("\t(%d) ColorFormat_RGB444\n",         E_CERT_TX_COLORFORMAT_RGB444);
+            printf("\t(%d) ColorFormat_YUV422\n",         E_CERT_TX_COLORFORMAT_YUV422);
+            printf("\t(%d) ColorFormat_YUV444\n",         E_CERT_TX_COLORFORMAT_YUV444);
+            printf("\t(%d) ColorFormat_YUV420\n",         E_CERT_TX_COLORFORMAT_YUV420);
+            printf("\t(%c) Exit\n",                    CERTIFICATION_EXIT);
+            printf("Please select Test item:");
+            u32Layer = E_CERTIFICATION_LAYER3;
+            break;
+        case E_CERT_TX_SETCOLORDEPTH:
+            printf("ColorDepth Selection:\n");
+            printf("\t(%d) ColorDepth_8bits\n",        E_CERT_TX_COLORDEPTH_8BITS);
+            printf("\t(%d) ColorDepth_10bits\n",        E_CERT_TX_COLORDEPTH_10BITS);
+            printf("\t(%d) ColorDepth_12bits\n",        E_CERT_TX_COLORDEPTH_12BITS);
+            printf("\t(%d) ColorDepth_16bits\n",        E_CERT_TX_COLORDEPTH_16BITS);
+            printf("\t(%c) Exit\n",                    CERTIFICATION_EXIT);
+            printf("Please select Test item:");
+            u32Layer = E_CERTIFICATION_LAYER3;
+            break;
+        case E_CERT_TX_SETOUTPUTMODE:
+            printf("OuputMode Selection:\n");
+            printf("\t(%d) OutputMode_HDMI\n",              E_CERT_TX_OUTPUTMODE_HDMI);
+            printf("\t(%d) OutputMode_DVI\n",               E_CERT_TX_OUTPUTMODE_DVI);
+            printf("\t(%c) Exit\n",                    CERTIFICATION_EXIT);
+            printf("Please select Test item:");
+            u32Layer = E_CERTIFICATION_LAYER3;
+            break;
+        case E_CERT_TX_SETOUTPUTTIMING:
+            printf("OutputTiming Selection:\n");
+            printf("\t(%d) OutputTiming_720X480_60I  \n",          E_CERT_TX_OUTPUTTIMING_720X480_60I);
+            printf("\t(%d) OutputTiming_720X480_60P  \n",          E_CERT_TX_OUTPUTTIMING_720X480_60P);
+            printf("\t(%d) OutputTiming_720X576_50I  \n",          E_CERT_TX_OUTPUTTIMING_720X576_50I);
+            printf("\t(%d) OutputTiming_720X576_50P  \n",          E_CERT_TX_OUTPUTTIMING_720X576_50P);
+            printf("\t(%d) OutputTiming_1280X720_50P \n",          E_CERT_TX_OUTPUTTIMING_1280X720_50P);
+            printf("\t(%d) OutputTiming_1280X720_60P \n",          E_CERT_TX_OUTPUTTIMING_1280X720_60P);
+            printf("\t(%d) OutputTiming_1920X1080_50I\n",          E_CERT_TX_OUTPUTTIMING_1920X1080_50I);
+            printf("\t(%d) OutputTiming_1920X1080_60I\n",          E_CERT_TX_OUTPUTTIMING_1920X1080_60I);
+            printf("\t(%d) OutputTiming_1920X1080_24P\n",          E_CERT_TX_OUTPUTTIMING_1920X1080_24P);
+            printf("\t(%d) OutputTiming_1920X1080_25P\n",          E_CERT_TX_OUTPUTTIMING_1920X1080_25P);
+            printf("\t(%d) OutputTiming_1920X1080_30P\n",          E_CERT_TX_OUTPUTTIMING_1920X1080_30P);
+            printf("\t(%d) OutputTiming_1920X1080_50P\n",          E_CERT_TX_OUTPUTTIMING_1920X1080_50P);
+            printf("\t(%d) OutputTiming_1920X1080_60P\n",          E_CERT_TX_OUTPUTTIMING_1920X1080_60P);
+            printf("\t(%d) OutputTiming_3840X2160_24P\n",          E_CERT_TX_OUTPUTTIMING_3840X2160_24P);
+            printf("\t(%d) OutputTiming_3840X2160_25P\n",          E_CERT_TX_OUTPUTTIMING_3840X2160_25P);
+            printf("\t(%d) OutputTiming_3840X2160_30P\n",          E_CERT_TX_OUTPUTTIMING_3840X2160_30P);
+            printf("\t(%d) OutputTiming_3840X2160_50P\n",          E_CERT_TX_OUTPUTTIMING_3840X2160_50P);
+            printf("\t(%d) OutputTiming_3840X2160_60P\n",          E_CERT_TX_OUTPUTTIMING_3840X2160_60P);
+            printf("\t(%d) OutputTiming_4096X2160_24P\n",          E_CERT_TX_OUTPUTTIMING_4096X2160_24P);
+            printf("\t(%d) OutputTiming_4096X2160_25P\n",          E_CERT_TX_OUTPUTTIMING_4096X2160_25P);
+            printf("\t(%d) OutputTiming_4096X2160_30P\n",          E_CERT_TX_OUTPUTTIMING_4096X2160_30P);
+            printf("\t(%d) OutputTiming_4096X2160_50P\n",          E_CERT_TX_OUTPUTTIMING_4096X2160_50P);
+            printf("\t(%d) OutputTiming_4096X2160_60P\n",          E_CERT_TX_OUTPUTTIMING_4096X2160_60P);
+            printf("\t(%c) Exit\n",                    CERTIFICATION_EXIT);
+            printf("Please select Test item:");
+            u32Layer = E_CERTIFICATION_LAYER3;
+            break;
+        case E_CERT_TX_SETASPECTRATIO:
+            printf("AspectRatio Selection:\n");
+            printf("\t(%d) AspectRatio_4_3\n",           E_CERT_TX_ASPECTRATIO_4_3);
+            printf("\t(%d) AspectRatio_16_9\n",           E_CERT_TX_ASPECTRATIO_16_9);
+            printf("\t(%c) Exit\n",                    CERTIFICATION_EXIT);
+            printf("Please select Test item:");
+            u32Layer = E_CERTIFICATION_LAYER3;
+            break;
+        case E_CERT_TX_SET3DSTRUCTURE:
+            printf("3DStructure Selection:\n");
+            printf("\t(%d) 3DStructure_1920x1080p23d98Hz_24Hz_FRAME_PACKING\n",           E_CERT_TX_3DSTRUCTURE_1920x1080p23d98Hz_24Hz_FRAME_PACKING);
+            printf("\t(%d) 3DStructure_1280x720p59d94Hz_60Hz_FRAME_PACKING\n",             E_CERT_TX_3DSTRUCTURE_1280x720p59d94Hz_60Hz_FRAME_PACKING);
+            printf("\t(%d) 3DStructure_1280x720p50Hz_FRAME_PACKING\n",                          E_CERT_TX_3DSTRUCTURE_1280x720p50Hz_FRAME_PACKING);
+            printf("\t(%d) 3DStructure_1920x1080i59d94HZ_60Hz_SIDE_BY_SIDE\n",              E_CERT_TX_3DSTRUCTURE_1920x1080i59d94HZ_60Hz_SIDE_BY_SIDE);
+            printf("\t(%d) 3DStructure_1920x1080i50Hz_SIDE_BY_SIDE\n",                            E_CERT_TX_3DSTRUCTURE_1920x1080i50Hz_SIDE_BY_SIDE);
+            printf("\t(%d) 3DStructure_1920x1080p23d98Hz_24Hz_TOP_BOTTOM\n",               E_CERT_TX_3DSTRUCTURE_1920x1080p23d98Hz_24Hz_TOP_BOTTOM);
+            printf("\t(%d) 3DStructure_1280x720p59d94Hz_60Hz_TOP_BOTTOM\n",                 E_CERT_TX_3DSTRUCTURE_1280x720p59d94Hz_60Hz_TOP_BOTTOM);
+            printf("\t(%d) 3DStructure_1280x720p50Hz_TOP_BOTTOM\n",                              E_CERT_TX_3DSTRUCTURE_1280x720p50Hz_TOP_BOTTOM);
+            printf("\t(%d) 3DStructure_1280x720p59d94Hz_60Hz_SIDE_BY_SIDE\n",                E_CERT_TX_3DSTRUCTURE_1280x720p59d94Hz_60Hz_SIDE_BY_SIDE);
+            printf("\t(%d) 3DStructure_1280x720p50Hz_SIDE_BY_SIDE\n",                             E_CERT_TX_3DSTRUCTURE_1280x720p50Hz_SIDE_BY_SIDE);
+            printf("\t(%d) 3DStructure_1920x1080p23d98Hz_24Hz_SIDE_BY_SIDE\n",              E_CERT_TX_3DSTRUCTURE_1920x1080p23d98Hz_24Hz_SIDE_BY_SIDE);
+            printf("\t(%d) 3DStructure_1920x1080p59d94Hz_60Hz_TOP_BOTTOM\n",               E_CERT_TX_3DSTRUCTURE_1920x1080p59d94Hz_60Hz_TOP_BOTTOM);
+            printf("\t(%d) 3DStructure_1920x1080p50Hz_TOP_BOTTOM\n",                            E_CERT_TX_3DSTRUCTURE_1920x1080p50Hz_TOP_BOTTOM);
+            printf("\t(%d) 3DStructure_1920x1080p29d97Hz_30Hz_TOP_BOTTOM\n",               E_CERT_TX_3DSTRUCTURE_1920x1080p29d97Hz_30Hz_TOP_BOTTOM);
+            printf("\t(%c) Exit\n",                    CERTIFICATION_EXIT);
+            printf("Please select Test item:");
+            u32Layer = E_CERTIFICATION_LAYER3;
+            break;
+        case E_CERT_TX_SETAUDIO:
+            printf("Audio Selection:\n");
+            printf("\t(%d) Audio_PCM\n",                 E_CERT_TX_AUDIO_PCM);
+            printf("\t(%d) Audio_NONPCM\n",                 E_CERT_TX_AUDIO_NONPCM);
+            printf("\t(%d) Audio_NONPCM_DDPBypass\n",                 E_CERT_TX_AUDIO_NONPCM_DDPBypass);
+            printf("\t(%c) Exit\n",                    CERTIFICATION_EXIT);
+            printf("Please select Test item:");
+            u32Layer = E_CERTIFICATION_LAYER3;
+            break;
+        case E_CERT_TX_SETCOLORMETRY:
+            printf("Colormetry Selection:\n");
+            printf("\t(%d) Colormetry_NODATA\n",                  E_CERT_TX_COLORMETRY_NODATA);
+            printf("\t(%d) Colormetry_ITU601\n",                  E_CERT_TX_COLORMETRY_ITU601);
+            printf("\t(%d) Colormetry_ITU709\n",                  E_CERT_TX_COLORMETRY_ITU709);
+            printf("\t(%d) Colormetry_Extend_XVYCC601\n",         E_CERT_TX_COLORMETRY_EXTEND_XVYCC601);
+            printf("\t(%d) Colormetry_Extend_XVYCC709\n",         E_CERT_TX_COLORMETRY_EXTEND_XVYCC709);
+            printf("\t(%d) Colormetry_Extend_SYCC601\n",          E_CERT_TX_COLORMETRY_EXTEND_SYCC601);
+            printf("\t(%d) Colormetry_Extend_ADOBEYCC601\n",      E_CERT_TX_COLORMETRY_EXTEND_ADOBEYCC601);
+            printf("\t(%d) Colormetry_Extend_ADOBERGB\n",         E_CERT_TX_COLORMETRY_EXTEND_ADOBERGB);
+            printf("\t(%d) Colormetry_Extend_BT2020CYCC\n",       E_CERT_TX_COLORMETRY_EXTEND_BT2020CYCC);
+            printf("\t(%d) Colormetry_Extend_BT2020YCC\n",        E_CERT_TX_COLORMETRY_EXTEND_BT2020YCC);
+            printf("\t(%d) Colormetry_Extend_BT2020RGB\n",        E_CERT_TX_COLORMETRY_EXTEND_BT2020RGB);
+            printf("\t(%c) Exit\n",                               CERTIFICATION_EXIT);
+            printf("Please select Test item:");
+            u32Layer = E_CERTIFICATION_LAYER3;
+            break;
+        case E_CERT_TX_SETAVMUTE:
+            printf("AVMute Selection:\n");
+            printf("\t(%d) AVMute_ON\n",                E_CERT_TX_AVMUTE_ON);
+            printf("\t(%d) AVMute_OFF\n",                E_CERT_TX_AVMUTE_OFF);
+            printf("\t(%c) Exit\n",                    CERTIFICATION_EXIT);
+            printf("Please select Test item:");
+            u32Layer = E_CERTIFICATION_LAYER3;
+            break;
+        case E_CERT_TX_SETQUANTIZATIONRANGE:
+            printf("QuantizationRange Selection:\n");
+            printf("\t(%d) QuantizationRange_RGB444_LIMIT\n",     E_CERT_TX_QUANTIZATIONRANGE_RGB444_LIMIT);
+            printf("\t(%d) QuantizationRange_YUV422_LIMIT\n",     E_CERT_TX_QUANTIZATIONRANGE_YUV422_LIMIT);
+            printf("\t(%d) QuantizationRange_YUV444_LIMIT\n",     E_CERT_TX_QUANTIZATIONRANGE_YUV444_LIMIT);
+            printf("\t(%d) QuantizationRange_RGB444_FULL\n",     E_CERT_TX_QUANTIZATIONRANGE_RGB444_FULL);
+            printf("\t(%d) QuantizationRange_YUV422_FULL\n",     E_CERT_TX_QUANTIZATIONRANGE_YUV422_FULL);
+            printf("\t(%d) QuantizationRange_YUV444_FULL\n",     E_CERT_TX_QUANTIZATIONRANGE_YUV444_FULL);
+            printf("\t(%c) Exit\n",                    CERTIFICATION_EXIT);
+            printf("Please select Test item:");
+            u32Layer = E_CERTIFICATION_LAYER3;
+            break;
+        case E_CERT_TX_SHOWTXINFO:
+            printf("ShowTXInfo Selection:\n");
+            printf("\t(%d) Show HDMI TX Output_Info\n",            E_CERT_TX_SHOWINFO);
+            printf("\t(%d) Show HDMI TX MM_Video\n",            E_CERT_TX_SHOWMM_VIDEO);
+            printf("\t(%d) Show HDMI TX MM_Audio_32K_DD\n",            E_CERT_TX_SHOWMM_AUDIO_32K_DD);
+            printf("\t(%d) Show HDMI TX MM_Audio_44K1_DD\n",            E_CERT_TX_SHOWMM_AUDIO_44K1_DD);
+            printf("\t(%d) Show HDMI TX MM_Audio_48K_DD\n",            E_CERT_TX_SHOWMM_AUDIO_48K_DD);
+            printf("\t(%d) Show HDMI TX MM_Audio_44K1_DDP\n",            E_CERT_TX_SHOWMM_AUDIO_44K1_DDP);
+            printf("\t(%d) Show HDMI TX MM_Audio_48K_DDP\n",            E_CERT_TX_SHOWMM_AUDIO_48K_DDP);
+            printf("\t(%c) Exit\n",                    CERTIFICATION_EXIT);
+            printf("Please select Test item:");
+            u32Layer = E_CERTIFICATION_LAYER3;
+            break;
+        default:
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
+MS_BOOL Demo_Certification_SelectTXPageProcess(MS_U32 u32SubItem, MS_U32 u32Sel)
+{
+    switch(u32SubItem)
+    {
+        case E_CERT_TX_SETCOLORFORMAT:
+            return _Demo_Certification_TX_SetColorFormat(u32Sel);
+        case E_CERT_TX_SETCOLORDEPTH:
+            return _Demo_Certification_TX_SetColorDepth(u32Sel);
+        case E_CERT_TX_SETOUTPUTMODE:
+            return _Demo_Certification_TX_SetOuputMode(u32Sel);
+        case E_CERT_TX_SETOUTPUTTIMING:
+            return _Demo_Certification_TX_SetOutputTiming(u32Sel);
+        case E_CERT_TX_SETASPECTRATIO:
+            return _Demo_Certification_TX_SetAspectRatio(u32Sel);
+        case E_CERT_TX_SET3DSTRUCTURE:
+            return _Demo_Certification_TX_Set3DStructure(u32Sel);
+        case E_CERT_TX_SETAUDIO:
+            return _Demo_Certification_TX_SetAudio(u32Sel);
+          case E_CERT_TX_SETCOLORMETRY:
+            return _Demo_Certification_TX_SetColorimetry(u32Sel);
+        case E_CERT_TX_SETAVMUTE:
+            return _Demo_Certification_TX_SetAVMute(u32Sel);
+        case E_CERT_TX_SETQUANTIZATIONRANGE:
+            return _Demo_Certification_TX_SetQuantizationRange(u32Sel);
+        case E_CERT_TX_SHOWTXINFO:
+            return _Demo_Certification_TX_ShowTXInfo(u32Sel);
+        default:
+            return FALSE;
+    }
+}
+
+MS_BOOL Demo_Certification_SelectRepeaterPageProcess(MS_U32 u32Sel)
+{
+    switch(u32Sel)
+    {
+        case E_CERT_REPEATER_TXONLY:
+            return _Demo_Certification_Repeater_SetTXOnlyMode();
+#if (DEMO_XC_HDMIRX_TEST == 1)
+        case E_CERT_REPEATER_CONVERTER:
+            return _Demo_Certification_Repeater_SetConverterMode();
+        case E_CERT_REPEATER_BYPASS:
+            return _Demo_Certification_Repeater_SetByPassMode();
+        case E_CERT_REPEATER_SHOWRXINFO:
+            return _Demo_Certification_Repeater_ShowRXInfo();
+#endif
+        default:
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
+MS_BOOL Demo_Certification_SelectHDCPPageProcess(MS_U32 u32Sel)
+{
+    switch(u32Sel)
+    {
+        case E_CERT_HDCP_ON:
+            return _Demo_Certification_HDCP_Enable(TRUE);
+        case E_CERT_HDCP_OFF:
+            return _Demo_Certification_HDCP_Enable(FALSE);
+        case E_CERT_HDCP_SHOWHDCPINFO:
+            return _Demo_Certification_HDCP_ShowHDCPInfo();
+        default:
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
+MS_BOOL Demo_Certification_CECCMDSubItems(MS_U32 u32Sel)
+{
+    switch(u32Sel)
+    {
+        case E_CERT_CEC_CMD_DSTLA:
+            printf("[CEC TX] DSTLA Selection:\n");
+            printf("\t(%d) TV\n",                 E_CERT_CEC_CMD_DSTLA_TV);
+            printf("\t(%d) Recording Device 1\n", E_CERT_CEC_CMD_DSTLA_RECORDING_DEVICE_1);
+            printf("\t(%d) Recording Device 2\n", E_CERT_CEC_CMD_DSTLA_RECORDING_DEVICE_2);
+            printf("\t(%d) Tuner 1           \n", E_CERT_CEC_CMD_DSTLA_TUNER_1);
+            printf("\t(%d) Playback Device 1 \n", E_CERT_CEC_CMD_DSTLA_PLAYBACK_DEVICE_1);
+            printf("\t(%d) Audio System      \n", E_CERT_CEC_CMD_DSTLA_AUDIOSYSTEM);
+            printf("\t(%d) Tuner 2           \n", E_CERT_CEC_CMD_DSTLA_TUNER_2);
+            printf("\t(%d) Tuner 3           \n", E_CERT_CEC_CMD_DSTLA_TUNER_3);
+            printf("\t(%d) Playback Device 2 \n", E_CERT_CEC_CMD_DSTLA_PLAYBACK_DEVICE_2);
+            printf("\t(%d) Recording Device 3\n", E_CERT_CEC_CMD_DSTLA_RECORDING_DEVICE_3);
+            printf("\t(%d) Tuner 4           \n", E_CERT_CEC_CMD_DSTLA_TUNER_4);
+            printf("\t(%d) Playback Device 3 \n", E_CERT_CEC_CMD_DSTLA_PLAYBACK_DEVICE_3);
+            printf("\t(%d) Reserved          \n", E_CERT_CEC_CMD_DSTLA_RESERVED1);
+            printf("\t(%d) Reserved          \n", E_CERT_CEC_CMD_DSTLA_RESERVED2);
+            printf("\t(%d) Specific Use      \n", E_CERT_CEC_CMD_DSTLA_SPECIFIC_USE);
+            printf("\t(%d) Broadcast         \n", E_CERT_CEC_CMD_DSTLA_BROADCAST);
+            printf("\t(%c) Exit\n",               CERTIFICATION_EXIT);
+            printf("Please select Test item:");
+            u32Layer = E_CERTIFICATION_LAYER4;
+            break;
+        case E_CERT_CEC_CMD_OPCODE:
+            printf("[CEC TX] OPCODE Selection:\n");
+            printf("\t(%d) <Active Source>\n",                E_CERT_CEC_OPCODE_ACTIVE_SOURCE);
+            printf("\t(%d) <Image View On>\n",                E_CERT_CEC_OPCODE_OTP_IMAGE_VIEW_ON);
+            printf("\t(%d) <Text View On>\n",                E_CERT_CEC_OPCODE_OTP_TEXT_VIEW_ON);
+            printf("\t(%d) <Inactive Source>\n",                E_CERT_CEC_OPCODE_RC_INACTIVE_SOURCE);
+            printf("\t(%d) <Request Active Source>\n",                E_CERT_CEC_OPCODE_RC_REQUEST_ACTIVE_SOURCE);
+            printf("\t(%d) <CEC Version>\n",                E_CERT_CEC_OPCODE_SI_GET_CEC_VERSION);
+            printf("\t(%d) <Device Vendor ID>\n",                E_CERT_CEC_OPCODE_VS_DEVICE_VENDOR_ID);
+            printf("\t(%d) <Set OSD String>\n",                E_CERT_CEC_OPCODE_SET_OSD_STRING);
+            printf("\t(%c) Exit\n",                    CERTIFICATION_EXIT);
+            printf("Please select Test item:");
+            u32Layer = E_CERTIFICATION_LAYER4;
+            break;
+        case E_CERT_CEC_CMD_OPERAND:
+            printf("[CEC TX] Set Operand \n");
+            u32Layer = E_CERTIFICATION_LAYER4;
+            return _Demo_Certification_CEC_TX_SetOperand();
+            break;
+        case E_CERT_CEC_CMD_FIRE:
+            _Demo_Certification_CEC_TX_SendCMD();
+            break;
+        default:
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
+MS_BOOL Demo_Certification_CECCMDSubItemsProcess(MS_U32 u32SubItem, MS_U32 u32Sel)
+{
+    switch(u32SubItem)
+    {
+        case E_CERT_CEC_CMD_DSTLA:
+            _CECTargetLA = u32Sel;
+            return TRUE;;
+        case E_CERT_CEC_CMD_OPCODE:
+            _CECOpcode = u32Sel;
+            return TRUE;
+        default:
+            return FALSE;
+    }
+}
+
+
+MS_BOOL Demo_Certification_CECCMD_Config(void)
+{
+    printf("CEC CMD Selection:\n");
+    printf("\t(%d) CEC DstLA\n",      E_CERT_CEC_CMD_DSTLA);
+    printf("\t(%d) CEC Opcode\n",     E_CERT_CEC_CMD_OPCODE);
+    printf("\t(%d) CEC Operand\n",    E_CERT_CEC_CMD_OPERAND);
+    printf("\t(%d) CEC Fire\n",       E_CERT_CEC_CMD_FIRE);
+    printf("\t(%c) Exit and reset CEC Message\n",CERTIFICATION_EXIT);
+    printf("Please select Test item:");
+    u32Layer= E_CERTIFICATION_LAYER3;
+    return TRUE;
+}
+
+
+MS_BOOL Demo_Certification_SelectCECPageProcess(MS_U32 u32Sel)
+{
+    switch(u32Sel)
+    {
+        case E_CERT_CEC_TX_ONETOUCHPLAY:
+            return _Demo_Certification_CEC_TX_OneTouchPlay();
+        case E_CERT_CEC_TX_STANDBY:
+            return _Demo_Certification_CEC_TX_Standby();
+        case E_CERT_CEC_TX_GIVEDEVICEPOWERSTATUS:
+            return _Demo_Certification_CEC_TX_GiveDevicePowerStatus();
+        case E_CERT_CEC_TX_SYSTEMAUDIOMODEREQUESTON:
+            return _Demo_Certification_CEC_TX_SystemAudioModeRequestOn();
+        case E_CERT_CEC_TX_SYSTEMAUDIOMODEREQUESTOFF:
+            return _Demo_Certification_CEC_TX_SystemAudioModeRequestOff();
+        case E_CERT_CEC_TX_CMD:
+            return Demo_Certification_CECCMD_Config();
+        case E_CERT_CEC_RX_SHOWCMD:
+            return _Demo_Certification_CEC_RX_ShowCMD();
+        default:
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
+MS_BOOL Demo_Certification_SelectEDIDParsingPageProcess(MS_U32 u32Sel)
+{
+    switch(u32Sel)
+    {
+        case E_CERT_EDIDPARSING_SHOWINFO:
+            return _Demo_Certification_EDIDPrasing_ShowInfo();
+        default:
+            return FALSE;
+    }
+}
+
+
+
 MS_BOOL Demo_Certification_HDMISettingReset(void)
 {
     MS_BOOL bWarn = FALSE;
@@ -3120,7 +4801,7 @@ MS_BOOL Demo_Certification_HDMISettingReset(void)
     return TRUE;
 }
 
-MS_BOOL Demo_Certification_ChangeHDMISetting_TxMode(E_CERTIFICATION_OUTTYPE eTxMode)
+MS_BOOL Demo_Certification_ChangeHDMISetting_TxMode(EN_CERTIFICATION_OUTTYPE eTxMode)
 {
     MS_BOOL bEnable = TRUE;
     E_MSAPI_XC_RESULT eResult = E_MSAPI_XC_FAIL;
@@ -3155,7 +4836,7 @@ MS_BOOL Demo_Certification_ChangeHDMISetting_TxMode(E_CERTIFICATION_OUTTYPE eTxM
     return TRUE;
 }
 
-MS_BOOL Demo_Certification_ChangeHDMISetting_OutputColorSpace(E_CERTIFICATION_OUTPUTCOLORSPACE eHDMIOutputColor)
+MS_BOOL Demo_Certification_ChangeHDMISetting_OutputColorSpace(EN_CERTIFICATION_OUTPUTCOLORSPACE eHDMIOutputColor)
 {
     E_MSAPI_XC_HDMITX_OUTPUT_COLOR eOutputColor = E_MSAPI_XC_HDMITX_OUTPUT_YUV444;
 
@@ -3188,6 +4869,77 @@ MS_BOOL Demo_Certification_ChangeHDMISetting_OutputColorSpace(E_CERTIFICATION_OU
     msAPI_XC_SetHDMITxColorFormat(E_MSAPI_XC_HDMITX_OUTPUT_YUV444, eOutputColor, FALSE);
 
     return TRUE;
+}
+
+MS_BOOL Demo_Certification_ChangeHDMISetting_OutputColormetry(EN_CERTIFICATION_OUTPUTCOLORMETRY eHDMIOutputColormetry)
+{
+    HDMITX_AVI_EXTENDED_COLORIMETRY enExtColorimetry = HDMITX_EXT_COLORIMETRY_XVYCC601;
+    MS_U8 u8CDB = 0;
+    MS_U32 u32CDBLength = 1;
+    MS_BOOL bRet = FALSE;
+
+    if ((E_CERT_COLORIMETRY_XVYCC601 > eHDMIOutputColormetry) || (eHDMIOutputColormetry > E_CERT_COLORIMETRY_BT2020RGB))
+    {
+        printf("[%s][%d] Invalid Colormetry %u\n", __FUNCTION__, __LINE__, eHDMIOutputColormetry);
+        return FALSE;
+    }
+
+    bRet = MApi_HDMITx_GetEdidDataBlocks(E_CEA_TAG_CODE_EXT_TAG, E_CEA_EXT_TAG_CDB, &u8CDB, 1, &u32CDBLength);
+    if (bRet == FALSE)
+    {
+        printf("Get EDID colormetry data block failed! \n");
+        return FALSE;
+    }
+
+    // HDMI2.0 CTS, Check RX EDID CDB
+    if (eHDMIOutputColormetry == E_CERT_COLORIMETRY_BT2020CYCC)
+    {
+        if((u8CDB & BIT(5)) == 0)
+        {
+            printf("[%s][%d] EDID not support BT2020 cYCC, set xvYCC601. \n",__FUNCTION__,__LINE__);
+            eHDMIOutputColormetry = E_CERT_COLORIMETRY_XVYCC601;
+        }
+    }
+    else if (eHDMIOutputColormetry == E_CERT_COLORIMETRY_BT2020YCC)
+    {
+        if((u8CDB & BIT(6)) == 0)
+        {
+            printf("[%s][%d] EDID not support BT2020 YCC, set xvYCC601. \n",__FUNCTION__,__LINE__);
+            eHDMIOutputColormetry = E_CERT_COLORIMETRY_XVYCC601;
+        }
+    }
+
+    switch(eHDMIOutputColormetry)
+    {
+        case E_CERT_COLORIMETRY_XVYCC601:
+            enExtColorimetry = HDMITX_EXT_COLORIMETRY_XVYCC601;
+            break;
+        case E_CERT_COLORIMETRY_XVYCC709:
+            enExtColorimetry = HDMITX_EXT_COLORIMETRY_XVYCC709;
+            break;
+        case E_CERT_COLORIMETRY_SYCC601:
+            enExtColorimetry = HDMITX_EXT_COLORIMETRY_SYCC601;
+            break;
+        case E_CERT_COLORIMETRY_ADOBEYCC601:
+            enExtColorimetry = HDMITX_EXT_COLORIMETRY_ADOBEYCC601;
+            break;
+        case E_CERT_COLORIMETRY_ADOBERGB:
+            enExtColorimetry = HDMITX_EXT_COLORIMETRY_ADOBERGB;
+            break;
+        case E_CERT_COLORIMETRY_BT2020CYCC:
+            enExtColorimetry = HDMITX_EXT_COLORIMETRY_BT2020CYCC;
+            break;
+        case E_CERT_COLORIMETRY_BT2020YCC:
+            enExtColorimetry = HDMITX_EXT_COLORIMETRY_BT2020YCC;
+            break;
+        case E_CERT_COLORIMETRY_BT2020RGB:
+            enExtColorimetry = HDMITX_EXT_COLORIMETRY_BT2020RGB;
+            break;
+        default:
+            break;
+    }
+
+    return MApi_HDMITx_SetAVIInfoExtColorimetry(enExtColorimetry, HDMITX_YCC_QUANT_LIMIT);
 }
 
 void Demo_Certification_CmdProcess(void)
@@ -3245,7 +4997,11 @@ void Demo_Certification_CmdProcess(void)
                     {
                         u8TestItem = E_CERTIFICATION_DBG;
                         Demo_Certification_Dbg();
-
+                    }
+                    else if(selection == E_CERTIFICATION_HDMI_UI)
+                    {
+                        u8TestItem = E_CERTIFICATION_HDMI_UI;
+                        Demo_Certification_HDMI_UI();
                     }
                     else if((u8CMDArray[0]=='Q')||(u8CMDArray[0]=='q'))
                     {
@@ -3302,6 +5058,8 @@ void Demo_Certification_CmdProcess(void)
                             printf("Invalid Selection\n");
                             Demo_Certification_SelectTimingSourceTest();
                         }
+
+                        u8TestItemLayer1 = E_CERTIFICATION_HDMI_DVI;
                     }
                     else if(u8TestItem == E_CERTIFICATION_CEC)
                     {
@@ -3428,9 +5186,50 @@ void Demo_Certification_CmdProcess(void)
                             Demo_Certification_SelectHDCPTest();
                         }
                     }
+                    else if(u8TestItem == E_CERTIFICATION_HDMI_UI)
+                    {
+                        if((u8CMDArray[0]=='Q')||(u8CMDArray[0]=='q'))
+                        {
+                            Demo_Certification_Exit();
+                            Demo_Certification_Init();
+                            _u8HDMI_UI_TEST_TYPE = E_CERTIFICATION_HDMI_UI_INVALID;
+                        }
+                        else if(selection==E_CERTIFICATION_HDMI_UI_TX)
+                        {
+                            Demo_Certification_SelectTXTestItem();
+                            _u8HDMI_UI_TEST_TYPE = E_CERTIFICATION_HDMI_UI_TX;
+                        }
+                        else if(selection==E_CERTIFICATION_HDMI_UI_REPEATER)
+                        {
+                            Demo_Certification_SelectRepeaterTestItem();
+                            _u8HDMI_UI_TEST_TYPE = E_CERTIFICATION_HDMI_UI_REPEATER;
+                        }
+                        else if(selection==E_CERTIFICATION_HDMI_UI_HDCP)
+                        {
+                            Demo_Certification_SelectHDCPTestItem();
+                            _u8HDMI_UI_TEST_TYPE = E_CERTIFICATION_HDMI_UI_HDCP;
+                        }
+                        else if(selection==E_CERTIFICATION_HDMI_UI_CEC)
+                        {
+                            Demo_Certification_SelectCECTestItem();
+                            _u8HDMI_UI_TEST_TYPE = E_CERTIFICATION_HDMI_UI_CEC;
+                        }
+                        else if(selection==E_CERTIFICATION_HDMI_UI_EDIDPARSING)
+                        {
+                            Demo_Certification_SelectEDIDParsingTestItem();
+                            _u8HDMI_UI_TEST_TYPE = E_CERTIFICATION_HDMI_UI_EDIDPARSING;
+                        }
+                        else
+                        {
+                            Demo_Certification_HDMI_UI();
+                        }
+                        u8TestItemLayer1 = E_CERTIFICATION_HDMI_UI;
+                    }
 
                     break;
                 case E_CERTIFICATION_LAYER2:
+                    if(u8TestItemLayer1 == E_CERTIFICATION_HDMI_DVI)
+                    {
                     printf("[%s][%d] u8TimingTestItem:%u \n",__FUNCTION__,__LINE__,u8TimingTestItem);
                     if((u8CMDArray[0]=='Q')||(u8CMDArray[0]=='q'))
                     {
@@ -3454,7 +5253,7 @@ void Demo_Certification_CmdProcess(void)
                         {
                             if(Demo_Certification_Change2NormalResolution(selection)==TRUE)
                             {
-                                printf(UARTCOLOR_LIGHT_GREEN"Finish Setting  %s\n"UARTCOLOR_NONE,_Demo_Certification_resolution2string((E_CERTIFICATION_RESOLUTION) selection));
+                                printf(UARTCOLOR_LIGHT_GREEN"Finish Setting  %s\n"UARTCOLOR_NONE,_Demo_Certification_resolution2string((EN_CERTIFICATION_RESOLUTION) selection));
                             }
                             else
                             {
@@ -3465,7 +5264,7 @@ void Demo_Certification_CmdProcess(void)
                         {
                             if(Demo_Certification_Change2NormalResolution(selection)==TRUE)
                             {
-                                printf(UARTCOLOR_LIGHT_GREEN"Finish Setting 4K2K timing %s\n"UARTCOLOR_NONE,_Demo_Certification_resolution2string((E_CERTIFICATION_RESOLUTION) selection));
+                                printf(UARTCOLOR_LIGHT_GREEN"Finish Setting 4K2K timing %s\n"UARTCOLOR_NONE,_Demo_Certification_resolution2string((EN_CERTIFICATION_RESOLUTION) selection));
                             }
                             else
                             {
@@ -3496,6 +5295,11 @@ void Demo_Certification_CmdProcess(void)
                                 Demo_Certification_SelectOutputColorSpace();
                                 u8Layer3_L2TestItem = E_CERTIFICATION_HDMISETTING_COLORSPACE;
                             }
+                            else if(selection==E_CERTIFICATION_HDMISETTING_AVIEXTENDEDCOLORIMETRY)
+                            {
+                                Demo_Certification_SelectOutputColormetry();
+                                u8Layer3_L2TestItem = E_CERTIFICATION_HDMISETTING_AVIEXTENDEDCOLORIMETRY;
+                            }
                             else
                             {
                                 Demo_Certification_SelectHDMISetting();
@@ -3517,8 +5321,143 @@ void Demo_Certification_CmdProcess(void)
 
 
                     }
+                    }
+                    else if(u8TestItemLayer1 == E_CERTIFICATION_HDMI_UI)
+                    {
+                        if((u8CMDArray[0]=='Q')||(u8CMDArray[0]=='q'))
+                        {
+                            _u8HDMI_UI_TEST_TYPE = E_CERTIFICATION_HDMI_UI_INVALID;
+
+                            Demo_Certification_HDMI_UI();
+                        }
+                        else
+                        {
+                            if(_u8HDMI_UI_TEST_TYPE==E_CERTIFICATION_HDMI_UI_TX)
+                            {
+                                if(Demo_Certification_SelectTXPageSubItems(selection)== TRUE)
+                                {
+                                    _u8HDMI_UI_Subitems_TEST_TYPE = selection;
+                                }
+                                else
+                                {
+                                    Demo_Certification_SelectTXTestItem();
+                                    _u8HDMI_UI_Subitems_TEST_TYPE = E_CERT_TX_INVALID;
+                                }
+                            }
+                            else if(_u8HDMI_UI_TEST_TYPE==E_CERTIFICATION_HDMI_UI_REPEATER)
+                            {
+                                if(Demo_Certification_SelectRepeaterPageProcess(selection)== TRUE)
+                                {
+                                    _u8HDMI_UI_Subitems_TEST_TYPE = selection;
+                                }
+                                else
+                                {
+                                    Demo_Certification_SelectRepeaterTestItem();
+                                    _u8HDMI_UI_Subitems_TEST_TYPE = E_CERT_REPEATER_INVALID;
+                                }
+
+                            }
+                            else if(_u8HDMI_UI_TEST_TYPE==E_CERTIFICATION_HDMI_UI_HDCP)
+                            {
+                                if(Demo_Certification_SelectHDCPPageProcess(selection)== TRUE)
+                                {
+                                    _u8HDMI_UI_Subitems_TEST_TYPE = selection;
+                                }
+                                else
+                                {
+                                    Demo_Certification_SelectHDCPTestItem();
+                                    _u8HDMI_UI_Subitems_TEST_TYPE = E_CERT_HDCP_INVALID;
+                                }
+                            }
+                            else if(_u8HDMI_UI_TEST_TYPE==E_CERTIFICATION_HDMI_UI_CEC)
+                            {
+                                if(Demo_Certification_SelectCECPageProcess(selection)== TRUE)
+                                {
+                                    _u8HDMI_UI_Subitems_TEST_TYPE = selection;
+                                }
+                                else
+                                {
+                                    Demo_Certification_SelectCECTestItem();
+                                    _u8HDMI_UI_Subitems_TEST_TYPE = E_CERT_CEC_INVALID;
+                                }
+                            }
+                            else if(_u8HDMI_UI_TEST_TYPE==E_CERTIFICATION_HDMI_UI_EDIDPARSING)
+                            {
+                                if(Demo_Certification_SelectEDIDParsingPageProcess(selection)== TRUE)
+                                {
+                                    _u8HDMI_UI_Subitems_TEST_TYPE = selection;
+                                }
+                                else
+                                {
+                                    Demo_Certification_SelectEDIDParsingTestItem();
+                                    _u8HDMI_UI_Subitems_TEST_TYPE = E_CERT_CEC_INVALID;
+                                }
+                            }
+                            else
+                            {
+                                printf("Invalid Selection\n");
+                                if(_u8HDMI_UI_TEST_TYPE==E_CERTIFICATION_HDMI_UI_TX)
+                                {
+                                    Demo_Certification_SelectTXTestItem();
+                                }
+                                else if(_u8HDMI_UI_TEST_TYPE==E_CERTIFICATION_HDMI_UI_REPEATER)
+                                {
+                                    Demo_Certification_SelectRepeaterTestItem();
+                                }
+                                else if(_u8HDMI_UI_TEST_TYPE==E_CERTIFICATION_HDMI_UI_HDCP)
+                                {
+                                    Demo_Certification_SelectHDCPTestItem();
+                                }
+                                else if(_u8HDMI_UI_TEST_TYPE==E_CERTIFICATION_HDMI_UI_CEC)
+                                {
+                                    Demo_Certification_SelectCECTestItem();
+                                }
+
+                            }
+
+
+                        }
+                    }
                     break;
                 case E_CERTIFICATION_LAYER3:
+                    if(_u8HDMI_UI_TEST_TYPE==E_CERTIFICATION_HDMI_UI_TX)
+                    {
+                        if((u8CMDArray[0]=='Q')||(u8CMDArray[0]=='q'))
+                        {
+                            _u8HDMI_UI_Subitems_TEST_TYPE = E_CERT_TX_INVALID;
+
+                            Demo_Certification_SelectTXTestItem();
+                        }
+                        else
+                        {
+                            Demo_Certification_SelectTXPageProcess(_u8HDMI_UI_Subitems_TEST_TYPE, selection);
+                            Demo_Certification_SelectTXPageSubItems(_u8HDMI_UI_Subitems_TEST_TYPE);
+                        }
+                    }
+                    else if(_u8HDMI_UI_TEST_TYPE==E_CERTIFICATION_HDMI_UI_CEC)
+                    {
+                        if((u8CMDArray[0]=='Q')||(u8CMDArray[0]=='q'))
+                        {
+                            _u8HDMI_UI_Subitems_TEST_TYPE = E_CERT_CEC_CMD_INVALID;
+
+                            _Demo_Certification_CEC_TX_Reset();
+                            Demo_Certification_SelectCECTestItem();
+                        }
+                        else
+                        {
+                            if(Demo_Certification_CECCMDSubItems(selection)!= TRUE)
+                            {
+                                Demo_Certification_CECCMD_Config();
+                                _u8HDMI_UI_Subitems_TEST_TYPE = E_CERT_CEC_CMD_INVALID;
+                            }
+                            else
+                            {
+                                _u8HDMI_UI_Subitems_TEST_TYPE = selection;
+                            }
+                        }
+                    }
+                    else
+                    {
                     printf("[%s][%d] u8Layer3_L2TestItem:%u \n",__FUNCTION__,__LINE__,u8Layer3_L2TestItem);
                     if((u8CMDArray[0]=='Q')||(u8CMDArray[0]=='q'))
                     {
@@ -3534,7 +5473,7 @@ void Demo_Certification_CmdProcess(void)
                         {
                             if(Demo_Certification_ChangeHDMISetting_TxMode(selection)==TRUE)
                             {
-                                printf(UARTCOLOR_LIGHT_GREEN"Finish Setting: Tx mode is %s\n"UARTCOLOR_NONE,_Demo_Certification_Txmode2string((E_CERTIFICATION_OUTTYPE) selection));
+                                printf(UARTCOLOR_LIGHT_GREEN"Finish Setting: Tx mode is %s\n"UARTCOLOR_NONE,_Demo_Certification_Txmode2string((EN_CERTIFICATION_OUTTYPE) selection));
                             }
                             else
                             {
@@ -3545,11 +5484,22 @@ void Demo_Certification_CmdProcess(void)
                         {
                             if(Demo_Certification_ChangeHDMISetting_OutputColorSpace(selection)==TRUE)
                             {
-                                printf(UARTCOLOR_LIGHT_GREEN"Finish Setting: Color Space is  %s\n"UARTCOLOR_NONE,_Demo_Certification_ColorSpace2string((E_CERTIFICATION_OUTPUTCOLORSPACE) selection));
+                                printf(UARTCOLOR_LIGHT_GREEN"Finish Setting: Color Space is  %s\n"UARTCOLOR_NONE,_Demo_Certification_ColorSpace2string((EN_CERTIFICATION_OUTPUTCOLORSPACE) selection));
                             }
                             else
                             {
                                 Demo_Certification_SelectOutputColorSpace();
+                            }
+                        }
+                        else if(u8Layer3_L2TestItem==E_CERTIFICATION_HDMISETTING_AVIEXTENDEDCOLORIMETRY)
+                        {
+                            if(Demo_Certification_ChangeHDMISetting_OutputColormetry(selection)==TRUE)
+                            {
+                                printf(UARTCOLOR_LIGHT_GREEN"Finish Setting: Color metry is  %s\n"UARTCOLOR_NONE,_Demo_Certification_Colormetry2string((EN_CERTIFICATION_OUTPUTCOLORMETRY) selection));
+                            }
+                            else
+                            {
+                                Demo_Certification_SelectOutputColormetry();
                             }
                         }
                         else
@@ -3564,6 +5514,25 @@ void Demo_Certification_CmdProcess(void)
                                 Demo_Certification_SelectOutputColorSpace();
                             }
 
+                        }
+                    }
+                    }
+
+                    break;
+
+                case E_CERTIFICATION_LAYER4:
+                    if(_u8HDMI_UI_TEST_TYPE==E_CERTIFICATION_HDMI_UI_CEC)
+                    {
+                        if((u8CMDArray[0]=='Q')||(u8CMDArray[0]=='q'))
+                        {
+                            _u8HDMI_UI_Subitems_TEST_TYPE = E_CERT_CEC_INVALID;
+
+                            Demo_Certification_CECCMD_Config();
+                        }
+                        else
+                        {
+                            Demo_Certification_CECCMDSubItemsProcess(_u8HDMI_UI_Subitems_TEST_TYPE, selection);
+                            Demo_Certification_CECCMDSubItems(_u8HDMI_UI_Subitems_TEST_TYPE);
                         }
                     }
                     break;
@@ -3588,14 +5557,18 @@ void Demo_Certification_SysInit(void)
     MS_U32 u32OutputTiming = E_OUTPUT_TIMING_720X480_60P;
     MS_U32 u32XCWindow=0;
     MS_U32 u32XCInputSrc=2;
-
+    MS_U32 u32HD_GOP = 1;
+    MS_U32 u32SD_GOP = 0;
+    MS_U32 u32HD_DST = 0;
+    MS_U32 u32SD_DST = 2;
 
     {
         u32XCDevice = 0;
         Demo_XC_Init(&u32XCDevice);
+        Demo_CEC_init();
 
         MsOS_DelayTask(100);
-		u32XCDevice = 1;
+        u32XCDevice = 1;
         Demo_XC_Init(&u32XCDevice);
         MsOS_DelayTask(100);
         #if HDMI_CTS_CERTIFICATION_HDCP_REPEATER
@@ -3619,7 +5592,7 @@ void Demo_Certification_SysInit(void)
         u32XCDevice = 0;
 
         u32XCWindow=0;
-        u32XCInputSrc=0;
+        u32XCInputSrc=E_DDI_XC_INPUT_SOURCE_HDMI;
 
         if(Demo_XC_PlayVideo(&u32XCDevice, &u32XCWindow, &u32XCInputSrc)==FALSE)
         {
@@ -3631,15 +5604,19 @@ void Demo_Certification_SysInit(void)
 
     }
 
+    Demo_OSD_Init(&u32HD_GOP,&u32SD_GOP,&u32HD_DST,&u32SD_DST);
+
     //#if(DEMO_AUDIO_TEST == 1)
     MS_U32 u32Audio_Type = 1;
-    MS_U32 u32FileFmt = 1;
+    //MS_U32 u32FileFmt = 1;
 
     Demo_Audio_Init(&u32Audio_Type);
     Demo_Audio_SetMonitor();
 
-    Demo_Audio_Out_Init(&u32FileFmt);
+    //Demo_Audio_Out_Init(&u32FileFmt);
     //#endif
+
+    Demo_MM_Init();
 
     #if HDMI_CTS_CERTIFICATION_HDCP_REPEATER
     Demo_EEPROM_init();

@@ -5,9 +5,9 @@
 // All software, firmware and related documentation herein ("MStar Software") are
 // intellectual property of MStar Semiconductor, Inc. ("MStar") and protected by
 // law, including, but not limited to, copyright law and international treaties.
-// Any use, modification, reproduction, retransmission, or republication of all 
-// or part of MStar Software is expressly prohibited, unless prior written 
-// permission has been granted by MStar. 
+// Any use, modification, reproduction, retransmission, or republication of all
+// or part of MStar Software is expressly prohibited, unless prior written
+// permission has been granted by MStar.
 //
 // By accessing, browsing and/or using MStar Software, you acknowledge that you
 // have read, understood, and agree, to be bound by below terms ("Terms") and to
@@ -20,15 +20,15 @@
 //
 // 2. You understand that MStar Software might include, incorporate or be
 //    supplied together with third party`s software and the use of MStar
-//    Software may require additional licenses from third parties.  
+//    Software may require additional licenses from third parties.
 //    Therefore, you hereby agree it is your sole responsibility to separately
 //    obtain any and all third party right and license necessary for your use of
-//    such third party`s software. 
+//    such third party`s software.
 //
 // 3. MStar Software and any modification/derivatives thereof shall be deemed as
-//    MStar`s confidential information and you agree to keep MStar`s 
+//    MStar`s confidential information and you agree to keep MStar`s
 //    confidential information in strictest confidence and not disclose to any
-//    third party.  
+//    third party.
 //
 // 4. MStar Software is provided on an "AS IS" basis without warranties of any
 //    kind. Any warranties are hereby expressly disclaimed by MStar, including
@@ -51,7 +51,7 @@
 //    ("Services").
 //    You understand and agree that, except otherwise agreed by both parties in
 //    writing, Services are provided on an "AS IS" basis and the warranty
-//    disclaimer set forth in Section 4 above shall apply.  
+//    disclaimer set forth in Section 4 above shall apply.
 //
 // 6. Nothing contained herein shall be construed as by implication, estoppels
 //    or otherwise:
@@ -59,7 +59,7 @@
 //        mark, symbol or any other identification;
 //    (b) obligating MStar or any of its affiliates to furnish any person,
 //        including without limitation, you and your customers, any assistance
-//        of any kind whatsoever, or any information; or 
+//        of any kind whatsoever, or any information; or
 //    (c) conferring any license or right under any intellectual property right.
 //
 // 7. These terms shall be governed by and construed in accordance with the laws
@@ -70,12 +70,19 @@
 //    Rules of the Association by three (3) arbitrators appointed in accordance
 //    with the said Rules.
 //    The place of arbitration shall be in Taipei, Taiwan and the language shall
-//    be English.  
+//    be English.
 //    The arbitration award shall be final and binding to both parties.
 //
 //******************************************************************************
 //<MStar Software>
+#ifdef MSOS_TYPE_LINUX_KERNEL
+#include <linux/fs.h>
+#include <linux/vmalloc.h>
+#include <linux/err.h>
+#include <asm/uaccess.h>
+#else
 #include <stdio.h>
+#endif
 #include "error.h"
 #include "MsCommon.h"
 #include "HbCommon.h"
@@ -127,7 +134,7 @@ static MS_U32 NXP_TD1611ALF_SetTuner(MS_U8 ucTuner2WireAddr, MS_U32 dwFreq /* KH
     MS_U8    ucfreq[2];
     MS_U16   wFrequency;
     MS_U8    ucDividerRatio = 6;
-    
+
     //According to TD1600ALF-4, the tuner need 60us to process frequency-setting I2C command
     //During the period, we should not send other I2C command to the tuner
     //We let I2C driver delay 100us after send each command here

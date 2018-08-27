@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -99,5 +99,11 @@ MS_BOOL Demo_CEC_init(void);
 MS_BOOL Demo_CEC_Exit(void);
 MS_BOOL Demo_CEC_SetOnOff(MS_U32 *pu32CECOnOff);
 MS_BOOL Demo_CEC_SendMessage(MS_U32 *pu32Opcode , MS_U8 *pu32Operand , MS_U32 *pu32Length, MS_U32 *pu32Dest);
+MS_BOOL Demo_CEC_Show_Device_List(void);
+MS_BOOL Demo_CEC_ShowMessageBuffer(void);
+MS_BOOL Demo_CEC_OneTouchPlay(void);
+MS_BOOL Demo_CEC_Standby(MS_U32 *pu32DeviceLA);
+MS_BOOL Demo_CEC_GiveDevicePowerStatus(MS_U32 *pu32DeviceLA);
+MS_BOOL Demo_CEC_SystemAudioModeRequest(MS_U32 *pu32Enable);
 
 #endif

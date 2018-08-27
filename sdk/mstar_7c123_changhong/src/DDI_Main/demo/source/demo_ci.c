@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -98,13 +98,17 @@
 #include "MsCommon.h"
 #include <string.h>
 
-#include "drvGPIO.h"
 #include "apiDMX.h"
+#include "drvDTC.h"
+#include "drvSYS.h"
 
-#include "msAPP_CI.h"
+#include "msAPI_CI.h"
 #include "demo_main.h"
 #include "demo_utility.h"
 #include "demo_ci.h"
+
+#include "MsOS.h"
+#include "MsMemory.h"
 
 //--------------------------------------------------------------------------------------------------
 // Local Variables
@@ -112,14 +116,19 @@
 MS_U8 m_u8TS_State;
 MMI_INFO *m_pMmiInfo = NULL;
 MS_U8 pStrDest[1024]={0};
-#if (DEMO_CI_PLUS_TEST==1)
-static MS_U16 u16NotifyTS_ID = 0, u16NotifyServiceID = 0;
-#endif
-static Task_Info _demo_CI_task = {-1, E_TASK_PRI_MEDIUM, NULL, 4096, "Demo Task"};
+MS_U8 *pMMIBuf = NULL;
+
+//DEMO_CI_PLUS_TEST disable first
+//#if (DEMO_CI_PLUS_TEST==1)
+//static MS_U16 u16NotifyTS_ID = 0, u16NotifyServiceID = 0;
+//#endif
+
+static Task_Info _demo_CI_task = {-1, E_TASK_PRI_MEDIUM, NULL, 4096*16, "Demo Task"};
 //------------------------------------------------------------------------------
 // Debug Macros
 //------------------------------------------------------------------------------
-#define CI_DBG              0
+#define CI_MMI_TEXTSTRING_LEN  0x0000001000
+#define CI_DBG              1
 #if CI_DBG
 #define db_print(fmt, args...)  printf("[%s][%d]" fmt, __FUNCTION__, __LINE__, ## args)
 #else
@@ -160,9 +169,10 @@ void appMSrv_CIMMI_GetMenuSelectionStr(MS_U8 i);
 MS_U8 appMSrv_CIMMI_GetEnqbBlindAns(void);
 MS_U8 appMSrv_CIMMI_GetEnqLength(void);
 void appMSrv_CIMMI_GetEnqStr(void);
-void appMSrv_CI_CISetByPassMode(MS_BOOL bByPass);
-void appMSrv_CI_CIProtectionNotify(MS_U8* data, MS_U16 u16ONID, MS_U16 u16TSID, MS_U16 u16SID);
-void appMSrv_CI_CIHSSActiveCallBack(void);
+//DEMO_CI_PLUS_TEST disable first
+//void appMSrv_CI_CISetByPassMode(MS_BOOL bByPass);
+//void appMSrv_CI_CIProtectionNotify(MS_U8* data, MS_U16 u16ONID, MS_U16 u16TSID, MS_U16 u16SID);
+//void appMSrv_CI_CIHSSActiveCallBack(void);
 MS_BOOL appMSrv_CI_CISetSystemTime2Cache(void);
 //-------------------------------------------------------------------------------------------------
 // Local Function
@@ -246,10 +256,11 @@ void static _Demo_CI_CIEventCallBack(EN_CI_EVENT eType)
             db_print("CI_EVENT_DT_ENQ\n");
             appMSrv_CI_CISetSystemTime2Cache();
             break;
-        case CI_EVENT_HSS:
+        //DEMO_CI_PLUS_TEST disable first
+        /*case CI_EVENT_HSS:
             db_print("CI_EVENT_HSS\n");
             appMSrv_CI_CIHSSActiveCallBack();
-            break;
+            break;*/
         default:
             break;
     }
@@ -257,33 +268,35 @@ void static _Demo_CI_CIEventCallBack(EN_CI_EVENT eType)
 
 static void _Demo_CI_CIStateMonitor(void)
 {
-    if(m_u8TS_State != msAPP_CI_CardDetect())
+    if(m_u8TS_State != msAPI_CI_CardDetect())
     {
-#if (DEMO_CI_PLUS_TEST==1)
-        appMSrv_CI_CISetByPassMode(TRUE);
-#endif
+//DEMO_CI_PLUS_TEST disable first
+//#if (DEMO_CI_PLUS_TEST==1)
+//        appMSrv_CI_CISetByPassMode(TRUE);
+//#endif
         if(!m_u8TS_State) // Card inserted
         {
-            mdrv_gpio_set_high(164);
-#if (DEMO_CI_PLUS_TEST==1)
-            appMSrv_CI_CISetByPassMode(FALSE);
-#endif
-            db_print("Card inserted.\n");
+//DEMO_CI_PLUS_TEST disable first
+//#if (DEMO_CI_PLUS_TEST==1)
+//            appMSrv_CI_CISetByPassMode(FALSE);
+//#endif
+            printf("Card inserted.\n");
         }
         else // Card removed
         {
-            mdrv_gpio_set_low(164);
-#if (DEMO_CI_PLUS_TEST==1)
-            appMSrv_CI_CISetByPassMode(TRUE);
-#endif
-            db_print("Card removed.");
+//DEMO_CI_PLUS_TEST disable first
+//#if (DEMO_CI_PLUS_TEST==1)
+//            appMSrv_CI_CISetByPassMode(TRUE);
+//#endif
+            printf("Card removed.\n");
         }
-        m_u8TS_State = msAPP_CI_CardDetect();
+        m_u8TS_State = msAPI_CI_CardDetect();
         db_print("---Current Card state:(%d).\n", m_u8TS_State);
     }
-    if(msAPP_CI_CardDetect() == 1)
+    if(msAPI_CI_CardDetect() == 1)
     {
-        msAPP_CI_Main();
+        msAPI_CI_Polling();
+        msAPI_CI_MAINLOOP();
     }
 }
 
@@ -322,7 +335,7 @@ void appMSrv_CIMMI_FreeData(void)
 void appMSrv_CIMMI_GetData(void)
 {
     appMSrv_CIMMI_FreeData();
-    m_pMmiInfo = msAPP_CIMMI_GetData();
+    m_pMmiInfo = msAPI_CI_MMIGetData();
 }
 
 EN_MMI_TYPE appMSrv_CIMMI_GetMMIType(void)
@@ -338,7 +351,7 @@ EN_MMI_TYPE appMSrv_CIMMI_GetMMIType(void)
 //------------------------------------------------------------------------------
 void appMSrv_CIMMI_EnterMenu(void)
 {
-    msAPP_CIMMI_EnterMenu();
+    msAPI_CI_MMIEnterMenu();
 }
 
 //------------------------------------------------------------------------------
@@ -349,7 +362,7 @@ void appMSrv_CIMMI_EnterMenu(void)
 //------------------------------------------------------------------------------
 void appMSrv_CIMMI_AnswerMenu(MS_U8* index)
 {
-    msAPP_CIMMI_AnswerMenu(*index);
+    msAPI_CI_MMIAnswerMenu(*index);
 }
 
 
@@ -436,7 +449,7 @@ MS_BOOL appMSrv_CIMMI_answerEnq(MS_U8 *pBuffer0, MS_U8 *pBuffer1, MS_U8 *pBuffer
     pBuffer[2] = '0' + *pBuffer2;
     pBuffer[3] = '0' + *pBuffer3;
 
-    return msAPP_CIMMI_AnswerEnq(pBuffer, u8Length);
+    return msAPI_CI_MMIAnswerEnq(pBuffer, u8Length);
 }
 
 //------------------------------------------------------------------------------
@@ -450,16 +463,17 @@ void appMSrv_CIMMI_BackMenu(void)
     {
         if(appMSrv_CIMMI_GetMMIType() == EN_MMI_TYPE_ENQ)
         {
-            msAPP_CIMMI_AnswerEnq(NULL, 0);
+            msAPI_CI_MMIAnswerEnq(NULL, 0);
         }
         else if(appMSrv_CIMMI_GetMMIType() == EN_MMI_TYPE_MENU || appMSrv_CIMMI_GetMMIType() == EN_MMI_TYPE_LIST)
         {
-            msAPP_CIMMI_AnswerMenu(0);
+            msAPI_CI_MMIAnswerMenu(0);
         }
     }
 }
 
-void appMSrv_CI_CISetByPassMode(MS_BOOL bByPass)
+//DEMO_CI_PLUS_TEST disable first
+/*void appMSrv_CI_CISetByPassMode(MS_BOOL bByPass)
 {
     if (bByPass)
         mdrv_gpio_set_high(21);
@@ -469,31 +483,32 @@ void appMSrv_CI_CISetByPassMode(MS_BOOL bByPass)
 
 void appMSrv_CI_CIProtectionNotify(MS_U8* data, MS_U16 u16ONID, MS_U16 u16TSID, MS_U16 u16SID)
 {
-    msAPP_CI_SetHSS(data, u16TSID, u16SID);
+	  //u16ONID is not Length, temp Allen
+    msAPI_CI_HSS_Set(data, u16ONID, u16TSID, u16SID);
 }
 
 void appMSrv_CI_CIHSSActiveCallBack(void)
 {
-    if(msAPP_CI_CardDetect())
+    if(msAPI_CI_CardDetect())
     {
-        printf("msAPP_CI_getHSS=%d.\n", msAPP_CI_GetHSS());
-        appMSrv_CI_CISetByPassMode(msAPP_CI_GetHSS());
+        printf("msAPP_CI_getHSS=%d.\n", msAPI_CI_HSS_Get());
+        appMSrv_CI_CISetByPassMode(msAPI_CI_HSS_Get());
     }
-}
+}*/
 
 MS_BOOL appMSrv_CI_CISetSystemTime2Cache(void)
 {
     static MS_U8 u8FakeUTC[5] = { 0xD7, 0x90, 0x00, 0x00, 0x00 };
 
-    return msAPP_CI_SendDateTimeUTC(u8FakeUTC);
+    return msAPI_CI_DT_SendUTC(u8FakeUTC);
 }
 
 //-------------------------------------------------------------------------------------------------
 // Demo Functions
 //-------------------------------------------------------------------------------------------------
 
-#if (DEMO_CI_PLUS_TEST==1)
-
+//DEMO_CI_PLUS_TEST disable first
+/*#if (DEMO_CI_PLUS_TEST==1)
 //------------------------------------------------------------------------------
 /// @brief The sample code to notify CI the HSS service information
 /// @param[in] u16TS_ID transport stream ID
@@ -521,16 +536,15 @@ MS_BOOL Demo_CI_HSSNotify_ServiceInfo(MS_U32* u32Param0, MS_U32* u32Param1)
     u16NotifyServiceID = *u32Param1;
 
     db_print("TS_ID=%d, ServiceID=%d\n", u16NotifyTS_ID, u16NotifyServiceID);
-    msAPP_CI_NotifyCurrentServiceInfo(u16NotifyTS_ID, u16NotifyServiceID);
+    msAPI_CI_NotifyCurrentServiceInfo(u16NotifyTS_ID, u16NotifyServiceID);
 
-    if(msAPP_CI_CardDetect())
+    if(msAPI_CI_CardDetect())
     {
-        msAPP_CI_HSSCheck();
+        msAPI_CI_HSS_Check();
     }
 
     return TRUE;
 }
-
 
 //------------------------------------------------------------------------------
 /// @brief The sample code to set CI HSS information
@@ -545,15 +559,16 @@ MS_BOOL Demo_CI_CIProtectionNotify(MS_U16* u16ONID, MS_U16* u16TSID, MS_U16* u16
     db_print("ON_ID=%d, TS_ID=%d, ServiceID=%d\n", *u16ONID, *u16TSID, *u16SID);
     appMSrv_CI_CIProtectionNotify(NULL, *u16ONID, *u16TSID, *u16SID);
 
-    if(msAPP_CI_CardDetect())
+    if(msAPI_CI_CardDetect())
     {
-        msAPP_CI_HSSCheck();
+        msAPI_CI_HSS_Check();
     }
 
     return TRUE;
 }
 
-#endif
+#endif*/
+
 //------------------------------------------------------------------------------
 /// @brief The sample code to init CI and monitor main state
 /// @param[in] argc useless, just for system task prototype
@@ -564,13 +579,17 @@ void Demo_CI_DoMonitor(MS_U32 argc, void *argv)
     MS_U8 CI_Plus_Enable = 0;
 
     db_print("Start CI monitor.\n");
-#if (DEMO_CI_PLUS_TEST==1)
-    CI_Plus_Enable = 1;
-#endif
-    msAPP_CI_Init(CI_Plus_Enable);
+
+//DEMO_CI_PLUS_TEST disable first
+//#if (DEMO_CI_PLUS_TEST==1)
+//    CI_Plus_Enable = 1;
+//#endif
+
+    msAPI_CI_SetMMIBufAddr(pMMIBuf);
+    msAPI_CI_Initial(CI_Plus_Enable);
     db_print("ENABLE_CI_PLUS=%d\n", CI_Plus_Enable);
     db_print("CI/CIMMI initialized.\n");
-    msAPP_CI_InstallCallback_CI_Event(_Demo_CI_CIEventCallBack);
+    msAPI_CI_InstallCallback_CI_Event(_Demo_CI_CIEventCallBack);
     db_print("CI Callback initialized.\n");
 
     while(1)
@@ -590,6 +609,26 @@ MS_BOOL Demo_CI_Start(void)
     /// - Create Demo CI Monitor Task
     /// - Allocate Memory
 
+#if CI_DBG
+    //if suffering probles, try open debug mode
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_RM, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_APPINFO, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_CAS, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_HC, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_DT, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_MMI, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_LSC, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_CC, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_HLC, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_CU, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_OP, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_SAS, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_APPMMI, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_PMT, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_HSS, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_AUTH, 10);
+    msAPI_CI_SetDebugLevel(EN_CI_FUNCTION_DEFAULT, 10);
+#endif
 
     if (Demo_Util_GetSystemPoolID(E_DDI_POOL_SYS_NONCACHE,&NON_CACHE_POOL_ID) == FALSE)
     {
@@ -603,6 +642,13 @@ MS_BOOL Demo_CI_Start(void)
         db_print("Init Failed \n");
         return FALSE;
 
+    }
+
+    pMMIBuf = MsOS_AllocateMemory(CI_MMI_TEXTSTRING_LEN, NON_CACHE_POOL_ID);
+    if( pMMIBuf == NULL )
+    {
+        db_print("Init Failed \n");
+        return FALSE;
     }
 
     /// - Create Task Application
@@ -622,6 +668,64 @@ MS_BOOL Demo_CI_Start(void)
     return TRUE;
 }
 
+//------------------------------------------------------------------------------
+/// @brief Demo_CI_SetPath set CILINK PATH for bypass stream into CI
+/// @param[in] argc useless, just for system task prototype
+/// @param[in] argv useless, just for system task prototype
+//------------------------------------------------------------------------------
+MS_BOOL Demo_CI_SetPath(void)
+{
+    /*-----set path: DEMOD->TSO->CILINK--------*/
+
+    DMX_TSO_OutputCfg stOutputCfg;
+    DMX_TSO_InputCfg stInputCfg;
+
+    stOutputCfg.eFlow = DMX_FLOW_TSO_PLAYBACK;
+    stOutputCfg.eOutPad = DMX_FLOW_OUTPUT_CILINK1;
+    stOutputCfg.u16OutPktSize = 188;
+    stOutputCfg.bEnable = TRUE;
+    stOutputCfg.bDefOutClk = FALSE;
+    stOutputCfg.bOutClkInv = FALSE;
+    stOutputCfg.eTsoOutClk = E_DMX_TSO_OUTCLK_PTSOOUT;
+    stOutputCfg.eTsoOutClkSrc = E_DMX_TSO_OUTCLKSRC_P_TS1IN;
+    stOutputCfg.u16DivNum = 0;
+    stOutputCfg.bSet = TRUE;
+
+    if ( DMX_FILTER_STATUS_OK != MApi_DMX_TSO_Flow_OutputCfg(&stOutputCfg) )
+    {
+        printf("Set MApi_DMX_TSO_Flow_OutputCfg fail!\n");
+        return FALSE;
+    }
+
+    stInputCfg.eFlow = DMX_FLOW_TSO_PLAYBACK;
+    stInputCfg.eTSOInIf = DMX_TSIF_LIVE0;
+    stInputCfg.stInputInfo.Input = DMX_FLOW_INPUT_EXT_INPUT1;
+    stInputCfg.stInputInfo.bExtSync = TRUE;
+    stInputCfg.stInputInfo.bParallel = TRUE;
+    stInputCfg.stInputInfo.bClkInv = FALSE;
+    stInputCfg.u8LocalStrId = 0x47;
+    stInputCfg.bBypassAll = TRUE;
+    stInputCfg.bEnable = TRUE;
+    stInputCfg.bSet = TRUE;
+
+    if ( DMX_FILTER_STATUS_OK != MApi_DMX_TSO_Flow_InputCfg(&stInputCfg) )
+    {
+        printf("Set MApi_DMX_TSO_Flow_InputCfg fail!\n");
+        return FALSE;
+    }
+
+    //MApi_DMX_TSO_SetOutClk(*pu8TSOEng, E_DMX_TSO_OUTCLK_DIV2N, E_DMX_TSO_OUTCLKSRC_172M_2N, 0x9, 0);
+    //printf("clk set to 9M\n");
+
+    if ( DMX_FILTER_STATUS_OK != MApi_DMX_FlowSet(DMX_FLOW_PLAYBACK, DMX_FLOW_INPUT_CILINK1, TRUE, TRUE, TRUE) )
+    {
+        printf("Set MApi_DMX_FlowSet fail!\n");
+        return FALSE;
+    }
+
+    return TRUE;
+
+}
 //--------------------------------------------------------------------------------------------------
 // @brief Demo_CI_MMI_EnterMenu enter menu
 // @param[in] None.
@@ -632,6 +736,7 @@ MS_BOOL Demo_CI_MMI_EnterMenu(void)
    appMSrv_CIMMI_EnterMenu();
    return TRUE;
 }
+
 //--------------------------------------------------------------------------------------------------
 // @brief Demo_CI_MMI_EnterMenu enter menu
 // @param[in] None.
@@ -657,6 +762,7 @@ MS_BOOL Demo_CI_MMI_AnwsMenu(MS_U32 *u32index)
 
    return TRUE;
 }
+
 //--------------------------------------------------------------------------------------------------
 // @brief Demo_CI_MMI_AnwsEnq to enter PWD to CI
 // @param[in] None.
@@ -685,22 +791,23 @@ MS_BOOL Demo_CI_MMI_AnwsEnq(MS_U32 *u32Digi0,MS_U32 *u32Digi1,MS_U32 *u32Digi2,M
 
    return TRUE;
 }
-//--------------------------------------------------------------------------------------------------
-// @brief Demo_CI_MMI_AnwsEnq to enter PWD to CI
-// @param[in] None.
-// @return TRUE is successful, otherwise FALSE
-//--------------------------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------
+/// @brief The sample code to exit CIMMI current menu
+/// @note
+/// Command: \b Command:Demo_CI_MMI_BacktoMenu \n
+//------------------------------------------------------------------------------
 MS_BOOL Demo_CI_MMI_BacktoMenu(void)
 {
     if(appMSrv_CIMMI_IsGetData())
     {
         if(appMSrv_CIMMI_GetMMIType() == EN_MMI_TYPE_ENQ)
         {
-            msAPP_CIMMI_AnswerEnq(NULL, 0);
+            msAPI_CI_MMIAnswerEnq(NULL, 0);
         }
         else if(appMSrv_CIMMI_GetMMIType() == EN_MMI_TYPE_MENU || appMSrv_CIMMI_GetMMIType() == EN_MMI_TYPE_LIST)
         {
-            msAPP_CIMMI_AnswerMenu(0);
+            msAPI_CI_MMIAnswerMenu(0);
         }
 
         return TRUE;
@@ -709,8 +816,5 @@ MS_BOOL Demo_CI_MMI_BacktoMenu(void)
     {
         return FALSE;
     }
-
 }
-
 #endif
-

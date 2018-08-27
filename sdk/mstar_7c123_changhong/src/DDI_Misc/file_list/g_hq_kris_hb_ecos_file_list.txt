@@ -1,0 +1,127 @@
+// There are three method to retrieve version from a CI (configuration items)
+// 1. Txt : Captre version from the first line of a txt file
+// 2. Elf : Embedded version by using binutility:
+//    Insert : arm-none-linux-gnueabi-objcopy --add-section .mmodule_version=version_info libXXXXX.so
+//    Readelf: readelf --string-dump=.mmodule_version libXXXXX.so
+// 3. MSIF: Embedded a binary string into a binary. And this string has a pre-defined format.
+//           'M','S','I','F',                /* Version ID Header */\
+//           '0','3',                          /* Info Class Code */\
+//           0x0000,                               /* Customer ID */\
+//           0x0000,                                 /* Module ID */\
+//           0x0000,                                   /* Chip ID */\
+//           '0',                                          /* CPU */\
+//           'S','N','_','_'                     /* Library Code */\
+//           '0','0',                              /* Library Ver */\
+//           '0','1',                             /* Build Number */\
+//           '0','0','1','2','3','4','5','5', /* P4 Change Number */\
+//           '2'                                            /* OS */\
+
+./lib/mipsisa32-elf/3.4.4/core/kris/multimedia/libmmsdk.a
+./lib/mipsisa32-elf/3.4.4/core/kris/multimedia/libvdplayer.a
+./lib/mipsisa32-elf/3.4.4/core/kris/multimedia/vdplayer.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/audio/GAAC/libapiAUDIO.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/audio/GAAC_LITE/libapiAUDIO.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libMsFS.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiACE.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiACP.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiAUDIO.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiCEC.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiDAC.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiDLC.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiDMX.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiGFX.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiGOP.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiGPD.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiHDMITX.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiJPEG.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiPNL.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiSWI2C.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiVDEC.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libapiXC.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvCA2.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvCH34.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvCIPHER.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvCPU.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvDDC2BI.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvDEMOD.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvDSCMB2.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvECOS_USBHOST.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvGPD.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvGPIO.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvHWI2C.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvIPAUTH.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvIR.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvMPIF.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvMSPI.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvMVOP.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvPCMCIA.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvPM.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvPWM.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvPWS.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvRTC.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvSAR.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvSC.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvSERFLASH.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvURDMA.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvVBI.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvVE.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvWDT.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libdrvdvbt2_extdemod.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libecos.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libmsAPI_GEGOP.a
+./lib/mipsisa32-elf/3.4.4/core/kris/utopia/libmsAPI_XC.a
+
+#eCos Kernel(Elf)
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_fileio_posix_fat_ntfs_v3_cpuload_c++/lib/extras.o
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_fileio_posix_fat_ntfs_v3_cpuload_c++/lib/libextras.a
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_fileio_posix_fat_ntfs_v3_cpuload_c++/lib/libtarget.a
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_fileio_posix_fat_ntfs_v3_cpuload_c++/lib/vectors.o
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_fileio_posix_fat_ntfs_v3_cpuload_c++/libjffs2/flashiodev.o
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_fileio_posix_fat_ntfs_v3_cpuload_c++/libjffs2/libflashiodev.a
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_fileio_posix_fat_ntfs_v3_cpuload_c++/libntfs/libntfs.a
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_fileio_posix_fat_ntfs_v3_cpuload_c++/libntfs/ntfs.o
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_net_fileio_posix_fat_ntfs_v3_net_cpuload_c++/lib/extras.o
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_net_fileio_posix_fat_ntfs_v3_net_cpuload_c++/lib/libextras.a
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_net_fileio_posix_fat_ntfs_v3_net_cpuload_c++/lib/libtarget.a
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_net_fileio_posix_fat_ntfs_v3_net_cpuload_c++/lib/vectors.o
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_net_fileio_posix_fat_ntfs_v3_net_cpuload_c++/libjffs2/flashiodev.o
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_net_fileio_posix_fat_ntfs_v3_net_cpuload_c++/libjffs2/libflashiodev.a
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_net_fileio_posix_fat_ntfs_v3_net_cpuload_c++/libntfs/libntfs.a
+./os/mipsisa32-elf/3.4.4/ecos_kris_74kf_net_fileio_posix_fat_ntfs_v3_net_cpuload_c++/libntfs/ntfs.o
+
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v1/atsc_dtvmw/libmwDTV.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v1/ci/libmwCI.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v1/dtvmw/libmwDTV.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v1/font/libmwBMPFONT.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v1/font/libmwFONTUTL.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v1/font/ZUI/libmwZUI.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v1/font/ZUI_UISplit/libmwZUI.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v1/font/libmwMVF.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v1/font/libmwOSD.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v1/freetype2/libfreetype.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v1/imgdec/libmwgif.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v1/vt/libNesKernel_hf.a
+
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v2/atsc_dtvmw/libmwDTV.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v2/ci/libmwCI.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v2/dtvmw/libmwDTV.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v2/font/libmwBMPFONT.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v2/font/libmwFONTUTL.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v2/font/ZUI/libmwZUI.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v2/font/ZUI_UISplit/libmwZUI.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v2/font/libmwMVF.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v2/font/libmwOSD.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v2/freetype2/libfreetype.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v2/imgdec/libmwgif.a
+./lib/mipsisa32-elf/3.4.4/mw/dtv/v2/vt/libNesKernel_hf.a
+
+./lib/mipsisa32-elf/3.4.4/mw/mm/VDPLAYER_LITE/libdrmcodegen.a
+./lib/mipsisa32-elf/3.4.4/mw/mm/VDPLAYER_LITE/libmwMM_ecos.a
+./lib/mipsisa32-elf/3.4.4/mw/mm/libdrmcodegen.a
+./lib/mipsisa32-elf/3.4.4/mw/mm/libmwMM_ecos.a
+
+./lib/mipsisa32-elf/3.4.4/mw/pvr/libmwPVR.a
+./lib/mipsisa32-elf/3.4.4/mw/pvr/libmwPVR_v2.a
+./lib/mipsisa32-elf/3.4.4/mw/pvr/libmwPVR_v3.a
+./lib/mipsisa32-elf/3.4.4/mw/pvr/libmwPVR_v4.a
+./lib/mipsisa32-elf/3.4.4/mw/pvr/libmwswpvr.a

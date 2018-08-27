@@ -12,6 +12,7 @@
 #include "HbCommon.h"
 
 #include "porting_thread.h"
+#include "porting_sysinfo.h"
 #include "porting_os.h"
 
 #ifdef AVP_ENABLE
@@ -20,8 +21,8 @@
 #include "drvDTC.h"
 #endif
 
-#define FLOW(fmt, arg...)         //printf("\033[1;33m######[%s]######"fmt" \033[0m\n",__FUNCTION__,##arg)
-#define ERR(fmt, arg...)         printf("\033[1;31m######[ERR][%s]######"fmt" \033[0m\n",__FUNCTION__,##arg)
+#define PT_THREAD_ERR(fmt, arg...)   PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_ERR, "\033[1;31m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
+#define PT_THREAD_DBG(fmt, arg...)   PT_SYS_PrintLog(E_MMSDK_DBG_LEVEL_DBG, "\033[1;33m######[%s]###### "fmt" \033[0m\n",__FUNCTION__,##arg);
 
 #ifndef AVP_ENABLE
 
@@ -57,6 +58,29 @@ typedef struct _PT_THREAD_INFO
 }PT_THREAD_INFO;
 
 static LIST_HEAD(PTThreadInfoHead);
+
+static TaskPriority _PT_Thread_ConvertTaskPriority(EN_MMSDK_TASK_PRIORITY eTaskPri)
+{
+    switch(eTaskPri)
+    {
+        case E_MMSDK_TASK_PRI_SYS:
+            return E_TASK_PRI_SYS;
+        case E_MMSDK_TASK_PRI_HIGHEST:
+            return E_TASK_PRI_HIGHEST;
+        case E_MMSDK_TASK_PRI_HIGH:
+            return E_TASK_PRI_HIGH;
+        case E_MMSDK_TASK_PRI_MEDIUM:
+            return E_TASK_PRI_MEDIUM;
+        case E_MMSDK_TASK_PRI_LOW:
+            return E_TASK_PRI_LOW;
+        case E_MMSDK_TASK_PRI_LOWEST:
+            return E_TASK_PRI_LOWEST;
+        default:
+            return E_TASK_PRI_MEDIUM;
+
+    }
+}
+
 #elif defined(MSOS_TYPE_LINUX)
     #ifndef ASSERT
     #include <assert.h>
@@ -71,7 +95,7 @@ MMSDK_BOOL PT_Thread_ThreadCreate(MMSDK_U32 *pu32ThreadId,
                             const MMSDK_U32 u32StackSize,
                             const char *pTaskName)
 {
-    FLOW("%s", "Entered.");
+    PT_THREAD_DBG("%s", "Entered.");
     if((!pu32ThreadId) || (!start_routine))
         return FALSE;
 
@@ -83,7 +107,7 @@ MMSDK_BOOL PT_Thread_ThreadCreate(MMSDK_U32 *pu32ThreadId,
     MS_S32 s32ThreadId = 0;
     s32ThreadId = MsOS_CreateTask((TaskEntry)start_routine,
                                     (MS_U32)pTaskArg,
-                                    eTaskPriority,
+                                    _PT_Thread_ConvertTaskPriority(eTaskPriority),
                                     TRUE,
                                     pStackEntry,
                                     u32StackSize,
@@ -91,21 +115,21 @@ MMSDK_BOOL PT_Thread_ThreadCreate(MMSDK_U32 *pu32ThreadId,
 
     if(s32ThreadId < 0)
     {
-        FLOW("%s", "MsOS_CreateTask failed.");
+        PT_THREAD_DBG("%s", "MsOS_CreateTask failed.");
         return FALSE;
     }
     else
     {
-        FLOW("Task Id is %d.\n", *pu32ThreadId);
+        PT_THREAD_DBG("Task Id is %d.\n", *pu32ThreadId);
         PT_THREAD_INFO *pPtThreadInfo = (PT_THREAD_INFO*)PT_MsOS_AllocateMemory(sizeof(PT_THREAD_INFO));
         if(pPtThreadInfo == NULL)
         {
-            FLOW("%s", "PT_MsOS_AllocateMemory failed.");
+            PT_THREAD_DBG("%s", "PT_MsOS_AllocateMemory failed.");
             return FALSE;
         }
         memset(pPtThreadInfo, 0x0, sizeof(PT_THREAD_INFO));
         pPtThreadInfo->stTaskInfo.iId = s32ThreadId;
-        pPtThreadInfo->stTaskInfo.ePriority = eTaskPriority;
+        pPtThreadInfo->stTaskInfo.ePriority = _PT_Thread_ConvertTaskPriority(eTaskPriority);
         pPtThreadInfo->stTaskInfo.pStack = pStackEntry;
         pPtThreadInfo->stTaskInfo.u32StackSize = u32StackSize;
         strncpy(pPtThreadInfo->stTaskInfo.szName, (char*)u8TaskName, TASK_NAME_MAX_LEN-1);
@@ -128,18 +152,18 @@ MMSDK_BOOL PT_Thread_ThreadCreate(MMSDK_U32 *pu32ThreadId,
         {
             if (policy != SCHED_RR)
             {
-                FLOW("Replace Policy %d -> SCHED_RR\n", policy);
+                PT_THREAD_DBG("Replace Policy %d -> SCHED_RR\n", policy);
                 policy = SCHED_RR;
                 pthread_setschedparam(pthread_self(), policy, &param);
             }
             else
             {
-                FLOW("Schedule is Round Robin\n");
+                PT_THREAD_DBG("Schedule is Round Robin\n");
             }
         }
         else
         {
-            ERR("Set schedule fail\n");
+            PT_THREAD_ERR("Set schedule fail\n");
         }
         pthread_attr_getschedparam(&attr, &param);
         param.sched_priority = (int)eTaskPriority - 1;
@@ -162,7 +186,7 @@ MMSDK_BOOL PT_Thread_ThreadCreate(MMSDK_U32 *pu32ThreadId,
 
 void PT_Thread_ThreadExit (void* retval)
 {
-    FLOW("%s", "Entered.");
+    PT_THREAD_DBG("%s", "Entered.");
 #if defined(MSOS_TYPE_LINUX)
     pthread_exit(retval);
 #endif
@@ -170,7 +194,7 @@ void PT_Thread_ThreadExit (void* retval)
 
 MMSDK_BOOL PT_Thread_ThreadJoin (const MMSDK_U32 u32ThreadId)
 {
-    FLOW("%s", "Entered.");
+    PT_THREAD_DBG("%s", "Entered.");
     MS_BOOL bRet = TRUE;
 #if defined(MSOS_TYPE_ECOS)
     TaskStatus eTaskStatus;
@@ -194,7 +218,7 @@ MMSDK_BOOL PT_Thread_ThreadJoin (const MMSDK_U32 u32ThreadId)
     {
         if(!MsOS_GetTaskStatus(&pstPTTHreadInfo->stTaskInfo,&eTaskStatus))
         {
-            printf("Error!! MsOS_GetTaskStatus() fail!! \n");
+            PT_THREAD_ERR("Error!! MsOS_GetTaskStatus() fail!! \n");
             bRet = FALSE;
             break;
         }
@@ -208,7 +232,7 @@ MMSDK_BOOL PT_Thread_ThreadJoin (const MMSDK_U32 u32ThreadId)
         }
         else
         {
-            FLOW("\33[32m[FUNC %s] [LINE %d] Wait for Task#%x %s termination \33[m \n", __FUNCTION__,__LINE__,u32ThreadId,pstPTTHreadInfo->stTaskInfo.szName);
+            PT_THREAD_DBG("[FUNC %s] [LINE %d] Wait for Task#%x %s termination \n", __FUNCTION__,__LINE__,u32ThreadId,pstPTTHreadInfo->stTaskInfo.szName);
             MsOS_DelayTask(1);
         }
     }
@@ -223,17 +247,17 @@ MMSDK_BOOL PT_Thread_ThreadJoin (const MMSDK_U32 u32ThreadId)
 MMSDK_BOOL PT_Thread_ThreadSetName (const char * strName)
 {
     /* Not such API in eCos. */
-    FLOW("%s", "Entered.");
+    PT_THREAD_DBG("%s", "Entered.");
     if(!strName)
         return FALSE;
 
-    FLOW("Thread name is %s.\n", strName);
+    PT_THREAD_DBG("Thread name is %s.\n", strName);
     return TRUE;
 }
 
 MMSDK_BOOL PT_Thread_MutexInit(PT_MUTEXITEM* pMutex)
 {
-    FLOW("%s", "Entered.");
+    //PT_THREAD_DBG("%s", "Entered.");
 #ifndef AVP_ENABLE
     MS_S32 s32MutexId = 0;
     static MS_U16 u16MutexIndex = 0;
@@ -251,15 +275,15 @@ MMSDK_BOOL PT_Thread_MutexInit(PT_MUTEXITEM* pMutex)
     u16MutexIndex++;
     s32MutexId = MsOS_CreateMutex(E_MSOS_FIFO, u8mutexName, MSOS_PROCESS_SHARED);
 
-    FLOW("s32MutexId is %d.\n", s32MutexId);
+    PT_THREAD_DBG("s32MutexId is %d.\n", s32MutexId);
 
     if(s32MutexId < 0)
         return FALSE;
     else
     {
         memcpy(*pMutex, &s32MutexId, sizeof(MS_S32));
-        FLOW("*pMutex is %p.\n", *pMutex);
-        FLOW("&s32MutexId is %p.\n", &s32MutexId);
+        PT_THREAD_DBG("*pMutex is %p.\n", *pMutex);
+        PT_THREAD_DBG("&s32MutexId is %p.\n", &s32MutexId);
         return TRUE;
     }
 #else
@@ -281,7 +305,7 @@ MMSDK_BOOL PT_Thread_MutexInit(PT_MUTEXITEM* pMutex)
 
 MMSDK_BOOL PT_Thread_MutexDestroy(PT_MUTEXITEM*pMutex)
 {
-    FLOW("%s", "Entered.");
+    //PT_THREAD_DBG("%s", "Entered.");
 #ifndef AVP_ENABLE
     MS_S32* s32Mutex = 0;
     if(!pMutex)
@@ -314,18 +338,18 @@ MMSDK_BOOL PT_Thread_MutexDestroy(PT_MUTEXITEM*pMutex)
 
 void PT_Thread_MutexLock(PT_MUTEXITEM pMutex)
 {
-    FLOW("%s", "Entered.");
+    //PT_THREAD_DBG("%s", "Entered.");
 #ifndef AVP_ENABLE
     MS_S32* s32Mutex = 0;
     if(!pMutex)
     {
-        printf("Error!! pMutex is NULL!! /n");
+        PT_THREAD_ERR("Error!! pMutex is NULL!! /n");
         return;
     }
 
     s32Mutex = (MS_S32*)(pMutex);
 
-    FLOW("*s32Mutex is %d.\n", *s32Mutex);
+    //PT_THREAD_DBG("*s32Mutex is %d.\n", *s32Mutex);
 
     if (pMutex)
         MsOS_ObtainMutex(*s32Mutex, MSOS_WAIT_FOREVER);
@@ -338,18 +362,18 @@ void PT_Thread_MutexLock(PT_MUTEXITEM pMutex)
 }
 void PT_Thread_MutexUnlock(PT_MUTEXITEM pMutex)
 {
-    FLOW("%s", "Entered.");
+    //PT_THREAD_DBG("%s", "Entered.");
 #ifndef AVP_ENABLE
     MS_S32* s32Mutex = 0;
     if(!pMutex)
     {
-        printf("Error!! pMutex is NULL!! /n");
+        PT_THREAD_ERR("Error!! pMutex is NULL!! /n");
         return;
     }
 
     s32Mutex = (MS_S32*)(pMutex);
 
-    FLOW("*s32Mutex is %d.\n", *s32Mutex);
+    //PT_THREAD_DBG("*s32Mutex is %d.\n", *s32Mutex);
 
     if (pMutex)
         MsOS_ReleaseMutex(*s32Mutex);
@@ -365,7 +389,7 @@ void PT_Thread_MutexUnlock(PT_MUTEXITEM pMutex)
 
 MMSDK_BOOL PT_Thread_Cond_Init(PT_CONDVARIABLEITEM* pCond, const void* pAttr, PT_MUTEXITEM *pMutex)
 {
-    FLOW("");
+    PT_THREAD_DBG("");
     MMSDK_S32 s32ErrorCode = 0;
     // only use by ecos
     UNUSED(pMutex);
@@ -386,7 +410,7 @@ MMSDK_BOOL PT_Thread_Cond_Init(PT_CONDVARIABLEITEM* pCond, const void* pAttr, PT
 
         if (s32ErrorCode)
         {
-            ERR("Initialize condition variable 0x%"DTC_MS_U32_x" error:%"DTC_MS_S32_d"", (MMSDK_U32)pCond, s32ErrorCode);
+            PT_THREAD_ERR("Initialize condition variable 0x%"DTC_MS_U32_x" error:%"DTC_MS_S32_d"", (MMSDK_U32)pCond, s32ErrorCode);
             FREE(*pCond);
             return FALSE;
         }
@@ -400,7 +424,7 @@ MMSDK_BOOL PT_Thread_Cond_Init(PT_CONDVARIABLEITEM* pCond, const void* pAttr, PT
 
 MMSDK_BOOL PT_Thread_Cond_Destroy(PT_CONDVARIABLEITEM *pCond)
 {
-    FLOW("");
+    PT_THREAD_DBG("");
     MMSDK_S32 s32ErrorCode = 0;
 
     if (*pCond)
@@ -413,7 +437,7 @@ MMSDK_BOOL PT_Thread_Cond_Destroy(PT_CONDVARIABLEITEM *pCond)
         }
         else
         {
-            ERR("Destroy condition variable 0x%"DTC_MS_U32_x" error:%"DTC_MS_S32_d"", (MMSDK_U32)pCond, s32ErrorCode);
+            PT_THREAD_ERR("Destroy condition variable 0x%"DTC_MS_U32_x" error:%"DTC_MS_S32_d"", (MMSDK_U32)pCond, s32ErrorCode);
             return FALSE;
         }
     }
@@ -422,14 +446,14 @@ MMSDK_BOOL PT_Thread_Cond_Destroy(PT_CONDVARIABLEITEM *pCond)
 
 MMSDK_BOOL PT_Thread_Cond_Wait(PT_CONDVARIABLEITEM pCond, PT_MUTEXITEM pMutex)
 {
-    FLOW("");
+    //PT_THREAD_DBG("");
     MMSDK_S32 s32ErrorCode = 0;
 
     if (pCond && pMutex)
     {
         if((s32ErrorCode = pthread_cond_wait((pthread_cond_t*)pCond, (pthread_mutex_t *)pMutex)))
         {
-            ERR("Condition variable 0x%"DTC_MS_U32_x" mutex 0x%"DTC_MS_U32_x" wait error:%"DTC_MS_S32_d"", (MMSDK_U32)pCond, (MMSDK_U32)pMutex, s32ErrorCode);
+            PT_THREAD_ERR("Condition variable 0x%"DTC_MS_U32_x" mutex 0x%"DTC_MS_U32_x" wait error:%"DTC_MS_S32_d"", (MMSDK_U32)pCond, (MMSDK_U32)pMutex, s32ErrorCode);
             return FALSE;
         }
         else
@@ -443,7 +467,7 @@ MMSDK_BOOL PT_Thread_Cond_Wait(PT_CONDVARIABLEITEM pCond, PT_MUTEXITEM pMutex)
 
 MMSDK_BOOL PT_Thread_Cond_TimeWait(PT_CONDVARIABLEITEM pCond, PT_MUTEXITEM pMutex, const MMSDK_U32 u32RelatvieWaitTimeMs)
 {
-    FLOW("");
+    //PT_THREAD_DBG("");
     MMSDK_S32 s32ErrorCode = 0;
 
     struct timespec stTime;
@@ -454,10 +478,10 @@ MMSDK_BOOL PT_Thread_Cond_TimeWait(PT_CONDVARIABLEITEM pCond, PT_MUTEXITEM pMute
     if (pCond && pMutex)
     {
         gettimeofday(&now, NULL);
-        FLOW("pRelatvieWaitTimeMs = %"DTC_MS_U32_d"\n", u32RelatvieWaitTimeMs);
+        //PT_THREAD_DBG("pRelatvieWaitTimeMs = %"DTC_MS_U32_d"\n", u32RelatvieWaitTimeMs);
         stTime.tv_sec = now.tv_sec;
         stTime.tv_nsec = now.tv_usec * 1000;
-        FLOW("Now time = %"DTC_MS_S64_d".%.9ld\n", (MMSDK_S64)(stTime.tv_sec), stTime.tv_nsec);
+        //PT_THREAD_DBG("Now time = %"DTC_MS_S64_d".%.9ld\n", (MMSDK_S64)(stTime.tv_sec), stTime.tv_nsec);
 
         // Convert u32RelatvieWaitTimeMs to abs time
         stTime.tv_sec += u32RelatvieWaitTimeMs / 1000;
@@ -467,7 +491,7 @@ MMSDK_BOOL PT_Thread_Cond_TimeWait(PT_CONDVARIABLEITEM pCond, PT_MUTEXITEM pMute
             stTime.tv_nsec -= 1000000000;
             stTime.tv_sec  += 1;
         }
-        FLOW("Absolute wait time = %"DTC_MS_S32_d".%.3ld\n", (MMSDK_S64)(stTime.tv_sec), stTime.tv_nsec);
+        //PT_THREAD_DBG("Absolute wait time = %"DTC_MS_S32_d".%.3ld\n", (MMSDK_S64)(stTime.tv_sec), stTime.tv_nsec);
         s32ErrorCode = pthread_cond_timedwait((pthread_cond_t*)pCond, (pthread_mutex_t*)pMutex, &stTime);
 
         if (s32ErrorCode == 0)
@@ -476,12 +500,12 @@ MMSDK_BOOL PT_Thread_Cond_TimeWait(PT_CONDVARIABLEITEM pCond, PT_MUTEXITEM pMute
         }
         else if (s32ErrorCode == ETIMEDOUT)
         {
-            FLOW("Wait until timeout\n");
+            //PT_THREAD_ERR("Wait until timeout\n");
             return FALSE;
         }
         else
         {
-            ERR("Condition variable 0x%"DTC_MS_U32_x" mutex 0x%"DTC_MS_U32_x" abs time %"DTC_MS_S64_d".%.3ld wait error:%"DTC_MS_S32_d"",
+            PT_THREAD_ERR("Condition variable 0x%"DTC_MS_U32_x" mutex 0x%"DTC_MS_U32_x" abs time %"DTC_MS_S64_d".%.3ld wait error:%"DTC_MS_S32_d"",
                 (MMSDK_U32)pCond, (MMSDK_U32)pMutex, (MMSDK_S64)(stTime.tv_sec), stTime.tv_nsec, s32ErrorCode);
             return FALSE;
         }
@@ -491,14 +515,14 @@ MMSDK_BOOL PT_Thread_Cond_TimeWait(PT_CONDVARIABLEITEM pCond, PT_MUTEXITEM pMute
 
 MMSDK_BOOL PT_Thread_Cond_Signal(PT_CONDVARIABLEITEM pCond)
 {
-    FLOW("");
+    //PT_THREAD_DBG("");
     MMSDK_S32 s32ErrorCode = 0;
 
     if (pCond)
     {
         if ((s32ErrorCode = pthread_cond_signal((pthread_cond_t*)pCond)))
         {
-            ERR("Condition variable 0x%"DTC_MS_U32_x" signal error:%"DTC_MS_S32_d"", (MMSDK_U32)pCond, s32ErrorCode);
+            PT_THREAD_ERR("Condition variable 0x%"DTC_MS_U32_x" signal error:%"DTC_MS_S32_d"", (MMSDK_U32)pCond, s32ErrorCode);
             return FALSE;
         }
         else
@@ -511,14 +535,14 @@ MMSDK_BOOL PT_Thread_Cond_Signal(PT_CONDVARIABLEITEM pCond)
 
 MMSDK_BOOL PT_Thread_Cond_Broadcast(PT_CONDVARIABLEITEM pCond)
 {
-    FLOW("");
+    PT_THREAD_DBG("");
     MMSDK_S32 s32ErrorCode = 0;
 
     if (pCond)
     {
         if ((s32ErrorCode = pthread_cond_broadcast((pthread_cond_t*)pCond)))
         {
-            ERR("Condition variable 0x%"DTC_MS_U32_x" broadcast error:%"DTC_MS_S32_d"", (MMSDK_U32)pCond, s32ErrorCode);
+            PT_THREAD_ERR("Condition variable 0x%"DTC_MS_U32_x" broadcast error:%"DTC_MS_S32_d"", (MMSDK_U32)pCond, s32ErrorCode);
             return FALSE;
         }
         else

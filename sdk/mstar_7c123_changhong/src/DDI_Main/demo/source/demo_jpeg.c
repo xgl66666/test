@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (!Â¡Â±MStar Confidential Information!Â¡L) by the recipient.
+// (!¡±MStar Confidential Information!¡L) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -225,9 +225,7 @@ static MS_S32 s32InitByteRead = 0;
 static EN_JPEG_DECODE_STATE g_state = E_JPEG_INIT;
 static ST_JPEG_FILE_FileSystem_t _input_stream;
 static PST_JPEG_FILE_FileSystem_t _Pinput_stream = &_input_stream;
-static JPEG_Info stJPEG_Info;
 static JPEG_Status stJPEG_Status;
-static const MSIF_Version *pu8JPEG_Ver;
 static JPEG_EXIF_DateTime _gEXIF_DateTime;
 static JPEG_EXIF_Orientation _gEXIF_Orientation;
 
@@ -321,7 +319,6 @@ static MS_BOOL _Demo_JPEG_FILE_Reset(ST_JPEG_FILE_FileSystem_t *thisPtr)
 static MS_S32 _Demo_JPEG_FILE_Get_Size(ST_JPEG_FILE_FileSystem_t *thisPtr)
 {
     MS_S32 size = 0;
-    thisPtr = thisPtr;
     return size;
 }
 
@@ -467,9 +464,7 @@ static void _Demo_JPEG_SetStatus(void)
         u16ImageNonAlignHeight = MApi_JPEG_GetNonAlignmentHeight();
         u8ScaleDownFactor = MApi_JPEG_GetScaleDownFactor();
         u8DebugLevel = MApi_JPEG_GetDbgLevel();
-        MApi_JPEG_GetInfo(&stJPEG_Info);
         MApi_JPEG_GetStatus(&stJPEG_Status);
-        MApi_JPEG_GetLibVer(&pu8JPEG_Ver);
         u16ImageAlignPitch = MApi_JPEG_GetAlignedPitch(),
         u16ImageAlignWidth = MApi_JPEG_GetAlignedWidth(),
         u16ImageAlignHeight = MApi_JPEG_GetAlignedHeight();
@@ -490,9 +485,7 @@ static void _Demo_JPEG_SetStatus(void)
         u8ScaleDownFactor = MApi_JPEG_GetScaleDownFactor();
         u16ErrorCode = MApi_JPEG_GetErrorCode();
         u8DebugLevel = MApi_JPEG_GetDbgLevel();
-        MApi_JPEG_GetInfo(&stJPEG_Info);
         MApi_JPEG_GetStatus(&stJPEG_Status);
-        MApi_JPEG_GetLibVer(&pu8JPEG_Ver);
         u16ImageAlignPitch = MApi_JPEG_GetAlignedPitch(),
         u16ImageAlignWidth = MApi_JPEG_GetAlignedWidth(),
         u16ImageAlignHeight = MApi_JPEG_GetAlignedHeight();

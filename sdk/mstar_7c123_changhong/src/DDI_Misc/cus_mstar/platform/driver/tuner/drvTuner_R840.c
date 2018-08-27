@@ -6,8 +6,11 @@
 // Copyright 2013 by Rafaelmicro., Inc.
 // Author: Jason Wang
 //-----------------------------------------------------//
-
+#ifdef MSOS_TYPE_LINUX_KERNEL
+#include <linux/string.h>
+#else
 #include <string.h>
+#endif
 #include "Board.h"
 
 #if IF_THIS_TUNER_INUSE(TUNER_R836)
@@ -23,10 +26,16 @@
 //#ifdef DVBC_STYLE
 //MS_U8 dmdConfig[] = {0x00};
 //#endif
-#define  R840_DTV_AGC_SLOW   FALSE
-
 static TUNER_MS_INIT_PARAM InitParam[MAX_FRONTEND_NUM];
-static MS_U8 u8Possible_SLAVE_IDs[2] = {0x74, 0x34};
+//static MS_U8 u8Possible_SLAVE_IDs[2] = {0x74, 0x34};
+SLAVE_ID_USAGE* pstR836_slave_ID_TBL = NULL;
+static SLAVE_ID_USAGE R836_possible_slave_ID[3] =
+{
+    {0x74, FALSE},
+    {0x34, FALSE},
+    {0xFF, FALSE}
+};
+static MS_BOOL bUnderExtDMDTest = FALSE;
 
 #define  ADC_MULTI_READ  1
 UINT32 ADC_READ_DELAY = 2;
@@ -93,8 +102,7 @@ UINT8* pR840_TF_Check_Result = NULL; //1: fail, 0: ok
 R840_Standard_Type*  pR840_pre_standard= NULL;
 UINT8  R840_Lpf_Lsb = 0;
 static UINT8 R840_IMR_Cal_Type = R840_IMR_CAL;
-//static UINT8 R840_SBY[R840_REG_NUM];
-UINT8 *pR840_PreGainMode = NULL; //RF_AUTO; //for test use
+__attribute__((unused)) static UINT8 R840_SBY[R840_REG_NUM];
 //0x00(8M), 0x40(7M), 0x60(6M)
 static UINT8 R840_Fil_Cal_BW_def[R840_STD_SIZE]={
        0x60, 0x60, 0x00, 0x00, 0x40, 0x40, 0x00, 0x40, 0x00, //ATV
@@ -115,7 +123,7 @@ static UINT8 R840_Fil_Cal_code_def[R840_STD_SIZE]={
 
 //0: L270n/68n(ISDB-T, DVB-T/T2)
 //1: Bead/68n(DTMB)
-//2: Bead/68n(ISDB-T, DVB-T/T2)
+//2: L270n/68n(N/A)
 //3: L270n/68n(ATV)
 //4: Bead/68n(DTMB+ATV)
 //5: L270n/68n(ATSC, DVB-C, J83B)
@@ -233,11 +241,7 @@ static UINT16 R840_Lna_Pulse_Comp[5][4] =
 SysFreq_Info_Type* pSysFreq_Info1 = NULL;
 Sys_Info_Type*     pSys_Info1 = NULL;
 Freq_Info_Type*    pFreq_Info1 = NULL;
-#if 1 // byKOR, kaon
-	R840_Set_Info*  pR840_Info = NULL;
-#else
 static MS_U32 u32CurFreqKhz[MAX_FRONTEND_NUM];
-#endif
 //----------------------------------------------------------//
 //                   Internal Functions                            //
 //----------------------------------------------------------//
@@ -275,13 +279,7 @@ static MS_BOOL R836_Variables_alloc(void)
 {
 
     UINT8 i;
-	#if 1 // byKOR, kaon
-		if(NULL == pR840_Info)
-           pR840_Info = (R840_Set_Info*)malloc(sizeof(R840_Set_Info)*MAX_FRONTEND_NUM);
 
-       if(NULL == pR840_PreGainMode)
-          pR840_PreGainMode = (UINT8*)malloc(sizeof(UINT8)*MAX_FRONTEND_NUM);
-	#endif
        if(NULL == pR840_Chip)
           pR840_Chip = (UINT8*)malloc(sizeof(UINT8)*MAX_FRONTEND_NUM);
 
@@ -340,13 +338,6 @@ static MS_BOOL R836_Variables_alloc(void)
            (NULL == pR840_IMR_Cal_Result) || (NULL == pR840_TF_Check_Result) ||\
            (NULL == pR840_Fil_Cal_code) || (NULL == pR840_pre_standard) || (NULL == pR840_Array) || (NULL == pR840_Chip) || (NULL == pR840_SBY))
         {
-		#if 1 // byKOR, kaon
-			if(NULL != pR840_Info)
-				free(pR840_Info);
-
-            if(NULL != pR840_PreGainMode)
-                free(pR840_PreGainMode);
-		#endif
             if(NULL != pR840_Chip)
                 free(pR840_Chip);
 
@@ -409,9 +400,6 @@ static MS_BOOL R836_Variables_alloc(void)
               *(pR840_Xtal_Pwr_tmp + i) = XTAL_GM3V_STRONG;
               *(pR840_Initial_done_flag + i) = FALSE;
               *(pR840_IMR_done_flag + i) = FALSE;
-			#if 1 // byKOR, kaon
-              *(pR840_PreGainMode + i) = RF_AUTO;
-			#endif
            }
            return TRUE;
        }
@@ -440,7 +428,7 @@ int R836_Convert(int InvertNum)
 }
 static MS_BOOL IIC_READ(MS_U8 u8TunerIndex,MS_U8 u8SlaveID, MS_U8* paddr, MS_U8 u8AddrNum, MS_U8* pu8data, MS_U16 u16size)
 {
-    HWI2C_PORT ePort;
+    MS_IIC_PORT ePort;
 
     ePort = getI2CPort(u8TunerIndex);
     if (FALSE == MDrv_IIC_ReadBytes(ePort, u8SlaveID, u8AddrNum, paddr, u16size, pu8data))
@@ -480,7 +468,7 @@ static MS_BOOL I2C_Write(MS_U8 u8TunerIndex,I2C_TYPE *I2C_Info)
     MS_U16 u16size  = 1;
     MS_U8 *paddr = &(I2C_Info->RegAddr);
     MS_U8 *pu8data = &(I2C_Info->Data);
-    HWI2C_PORT ePort;
+    MS_IIC_PORT ePort;
 
     ePort = getI2CPort(u8TunerIndex);
     if (FALSE == MDrv_IIC_WriteBytes(ePort, u8SlaveID, 1, paddr, u16size, pu8data))
@@ -500,7 +488,7 @@ static MS_BOOL I2C_Write_Len(MS_U8 u8TunerIndex,I2C_LEN_TYPE *I2C_Info)
     MS_U16 u16size  = I2C_Info->Len;
     MS_U8 *paddr = &(I2C_Info->RegAddr);
     MS_U8 *pu8data = I2C_Info->Data;
-    HWI2C_PORT ePort;
+    MS_IIC_PORT ePort;
 
     ePort = getI2CPort(u8TunerIndex);
     if (FALSE == MDrv_IIC_WriteBytes(ePort, u8SlaveID, 1, paddr, u16size, pu8data))
@@ -527,11 +515,11 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
         case R840_DVB_T2_6M:
             R840_Sys_Info.IF_KHz=4570;                    //IF
             R840_Sys_Info.BW=0x40;                          //BW=7M
-            R840_Sys_Info.FILT_CAL_IF=7150;          //CAL IF
+        R840_Sys_Info.FILT_CAL_IF=7150;          //CAL IF
             R840_Sys_Info.HPF_COR=0x05;              //R11[3:0]=5 (2.0M)
             R840_Sys_Info.FILT_EXT_ENA=0x10;      //R11[4]=1, ext enable
             R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-            R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+1
+            R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+3
             break;
 
        case R840_DVB_T_7M:
@@ -542,7 +530,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
            R840_Sys_Info.HPF_COR=0x08;	             //R11[3:0]=8 (1.45M)
            R840_Sys_Info.FILT_EXT_ENA=0x10;      //R11[4]=1, ext enable
            R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-           R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+1
+           R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8
            break;
 
         case R840_DVB_T_8M:
@@ -551,9 +539,9 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
             R840_Sys_Info.BW=0x00;                           //BW=8M
             R840_Sys_Info.FILT_CAL_IF=8130;           //CAL IF
             R840_Sys_Info.HPF_COR=0x09;              //R11[3:0]=9 (1.15M)
-            R840_Sys_Info.FILT_EXT_ENA=0x00;      //R11[4]=1, ext disable
+		R840_Sys_Info.FILT_EXT_ENA=0x00;      //R11[4]=1, ext disable
             R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+1
+            R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+3
             break;
 
         case R840_DVB_T2_1_7M:
@@ -563,7 +551,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
             R840_Sys_Info.HPF_COR=0x08;             //R11[3:0]=8
         R840_Sys_Info.FILT_EXT_ENA=0x00;      //R11[4]=0, ext disable
             R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0,  lna=max-1 & Buf 4, hpf+3
+            R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0,  lna=max-1 & Buf 4, hpf+1
             break;
 
         case R840_DVB_T2_10M:
@@ -573,7 +561,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
             R840_Sys_Info.HPF_COR=0x0C;             //R11[3:0]=12
             R840_Sys_Info.FILT_EXT_ENA=0x10;      //R11[4]=1, ext enable
             R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0,  lna=max-1 & Buf 4, hpf+3
+            R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0,  lna=max-1 & Buf 4, hpf+1
             break;
 
         case R840_DVB_C_8M:
@@ -583,7 +571,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
             R840_Sys_Info.HPF_COR=0x0A;	             //R11[3:0]=10
             R840_Sys_Info.FILT_EXT_ENA=0x10;      //R11[4]=1, ext enable
             R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x02;   //R30[1:0]=10, lna=max-1 & Buf 4, hpf+1
+            R840_Sys_Info.FILT_EXT_POINT=0x02;   //R30[1:0]=10, lna=max-1 & Buf 4, hpf+3
             break;
 
        case R840_DVB_C_6M:
@@ -593,7 +581,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
            R840_Sys_Info.HPF_COR=0x03;	             //R11[3:0]=3
            R840_Sys_Info.FILT_EXT_ENA=0x00;      //R11[4]=1, ext disable
            R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0,  lna=max-1 & Buf 4, hpf+3
+           R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0,  lna=max-1 & Buf 4, hpf+1
            break;
 
        case R840_J83B:
@@ -603,7 +591,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
            R840_Sys_Info.HPF_COR=0x03;	             //R11[3:0]=3
            R840_Sys_Info.FILT_EXT_ENA=0x00;      //R11[4]=1, ext disable
            R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+3
+           R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+1
            break;
 
     case R840_ISDB_T_4063:
@@ -613,7 +601,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
             R840_Sys_Info.HPF_COR=0x08;             //R11[3:0]=8
             R840_Sys_Info.FILT_EXT_ENA=0x10;      //R11[4]=1, ext enable
             R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+1
+            R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+3
             break;
 
         case R840_ISDB_T_4570:
@@ -623,17 +611,17 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
             R840_Sys_Info.HPF_COR=0x05;	             //R11[3:0]=5 (2.0M)
             R840_Sys_Info.FILT_EXT_ENA=0x10;      //R11[4]=1, ext enable
             R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+1
+            R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+3
             break;
 
     case R840_DTMB_8M_4570:
             R840_Sys_Info.IF_KHz=4570;
             R840_Sys_Info.BW=0x00;                           //BW=8M
-		R840_Sys_Info.FILT_CAL_IF=8330;           //CAL IF
+            R840_Sys_Info.FILT_CAL_IF=8330;           //CAL IF  //8130
             R840_Sys_Info.HPF_COR=0x0B;             //R11[3:0]=11
             R840_Sys_Info.FILT_EXT_ENA=0x00;      //R11[4]=1, ext disable
-		R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+3
+            R840_Sys_Info.FILT_EXT_WIDEST=0x00;  //R30[2]=0, ext normal
+            R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+1
             break;
 
     case R840_DTMB_6M_4500:
@@ -643,7 +631,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
             R840_Sys_Info.HPF_COR=0x05;              //R11[3:0]=5
             R840_Sys_Info.FILT_EXT_ENA=0x10;      //R11[4]=1, ext enable
             R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x02;   //R30[1:0]=10, lna=max-1 & Buf 4, hpf+1
+            R840_Sys_Info.FILT_EXT_POINT=0x02;   //R30[1:0]=10, lna=max-1 & Buf 4, hpf+3
             break;
 
     case R840_ATSC:
@@ -653,7 +641,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
             R840_Sys_Info.HPF_COR=0x04;              //R11[3:0]=4
             R840_Sys_Info.FILT_EXT_ENA=0x00;      //R11[4]=0, ext disable
             R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+3
+            R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+1
             break;
 
     case R840_DVB_T_6M_IF_5M:
@@ -661,10 +649,10 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
            R840_Sys_Info.IF_KHz=5000;                    //IF
            R840_Sys_Info.BW=0x40;                          //BW=7M
 		R840_Sys_Info.FILT_CAL_IF=7700;          //CAL IF
-		R840_Sys_Info.HPF_COR=0x04;	             //R11[3:0]=4 (2.25M)
+           R840_Sys_Info.HPF_COR=0x04;              //R11[3:0]=4 (2.25M)
 		R840_Sys_Info.FILT_EXT_ENA=0x00;      //R11[4]=0, ext disable
-		R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+1
+           R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
+           R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+3
            break;
 
     case R840_DVB_T_7M_IF_5M:
@@ -674,8 +662,8 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
 		R840_Sys_Info.FILT_CAL_IF=8000;           //CAL IF
 		R840_Sys_Info.HPF_COR=0x06;	             //R11[3:0]=6 (1.78M)
 		R840_Sys_Info.FILT_EXT_ENA=0x00;      //R11[4]=1, ext disable
-		R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+1
+           R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
+           R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+3
            break;
 
     case R840_DVB_T_8M_IF_5M:
@@ -685,8 +673,8 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
           R840_Sys_Info.FILT_CAL_IF=8500;           //CAL IF
           R840_Sys_Info.HPF_COR=0x08;              //R11[3:0]=8 (1.45M)
 		R840_Sys_Info.FILT_EXT_ENA=0x00;      //R11[4]=1, ext disable
-		R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+1
+          R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
+          R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+3
           break;
 
     case R840_DVB_T2_1_7M_IF_5M:
@@ -696,7 +684,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
         R840_Sys_Info.HPF_COR=0x01;	             //R11[3:0]=1
         R840_Sys_Info.FILT_EXT_ENA=0x00;      //R11[4]=0, ext disable
         R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+3
+        R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+1
         break;
 
     case R840_DVB_C_8M_IF_5M:
@@ -706,7 +694,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
         R840_Sys_Info.HPF_COR=0x0A;              //R11[3:0]=10
         R840_Sys_Info.FILT_EXT_ENA=0x10;      //R11[4]=1, ext enable
         R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x02;   //R30[1:0]=10, lna=max-1 & Buf 4, hpf+1
+        R840_Sys_Info.FILT_EXT_POINT=0x02;   //R30[1:0]=10, lna=max-1 & Buf 4, hpf+3
         break;
 
    case R840_DVB_C_6M_IF_5M:
@@ -716,7 +704,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
         R840_Sys_Info.HPF_COR=0x04;	             //R11[3:0]=4
         R840_Sys_Info.FILT_EXT_ENA=0x00;      //R11[4]=1, ext disable
         R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+3
+        R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+1
         break;
 
    case R840_J83B_IF_5M:
@@ -726,7 +714,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
         R840_Sys_Info.HPF_COR=0x03;	             //R11[3:0]=3
         R840_Sys_Info.FILT_EXT_ENA=0x00;      //R11[4]=1, ext disable
         R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+3
+        R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+1
         break;
 
    case R840_ISDB_T_IF_5M:
@@ -736,7 +724,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
         R840_Sys_Info.HPF_COR=0x04;	             //R11[3:0]=4 (2.25M)
         R840_Sys_Info.FILT_EXT_ENA=0x10;      //R11[4]=1, ext enable
         R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+1
+        R840_Sys_Info.FILT_EXT_POINT=0x03;   //R30[1:0]=11, buf 8, hpf+3
         break;
 
     case R840_DTMB_8M_IF_5M:
@@ -746,7 +734,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
         R840_Sys_Info.HPF_COR=0x09;              //R11[3:0]=9
         R840_Sys_Info.FILT_EXT_ENA=0x10;      //R11[4]=1, ext enable
         R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+3
+        R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+1
         break;
 
     case R840_DTMB_6M_IF_5M:
@@ -756,7 +744,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
         R840_Sys_Info.HPF_COR=0x04;              //R11[3:0]=4
         R840_Sys_Info.FILT_EXT_ENA=0x10;      //R11[4]=1, ext enable
         R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+3
+        R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+1
         break;
 
     case R840_ATSC_IF_5M:
@@ -766,7 +754,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
         R840_Sys_Info.HPF_COR=0x04;	             //R11[3:0]=4
         R840_Sys_Info.FILT_EXT_ENA=0x00;      //R11[4]=0, ext disable
         R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+3
+        R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+1
         break;
 
    case R840_FM:
@@ -776,7 +764,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
         R840_Sys_Info.HPF_COR=0x02;	             //R11[3:0]=2
         R840_Sys_Info.FILT_EXT_ENA=0x10;      //R11[4]=1, ext enable
         R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+3
+        R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+1
         break;
 
    default:  //R840_DVB_T_8M
@@ -786,7 +774,7 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
         R840_Sys_Info.HPF_COR=0x0A;	             //R11[3:0]=10
         R840_Sys_Info.FILT_EXT_ENA=0x10;      //R11[4]=1, ext enable
         R840_Sys_Info.FILT_EXT_WIDEST=0x00;//R30[2]=0, ext normal
-		R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+3
+        R840_Sys_Info.FILT_EXT_POINT=0x00;   //R30[1:0]=0, lna=max-1 & Buf 4, hpf+1
         break;
 
     }
@@ -820,7 +808,6 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
 		case R840_J83B:
         case R840_DVB_C_8M_IF_5M:
 		case R840_DVB_C_6M_IF_5M:
-		case R840_J83B_IF_5M:
 			R840_Sys_Info.NA_PWR_DET = 0x00;   //on         (R30[7]=0)
 			break;
 
@@ -832,9 +819,9 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
     R840_Sys_Info.RF_BUF_CUR = 0x00;    //high  (R4[7]=0)
     R840_Sys_Info.TF_CUR = 0x40;                  //low       (R3[6]=1)
     R840_Sys_Info.LNA_DET_MODE=0x01;    //discharge (R31[0]=1)
-	R840_Sys_Info.NA_DISCHARGE = 0x04;   //1          (R31[4:2]=3'b001)
-	R840_Sys_Info.AGC_CLK = 0x00;              //1k        (R27[5:3]=3'b000)
-	R840_Sys_Info.FILT_COMP = 0x20;      //1          (R30[6:5]=2'b01)
+    R840_Sys_Info.NA_DISCHARGE = 0x04; //  //1          (R31[4:2]=3'b001)
+    R840_Sys_Info.AGC_CLK = 0x00;              //1k        (R27[5:3]=3'b000)
+    R840_Sys_Info.FILT_COMP = 0x20;    //  //1          (R30[6:5]=2'b01)
 
     //Filter 3dB
     switch(R840_Standard)
@@ -863,13 +850,12 @@ Sys_Info_Type R840_Sys_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_Standard)
     //TF Type select
     switch(R840_Standard)
     {
-
-		case R840_DVB_C_8M:
-		case R840_DVB_C_6M:
-		case R840_J83B:
+        case R840_DVB_C_8M:
+        case R840_DVB_C_6M:
+        case R840_J83B:
         case R840_DVB_C_8M_IF_5M:
-		case R840_DVB_C_6M_IF_5M:
-		case R840_J83B_IF_5M:
+        case R840_DVB_C_6M_IF_5M:
+        case R840_J83B_IF_5M:
 			 if((*(pR840_TF_Check_Result + u8TunerIndex)) ==1) //fail
 			 {
 				 R840_SetTfType = R840_TF_NARROW_ATSC;   //using 270n
@@ -1033,7 +1019,7 @@ Freq_Info_Type R840_Freq_Sel(UINT32 LO_freq, UINT32 RF_freq, R840_Standard_Type 
 
             break;
 
-		default:  //Air, DTMB
+        default:
 			if((LO_freq>0) && (LO_freq<73000))
             {
                 R840_Freq_Info.LPF_CAP = 8;
@@ -1108,16 +1094,28 @@ SysFreq_Info_Type R840_SysFreq_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_S
 
     if(*(pR840_Chip + u8TunerIndex)==R836_R)
     {
-        R840_SysFreq_Info.LNA_TOP=0x03;       // LNA TOP=4                    (R27[2:0]=3'b011)
-        R840_SysFreq_Info.LNA_VTH_L=0xA5;   // LNA VTH/L=1.34/0.84     (R13=0xA5)
-        R840_SysFreq_Info.MIXER_TOP=0x05;       // MIXER TOP=10               (R28[3:0]=4'b0101)
-        R840_SysFreq_Info.MIXER_VTH_L=0x95;   // MIXER VTH/L=1.24/0.84  (R14=0x95)
-        R840_SysFreq_Info.RF_TOP=0x40;               // RF TOP=5                        (R26[7:5]=3'b010)
-        R840_SysFreq_Info.NRB_TOP=0xC0;            // Nrb TOP=3                       (R28[7:4]=4'b1100)
-        R840_SysFreq_Info.NRB_BW=0xC0;             // Nrb BW=lowest                  (R27[7:6]=2'b11)
-        R840_SysFreq_Info.LNA_DISCHARGE=0x0A; //LNA disch=10                   (R5[4:0]=5'b01010)
-        R840_SysFreq_Info.NRB_TOP_ADDER=2;      //Nrb Adder: +6
-        R840_SysFreq_Info.RF_DISCHARGE=0x20;    //RF disch=1                         (R31[7:5]=3'b001)
+		if((RF_freq>=686000) && (RF_freq<=694000))  //690
+		{
+			R840_SysFreq_Info.LNA_VTH_L=0xA4;	   // LNA VTH/L=1.34/0.74     (R13=0xA4)
+			R840_SysFreq_Info.RF_TOP=0xA0;         // RF TOP=2
+			R840_SysFreq_Info.NRB_BW=0x00;         // Nrb BW=widest
+		}
+		else
+		{
+			R840_SysFreq_Info.LNA_VTH_L=0xA5;	   // LNA VTH/L=1.34/0.84     (R13=0xA5)
+			R840_SysFreq_Info.RF_TOP=0x40;         // RF TOP=5
+			R840_SysFreq_Info.NRB_BW=0xC0;         // Nrb BW=lowest           (R27[7:6]=2'b11)
+		}
+		    R840_SysFreq_Info.LNA_TOP=0x03;		   // LNA TOP=4               (R27[2:0]=3'b011)
+			//R840_SysFreq_Info.LNA_VTH_L=0xA5;	   // LNA VTH/L=1.34/0.84     (R13=0xA5)
+			R840_SysFreq_Info.MIXER_TOP=0x05;	   // MIXER TOP=10            (R28[3:0]=4'b0101)
+			R840_SysFreq_Info.MIXER_VTH_L=0x95;    // MIXER VTH/L=1.24/0.84   (R14=0x95)
+			//R840_SysFreq_Info.RF_TOP=0x40;       // RF TOP=5                (R26[7:5]=3'b010)
+			R840_SysFreq_Info.NRB_TOP=0xC0;        // Nrb TOP=3               (R28[7:4]=4'b1100)
+			//R840_SysFreq_Info.NRB_BW=0xC0;       // Nrb BW=lowest           (R27[7:6]=2'b11)
+			R840_SysFreq_Info.LNA_DISCHARGE=0x0A;  // LNA disch=10            (R5[4:0]=5'b01010)
+			R840_SysFreq_Info.NRB_TOP_ADDER=2;     // Nrb Adder: +6
+			R840_SysFreq_Info.RF_DISCHARGE=0x20;   // RF disch=1              (R31[7:5]=3'b001)
     }
     else
     {
@@ -1131,6 +1129,16 @@ SysFreq_Info_Type R840_SysFreq_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_S
             R840_SysFreq_Info.NRB_TOP=0x80;            // Nrb TOP=7                       (R28[7:4]=4'b1000)
             R840_SysFreq_Info.NRB_BW=0x40;             // Nrb BW=wide                     (R27[7:6]=2'b01)
         }
+			else if((RF_freq>=686000) && (RF_freq<=694000)) //690
+			{
+				R840_SysFreq_Info.LNA_TOP=0x03;		       // LNA TOP=4                    (R27[2:0]=3'b011)
+				R840_SysFreq_Info.LNA_VTH_L=0xA4;	       // LNA VTH/L=1.34/0.74
+				R840_SysFreq_Info.MIXER_TOP=0x05;	       // MIXER TOP=10                 (R28[3:0]=4'b0101)
+				R840_SysFreq_Info.MIXER_VTH_L=0x95;        // MIXER VTH/L=1.24/0.84        (R14=0x95)
+				R840_SysFreq_Info.RF_TOP=0xA0;             // RF TOP=2
+				R840_SysFreq_Info.NRB_TOP=0x90;            // Nrb TOP=6                    (R28[7:4]=4'b1001)
+				R840_SysFreq_Info.NRB_BW=0x00;             // Nrb BW=widest                (R27[7:6]=2'b00)
+			}
         else
         {
             R840_SysFreq_Info.LNA_TOP=0x03;		       // LNA TOP=4                    (R27[2:0]=3'b011)
@@ -1146,6 +1154,7 @@ SysFreq_Info_Type R840_SysFreq_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_S
         R840_SysFreq_Info.RF_DISCHARGE=0x20;    //RF disch=1                         (R31[7:5]=3'b001)
 
     }
+
     if((RF_freq>=350000) && (RF_freq<=540000))
     {
     	R840_SysFreq_Info.LNA_VTH_L=0xA4;	   // LNA VTH/L=1.34/0.74     (R13=0xA4)
@@ -1168,19 +1177,41 @@ SysFreq_Info_Type R840_SysFreq_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_S
         R840_SysFreq_Info.LNA_VTH_L=0xB6;	   // LNA VTH/L=1.44/0.94     (R13=0xB6)
         R840_SysFreq_Info.NRB_TOP=0xB0;            // Nrb TOP=4                       (R28[7:4]=4'b1011)
         R840_SysFreq_Info.NRB_TOP_ADDER=0;    //Nrb Adder: normal
-    }
-    else
+			R840_SysFreq_Info.RF_TOP=0x40;         // RF TOP=5                        (R26[7:5]=3'b010)
+			R840_SysFreq_Info.NRB_BW=0xC0;         // Nrb BW=lowest
+		}
+#else
+
+		if((RF_freq>=782000) && (RF_freq<=790000))
+		{
+			R840_SysFreq_Info.LNA_VTH_L=0xA5;	    // LNA VTH/L=1.34/0.84            (R13=0xA5)
+			R840_SysFreq_Info.NRB_TOP=0xC0;         // Nrb TOP=3                      (R28[7:4]=4'b1100)
+			R840_SysFreq_Info.NRB_TOP_ADDER=2;      // Nrb Adder: +6
+			R840_SysFreq_Info.RF_TOP=0x40;          // RF TOP=5                       (R26[7:5]=3'b010)
+			R840_SysFreq_Info.NRB_BW=0xC0;          // Nrb BW=lowest
+		}
 #endif
-    {
+		else if((RF_freq>=686000) && (RF_freq<=694000)) //690
+		{
+			R840_SysFreq_Info.LNA_VTH_L=0xA2;	    // LNA VTH/L=1.34/0.54
+			R840_SysFreq_Info.NRB_TOP=0xC0;         // Nrb TOP=3                      (R28[7:4]=4'b1100)
+			R840_SysFreq_Info.NRB_TOP_ADDER=2;      // Nrb Adder: +6
+			R840_SysFreq_Info.RF_TOP=0xA0;          // RF TOP=2
+			R840_SysFreq_Info.NRB_BW=0x00;          // Nrb BW=widest
+		}
+		else
+		{
         R840_SysFreq_Info.LNA_VTH_L=0xA5;	   // LNA VTH/L=1.34/0.84     (R13=0xA5)
         R840_SysFreq_Info.NRB_TOP=0xC0;            // Nrb TOP=3                       (R28[7:4]=4'b1100)
         R840_SysFreq_Info.NRB_TOP_ADDER=2;      //Nrb Adder: +6
+			R840_SysFreq_Info.RF_TOP=0x40;          // RF TOP=5                       (R26[7:5]=3'b010)
+			R840_SysFreq_Info.NRB_BW=0xC0;          // Nrb BW=lowest
     }
     R840_SysFreq_Info.LNA_TOP=0x03;		       // LNA TOP=4                    (R27[2:0]=3'b011)
     R840_SysFreq_Info.MIXER_TOP=0x05;	       // MIXER TOP=10               (R28[3:0]=4'b0101)
     R840_SysFreq_Info.MIXER_VTH_L=0x95;   // MIXER VTH/L=1.24/0.84  (R14=0x95)
-    R840_SysFreq_Info.RF_TOP=0x40;               // RF TOP=5                        (R26[7:5]=3'b010)
-    R840_SysFreq_Info.NRB_BW=0xC0;             // Nrb BW=lowest                  (R27[7:6]=2'b11)
+			//R840_SysFreq_Info.RF_TOP=0x40;        // RF TOP=5                       (R26[7:5]=3'b010)
+			//R840_SysFreq_Info.NRB_BW=0xC0;        // Nrb BW=lowest                  (R27[7:6]=2'b11)
     R840_SysFreq_Info.LNA_DISCHARGE=0x0A; //LNA disch=10                   (R5[4:0]=5'b01010)
     R840_SysFreq_Info.RF_DISCHARGE=0x20;    //RF disch=1                         (R31[7:5]=3'b001)
    }
@@ -1196,6 +1227,16 @@ SysFreq_Info_Type R840_SysFreq_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_S
            R840_SysFreq_Info.NRB_TOP=0x80;            // Nrb TOP=7                       (R28[7:4]=4'b1000)
            R840_SysFreq_Info.NRB_BW=0x40;             // Nrb BW=wide                     (R27[7:6]=2'b01)
        }
+			else if((RF_freq>=686000) && (RF_freq<=694000)) //690
+			{
+				R840_SysFreq_Info.LNA_TOP=0x03;		       // LNA TOP=4                    (R27[2:0]=3'b011)
+				R840_SysFreq_Info.LNA_VTH_L=0xA2;	       // LNA VTH/L=1.34/0.54
+				R840_SysFreq_Info.MIXER_TOP=0x05;	       // MIXER TOP=10                 (R28[3:0]=4'b0101)
+				R840_SysFreq_Info.MIXER_VTH_L=0x95;        // MIXER VTH/L=1.24/0.84        (R14=0x95)
+				R840_SysFreq_Info.RF_TOP=0xA0;             // RF TOP=2
+				R840_SysFreq_Info.NRB_TOP=0x90;            // Nrb TOP=6                    (R28[7:4]=4'b1001)
+				R840_SysFreq_Info.NRB_BW=0x00;             // Nrb BW=widest                (R27[7:6]=2'b00)
+			}
        else
        {
            R840_SysFreq_Info.LNA_TOP=0x03;		       // LNA TOP=4                    (R27[2:0]=3'b011)
@@ -1594,14 +1635,13 @@ SysFreq_Info_Type R840_SysFreq_Sel(MS_U8 u8TunerIndex, R840_Standard_Type R840_S
               R840_SysFreq_Info.NRB_BW=0xC0;             // Nrb BW=lowest                  (R27[7:6]=2'b11)
               R840_SysFreq_Info.RF_DISCHARGE=0x20;    //RF disch=1                         (R31[7:5]=3'b001)
        }
-
      }
 
              R840_SysFreq_Info.MIXER_TOP=0x04;	       // MIXER TOP=11               (R28[3:0]=4'b0100)
              R840_SysFreq_Info.MIXER_VTH_L=0xB7;   // MIXER VTH/L=1.44/1.04  (R14=0xB7)
              R840_SysFreq_Info.LNA_DISCHARGE=0x0A; //LNA disch=10                   (R5[4:0]=5'b01010)
              R840_SysFreq_Info.NRB_TOP_ADDER=2;      //Nrb Adder: +6
-//			R840_SysFreq_Info.RF_DISCHARGE=0x20;    //RF disch=1                         (R31[7:5]=3'b001)
+            //R840_SysFreq_Info.RF_DISCHARGE=0x20;    //RF disch=1                         (R31[7:5]=3'b001)
     break;
 
     case R840_FM:
@@ -2206,7 +2246,7 @@ R840_ErrCode R840_Cal_Prepare(MS_U8 u8TunerIndex,UINT8 u1CalFlag)
     if(I2C_Write(u8TunerIndex,&R840_I2C) != RT_Success)
         return RT_Fail;
 
-	  // Set filter +0/6dB; NA det=OFF
+    // Set filter +0/6dB
     R840_I2C.RegAddr  = 0x1E;
     R840_SET_REG_Array(u8TunerIndex, 30, 0xF7, Cal_Info.FILTER_6DB | 0x80);
     R840_I2C.Data = R840_GET_REG_Array(u8TunerIndex, 30);
@@ -2235,16 +2275,16 @@ R840_ErrCode R840_Cal_Prepare(MS_U8 u8TunerIndex,UINT8 u1CalFlag)
     if(I2C_Write(u8TunerIndex,&R840_I2C) != RT_Success)
         return RT_Fail;
 
-	 //LPF filter code = 8
+    //LPF filter code = 15
     R840_I2C.RegAddr = 0x0A;
-    R840_SET_REG_Array(u8TunerIndex, 10, 0xF0, 0x08);
+    R840_SET_REG_Array(u8TunerIndex, 10, 0xF0, 0x0F);
     R840_I2C.Data = R840_GET_REG_Array(u8TunerIndex, 10);
     if(I2C_Write(u8TunerIndex,&R840_I2C) != RT_Success)
         return RT_Fail;
 
-     //HPF corner=1; LPF coarse=6M; 1.7M disable
+    //HPF corner=narrowest; LPF coarse=6M; 1.7M disable
     R840_I2C.RegAddr = 0x0B;
-    R840_SET_REG_Array(u8TunerIndex, 11, 0x00, 0x61);
+    R840_SET_REG_Array(u8TunerIndex, 11, 0x00, 0x60);
     R840_I2C.Data = R840_GET_REG_Array(u8TunerIndex, 11);
     if(I2C_Write(u8TunerIndex,&R840_I2C) != RT_Success)
         return RT_Fail;
@@ -2481,10 +2521,6 @@ R840_ErrCode R840_PLL(MS_U8 u8TunerIndex,UINT32 LO_Freq, R840_Standard_Type R840
     UINT8   u1PulseFlag = 0;
     UINT8   CP_I2 = 0x00;
     UINT8   NS_RES = 0x00;
-	UINT8   BoundDiv = 1;
-	UINT8   CentBoundDiv = 1;
-	UINT32  BoundFreq = 0;
-	UINT32  CentBoundFreq = 0;
 
     //TF, NA fix
     u1RfFlag = (R840_GET_REG_Array(u8TunerIndex,1) & 0x01);         //R1[0]
@@ -2718,11 +2754,6 @@ R840_ErrCode R840_PLL(MS_U8 u8TunerIndex,UINT32 LO_Freq, R840_Standard_Type R840
     }
     else
     {
-#if(R840_DTV_AGC_SLOW==TRUE)
-		R840_XtalDiv = XTAL_DIV2;
-	    R840_SET_REG_Array(u8TunerIndex, 16, 0xFF, 0x04);   //b2=1
-	    PLL_Ref = R840_Xtal / 2;
-#else
         if(LO_Freq < (432000+R840_IF_HIGH))
         {
              R840_XtalDiv = XTAL_DIV2;
@@ -2735,7 +2766,6 @@ R840_ErrCode R840_PLL(MS_U8 u8TunerIndex,UINT32 LO_Freq, R840_Standard_Type R840
               R840_SET_REG_Array(u8TunerIndex, 16, 0xFB, 0x00);
               PLL_Ref = R840_Xtal;
         }
-#endif
     }
 
     R840_I2C.RegAddr = 0x10;
@@ -2754,136 +2784,20 @@ R840_ErrCode R840_PLL(MS_U8 u8TunerIndex,UINT32 LO_Freq, R840_Standard_Type R840
     Nint     = (UINT8) (VCO_Freq / 2 / PLL_Ref);
     VCO_Fra  = (UINT16) (VCO_Freq - 2 * PLL_Ref * Nint);
 
-#if 1
-	if(PLL_Ref==16000)
-	{
-		if(MixDiv==2)
-		{
-			BoundDiv = 4;
-			CentBoundDiv = 2;
-		}
-		else if(MixDiv==4)
-		{
-			BoundDiv = 2;
-			CentBoundDiv = 1;
-		}
-		else
-		{
-			BoundDiv = 1;
-			CentBoundDiv = 1;
-		}
-	}
-	else if(PLL_Ref==8000)
-	{
-		if(MixDiv==2)
-		{
-			BoundDiv = 2;
-			CentBoundDiv = 1;
-		}
-		else if(MixDiv==4)
-		{
-			BoundDiv = 1;
-			CentBoundDiv = 1;
-		}
-		else
-		{
-			BoundDiv = 1;
-			CentBoundDiv = 1;
-		}
-	}
-	else if((PLL_Ref==24000) || (PLL_Ref==27000))
-	{
-		if(MixDiv==2)
-		{
-			BoundDiv = 6;
-			CentBoundDiv = 3;
-		}
-		else if(MixDiv==4)
-		{
-			BoundDiv = 3;
-			CentBoundDiv = 2;
-		}
-		else if(MixDiv==8)
-		{
-			BoundDiv = 2;
-			CentBoundDiv = 1;
-		}
-		else
-		{
-			BoundDiv = 1;
-			CentBoundDiv = 1;
-		}
-	}
-	else if((PLL_Ref==12000) || (PLL_Ref==13500))
-	{
-		if(MixDiv==2)
-		{
-			BoundDiv = 3;
-			CentBoundDiv = 2;
-		}
-		else if(MixDiv==4)
-		{
-			BoundDiv = 2;
-			CentBoundDiv = 1;
-		}
-		else if(MixDiv==8)
-		{
-			BoundDiv = 1;
-			CentBoundDiv = 1;
-		}
-		else
-		{
-			BoundDiv = 1;
-			CentBoundDiv = 1;
-		}
-	}
-	else
-	{
-		BoundDiv = 1;
-		CentBoundDiv = 1;
-	}
-
-
-	BoundFreq = PLL_Ref/64/BoundDiv;             //2*PLL_Ref/128/BoundDiv
-	CentBoundFreq = PLL_Ref/128/CentBoundDiv;    //2*PLL_Ref/128/CentBoundDiv*0.5
-
-	//CP current to lower spur
-	if((VCO_Fra>=BoundFreq) && (VCO_Fra<(BoundFreq*2)))
-		CP_CUR = 0x28;        //0.2m, [5:3]=101
-	else if((VCO_Fra<=(2*PLL_Ref - BoundFreq)) && (VCO_Fra>(2*PLL_Ref - BoundFreq/2)))
-		CP_CUR = 0x28;        //0.2m, [5:3]=101
-	else
-		CP_CUR = CP_CUR;
-
-	//CP current
-	R840_I2C.RegAddr = 0x11;
-	R840_SET_REG_Array(u8TunerIndex, 17, 0xC7, CP_CUR);  // [5:3]=CP_CUR
-	R840_I2C.Data = R840_GET_REG_Array(u8TunerIndex, 17);
-	if(I2C_Write(u8TunerIndex,&R840_I2C) != RT_Success)
-	    return RT_Fail;
-#endif
     //Boundary spur prevention
-	if (VCO_Fra < BoundFreq)  //2*PLL_Ref/128/BoundDiv
-	{
-		VCO_Fra = 0;
-	}
-	else if (VCO_Fra > (2*PLL_Ref - BoundFreq))  //2*PLL_Ref*(1-1/128/BoundDiv)
-	{
-		VCO_Fra = 0;
-		Nint ++;
-	}
-	else if((VCO_Fra > (PLL_Ref - CentBoundFreq)) && (VCO_Fra < PLL_Ref)) //> 2*PLL_Ref*(1-1/128/CentBoundDiv)*0.5,  < 2*PLL_Ref*128/256
-	{
-		VCO_Fra = (PLL_Ref - CentBoundFreq);      // VCO_Fra = 2*PLL_Ref*(1-1/128/CentBoundDiv)*0.5
-	}
-	else if((VCO_Fra > PLL_Ref) && (VCO_Fra < (PLL_Ref + CentBoundFreq))) //> 2*PLL_Ref*128/256,  < 2*PLL_Ref*(1+1/128/CentBoundDiv)*0.5
-	{
-		VCO_Fra = (PLL_Ref + CentBoundFreq);      // VCO_Fra = 2*PLL_Ref*(1+1/128/CentBoundDiv)*0.5
-	}
-	else
-	{
-		VCO_Fra = VCO_Fra;
-	}
+    if (VCO_Fra < PLL_Ref/64)           //2*PLL_Ref/128
+        VCO_Fra = 0;
+    else if (VCO_Fra > PLL_Ref*127/64)  //2*PLL_Ref*127/128
+    {
+        VCO_Fra = 0;
+        Nint ++;
+    }
+    else if((VCO_Fra > PLL_Ref*127/128) && (VCO_Fra < PLL_Ref)) //> 2*PLL_Ref*127/256,  < 2*PLL_Ref*128/256
+        VCO_Fra = PLL_Ref*127/128;      // VCO_Fra = 2*PLL_Ref*127/256
+    else if((VCO_Fra > PLL_Ref) && (VCO_Fra < PLL_Ref*129/128)) //> 2*PLL_Ref*128/256,  < 2*PLL_Ref*129/256
+        VCO_Fra = PLL_Ref*129/128;      // VCO_Fra = 2*PLL_Ref*129/256
+    else
+        VCO_Fra = VCO_Fra;
 
     //Ni & Si
     Ni = (Nint - 13) / 4;
@@ -4211,7 +4125,7 @@ R840_ErrCode R840_SetStandard(MS_U8 u8TunerIndex,R840_Standard_Type RT_Standard)
         if(I2C_Write(u8TunerIndex, &R840_I2C) != RT_Success)
             return RT_Fail;
 
-	   // Set LNA det mode & NA_Discharge
+        // Set LNA det mode & RF_Discharge & NA_Discharge
         R840_I2C.RegAddr = 0x1F;
         R840_SET_REG_Array(u8TunerIndex, 31, 0xE2, pSysInfo->LNA_DET_MODE | pSysInfo->NA_DISCHARGE);
         R840_I2C.Data = R840_GET_REG_Array(u8TunerIndex, 31);
@@ -4861,24 +4775,14 @@ R840_ErrCode R840_SetFrequency(MS_U8 u8TunerIndex,R840_Set_Info R840_INFO)
        if(I2C_Write(u8TunerIndex, &R840_I2C) != RT_Success)
            return RT_Fail;
 
-#if(R840_DTV_AGC_SLOW == FALSE)
-		 //AGC CLK to 1khz
-		 R840_I2C.RegAddr = 0x1B;
-		 R840_SET_REG_Array(u8TunerIndex, 27, 0xC7, 0x00);  //R27[5:3]=000
-		 R840_I2C.Data =  R840_GET_REG_Array(u8TunerIndex,27);
-		 if(I2C_Write(u8TunerIndex, &R840_I2C) != RT_Success)
-			 return RT_Fail;
-#else
-		//AGC CLK to 60hz
+       //AGC CLK to 1khz
        R840_I2C.RegAddr = 0x1B;
-       R840_SET_REG_Array(u8TunerIndex, 27, 0xC7, 0x30);  //R27[5:3]=110
+       R840_SET_REG_Array(u8TunerIndex, 27, 0xC7, 0x00);
        R840_I2C.Data =  R840_GET_REG_Array(u8TunerIndex,27);
        if(I2C_Write(u8TunerIndex,&R840_I2C) != RT_Success)
            return RT_Fail;
-#endif
 
-
-	//for DVB-T2
+//for DVB-T2
        switch(R840_INFO.R840_Standard)
        {
            case R840_DVB_T2_6M:
@@ -4891,7 +4795,6 @@ R840_ErrCode R840_SetFrequency(MS_U8 u8TunerIndex,R840_Set_Info R840_INFO)
            case R840_DVB_T2_8M_IF_5M:
            case R840_DVB_T2_1_7M_IF_5M:
 
-#if(R840_DTV_AGC_SLOW == FALSE)
                  R840_Delay_MS(100);
 
                  //AGC clk
@@ -4903,7 +4806,7 @@ R840_ErrCode R840_SetFrequency(MS_U8 u8TunerIndex,R840_Set_Info R840_INFO)
                  R840_I2C.Data =  R840_GET_REG_Array(u8TunerIndex,27);
                  if(I2C_Write(u8TunerIndex,&R840_I2C) != RT_Success)
                      return RT_Fail;
-#endif
+
                  //VHF N+2 ACI
                 if(DTV_VHF_ACI2_ENHANCE==TRUE)
                 {
@@ -5220,6 +5123,7 @@ R840_ErrCode R840_SetFrequency(MS_U8 u8TunerIndex,R840_Set_Info R840_INFO)
 
                      //Lo buffer dc=lowest
                     R840_I2C.RegAddr = 0x07;
+                    //R840_SET_REG_Array(u8TunerIndex, 9, 0x9F, 0x00);
 					R840_SET_REG_Array(u8TunerIndex, 7, 0x9F, 0x00);
                     R840_I2C.Data =  R840_GET_REG_Array(u8TunerIndex,7);
                     if(I2C_Write(u8TunerIndex, &R840_I2C) != RT_Success)
@@ -5267,8 +5171,8 @@ R840_ErrCode R840_SetFrequency(MS_U8 u8TunerIndex,R840_Set_Info R840_INFO)
            default:
                break;
        }//end switch
-	}
-	return RT_Success;
+ }
+ return RT_Success;
 }
 
 
@@ -5276,33 +5180,17 @@ R840_ErrCode R840_SetFrequency(MS_U8 u8TunerIndex,R840_Set_Info R840_INFO)
 
 R840_ErrCode R840_SetPllData(MS_U8 u8TunerIndex,R840_Set_Info R840_INFO)
 {
-#if 1 // byKOR, kaon
-	R840_Set_Info*  pCurR840_Info = NULL;
-    pCurR840_Info = pR840_Info + u8TunerIndex;
-#endif
       if(*(pR840_Initial_done_flag + u8TunerIndex)==FALSE)
       {
           R840_Init(u8TunerIndex);
       }
 
-#if 1 // byKOR, kaon, for auto RF gain mode
-     if(R840_RfGainMode(u8TunerIndex, RF_AUTO) != RT_Success)
-     {
-         TUNER_ERR(("FAIL!!!!!! \n"));
-         return RT_Fail;
-	 }
-#endif
       if(R840_SetStandard(u8TunerIndex,R840_INFO.R840_Standard) != RT_Success)
           return RT_Fail;
 
       if(R840_SetFrequency(u8TunerIndex,R840_INFO) != RT_Success)
           return RT_Fail;
 
-#if 1 // byKOR, kaon
-	memcpy(pCurR840_Info, &R840_INFO, sizeof(R840_Set_Info));
-//	pCurR840_Info->R840_Standard = R840_INFO.R840_Standard;
-//	pCurR840_Info->RF_KHz = R840_INFO.RF_KHz;
-#endif
       return RT_Success;
 }
 
@@ -5452,21 +5340,21 @@ R840_ErrCode R840_Standby(MS_U8 u8TunerIndex,R840_LoopThrough_Type R840_LoopSwit
          return RT_Fail;
     }
 
-	 //Polyphase/Amp PW off
+     //Polyphase PW off
      R840_I2C.RegAddr = 0x09;
      R840_SET_REG_Array(u8TunerIndex, 9, 0xFF, 0x80);
      R840_I2C.Data =  R840_GET_REG_Array(u8TunerIndex,9);
      if(I2C_Write(u8TunerIndex,&R840_I2C) != RT_Success)
         return RT_Fail;
 
-	 //Filter/VGA PW off
+     //Filter PW off
      R840_I2C.RegAddr = 0x0A;
      R840_SET_REG_Array(u8TunerIndex, 10, 0xFF, 0x80);
      R840_I2C.Data =  R840_GET_REG_Array(u8TunerIndex,10);
      if(I2C_Write(u8TunerIndex,&R840_I2C) != RT_Success)
         return RT_Fail;
 
-	 //All/AGC, ADC PW off
+     //VGA, ADC PW off
      R840_I2C.RegAddr = 0x0C;
      R840_SET_REG_Array(u8TunerIndex, 12, 0xFF, 0xC0);
      R840_I2C.Data =  R840_GET_REG_Array(u8TunerIndex,12);
@@ -5686,11 +5574,9 @@ R840_ErrCode R840_GetRfGain(MS_U8 u8TunerIndex,R840_RF_Gain_Info *pR840_rf_gain)
           pR840_rf_gain->RF_gain1 = 22;  //LNA gain max is 22
     }
 
-	//Mixer Amp Gain
     if(pR840_rf_gain->RF_gain3 > 10)
           pR840_rf_gain->RF_gain3 = 10;  //MixerAmp gain max is 10
 
-	//Rf Buf Gain
     if(pR840_rf_gain->RF_gain2 < 14)
         acc_rfbuf_gain = pR840_rf_gain->RF_gain2*12;
     else if(pR840_rf_gain->RF_gain2 == 14)
@@ -5712,23 +5598,19 @@ R840_ErrCode R840_RfGainMode(MS_U8 u8TunerIndex,R840_RF_Gain_TYPE R840_RfGainTyp
     UINT8 MixerGain = 0;
     UINT8 RfGain = 0;
     UINT8 LnaGain = 0;
-//    R840_RF_Gain_TYPE *ipR840_PreGainMode =  (R840_RF_Gain_TYPE*)(pR840_PreGainMode+u8TunerIndex);
 
     if(R840_RfGainType==RF_MANUAL)
     {
-		if(*(pR840_PreGainMode+u8TunerIndex)==RF_AUTO)
-		{
-			R840_I2C_Len.RegAddr = 0x00;
-			R840_I2C_Len.Len = 5;
-			if(I2C_Read_Len(u8TunerIndex, &R840_I2C_Len) != RT_Success)
-			{
-				I2C_Read_Len(u8TunerIndex, &R840_I2C_Len);
-			}
+        R840_I2C_Len.RegAddr = 0x00;
+        R840_I2C_Len.Len = 5;
+        if(I2C_Read_Len(u8TunerIndex, &R840_I2C_Len) != RT_Success)
+        {
+            I2C_Read_Len(u8TunerIndex, &R840_I2C_Len);
+        }
 
-			MixerGain = (R840_I2C_Len.Data[4] & 0x0F);
-			RfGain = ((R840_I2C_Len.Data[4] & 0xF0) >> 4);
-			LnaGain = (R840_I2C_Len.Data[3] & 0x1F);
-		}
+        MixerGain = (R840_I2C_Len.Data[4] & 0x0F);
+        RfGain = ((R840_I2C_Len.Data[4] & 0xF0) >> 4);
+        LnaGain = (R840_I2C_Len.Data[3] & 0x1F);
 
         //LNA auto off
         if(*(pR840_Chip + u8TunerIndex) == R836_R)
@@ -6032,7 +5914,7 @@ R840_ErrCode R840_SetLnaTop(MS_U8 u8TunerIndex,UINT8 LNA_Top)
 //  R840_GetRfRssi( ): Get RF RSSI                                      //
 //  1st parameter: input RF Freq    (KHz)                                //
 //  2nd parameter: input Standard                                           //
-//  3rd parameter: output signal level (dBm*1000)                    //
+//  3rd parameter: output signal level (dBm)                            //
 //  4th parameter: output RF max gain indicator (1:max gain)    //
 //-----------------------------------------------------------------------//
 R840_ErrCode R840_GetRfRssi(MS_U8 u8TunerIndex, UINT32 RF_Freq_Khz, R840_Standard_Type RT_Standard, int *RfLevelDbm, UINT8 *fgRfMaxGain)
@@ -6156,9 +6038,7 @@ R840_ErrCode R840_GetRfRssi(MS_U8 u8TunerIndex, UINT32 RF_Freq_Khz, R840_Standar
     rf_rssi = fine_tune - (int) (rf_total_gain - u2FreqFactor);
 
     *RfLevelDbm = rf_rssi*100;
-#if 0 // byKOR, kaon, for debug only
-printf("\t RF = %d ", rf_rssi*100);
-#endif
+
        return RT_Success;
 }
 
@@ -6205,9 +6085,7 @@ R840_ErrCode R840_GetIfRssi(MS_U8 u8TunerIndex,int *VgaGain)
     adc_read = (Dlg_I2C_Len.Data[1] & 0x3F);
 
     *VgaGain = vga_table[adc_read];
-#if 0 // byKOR, kaon, for debug only
-printf("\t IF[%d] = %d ", adc_read, vga_table[adc_read]);
-#endif
+
     return RT_Success;
 }
 
@@ -6244,25 +6122,26 @@ R840_ErrCode R840_GetTotalRssi(MS_U8 u8TunerIndex,UINT32 RF_Freq_Khz, R840_Stand
 
     //for different platform, need to fine tune offset value
     *RssiDbm = total_rssi_dbm + ssi_offset;
-#if 1 // byKOR, kaon, for dBuV
-*RssiDbm += 109;
-#endif
+
     return RT_Success;
 }
 
-R840_ErrCode R840_AGC_Slow(MS_U8 u8TunerIndex)  //Set AGC clock to 60Hz
+//----------------------------------------------------------------------//
+//  R840_GetRfRssi( ): Set AGC clock to 60Hz                            //
+//  1st parameter: input RF Freq    (KHz)                               //
+//  2nd parameter: input Standard                                       //
+//  3rd parameter: return signal level indicator (dBm)                  //
+//-----------------------------------------------------------------------//
+R840_ErrCode R840_AGC_Slow(MS_U8 u8TunerIndex)
 {
-	//AGC CLK to 60hz
-	R840_I2C.RegAddr = 0x1B;
-	R840_SET_REG_Array(u8TunerIndex, 27, 0xC7, 0x30);  //[5:3]=110
-	R840_I2C.Data =  R840_GET_REG_Array(u8TunerIndex,27);
+    R840_I2C.RegAddr = 0x1B;
+    R840_SET_REG_Array(u8TunerIndex, 27, 0xC7, 0x30);
+    R840_I2C.Data = R840_GET_REG_Array(u8TunerIndex,27);
+    if(I2C_Write(u8TunerIndex,&R840_I2C) != RT_Success)
+        return RT_Fail;
 
-	if(I2C_Write(u8TunerIndex, &R840_I2C) != RT_Success)
-		return RT_Fail;
-
-	return RT_Success;
+    return RT_Success;
 }
-
 //-------------------------------------------------------------------------------------------------
 //  Global Functions
 //-------------------------------------------------------------------------------------------------
@@ -6336,11 +6215,9 @@ MS_BOOL MDrv_Tuner_R836_SetTuner(MS_U8 u8TunerIndex, MS_U32 u32Freq, MS_U8 feBw)
 
     //R840 Frequency Setting
     R840_Info.RF_KHz = u32Freq; // unit: kHz
-//    u32CurFreqKhz[u8TunerIndex] = u32Freq;
+    u32CurFreqKhz[u8TunerIndex] = u32Freq;
     //Loop Through
-#if 1 // byKOR, kaon, L/T never use at R836 ( use external L/T )
-    R840_Info.R840_LT = LT_OFF; // Loop through OFF
-#endif
+    R840_Info.R840_LT = LT_ON; // Loop through ON
     //Clk output
     R840_Info.R840_ClkOutMode = CLK_OUT_OFF; // No tuner clock output for other IC
 
@@ -6383,20 +6260,12 @@ MS_BOOL MDrv_Tuner_R836_Init(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam)
 
 MS_BOOL R836_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE fuction_type, void *data)
 {
-#if 1 // byKOR, kaon
-	R840_Set_Info*  pCurR840_Info = NULL;
-    pCurR840_Info = pR840_Info + u8TunerIndex;
-#endif
     MS_BOOL* pbLT_ON;
     switch(fuction_type)
     {
 
          case TUNER_EXT_FUNC_GET_POWER_LEVEL:
-#if 1 // byKOR, kaon
-            if( RT_Success != R840_GetTotalRssi( u8TunerIndex, pCurR840_Info->RF_KHz, pCurR840_Info->R840_Standard, (int*)data))
-#else
-//            if( RT_Success != R840_GetTotalRssi( u8TunerIndex,u32CurFreqKhz[u8TunerIndex],(*(pR840_pre_standard + u8TunerIndex)), (int*)data))
-#endif
+            if( RT_Success != R840_GetTotalRssi( u8TunerIndex,u32CurFreqKhz[u8TunerIndex],(*(pR840_pre_standard + u8TunerIndex)), (int*)data))
             {
                 return FALSE;
             }
@@ -6417,32 +6286,13 @@ MS_BOOL R836_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE fuct
             if(I2C_Write(u8TunerIndex,&R840_I2C) != RT_Success)
                 return FALSE;
             break;
-    #if 1 // byKOR, kaon, for debug registers
-    	case TUNER_EXT_FUNC_FINALIZE:
-    	{
-			int i;
-			R840_I2C_Len.RegAddr = 0x00;
-			R840_I2C_Len.Len 	 = 32;
-			if(I2C_Read_Len(u8TunerIndex, &R840_I2C_Len) != RT_Success) // read data length
-			{
-printf(" [L:%d] R840_ERROR ", __LINE__);
-			    return FALSE;
-			}
+        case TUNER_EXT_FUNC_RESET_RFAGC:
+            if( RT_Success != R840_AGC_Slow(u8TunerIndex))
+            {
+                return FALSE;
+            }
 
-    		printf("================================================\n");
-    		for(i=0; i<16; i++) printf(",%02X", i);
-    		printf("\n");
-    		printf("================================================\n");
-    		for(i=0; i<R840_REG_NUM; i++)
-    		{
-			printf(",%02X", R840_I2C_Len.Data[i]);
-			if(i%16==15) printf("\n");
-			}
-    		printf("\n================================================\n");
-    		break;
-		}
-    #endif
-
+            break;
         default:
             TUNER_DBG(("Request extension function (%x) does not exist\n",fuction_type));
     }
@@ -6453,22 +6303,71 @@ printf(" [L:%d] R840_ERROR ", __LINE__);
 MS_BOOL R836_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt)
 {
     UINT8 regData = 0;
-    MS_U8 i;
+    MS_U8 i,j, u8I2C_Port = 0, u8MaxI2CPort = 0;
+    SLAVE_ID_USAGE* pSlaveIDTBL = NULL;
+    MS_IIC_PORT ePort;
 
-    for(i=0; i< sizeof(u8Possible_SLAVE_IDs); i++)
+    u8MaxI2CPort = (MS_U8)((E_MS_IIC_SW_PORT_0/8) + (E_MS_IIC_PORT_NOSUP - E_MS_IIC_SW_PORT_0));
+
+    ePort = getI2CPort(u8TunerIndex);
+    if((int)ePort < (int)E_MS_IIC_SW_PORT_0)
     {
-        InitParam[u8TunerIndex].u8SlaveID = u8Possible_SLAVE_IDs[i];
-        R840_I2C_Len.Len = 1;
-        R840_I2C_Len.Data[0] = 0;
-        if(I2C_Read_Len(u8TunerIndex,&R840_I2C_Len) != RT_Success)
+        u8I2C_Port = (MS_U8)ePort/8;
+    }
+    else if((int)ePort < (int)E_MS_IIC_PORT_NOSUP)//sw i2c
+    {
+       u8I2C_Port = E_MS_IIC_SW_PORT_0/8 + (ePort - E_MS_IIC_SW_PORT_0);
+    }
+
+    if(pstR836_slave_ID_TBL == NULL)
+    {
+        pstR836_slave_ID_TBL = (SLAVE_ID_USAGE *)malloc(sizeof(R836_possible_slave_ID) * u8MaxI2CPort);
+        if(NULL == pstR836_slave_ID_TBL)
         {
-            TUNER_ERR(("[R836] Read chip ID fail with slave ID 0x%x\n", InitParam[u8TunerIndex].u8SlaveID));
+            return FALSE;
         }
         else
         {
-             break;
+            for(i=0; i< u8MaxI2CPort; i++)
+            {
+                for(j=0; j< (sizeof(R836_possible_slave_ID)/sizeof(SLAVE_ID_USAGE)); j++)
+                {
+                    pSlaveIDTBL = (pstR836_slave_ID_TBL + i*sizeof(R836_possible_slave_ID)/sizeof(SLAVE_ID_USAGE) + j);
+                    memcpy(pSlaveIDTBL, &R836_possible_slave_ID[j], sizeof(SLAVE_ID_USAGE));
+                 }
+            }
         }
     }
+
+    i = 0;
+    do
+    {
+        pSlaveIDTBL = pstR836_slave_ID_TBL + u8I2C_Port*sizeof(R836_possible_slave_ID)/sizeof(SLAVE_ID_USAGE) + i;
+        if(pSlaveIDTBL->bInUse)
+        {
+            TUNER_DBG(("[R836]I2C Slave ID 0x%x Have Used on the same I2C Port\n", pSlaveIDTBL->u8SlaveID));
+        }
+        else if((pSlaveIDTBL->u8SlaveID) == 0xFF)
+        {
+            break;
+        }
+        else
+        {
+            R840_I2C_Len.Len = 1;
+            R840_I2C_Len.Data[0] = 0;
+            InitParam[u8TunerIndex].u8SlaveID = pSlaveIDTBL->u8SlaveID;
+            if(I2C_Read_Len(u8TunerIndex,&R840_I2C_Len) != RT_Success)
+            {
+                TUNER_ERR(("[R836] Read chip ID fail with slave ID 0x%x\n", pSlaveIDTBL->u8SlaveID));
+            }
+            else
+            {
+                break;
+            }
+        }
+        i++;
+    }while((pSlaveIDTBL->u8SlaveID) != 0xFF);
+
     regData = R840_I2C_Len.Data[0];
     TUNER_ERR(("[R836] read id =0x%x\n",regData));
 
@@ -6476,6 +6375,9 @@ MS_BOOL R836_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt)
     {
         if(!R836_Variables_alloc())
             return FALSE;
+
+        if(!bUnderExtDMDTest)
+            pSlaveIDTBL->bInUse = TRUE;
 
         if(NULL != pu32channel_cnt)
             *(pu32channel_cnt) += 1;

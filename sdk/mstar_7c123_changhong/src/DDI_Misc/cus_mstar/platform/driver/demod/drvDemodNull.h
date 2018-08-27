@@ -90,6 +90,7 @@ MS_BOOL MDrv_Demod_null_GetLock(MS_U8 u8DemodIndex,EN_LOCK_STATUS *peLockStatus)
 MS_BOOL MDrv_Demod_null_GetSNR(MS_U8 u8DemodIndex,float *pfSNR);
 MS_BOOL MDrv_Demod_null_GetBER(MS_U8 u8DemodIndex,float *pfBER);
 MS_BOOL MDrv_Demod_null_GetPWR(MS_U8 u8DemodIndex,MS_S32 *ps32Signal);
+MS_BOOL MDrv_Demod_null_GetSSI(MS_U8 u8DemodIndex,MS_U16 *pu16SSI);
 MS_BOOL MDrv_Demod_null_GetSignalQuality(MS_U8 u8DemodIndex,MS_U16 *pu16quality);
 MS_BOOL MDrv_Demod_null_Config(MS_U8 u8DemodIndex,MS_U8 *pRegParam);
 MS_BOOL MDrv_Demod_null_GetParam(MS_U8 u8DemodIndex,DEMOD_MS_FE_CARRIER_PARAM* pParam);
@@ -126,6 +127,14 @@ MS_BOOL MDrv_Demod_null_DiSEqC_GetLNBOut(MS_U8 u8DemodIndex, MS_BOOL* bLNBOutLow
 MS_BOOL MDrv_Demod_null_DiSEqC_Set22kOnOff(MS_U8 u8DemodIndex, MS_BOOL b22kOn);
 MS_BOOL MDrv_Demod_null_DiSEqC_Get22kOnOff(MS_U8 u8DemodIndex, MS_BOOL* b22kOn);
 MS_BOOL MDrv_Demod_null_DiSEqC_SendCmd(MS_U8 u8DemodIndex, MS_U8* pCmd,MS_U8 u8CmdSize);
+MS_BOOL MDrv_Demod_null_DiSEqC_GetReply(MS_U8 u8DemodIndex, DISEQC_RX_MSG* pstRxMSG);
 MS_BOOL MDrv_Demod_null_Get_Packet_Error(MS_U8 u8DemodIndex, MS_U16 *u16PktErr);
+MS_BOOL MDrv_Demod_null_GetVCM_ISID_INFO(MS_U8 u8DemodIndex, MS_U8* pu8IS_ID, MS_U8* pu8Table);
+MS_BOOL MDrv_Demod_null_SetVCM_ISID(MS_U8 u8DemodIndex, MS_U8 u8IS_ID);
+MS_BOOL MDrv_Demod_null_CheckExist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID);
+#ifdef FE_AUTO_TEST
+MS_BOOL  MDrv_Demod_null_ReadReg(MS_U8 u8DemodIndex, MS_U16 RegAddr, MS_U8 *pu8Data);
+MS_BOOL MDrv_Demod_null_WriteReg(MS_U8 u8DemodIndex, MS_U16 RegAddr, MS_U16 RegData);
+#endif
 
 #endif // #define __DRV_DEMOD_NULL_H__

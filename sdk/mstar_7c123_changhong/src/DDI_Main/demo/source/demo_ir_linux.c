@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -120,6 +120,20 @@
 #include "nec_keydef.h"
 #include "demo_utility.h"
 #include "drvDTC.h"
+#include "demo_pm.h"
+
+#if (DEMO_ZUI_TEST == 1)
+#include "DataType.h" //For Memory.h
+#include "MApp_ZUI_APIcommon.h"
+#include "MApp_ZUI_Main.h"
+#include "MApp_ZUI_APItables.h"
+#include "MApp_ZUI_APIgdi.h"
+#include "MApp_ZUI_OsdId.h"
+#include "MApp_ZUI_POP.h"
+#include "MApp_ZUI_Utility.h"
+#include "MApp_ZUI_APIstrings.h"
+#include "MApp_ZUI_ACTglobal.h"
+#endif
 
 //-------------------------------------------------------------------------------------------------
 //                                MACROS
@@ -163,7 +177,7 @@ static MS_S32 stRCUSem = -1;
 static void *_pTaskStack = NULL;
 static MS_S32 _s32TaskId = -1;
 static MS_BOOL bExitIRDemoTask = FALSE;
-
+static MS_BOOL (*_Func_ptr_handlekey)(MS_U32);
 //-------------------------------------------------------------------------------------------------
 //  Local Functions
 //-------------------------------------------------------------------------------------------------
@@ -182,6 +196,9 @@ MS_BOOL IrInput_Exit(void)
         MsOS_FreeMemory(_pTaskStack, s32MstarCachedPoolID);
         _pTaskStack = NULL;
     }
+
+    //delete customner key handler
+    _Func_ptr_handlekey = NULL;
 
     return TRUE;
 }
@@ -243,9 +260,9 @@ static MS_BOOL IrInput_init(void)
     ioctl(gIR_fd, MDRV_IR_SET_DELAYTIME, &time);
 
     if(FALSE == MsOS_ReleaseMutex(stRCUSem))
-        {
-            return FALSE;
-        }
+    {
+        return FALSE;
+    }
     return TRUE;
 }
 
@@ -265,6 +282,7 @@ static MS_BOOL IrInput_init(void)
 /// @param[in] uiMask The Key mask of NEC
 /// @return The Key value of MstarDTVIR
 //-------------------------------------------------------------------------------------------------
+#if (DEMO_ZUI_TEST != 1)
 static MS_U32 IrInput_xlate_nec(MS_U32 uiKey, MS_U32 uiMask)
 {
     switch(uiKey & uiMask)
@@ -332,6 +350,7 @@ static MS_U32 IrInput_xlate_nec(MS_U32 uiKey, MS_U32 uiMask)
 
     return uiKey;
 }
+#endif
 
 static MS_U32 IrInput_GetKey(void)
 {
@@ -362,19 +381,45 @@ static MS_U32 IrInput_GetKey(void)
         MsOS_ReleaseMutex(stRCUSem);
         return 0;
     }
-
-    printf("u8Key = 0x%02x\n",(u32Data >>8)&0xFFFF);
-
-    if(((u32Data >>8)&0xFFFF) == NEC_CUST_CODE)
+#if (DEMO_ZUI_TEST == 1)
+    MsOS_ReleaseMutex(stRCUSem);
+    return u32Data;
+#else
+    if (_Func_ptr_handlekey)
     {
-        u32Data = IrInput_xlate_nec(u32Data, 0xFFFF);
-
-        MsOS_ReleaseMutex(stRCUSem);
-        return u32Data;
+        //customer key handle
+        _Func_ptr_handlekey((u32Data >>8)&0xFFFF);
+    }
+    else
+    {
+        printf("u8Key = 0x%02x\n",(u32Data >>8)&0xFFFF);
+#if (DEMO_PM_STR_AUTO_IR_DC_OFF == 1)
+        if(((u32Data >>8)&0xFFFF) == 0x46)  //detect power key
+        {
+            Demo_PM_STR();
+            Demo_Input_Init_linux();
+        }
+#endif
+        if(((u32Data >>8)&0xFFFF) == NEC_CUST_CODE)
+        {
+            u32Data = IrInput_xlate_nec(u32Data, 0xFFFF);
+            MsOS_ReleaseMutex(stRCUSem);
+            printf("u8Key = 0x%02x\n",(u32Data >>8)&0xFFFF);
+#if (DEMO_PM_STR_AUTO_IR_DC_OFF == 1)
+            if(((u32Data >>8)&0xFFFF) == 0x46) //detect power key
+            {
+                Demo_PM_STR();
+                Demo_Input_Init_linux();
+            }
+#endif
+            return u32Data;
+        }
     }
 
     MsOS_ReleaseMutex(stRCUSem);
+    //printf("return 0\n");
     return 0;
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -387,7 +432,11 @@ static void _Demo_Input_Task(MS_U32 argc, void *argv)
     while(bExitIRDemoTask == FALSE)
     {
         //printf("IrInput_GetKey: 0x%lx \n", IrInput_GetKey());
+#if (DEMO_ZUI_TEST == 1)
+        MApp_ZUI_ProcessKey(MApp_ZUI_ACT_MapToVirtualKeyCode(((IrInput_GetKey() >>8)&0xFFFF)));
+#else
         IrInput_GetKey();
+#endif
     }
     bExitIRDemoTask = FALSE;
 }
@@ -395,6 +444,23 @@ static void _Demo_Input_Task(MS_U32 argc, void *argv)
 //-------------------------------------------------------------------------------------------------
 //  Global Functions
 //-------------------------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------
+/// @brief Create the app demo set customer handle key function.
+/// @param[in] func_ptr pointer to a function of key handler
+/// @return TRUE - Success
+/// @return FALSE - Failure
+/// @sa
+/// @note
+/// Sample Command: \b none \n
+///
+//------------------------------------------------------------------------------
+MS_BOOL Demo_Input_Set_Handlekey_Func_Ptr(MS_BOOL (*func_ptr)(MS_U32))
+{
+    _Func_ptr_handlekey = func_ptr;
+    return TRUE;
+}
+
 //------------------------------------------------------------------------------
 /// @brief Create the app demo task of IR input device and initialze all parameters.
 /// @param[in] None

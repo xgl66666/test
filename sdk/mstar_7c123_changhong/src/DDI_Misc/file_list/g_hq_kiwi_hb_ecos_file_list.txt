@@ -1,0 +1,191 @@
+// There are three method to retrieve version from a CI (configuration items)
+// 1. Txt : Captre version from the first line of a txt file
+// 2. Elf : Embedded version by using binutility:
+//    Insert : arm-none-linux-gnueabi-objcopy --add-section .mmodule_version=version_info libXXXXX.so
+//    Readelf: readelf --string-dump=.mmodule_version libXXXXX.so
+// 3. MSIF: Embedded a binary string into a binary. And this string has a pre-defined format.
+//           'M','S','I','F',                /* Version ID Header */\
+//           '0','3',                          /* Info Class Code */\
+//           0x0000,                               /* Customer ID */\
+//           0x0000,                                 /* Module ID */\
+//           0x0000,                                   /* Chip ID */\
+//           '0',                                          /* CPU */\
+//           'S','N','_','_'                     /* Library Code */\
+//           '0','0',                              /* Library Ver */\
+//           '0','1',                             /* Build Number */\
+//           '0','0','1','2','3','4','5','5', /* P4 Change Number */\
+//           '2'                                            /* OS */\
+
+./lib/mipsisa32-elf/4.3.3/core/kiwi/multimedia/VDPLAYER_STREAM/libmmsdk.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/multimedia/VDPLAYER_STREAM/libvdplayer.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/multimedia/VDPLAYER_STREAM/vdplayer.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/multimedia/libmmsdk.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/multimedia/libvdplayer.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/multimedia/vdplayer.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/audio/1D/libapiAUDIO.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/audio/1R1D/libapiAUDIO.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libMsFS.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libapiACE.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libapiCEC.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libapiDAC.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libapiDLC.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libapiDMX.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libapiGFX.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libapiGOP.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libapiHDMITX.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libapiJPEG.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libapiPNL.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libapiVDEC.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libapiXC.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvAESDMA.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvCH34.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvCPU.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvDEMOD.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvDSCMB.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvECOS_USBHOST.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvGPIO.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvHWI2C.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvIPAUTH.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvIR.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvMSPI.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvMVOP.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvPM.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvSAR.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvSC.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvSERFLASH.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvVBI.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvVE.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvWDT.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libdrvdvbt2_extdemod.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libecos.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libmsAPI_GEGOP.a
+./lib/mipsisa32-elf/4.3.3/core/kiwi/utopia/libmsAPI_XC.a
+
+./lib/mipsisa32-elf/4.8.2/core/kiwi/multimedia/VDPLAYER_STREAM/libmmsdk.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/multimedia/VDPLAYER_STREAM/libvdplayer.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/multimedia/VDPLAYER_STREAM/vdplayer.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/multimedia/libmmsdk.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/multimedia/libvdplayer.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/multimedia/vdplayer.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/audio/1D/libapiAUDIO.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/audio/1R1D/libapiAUDIO.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libMsFS.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libapiACE.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libapiCEC.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libapiDAC.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libapiDLC.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libapiDMX.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libapiGFX.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libapiGOP.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libapiHDMITX.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libapiJPEG.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libapiPNL.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libapiVDEC.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libapiXC.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvAESDMA.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvCH34.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvCPU.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvDEMOD.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvDSCMB.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvECOS_USBHOST.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvGPIO.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvHWI2C.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvIPAUTH.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvIR.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvMSPI.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvMVOP.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvPM.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvSAR.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvSC.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvSERFLASH.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvVBI.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvVE.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvWDT.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libdrvdvbt2_extdemod.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libecos.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libmsAPI_GEGOP.a
+./lib/mipsisa32-elf/4.8.2/core/kiwi/utopia/libmsAPI_XC.a
+
+#eCos Kernel(Elf)
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/lib/extras.o
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/lib/libextras.a
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/lib/libtarget.a
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/lib/vectors.o
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/libjffs2/flashiodev.o
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/libjffs2/libflashiodev.a
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/libntfs/libntfs.a
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/libntfs/ntfs.o
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/lib/extras.o
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/lib/libextras.a
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/lib/libtarget.a
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/lib/vectors.o
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/libjffs2/flashiodev.o
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/libjffs2/libflashiodev.a
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/libntfs/libntfs.a
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/libntfs/ntfs.o
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/lib/extras.o
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/lib/libextras.a
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/lib/libtarget.a
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/lib/vectors.o
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/libjffs2/flashiodev.o
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/libjffs2/libflashiodev.a
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/libntfs/libntfs.a
+./os/mipsisa32-elf/4.3.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/libntfs/ntfs.o
+
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/lib/extras.o
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/lib/libextras.a
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/lib/libtarget.a
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/lib/vectors.o
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/libjffs2/flashiodev.o
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/libjffs2/libflashiodev.a
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/libntfs/libntfs.a
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload/libntfs/ntfs.o
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/lib/extras.o
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/lib/libextras.a
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/lib/libtarget.a
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/lib/vectors.o
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/libjffs2/flashiodev.o
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/libjffs2/libflashiodev.a
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/libntfs/libntfs.a
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/libntfs/ntfs.o
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/lib/extras.o
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/lib/libextras.a
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/lib/libtarget.a
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/lib/vectors.o
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/libjffs2/flashiodev.o
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/libjffs2/libflashiodev.a
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/libntfs/libntfs.a
+./os/mipsisa32-elf/4.6.3/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/libntfs/ntfs.o
+
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/lib/extras.o
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/lib/libextras.a
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/lib/libtarget.a
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/lib/vectors.o
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/libjffs2/flashiodev.o
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/libjffs2/libflashiodev.a
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/libntfs/libntfs.a
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott/libntfs/ntfs.o
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/lib/extras.o
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/lib/libextras.a
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/lib/libtarget.a
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/lib/vectors.o
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/libjffs2/flashiodev.o
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/libjffs2/libflashiodev.a
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/libntfs/libntfs.a
+./os/mipsisa32-elf/4.8.2/ecos_kiwi_74kf_net_fileio_posix_fat_ntfs_v3_mipsisa32_c++_cpuload_ott_lite/libntfs/ntfs.o
+
+./lib/mipsisa32-elf/4.3.3/mw/dtv/v1/dtvmw/libmwDTV.a
+./lib/mipsisa32-elf/4.3.3/mw/dtv/v1/font/libmwBMPFONT.a
+./lib/mipsisa32-elf/4.3.3/mw/dtv/v1/font/libmwFONTUTL.a
+./lib/mipsisa32-elf/4.3.3/mw/dtv/v1/font/ZUI/libmwZUI.a
+./lib/mipsisa32-elf/4.3.3/mw/dtv/v1/font/ZUI_UISplit/libmwZUI.a
+./lib/mipsisa32-elf/4.3.3/mw/dtv/v1/font/libmwMVF.a
+./lib/mipsisa32-elf/4.3.3/mw/dtv/v1/font/libmwOSD.a
+./lib/mipsisa32-elf/4.3.3/mw/dtv/v1/freetype2/libfreetype.a
+./lib/mipsisa32-elf/4.3.3/mw/dtv/v1/imgdec/libmwgif.a
+
+./lib/mipsisa32-elf/4.3.3/mw/mm/VDPLAYER_STREAM/libmwMM_ecos.a
+./lib/mipsisa32-elf/4.3.3/mw/mm/libmwMM_ecos.a
+./lib/mipsisa32-elf/4.3.3/mw/pvr/libmwPVR_v4.a
+./lib/mipsisa32-elf/4.3.3/mw/pvr/libmwswpvr.a
+

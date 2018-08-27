@@ -563,7 +563,7 @@ MS_BOOL AV2035_WriteReg (MS_U8 u8TunerIndex, MS_U8 u8SlaveID, UINT8 reg_start, U
 {
     UINT8 queue[100]={0};
     UINT8 i;
-	HWI2C_PORT ePort;
+	MS_IIC_PORT ePort;
     ePort = getI2CPort(u8TunerIndex);
 
     queue[0]=reg_start;
@@ -602,7 +602,7 @@ MS_BOOL AV2035_ReadReg(MS_U8 u8TunerIndex, MS_U8 u8SlaveID, MS_U8 u8Addr, MS_U8 
 {
     TUNER_DBG(("[%s][%d]\n", __FUNCTION__, __LINE__));
     MS_BOOL bRet=TRUE;
-	HWI2C_PORT ePort;
+	MS_IIC_PORT ePort;
     ePort = getI2CPort(u8TunerIndex);
     //bRet&=MDrv_IIC_Write(u8SlaveID, 0, 0, &u8Addr, 1);
 	bRet&=MDrv_IIC_WriteBytes(ePort, u8SlaveID, 0, 0, 1, &u8Addr);

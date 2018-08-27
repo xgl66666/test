@@ -78,18 +78,19 @@
 #include <math.h>
 #include "MsCommon.h"
 #include "drvIIC.h"
-#include "Board.h"
 #include "drvTuner_AV2012.h"
 #include "drvTuner.h"
 #include "drvTunerNull.h"
 #include "drvDTC.h"
-
+#include <string.h>
 
 #if IF_THIS_TUNER_INUSE(TUNER_AV2012) || IF_THIS_TUNER_INUSE(TUNER_AV2011)
 
 #define  TUNER_AV2012_SLAVE_ID      0xc4//0xC0//0xC6
 #define  TUNER_CRYSTAL_FREQ         27
-static MS_U8 _u8SlaveID = TUNER_AV2012_SLAVE_ID;
+//static MS_U8 _u8SlaveID = TUNER_AV2012_SLAVE_ID;
+static TUNER_MS_INIT_PARAM* pInitParam = NULL;
+static MS_U8 u8max_dev_num = 0;
 
 #if IF_THIS_TUNER_INUSE(TUNER_AV2011)
 MS_U8 TunerInitialSetting_0[2][42]=
@@ -105,6 +106,65 @@ MS_U8 TunerInitialSetting_0[2][42]=
     {0x50, 0xA1, 0x2F, 0x50, 0x1F, 0xA3, 0xFD, 0x00, 0x2E, 0x82, 0x88, 0xB4, 0x96, 0x40, 0x5B,0x6A, 0x66, 0x40, 0x80, 0x2B, 0x6A, 0x50, 0x91, 0x27, 0x8F, 0xCC, 0x21, 0x10, 0x80,0x00, 0xF5, 0x7F, 0x4A, 0x9B, 0xE0, 0xE0, 0x36, 0x02, 0xAB, 0x97, 0xC5, 0xA8}
 };
 #endif
+static MS_BOOL _get_dev_param(MS_U8 u8TunerIndex, TUNER_MS_INIT_PARAM** ppParam)
+{
+    if((pInitParam == NULL) || (u8TunerIndex > u8max_dev_num))
+        return FALSE;
+
+    *ppParam = pInitParam + u8TunerIndex;
+    return TRUE;
+}
+
+static MS_BOOL _getI2CPort(MS_U8 u8TunerIndex, MS_IIC_PORT* pePort)
+{
+    TUNER_MS_INIT_PARAM* pParam = NULL;
+
+     if(!_get_dev_param(u8TunerIndex, &pParam))
+        return FALSE;
+
+     *pePort = pParam->stTUNCon.eI2C_PORT;
+     return TRUE;
+}
+
+static MS_BOOL _variable_alloc(void** pp, MS_U32 size)
+{
+    if(NULL == *pp)
+    {
+        *pp = malloc(size*u8max_dev_num);
+        if(NULL == *pp)
+        {
+            return FALSE;
+        }
+        else
+        {
+           memset(*pp, 0, size*u8max_dev_num);
+        }
+    }
+    return TRUE;
+}
+
+static void _variable_free(void** pp)
+{
+    if(NULL != *pp)
+    {
+        free(*pp);
+        *pp = NULL;
+    }
+}
+
+static MS_BOOL _variables_alloc(void)
+{
+    MS_BOOL bRet = TRUE;
+
+    bRet &= _variable_alloc((void*)&pInitParam, sizeof(TUNER_MS_INIT_PARAM));
+    return bRet;
+}
+
+static MS_BOOL _variables_free(void)
+{
+    _variable_free((void*)&pInitParam);
+    return TRUE;
+}
 
 static  MS_BOOL  _DigiTuner_Decide_LNB_LO(TUNER_MS_SAT_PARAM *pSATParam)
 {
@@ -138,8 +198,10 @@ static MS_BOOL AV2012_WriteReg(MS_U8 u8TunerIndex, MS_U8 u8SlaveID, MS_U8 u8Addr
 {
     MS_BOOL bRet=TRUE;
     MS_U8 u8Value[2];
-    HWI2C_PORT ePort;
-    ePort = getI2CPort(u8TunerIndex);
+    MS_IIC_PORT ePort;
+    
+    if(!_getI2CPort(u8TunerIndex, &ePort))
+        return FALSE;
 
     u8Value[0]=u8Addr;
     u8Value[1]=u8Data;
@@ -151,8 +213,10 @@ static MS_BOOL AV2012_WriteReg(MS_U8 u8TunerIndex, MS_U8 u8SlaveID, MS_U8 u8Addr
 static MS_BOOL AV2012_ReadReg(MS_U8 u8TunerIndex, MS_U8 u8SlaveID, MS_U8 u8Addr, MS_U8 *u8Data)
 {
     MS_BOOL bRet=TRUE;
-    HWI2C_PORT ePort;
-    ePort = getI2CPort(u8TunerIndex);
+    MS_IIC_PORT ePort;
+    
+    if(!_getI2CPort(u8TunerIndex, &ePort))
+        return FALSE;
 
     //bRet&=MDrv_IIC_Write(u8SlaveID, 0, 0, &u8Addr, 1);
     bRet &= MDrv_IIC_WriteBytes(ePort, u8SlaveID, 0, 0, 1, &u8Addr);
@@ -164,15 +228,19 @@ static MS_BOOL AV2012_ReadReg(MS_U8 u8TunerIndex, MS_U8 u8SlaveID, MS_U8 u8Addr,
 static  void AV2012_SlaveID_Check(MS_U8 u8TunerIndex)
 {
      MS_U8 regValue;
+     TUNER_MS_INIT_PARAM* pParam = NULL;
 
-      _u8SlaveID = 0xC0;
+     if(!_get_dev_param(u8TunerIndex, &pParam))
+        return;
+     
+     pParam->u8SlaveID = 0xC0;
       do
       {
           regValue=(char) (0x38);
-          if(AV2012_WriteReg(u8TunerIndex, _u8SlaveID,0,regValue))
+          if(AV2012_WriteReg(u8TunerIndex, pParam->u8SlaveID,0,regValue))
           {
                regValue = 0;
-               if(AV2012_ReadReg(u8TunerIndex, _u8SlaveID,0,&regValue))
+               if(AV2012_ReadReg(u8TunerIndex, pParam->u8SlaveID,0,&regValue))
                {
                      if(regValue == 0x38)
                      {
@@ -180,50 +248,70 @@ static  void AV2012_SlaveID_Check(MS_U8 u8TunerIndex)
                      }
                }
           }
-          _u8SlaveID += 0x02;
-      }while(_u8SlaveID <= 0xC6);
-      if(_u8SlaveID > 0xC6)
+          pParam->u8SlaveID += 0x02;
+      }while(pParam->u8SlaveID <= 0xC6);
+      if(pParam->u8SlaveID > 0xC6)
       {
-           _u8SlaveID = TUNER_AV2012_SLAVE_ID;
+           pParam->u8SlaveID = TUNER_AV2012_SLAVE_ID;
       }
 }
 
 static MS_BOOL AV2012_Init(MS_U8 u8TunerIndex)
 {
     MS_BOOL bRet=TRUE;
-    MS_U8 index;
+    MS_U8 index, u8SlaveID;
+    TUNER_MS_INIT_PARAM* pParam = NULL;
 
-    AV2012_SlaveID_Check(u8TunerIndex);
+     if(!_get_dev_param(u8TunerIndex, &pParam))
+        return FALSE;
 
+    //AV2012_SlaveID_Check(u8TunerIndex);
+    u8SlaveID = pParam->u8SlaveID;
+    
     for (index=0; index < 12; index++)
     {
-        bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, TunerInitialSetting_0[0][index], TunerInitialSetting_0[1][index]);
+        bRet&=AV2012_WriteReg(u8TunerIndex, u8SlaveID, TunerInitialSetting_0[0][index], TunerInitialSetting_0[1][index]);
     }
     MsOS_DelayTask(1);
     for (index=13; index < 42; index++)
     {
-        bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, TunerInitialSetting_0[0][index], TunerInitialSetting_0[1][index]);
+        bRet&=AV2012_WriteReg(u8TunerIndex, u8SlaveID, TunerInitialSetting_0[0][index], TunerInitialSetting_0[1][index]);
     }
     MsOS_DelayTask(1);
-    bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, TunerInitialSetting_0[0][12], TunerInitialSetting_0[1][12]);
+    bRet&=AV2012_WriteReg(u8TunerIndex, u8SlaveID, TunerInitialSetting_0[0][12], TunerInitialSetting_0[1][12]);
     MsOS_DelayTask(100);
     for (index=0; index < 12; index++)
     {
-        bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, TunerInitialSetting_0[0][index], TunerInitialSetting_0[1][index]);
+        bRet&=AV2012_WriteReg(u8TunerIndex, u8SlaveID, TunerInitialSetting_0[0][index], TunerInitialSetting_0[1][index]);
     }
     MsOS_DelayTask(1);
     for (index=13; index < 42; index++)
     {
-        bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, TunerInitialSetting_0[0][index], TunerInitialSetting_0[1][index]);
+        bRet&=AV2012_WriteReg(u8TunerIndex, u8SlaveID, TunerInitialSetting_0[0][index], TunerInitialSetting_0[1][index]);
     }
     MsOS_DelayTask(1);
-    bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, TunerInitialSetting_0[0][12], TunerInitialSetting_0[1][12]);
+    bRet&=AV2012_WriteReg(u8TunerIndex, u8SlaveID, TunerInitialSetting_0[0][12], TunerInitialSetting_0[1][12]);
     MsOS_DelayTask(50);
     return bRet;
 }
 
 MS_BOOL MDrv_Tuner_AV2012_Initial(MS_U8 u8TunerIndex,TUNER_MS_INIT_PARAM* pParam)
 {
+    TUNER_MS_INIT_PARAM* pstParam = NULL;
+
+     if(!_get_dev_param(u8TunerIndex, &pstParam))
+        return FALSE;
+
+    if((pParam->pCur_Broadcast_type == NULL) || (pParam->pstDemodtab == NULL))
+        return FALSE;
+    else
+    {
+        pstParam->pCur_Broadcast_type = pParam->pCur_Broadcast_type;
+        pstParam->pstDemodtab = pParam->pstDemodtab;
+        pstParam->stTUNCon.eI2C_PORT = pParam->stTUNCon.eI2C_PORT;
+        pstParam->stTUNCon.u32HW_ResetPin= pParam->stTUNCon.u32HW_ResetPin;
+    }
+    
     return AV2012_Init(u8TunerIndex);
 }
 
@@ -234,7 +322,11 @@ MS_BOOL MDrv_Tuner_AV2012_SetFreq_S2(MS_U8 u8TunerIndex, MS_U32 u32CenterFreq, M
     MS_U32 u32FracN;
     MS_U32 BW;
     MS_U32 BF;
-    MS_U8 u8Reg[7];
+    MS_U8 u8Reg[8];
+    TUNER_MS_INIT_PARAM* pstParam = NULL;
+
+    if(!_get_dev_param(u8TunerIndex, &pstParam))
+        return FALSE;
 
     TUNER_DBG(("u16CenterFreq:%"DTC_MS_U32_d" u32SymbolRate_Hz:%"DTC_MS_U32_d"\n",u32CenterFreq,u32SymbolRate_Hz));
     if((u32CenterFreq > MAX_INPUT_FREQ) || (u32CenterFreq < MIN_INPUT_FREQ))
@@ -289,19 +381,19 @@ MS_BOOL MDrv_Tuner_AV2012_SetFreq_S2(MS_U8 u8TunerIndex, MS_U32 u32CenterFreq, M
     // Sequence 4
     // Send Reg0 ->Reg4
     MsOS_DelayTask(5);
-    bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x00, u8Reg[0]);
-    bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x01, u8Reg[1]);
-    bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x02, u8Reg[2]);
-    bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x03, u8Reg[3]);
+    bRet&=AV2012_WriteReg(u8TunerIndex, pstParam->u8SlaveID, 0x00, u8Reg[0]);
+    bRet&=AV2012_WriteReg(u8TunerIndex, pstParam->u8SlaveID, 0x01, u8Reg[1]);
+    bRet&=AV2012_WriteReg(u8TunerIndex, pstParam->u8SlaveID, 0x02, u8Reg[2]);
+    bRet&=AV2012_WriteReg(u8TunerIndex, pstParam->u8SlaveID, 0x03, u8Reg[3]);
     MsOS_DelayTask(100);
-    bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x00, u8Reg[0]);
-    bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x01, u8Reg[1]);
-    bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x02, u8Reg[2]);
-    bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x03, u8Reg[3]);
+    bRet&=AV2012_WriteReg(u8TunerIndex, pstParam->u8SlaveID, 0x00, u8Reg[0]);
+    bRet&=AV2012_WriteReg(u8TunerIndex, pstParam->u8SlaveID, 0x01, u8Reg[1]);
+    bRet&=AV2012_WriteReg(u8TunerIndex, pstParam->u8SlaveID, 0x02, u8Reg[2]);
+    bRet&=AV2012_WriteReg(u8TunerIndex, pstParam->u8SlaveID, 0x03, u8Reg[3]);
     MsOS_DelayTask(5);
     // Sequence 5
     // Send Reg5
-    bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x05, u8Reg[5]);
+    bRet&=AV2012_WriteReg(u8TunerIndex, pstParam->u8SlaveID, 0x05, u8Reg[5]);
     MsOS_DelayTask(5);
     // Fine-tune Function Control
     //Tuner fine-tune gain function block. bit2.
@@ -309,13 +401,13 @@ MS_BOOL MDrv_Tuner_AV2012_SetFreq_S2(MS_U8 u8TunerIndex, MS_U32 u32CenterFreq, M
     if (bAutoScan==FALSE)
     {
          u8Reg[6] = 0x06;
-         bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x25, u8Reg[6]);
+         bRet&=AV2012_WriteReg(u8TunerIndex, pstParam->u8SlaveID, 0x25, u8Reg[6]);
          MsOS_DelayTask(5);
          //Disable RFLP at Lock Channel sequence after reg[37]
          //RFLP=OFF at Lock Channel sequence
          // RFLP can be Turned OFF, only at Receving mode.
          u8Reg[7] = 0xD6;
-         bRet&=AV2012_WriteReg(u8TunerIndex, _u8SlaveID, 0x0C, u8Reg[7]);
+         bRet&=AV2012_WriteReg(u8TunerIndex, pstParam->u8SlaveID, 0x0C, u8Reg[7]);
 
     }
     return bRet;
@@ -324,8 +416,12 @@ MS_BOOL MDrv_Tuner_AV2012_CheckLock(MS_U8 u8TunerIndex)
 {
     MS_BOOL bRet=TRUE;
     MS_U8 u8Data;
+    TUNER_MS_INIT_PARAM* pstParam = NULL;
 
-    bRet&=AV2012_ReadReg(u8TunerIndex, _u8SlaveID, 0x0B, &u8Data);
+    if(!_get_dev_param(u8TunerIndex, &pstParam))
+        return FALSE;
+
+    bRet&=AV2012_ReadReg(u8TunerIndex, pstParam->u8SlaveID, 0x0B, &u8Data);
     if (bRet==FALSE)
     {
         return bRet;
@@ -349,20 +445,29 @@ MS_BOOL MDrv_Tuner_AV2012_CheckExist(MS_U8 u8TunerIndex, MS_U32* pu32channel_cnt
     MS_U8 regData2 = 0;
     MS_U8 regData3 = 0;
     MS_U8 i=0;
+    TUNER_MS_INIT_PARAM* pstParam = NULL;
+
+    if(!_variables_alloc())
+    {
+        _variables_free();
+        return FALSE;
+    }
 
     AV2012_SlaveID_Check(u8TunerIndex);
+    if(!_get_dev_param(u8TunerIndex, &pstParam))
+        return FALSE;
 
     for (;i<5;i++)
     {
-        if(!AV2012_WriteReg(u8TunerIndex,_u8SlaveID, 0x0C, 0xF6))
+        if(!AV2012_WriteReg(u8TunerIndex,pstParam->u8SlaveID, 0x0C, 0xF6))
             continue;
-        if(!AV2012_WriteReg(u8TunerIndex,_u8SlaveID, 0x1C, 0x00))
+        if(!AV2012_WriteReg(u8TunerIndex,pstParam->u8SlaveID, 0x1C, 0x00))
             continue;
-        if(!AV2012_ReadReg(u8TunerIndex,_u8SlaveID, 0x1C, &regData))
+        if(!AV2012_ReadReg(u8TunerIndex,pstParam->u8SlaveID, 0x1C, &regData))
             continue;
-        if(!AV2012_ReadReg(u8TunerIndex,_u8SlaveID, 0x33, &regData2))
+        if(!AV2012_ReadReg(u8TunerIndex,pstParam->u8SlaveID, 0x33, &regData2))
             continue;
-        if(!AV2012_ReadReg(u8TunerIndex,_u8SlaveID, 0x34, &regData3))
+        if(!AV2012_ReadReg(u8TunerIndex,pstParam->u8SlaveID, 0x34, &regData3))
             continue;
         TUNER_DBG(("[av2012] read id =0x%x reg0x33=0x%x reg0x34=0x%x\n",regData,regData2,regData3));
         
@@ -383,6 +488,10 @@ MS_BOOL AV2012_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE fu
     TUNER_MS_SAT_PARAM* SAT_PARAM;
     MS_BOOL bret = TRUE;
     MS_U8 regData = 0;
+    TUNER_EXT_FUNCTION_PARAM* pstData = NULL;
+    TUNER_MS_INIT_PARAM* pstParam = NULL;
+    TUNER_CON_CONFIG* pstCon = NULL;
+    
     switch(fuction_type)
     {
          case TUNER_EXT_FUNC_DECIDE_LNB_LO:
@@ -391,11 +500,14 @@ MS_BOOL AV2012_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE fu
             break;
             
          case TUNER_EXT_FUNC_POWER_ON_OFF:
-             bret &= AV2012_ReadReg(u8TunerIndex,_u8SlaveID, 0x0C, &regData);
+            if(!_get_dev_param(u8TunerIndex, &pstParam))
+                return FALSE;
+            
+             bret &= AV2012_ReadReg(u8TunerIndex,pstParam->u8SlaveID, 0x0C, &regData);
             if(FALSE == *(MS_BOOL *)data)   //power off
             {
                regData |= (0x1<<5);
-               bret &= AV2012_WriteReg(u8TunerIndex,_u8SlaveID, 0x0C, regData);
+               bret &= AV2012_WriteReg(u8TunerIndex,pstParam->u8SlaveID, 0x0C, regData);
             }
             else
             {
@@ -407,7 +519,10 @@ MS_BOOL AV2012_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE fu
             break;
             
          case TUNER_EXT_FUNC_LOOP_THROUGH:
-             bret &= AV2012_ReadReg(u8TunerIndex,_u8SlaveID, 0x0C, &regData);
+             if(!_get_dev_param(u8TunerIndex, &pstParam))
+                return FALSE;
+             
+             bret &= AV2012_ReadReg(u8TunerIndex,pstParam->u8SlaveID, 0x0C, &regData);
             if(FALSE == *(MS_BOOL *)data)   //LT off
             {
                regData &= (~(0x1<<6));
@@ -417,9 +532,23 @@ MS_BOOL AV2012_Extension_Function(MS_U8 u8TunerIndex, TUNER_EXT_FUNCTION_TYPE fu
                regData |= (0x1<<6);
             }
 
-            bret &= AV2012_WriteReg(u8TunerIndex,_u8SlaveID, 0x0C, regData);
+            bret &= AV2012_WriteReg(u8TunerIndex,pstParam->u8SlaveID, 0x0C, regData);
             break;
-            
+         case TUNER_EXT_FUNC_SET_CON_INFO:
+            pstData = (TUNER_EXT_FUNCTION_PARAM*)data;
+            u8max_dev_num = pstData->u32Param1;
+            pstCon = (TUNER_CON_CONFIG*)(pstData->pParam);
+            if(!_variables_alloc())
+            {
+                _variables_free();
+                return FALSE;
+            }
+            else
+            {
+                pstParam = pInitParam + u8TunerIndex;
+                memcpy(&pstParam->stTUNCon, pstCon,sizeof(TUNER_CON_CONFIG));
+            }
+        break;    
          default:
             break;
     }

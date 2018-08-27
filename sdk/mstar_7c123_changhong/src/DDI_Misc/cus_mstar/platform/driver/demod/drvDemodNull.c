@@ -83,7 +83,7 @@
 // Unless otherwise stipulated in writing, any and all information contained
 // herein regardless in any format shall remain the sole proprietary of
 // MStar Semiconductor Inc. and be kept in strict confidence
-// (Â¡Â§MStar Confidential InformationÂ¡Â¨) by the recipient.
+// (¡§MStar Confidential Information¡¨) by the recipient.
 // Any unauthorized act including without limitation unauthorized disclosure,
 // copying, use, reproduction, sale, distribution, modification, disassembling,
 // reverse engineering and compiling of the contents of MStar Confidential
@@ -190,6 +190,13 @@ MS_BOOL MDrv_Demod_null_GetPWR(MS_U8 u8DemodIndex,MS_S32 *ps32Signal)
     DMD_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
     return TRUE;
 }
+
+MS_BOOL MDrv_Demod_null_GetSSI(MS_U8 u8DemodIndex,MS_U16 *pu16SSI)
+{
+    DMD_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
+    return TRUE;
+}
+
 
 MS_BOOL MDrv_Demod_null_GetSignalQuality(MS_U8 u8DemodIndex,MS_U16 *pu16quality)
 {
@@ -382,6 +389,13 @@ MS_BOOL MDrv_Demod_null_DiSEqC_SendCmd(MS_U8 u8DemodIndex, MS_U8* pCmd,MS_U8 u8C
     return TRUE;
 }
 
+MS_BOOL MDrv_Demod_null_DiSEqC_GetReply(MS_U8 u8DemodIndex, DISEQC_RX_MSG* pstRxMSG)
+{
+    DMD_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
+    return FALSE;
+}
+
+
 MS_BOOL MDrv_Demod_null_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTION_TYPE fuction_type, void *data)
 {
     DMD_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
@@ -391,7 +405,7 @@ MS_BOOL MDrv_Demod_null_Extension_Function(MS_U8 u8DemodIndex, DEMOD_EXT_FUNCTIO
 MS_BOOL MDrv_Demod_null_CheckExist(MS_U8 u8DemodIndex, MS_U8* pu8SlaveID)
 {
     DMD_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
-    return TRUE;
+    return FALSE;
 }
 
 MS_BOOL MDrv_Demod_null_SetScanTypeStatus(MS_U8 u8DemodIndex, MS_U8 status)
@@ -424,22 +438,53 @@ MS_BOOL MDrv_Demod_null_Get_Packet_Error(MS_U8 u8DemodIndex, MS_U16 *u16PktErr)
     return TRUE;
 }
 
+#ifdef FE_AUTO_TEST
+MS_BOOL  MDrv_Demod_null_ReadReg(MS_U8 u8DemodIndex, MS_U16 RegAddr, MS_U8 *pu8Data)
+{
+    DMD_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
+    return TRUE;
+}
+MS_BOOL MDrv_Demod_null_WriteReg(MS_U8 u8DemodIndex, MS_U16 RegAddr, MS_U16 RegData)
+{
+    DMD_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
+    return TRUE;
+}
+#endif
+
+MS_BOOL MDrv_Demod_null_GetVCM_ISID_INFO(MS_U8 u8DemodIndex, MS_U8* pu8IS_ID, MS_U8* pu8Table)
+{
+    DMD_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
+    return FALSE;
+}
+
+MS_BOOL MDrv_Demod_null_SetVCM_ISID(MS_U8 u8DemodIndex, MS_U8 u8IS_ID)
+{
+    DMD_DBG(("%s, %d \n", __FUNCTION__,__LINE__));
+    return TRUE;
+}
+
 
 DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_NULL) DDI_DRV_TABLE_ENTRY(demodtab) =
 {
      .name                         = "DEMOD_NULL",
      .data                         = DEMOD_NULL,
+     .SupportINT                   = FALSE,
      .init                         = MDrv_Demod_null_init,
      .GetLock                      = MDrv_Demod_null_GetLock,
      .GetSNR                       = MDrv_Demod_null_GetSNR,
      .GetBER                       = MDrv_Demod_null_GetBER,
      .GetPWR                       = MDrv_Demod_null_GetPWR,
+     .GetSSI                       = MDrv_Demod_null_GetSSI,
      .GetQuality                   = MDrv_Demod_null_GetSignalQuality,
      .GetParam                     = MDrv_Demod_null_GetParam,
      .Restart                      = MDrv_Demod_null_Restart,
      .I2CByPass                    = MDrv_Demod_null_I2C_ByPass,
      .CheckExist                   = MDrv_Demod_null_CheckExist,
      .Extension_Function           = MDrv_Demod_null_Extension_Function,
+#ifdef FE_AUTO_TEST
+     .ReadReg                      = MDrv_Demod_null_ReadReg,
+     .WriteReg                     = MDrv_Demod_null_WriteReg,
+#endif
 #if MS_DVBT2_INUSE
      .SetCurrentDemodType          = MDrv_Demod_null_SetCurrentDemodType,
      .GetCurrentDemodType          = MDrv_Demod_null_GetCurrentDemodType,
@@ -465,6 +510,9 @@ DRV_DEMOD_TABLE_TYPE GET_DEMOD_ENTRY_NODE(DEMOD_NULL) DDI_DRV_TABLE_ENTRY(demodt
      .DiSEqCSet22kOnOff            = MDrv_Demod_null_DiSEqC_Set22kOnOff,
      .DiSEqCGet22kOnOff            = MDrv_Demod_null_DiSEqC_Get22kOnOff,
      .DiSEqC_SendCmd               = MDrv_Demod_null_DiSEqC_SendCmd,
+     .DiSEqC_GetReply              = MDrv_Demod_null_DiSEqC_GetReply,
+     .GetISIDInfo                  = MDrv_Demod_null_GetVCM_ISID_INFO,
+     .SetISID                      = MDrv_Demod_null_SetVCM_ISID,
 #endif
      .Get_Packet_Error             = MDrv_Demod_null_Get_Packet_Error
 

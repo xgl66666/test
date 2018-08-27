@@ -6,8 +6,11 @@
 
 //#include <sys/time.h>
 //#include <unistd.h>
+#ifdef MSOS_TYPE_LINUX_KERNEL
+#include <linux/string.h>
+#else
 #include <string.h>
-
+#endif
 #include "MxL_HRCLS_Common.h"
 #include "MsCommon.h"
 #include "MsOS.h"
@@ -56,7 +59,7 @@ MXL_STATUS_E MxLWare_HRCLS_OEM_Reset(UINT8 devId)
 MXL_STATUS_E MxLWare_HRCLS_OEM_WriteRegister(UINT8 devId, UINT16 regAddr, UINT16 regData)
 {
   MXL_STATUS_E status = MXL_SUCCESS;
-  HWI2C_PORT hwi2c_port;
+  MS_IIC_PORT ePort;
   
   UINT8 RegAddr[2], RegData[2], bret = 1;
   
@@ -75,23 +78,12 @@ MXL_STATUS_E MxLWare_HRCLS_OEM_WriteRegister(UINT8 devId, UINT16 regAddr, UINT16
   // |SLAVE |         |A|          |A|          |A|          |A|          |A| |
   // +------+---------+-+----------+-+----------+-+----------+-+----------+-+-+
   // Legends: SADDR (I2c slave address), S (Start condition), A (Ack), N(NACK), P(Stop condition)
-  hwi2c_port = getI2CPort(devId)/8;
-  switch(hwi2c_port)
-  {
-     case 0:   
-        bret &= MDrv_IIC_Write(MXL254_SLAVE_ID<<1, RegAddr, 2, RegData, 2);
-        if(!bret)
-           status = MXL_FAILURE; 
-        break;
-     case 1:  
-        bret &= MDrv_IIC1_Write(MXL254_SLAVE_ID<<1, RegAddr, 2, RegData, 2);
-        if(!bret)
-           status = MXL_FAILURE; 
-        break;
-     default:
-        status = MXL_FAILURE;
-        break;
-  }
+  ePort = getI2CPort(devId);
+
+  bret &= MDrv_IIC_WriteBytes(ePort, MXL254_SLAVE_ID<<1, 2, RegAddr, 2, RegData);
+  if(!bret)
+      status = MXL_FAILURE; 
+
   return status;
 }
 
@@ -110,7 +102,7 @@ MXL_STATUS_E MxLWare_HRCLS_OEM_WriteRegister(UINT8 devId, UINT16 regAddr, UINT16
 MXL_STATUS_E MxLWare_HRCLS_OEM_ReadRegister(UINT8 devId, UINT16 regAddr, UINT16 *dataPtr)
 {
   MXL_STATUS_E status = MXL_SUCCESS;
-  HWI2C_PORT hwi2c_port;
+  MS_IIC_PORT ePort;
   UINT8 RegAddr[4], bret = 1;
   UINT8 RegData[2];
 
@@ -118,6 +110,9 @@ MXL_STATUS_E MxLWare_HRCLS_OEM_ReadRegister(UINT8 devId, UINT16 regAddr, UINT16 
   RegAddr[1] = 0xFB;
   RegAddr[2] = (UINT8)((regAddr & 0xff00) >> 8);
   RegAddr[3] = (UINT8)(regAddr & 0xff);
+
+  RegData[0] = 0;
+  RegData[1] = 0;
 
   // !!! FIXME !!!
   // OEM should implement I2C read protocol that complies with MxL_HRCLS I2C
@@ -136,23 +131,14 @@ MXL_STATUS_E MxLWare_HRCLS_OEM_ReadRegister(UINT8 devId, UINT16 regAddr, UINT16 
   // +------+---------+-+-------+--+----------+-+
   // Legends: SADDR(I2c slave address), S(Start condition), MA(Master Ack), MN(Master NACK), P(Stop condition)
   //printf("I2C_Read MXL254 slave ID = 0x%x\n", MXL254_SLAVE_ID);
-  hwi2c_port = getI2CPort(devId)/8;
-  switch(hwi2c_port)
-  {
-     case 0: 
-        bret &= MDrv_IIC_Read(MXL254_SLAVE_ID<<1, RegAddr, 4, RegData, 2);
-        if(!bret)
-           status = MXL_FAILURE;           
-        break;
-     case 1:  
-        bret &= MDrv_IIC1_Read(MXL254_SLAVE_ID<<1, RegAddr, 4, RegData, 2);
-        if(!bret)
-           status = MXL_FAILURE; 
-        break; 
-     default:
-        status = MXL_FAILURE;
-        break;
-  }
+
+   ePort = getI2CPort(devId);
+
+   bret = MDrv_IIC_ReadBytes(ePort, MXL254_SLAVE_ID<<1, 4, RegAddr, 2, RegData);
+
+  if(!bret)
+      status = MXL_FAILURE;           
+
   *dataPtr = ((UINT16)RegData[0] << 8) | ((UINT16)RegData[1]);
   return status;
 }
@@ -173,7 +159,7 @@ MXL_STATUS_E MxLWare_HRCLS_OEM_ReadRegister(UINT8 devId, UINT16 regAddr, UINT16 
 MXL_STATUS_E MxLWare_HRCLS_OEM_WriteBlock(UINT8 devId, UINT16 regAddr, UINT16 bufSize, UINT8 *bufPtr)
 {
   MXL_STATUS_E status = MXL_SUCCESS;
-  HWI2C_PORT hwi2c_port;
+  MS_IIC_PORT ePort;
   UINT8 RegAddr[2],bret = 1;
   
   RegAddr[0] = (UINT8)((regAddr & 0xff00) >> 8);
@@ -190,23 +176,13 @@ MXL_STATUS_E MxLWare_HRCLS_OEM_WriteBlock(UINT8 devId, UINT16 regAddr, UINT16 bu
   // |SLAVE |         |A|          |A|          |A|         |A|   |                 |A| |
   // +------+---------+-+----------+-+---- -----+-+---------+-+---+-----------------+-+-+
   // Legends: SADDR(I2c slave address), S(Start condition), A(Ack), P(Stop condition)
-  hwi2c_port = getI2CPort(devId)/8;
-  switch(hwi2c_port)
-  {
-     case 0: 
-        bret &= MDrv_IIC_Write(MXL254_SLAVE_ID<<1, RegAddr, 2, bufPtr, bufSize);
-        if(!bret)
-           status = MXL_FAILURE; 
-        break;
-     case 1:  
-        bret &= MDrv_IIC1_Write(MXL254_SLAVE_ID<<1, RegAddr, 2, bufPtr, bufSize);
-        if(!bret)
-           status = MXL_FAILURE; 
-        break;
-     default:
-        status = MXL_FAILURE;
-        break;
-  }
+
+  ePort = getI2CPort(devId);
+
+  bret &= MDrv_IIC_WriteBytes(ePort, MXL254_SLAVE_ID<<1, 2, RegAddr, bufSize, bufPtr);
+  if(!bret)
+      status = MXL_FAILURE; 
+  
   return status;
 }
 
@@ -226,7 +202,7 @@ MXL_STATUS_E MxLWare_HRCLS_OEM_WriteBlock(UINT8 devId, UINT16 regAddr, UINT16 bu
 MXL_STATUS_E MxLWare_HRCLS_OEM_ReadBlock(UINT8 devId, UINT16 regAddr, UINT16 readSize, UINT8 *bufPtr)
 {
   MXL_STATUS_E status = MXL_SUCCESS;
-  HWI2C_PORT hwi2c_port;
+  MS_IIC_PORT ePort;
   UINT8 RegAddr[4], bret = 1;
 
   RegAddr[0] = 0xFF;
@@ -249,38 +225,21 @@ MXL_STATUS_E MxLWare_HRCLS_OEM_ReadBlock(UINT8 devId, UINT16 regAddr, UINT16 rea
   // |SLAVE |         |A|DATA1| |DATA2| |       |DATAn|   |
   // +------+---------+-+-----+-+-----+-+-----+-+-----+---+
   // Legends: SADDR (I2c slave address), S (Start condition), A (Acknowledgement), N(NACK), P(Stop condition)
-  hwi2c_port = getI2CPort(devId)/8;
-  switch(hwi2c_port)
-  {
-     case 0:   
-        bret &= MDrv_IIC_Read(MXL254_SLAVE_ID<<1, RegAddr, 4, bufPtr, readSize);
-        if(!bret)
-           status = MXL_FAILURE;
-        //else
-        //{
-           //printf("\n");
-           //for(i=0;i<readSize;i++)
-           // printf(" 0x%02x ", *(bufPtr + i));
-           //printf("\n");
-        //}
-        break;
-     case 1:  
-        bret &= MDrv_IIC1_Read(MXL254_SLAVE_ID<<1, RegAddr, 4, bufPtr, readSize);
-        if(!bret)
-           status = MXL_FAILURE; 
-        break;
-     default:
-        status = MXL_FAILURE;
-        break;
-  }
 
+   ePort = getI2CPort(devId);
+
+   bret = MDrv_IIC_ReadBytes(ePort, MXL254_SLAVE_ID<<1, 4, RegAddr, readSize, bufPtr);
+
+  if(!bret)
+      status = MXL_FAILURE;
+  
   return status;
 }
 
 MXL_STATUS_E MxLWare_HRCLS_OEM_ReadBlockExt(UINT8 devId, UINT16 cmdId, UINT16 offset, UINT16 readSize, UINT8 *bufPtr)
 {
   MXL_STATUS_E status = MXL_SUCCESS;
-  HWI2C_PORT hwi2c_port;
+  MS_IIC_PORT ePort;
   UINT8 RegAddr[6], bret = 1;
 
   RegAddr[0] = 0xFF;
@@ -305,23 +264,14 @@ MXL_STATUS_E MxLWare_HRCLS_OEM_ReadBlockExt(UINT8 devId, UINT16 cmdId, UINT16 of
   // |SLAVE |         |A|DATA1| |DATA2| |       |DATAn|   |
   // +------+---------+-+-----+-+-----+-+-----+-+-----+---+
   // Legends: SADDR (I2c slave address), S (Start condition), A (Acknowledgement), N(NACK), P(Stop condition)
-  hwi2c_port = getI2CPort(devId)/8;
-  switch(hwi2c_port)
-  {
-     case 0:  
-        bret &= MDrv_IIC_Read(MXL254_SLAVE_ID<<1, RegAddr, 6, bufPtr, readSize);
-        if(!bret)
-           status = MXL_FAILURE;           
-        break;
-     case 1:  
-        bret &= MDrv_IIC1_Read(MXL254_SLAVE_ID<<1, RegAddr, 6, bufPtr, readSize);
-        if(!bret)
-           status = MXL_FAILURE; 
-        break; 
-     default:
-        status = MXL_FAILURE;
-        break;
-  }
+
+   ePort = getI2CPort(devId);
+
+   bret = MDrv_IIC_ReadBytes(ePort, MXL254_SLAVE_ID<<1, 6, RegAddr, readSize, bufPtr);
+
+  if(!bret)
+      status = MXL_FAILURE;
+
   return status;
 }
 
