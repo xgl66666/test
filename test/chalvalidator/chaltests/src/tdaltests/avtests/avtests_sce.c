@@ -71,7 +71,8 @@ void TestCase_ExecuteTestZappingAsComediaSW(void);
 void TestCase_ExecuteTestVideoWithOSD(void);
 void TestCase_ExecuteTestVideoToGraphics(void);
 #endif
-
+LOCAL void VideoEventsRegister(void);
+LOCAL void VideoEventsUnregister(void);
 static tTestNode gTestVideoAlone = {
     "TestVideoAlone",
     "test the video operations, without sound",
@@ -390,7 +391,7 @@ printf("\t\tif(stOutputCap.nbHDMI > 0)\n");
     TestManager_AssertEqual(TDAL_AV_Init(),
 							eTDAL_AV_NO_ERROR,
 							"av init");
-	
+    VideoEventsRegister();
     //TestHelper_Configure_TDAL_AVS();
 	
 	TestManager_AssertEqual(TDAL_AV_VideoCapabilityGet(eTDAL_AV_DECODER_VIDEO_1,
@@ -768,6 +769,10 @@ printf("\t\tif(stOutputCap.nbHDMI > 0)\n");
 								"av stop audio");
     }
 	
+    TestManager_AssertEqual(TDAL_AV_Stop(eTDAL_AV_DECODER_VIDEO_1),
+								eTDAL_AV_NO_ERROR,
+								"av stop video");
+    VideoEventsUnregister();
     TestManager_AssertEqual(TDAL_AV_Terminate(),
 							eTDAL_AV_NO_ERROR,
 							"av terminate");
@@ -980,7 +985,7 @@ void GenericTestAudioVolume(int headphone)
     TestManager_AssertEqual(TDAL_AV_Init(),
 							eTDAL_AV_NO_ERROR,
 							"av init");
-	
+	VideoEventsRegister();
 	TestHelper_Configure_TDAL_ConnectionManager(eCONNECTION_MANAGER_TYPE_DIGITAL);
 
     TestHelper_Configure_TDAL_AVS();
@@ -1084,12 +1089,20 @@ void GenericTestAudioVolume(int headphone)
     }
     TestManager_AskForChecking("Did the volume increase");
 
+    TestManager_AssertEqual(TDAL_OUTPUT_Disable(eTDAL_OUTPUT_VIDEO_DENC_ID_0),
+							eTDAL_OUTPUT_NO_ERROR,
+							"output video disable" );
+    TestManager_AssertEqual(TDAL_DISP_LayerDisable(eTDAL_DISP_LAYER_VIDEO_ID_0),
+							eTDAL_DISP_NO_ERROR,
+							"disp layer disable" );
+
     TestManager_AssertEqual(TDAL_AV_Stop(eTDAL_AV_DECODER_VIDEO_1),
 							eTDAL_AV_NO_ERROR,
 							"av stop video");
     TestManager_AssertEqual(TDAL_AV_Stop(eTDAL_AV_DECODER_AUDIO_1),
 							eTDAL_AV_NO_ERROR,
 							"av stop audio");
+    VideoEventsUnregister();
     TestManager_AssertEqual(TDAL_AV_Terminate(),
 							eTDAL_AV_NO_ERROR,
 							"av terminate" );
@@ -1224,6 +1237,7 @@ void TestCase_ExecuteTestAudioFromMemory()
     TestManager_AssertEqual(TDAL_AV_Init(),
 							eTDAL_AV_NO_ERROR,
 							"av init");
+    VideoEventsRegister();
     TestManager_AssertEqual(TDAL_DISP_Init(),
 							eTDAL_DISP_NO_ERROR,
 							"disp init" );
@@ -1316,6 +1330,7 @@ void TestCase_ExecuteTestAudioFromMemory()
 							"av sample audio stop ");
 
     TestHelper_Unconfigure_TDAL_DMX();
+    VideoEventsUnregister();
     TestManager_AssertEqual(TDAL_AV_Terminate(),
 							eTDAL_AV_NO_ERROR,
 							"av terminate" );
@@ -1465,7 +1480,7 @@ void GenericTestAudioEnableDisable(int headphone)
     TestManager_AssertEqual(TDAL_AV_Init(),
 							eTDAL_AV_NO_ERROR,
 							"av init");
-
+    VideoEventsRegister();
 	TestHelper_Configure_TDAL_ConnectionManager(eCONNECTION_MANAGER_TYPE_DIGITAL);
 
     TestHelper_Configure_TDAL_AVS();
@@ -1530,12 +1545,23 @@ void GenericTestAudioEnableDisable(int headphone)
                             "output audio enable" );
     TestManager_AskForChecking("Is the audio enabled");
 
+
+    TestManager_AssertEqual(TDAL_DISP_LayerDisable(eTDAL_DISP_LAYER_VIDEO_ID_0),
+							eTDAL_DISP_NO_ERROR,
+							"disp layer enable" );
+
+    TestManager_AssertEqual(TDAL_OUTPUT_Disable(eAudOutput),
+                            eTDAL_OUTPUT_NO_ERROR,
+                            "output audio disable" );
+
+
     TestManager_AssertEqual(TDAL_AV_Stop(eTDAL_AV_DECODER_VIDEO_1),
 							eTDAL_AV_NO_ERROR,
 							"av stop video");
     TestManager_AssertEqual(TDAL_AV_Stop(eTDAL_AV_DECODER_AUDIO_1),
 							eTDAL_AV_NO_ERROR,
 							"av stop audio");
+    VideoEventsUnregister();
     TestManager_AssertEqual(TDAL_AV_Terminate(),
 							eTDAL_AV_NO_ERROR,
 							"av terminate" );
@@ -1697,7 +1723,7 @@ void TestCase_ExecuteTestStillPicture()
     TestManager_AssertEqual(TDAL_AV_Init(),
 							eTDAL_AV_NO_ERROR,
 							"av init");
-
+    VideoEventsRegister();
 #if defined(TDAL_MEDIA_VIEWER)
     /*show a rgb picture */
     TestManager_AssertEqual(TDAL_OUTPUT_Enable(eTDAL_OUTPUT_VIDEO_DENC_ID_0),
@@ -1928,7 +1954,7 @@ void TestCase_ExecuteTestStillPicture()
 								"hdmi stop" );
     }
 #endif
-
+    VideoEventsUnregister();
     TestManager_AssertEqual(TDAL_AV_Terminate(),
 							eTDAL_AV_NO_ERROR,
 							"av terminate");
@@ -2035,7 +2061,7 @@ void TestCase_ExecuteTestStillPictureHD()
 							eTDAL_AV_NO_ERROR,
 							"av init");
 
-
+    VideoEventsRegister();
     if(stOutputCap.nbVideoHDDAC > 0)
     {
         TestManager_AssertEqual(TDAL_OUTPUT_Enable(eTDAL_OUTPUT_VIDEO_HD_DAC_ID_0),
@@ -2097,7 +2123,7 @@ void TestCase_ExecuteTestStillPictureHD()
     TestManager_AssertEqual(TDAL_DISP_LayerDisable(eTDAL_DISP_LAYER_VIDEO_ID_0),
 							eTDAL_DISP_NO_ERROR,
 							"disp Disable" );
-
+    VideoEventsUnregister();
     TestManager_AssertEqual(TDAL_AV_Terminate(),
 							eTDAL_AV_NO_ERROR,
 							"av terminate");
@@ -2215,7 +2241,7 @@ void TestCase_ExecuteVideoInWindow()
     TestManager_AssertEqual(TDAL_AV_Init(),
 							eTDAL_AV_NO_ERROR,
 							"av init");
-
+    VideoEventsRegister();
     TestHelper_Configure_TDAL_AVS();
     TestHelper_Configure_TDAL_TSROUTE(TEST_HELPER_TSROUTE_TUNER(gTDAL_AV_TestFeIdx),
                                       TEST_HELPER_TSROUTE_DEMUX(gTDAL_AV_TestDmxIdx));
@@ -2325,6 +2351,7 @@ void TestCase_ExecuteVideoInWindow()
                                 "av stop video");
 
     TestManager_AssertEqual(TDAL_DISP_LayerDisable(eTDAL_DISP_LAYER_VIDEO_ID_0), eTDAL_DISP_NO_ERROR, "disp layer disable" );
+    VideoEventsUnregister();
     TestManager_AssertEqual(TDAL_AV_Terminate(), eTDAL_AV_NO_ERROR, "av terminate");
 
     /* terminate tdal modules */
@@ -2469,6 +2496,7 @@ void TestCase_ExecuteTestVideoWithOSD(void)
     TestManager_AssertEqual(TDAL_AV_Init(),
 							eTDAL_AV_NO_ERROR,
 							"av init");
+    VideoEventsRegister();
 #ifdef AVS_STB
     TestManager_AssertEqual(TDAL_AVS_Init(), eTDAL_AVS_NO_ERROR, "avs init");
 #endif
@@ -2638,7 +2666,7 @@ void TestCase_ExecuteTestVideoWithOSD(void)
 
 
 
-
+    VideoEventsUnregister();
     TestManager_AssertEqual(TDAL_AV_Terminate(),
 							eTDAL_AV_NO_ERROR,
 							"av terminate");
@@ -2765,6 +2793,7 @@ void TestCase_ExecuteTestVideoToGraphics(void)
     TestManager_AssertEqual(TDAL_AV_Init(),
 							eTDAL_AV_NO_ERROR,
 							"av init");
+    VideoEventsRegister();
 #ifdef AVS_STB
     TestManager_AssertEqual(TDAL_AVS_Init(), eTDAL_AVS_NO_ERROR, "avs init");
 #endif
@@ -3042,7 +3071,7 @@ void TestCase_ExecuteTestVideoToGraphics(void)
     TestManager_AssertEqual(TDAL_AV_VideoPictureStop(eTDAL_AV_DECODER_VIDEO_1),
 							eTDAL_AV_NO_ERROR,
 							"av stop video");
-
+    VideoEventsUnregister();
     TestManager_AssertEqual(TDAL_AV_Terminate(),
 							eTDAL_AV_NO_ERROR,
 							"av terminate");

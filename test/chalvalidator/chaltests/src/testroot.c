@@ -63,7 +63,7 @@ tTestNode* gTDALTestNodeList[] = {
 	&gTDAL_FLA_TestSuite,
 	&gTDAL_NVM_TestSuite,
 	&gTDAL_KBD_TestSuite,
-#if defined(PACKAGE_PVR) && !defined(PVR_CORE_IMPLEMENTATION_TDAL_PVR)
+#if defined(PACKAGE_PVR) //&& !defined(PVR_CORE_IMPLEMENTATION_TDAL_PVR)
     #ifdef USE_TDAL_PVR
 	    &gTDAL_PVR_TestSuite,
     #else

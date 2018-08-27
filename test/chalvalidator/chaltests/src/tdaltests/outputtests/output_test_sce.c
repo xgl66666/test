@@ -158,6 +158,152 @@ tTestNode gTDAL_OUTPUT_ScenarioTestSuite = {
 	(void**)gOutputScenarioTestNodeList
 };
 
+LOCAL void MediaVideoCallback(tTDAL_AV_Decoder decoder, tTDAL_AV_Event event, const void *pEventData)
+{
+    switch(event)
+    {
+        case eTDAL_AV_EVENT_VIDEO_PICTURE_PLAYED:
+        case eTDAL_AV_EVENT_VIDEO_PICTURE_STOPPED:
+            break;
+
+        default:
+            mTBOX_PRINT((kTBOX_LF, "VideoCallback: unknown event (%d)\n", event));
+            break;
+    }
+    return;
+}
+
+LOCAL void VideoNeedDisplayCallback(tTDAL_AV_Decoder decoder, tTDAL_AV_Event event, const void *pEventData)
+{
+    tTDAL_DISP_Error tdispErr;
+
+    /*      Enable Video Layer      */
+    tdispErr = TDAL_DISP_LayerEnable(eTDAL_DISP_LAYER_VIDEO_ID_0);
+    TestManager_AssertEqual(tdispErr, eTDAL_DISP_NO_ERROR, "disp layer video enable");
+}
+
+LOCAL void VideoUserDataCallback(tTDAL_AV_Decoder decoder, tTDAL_AV_Event event, const void *pEventData)
+{
+}
+
+LOCAL void VideoAspectRatioMpegCallback(tTDAL_AV_Decoder decoder, tTDAL_AV_Event event, const void *pEventData)
+{
+}
+
+LOCAL void VideoResolutionCallback(tTDAL_AV_Decoder decoder, tTDAL_AV_Event event, const void *pEventData)
+{
+}
+
+LOCAL void ScrambledStatusCallback(tTDAL_AV_Decoder decoder, tTDAL_AV_Event event, const void *pEventData)
+{
+}
+
+LOCAL void MediaAudioCallback(tTDAL_AV_Decoder decoder, tTDAL_AV_Event event, const void *pEventData)
+{
+    switch(event)
+    {
+        case eTDAL_AV_EVENT_AUDIO_SAMPLE_PLAYED:
+        case eTDAL_AV_EVENT_AUDIO_SAMPLE_STOPPED:
+            break;
+
+        default:
+            mTBOX_PRINT((kTBOX_LF, "AudioCallback: unknown event (%d)\n", event));
+            break;
+    }
+    return;
+}
+
+LOCAL void VideoEventsRegister(void)
+{
+    tTDAL_AV_Error tavErr;
+
+    /* register the video callback needed for the picture start */
+    tavErr = TDAL_AV_EventSubscribe(eTDAL_AV_DECODER_VIDEO_1, eTDAL_AV_EVENT_VIDEO_PICTURE_PLAYED, MediaVideoCallback);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av register video picture played");
+
+    /* register the video callback needed for the picture stop */
+    tavErr = TDAL_AV_EventSubscribe(eTDAL_AV_DECODER_VIDEO_1, eTDAL_AV_EVENT_VIDEO_PICTURE_STOPPED, MediaVideoCallback);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av register video picture stopped");
+
+    /* register the video callback needed for the display */
+    tavErr = TDAL_AV_EventSubscribe(eTDAL_AV_DECODER_VIDEO_1, eTDAL_AV_EVENT_VIDEO_NEED_DISPLAY, VideoNeedDisplayCallback);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av register video need display");
+
+    /* register the video user data */
+    tavErr = TDAL_AV_EventSubscribe(eTDAL_AV_DECODER_VIDEO_1, eTDAL_AV_EVENT_VIDEO_USER_DATA, VideoUserDataCallback);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av register video user data");
+
+    /* register the video aspect ratio change */
+    tavErr = TDAL_AV_EventSubscribe(eTDAL_AV_DECODER_VIDEO_1, eTDAL_AV_EVENT_VIDEO_ASPECT_RATIO_CHANGE, VideoAspectRatioMpegCallback);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av register video ar change");
+
+    /* register the video resolution change */
+    tavErr = TDAL_AV_EventSubscribe(eTDAL_AV_DECODER_VIDEO_1, eTDAL_AV_EVENT_VIDEO_RESOLUTION_CHANGE, VideoResolutionCallback);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av register video ar change");
+
+    /* register the video user data */
+    tavErr = TDAL_AV_EventSubscribe(eTDAL_AV_DECODER_VIDEO_1, eTDAL_AV_EVENT_VIDEO_TRP_SCRAMBLED_CHANGE, ScrambledStatusCallback);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av register video scramble change");
+}
+
+LOCAL void AudioEventsRegister(void)
+{
+    tTDAL_AV_Error tavErr;
+
+    /* register the audio callback needed for the sample start */
+    tavErr = TDAL_AV_EventSubscribe(eTDAL_AV_DECODER_AUDIO_1, eTDAL_AV_EVENT_AUDIO_SAMPLE_PLAYED, MediaAudioCallback);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av register audio sample played");
+
+                /* register the audio callback needed for the sample stop */
+    tavErr = TDAL_AV_EventSubscribe(eTDAL_AV_DECODER_AUDIO_1, eTDAL_AV_EVENT_AUDIO_SAMPLE_STOPPED, MediaAudioCallback);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av register audio sample stopped");
+}
+
+LOCAL void VideoEventsUnregister(void)
+{
+    tTDAL_AV_Error tavErr;
+
+    /* unregister the video callback needed for the picture start */
+    tavErr = TDAL_AV_EventUnsubscribe(eTDAL_AV_DECODER_VIDEO_1, eTDAL_AV_EVENT_VIDEO_PICTURE_PLAYED);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av unregister video picture played");
+
+    /* unregister the video callback needed for the picture stop */
+    tavErr = TDAL_AV_EventUnsubscribe(eTDAL_AV_DECODER_VIDEO_1, eTDAL_AV_EVENT_VIDEO_PICTURE_STOPPED);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av unregister video picture stopped");
+
+    /* unregister the video callback needed for the display */
+    tavErr = TDAL_AV_EventUnsubscribe(eTDAL_AV_DECODER_VIDEO_1, eTDAL_AV_EVENT_VIDEO_NEED_DISPLAY);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av unregister video need display");
+
+    /* unregister the video user data */
+    tavErr = TDAL_AV_EventUnsubscribe(eTDAL_AV_DECODER_VIDEO_1, eTDAL_AV_EVENT_VIDEO_USER_DATA);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av unregister video user data");
+
+    /* unregister the video aspect ratio change */
+    tavErr = TDAL_AV_EventUnsubscribe(eTDAL_AV_DECODER_VIDEO_1, eTDAL_AV_EVENT_VIDEO_ASPECT_RATIO_CHANGE);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av unregister video ar change");
+
+    /* unregister the video resolution change */
+    tavErr = TDAL_AV_EventUnsubscribe(eTDAL_AV_DECODER_VIDEO_1, eTDAL_AV_EVENT_VIDEO_RESOLUTION_CHANGE);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av unregister video ar change");
+
+    /* unregister the video user data */
+    tavErr = TDAL_AV_EventUnsubscribe(eTDAL_AV_DECODER_VIDEO_1, eTDAL_AV_EVENT_VIDEO_TRP_SCRAMBLED_CHANGE);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av unregister video scramble change");
+}
+
+LOCAL void AudioEventsUnregister(void)
+{
+    tTDAL_AV_Error tavErr;
+
+    /* unregister the audio callback needed for the sample start */
+    tavErr = TDAL_AV_EventUnsubscribe(eTDAL_AV_DECODER_AUDIO_1, eTDAL_AV_EVENT_AUDIO_SAMPLE_PLAYED);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av unregister audio sample played");
+
+    /* unregister the audio callback needed for the sample stop */
+    tavErr = TDAL_AV_EventUnsubscribe(eTDAL_AV_DECODER_AUDIO_1, eTDAL_AV_EVENT_AUDIO_SAMPLE_STOPPED);
+    TestManager_AssertEqual(tavErr, eTDAL_AV_NO_ERROR, "av unregister audio sample stopped");
+}
 
 
 void    TestSce_Output_DENC_Capability( void )
@@ -1006,6 +1152,7 @@ void    TestSce_Output_Audio_Analogic_Capability( void )
 
 		    TestHelper_Configure_TDAL_TSROUTE(TEST_HELPER_TSROUTE_TUNER(gTDAL_output_TestFeIdx),
 		                                      TEST_HELPER_TSROUTE_DEMUX(gTDAL_output_TestDmxIdx));
+            VideoEventsRegister();
 
 		    TestHelper_DMDTune(gTDAL_AV_TestFeIdx);
 		    TestHelper_Configure_TDAL_DMX(gTDAL_output_TestDmxIdx);
@@ -1025,6 +1172,7 @@ void    TestSce_Output_Audio_Analogic_Capability( void )
 									eTDAL_OUTPUT_NO_ERROR,
 									"output audio enable" );
 
+            AudioEventsRegister();
 
 		    StreamType.videoType= eTDAL_AV_VIDEO_TYPE_MPEG2;
 
@@ -1138,6 +1286,9 @@ void    TestSce_Output_Audio_Analogic_Capability( void )
 	    TestManager_AssertEqual(TDAL_DISP_Term(),
 								eTDAL_DISP_NO_ERROR,
 								"disp terminate" );
+
+    VideoEventsUnregister();
+    AudioEventsUnregister();
 
 }
 

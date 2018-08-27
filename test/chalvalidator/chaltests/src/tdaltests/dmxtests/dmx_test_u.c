@@ -744,7 +744,7 @@ void DMX_TestUnitary_SetFilterBadParam( void )
         TDAL_DMX_Set_Filter( channelId,
                              filterId,
                              filter_track,
-                             9,
+                             17,
                              &HardValue[0],
                              &HardMask[0],
                              &HardMode[0],eTDAL_DMX_CRC_IGNORE ),

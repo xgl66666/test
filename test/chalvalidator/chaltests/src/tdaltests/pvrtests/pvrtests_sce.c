@@ -363,8 +363,8 @@ LOCAL void  PVRRecordingFile(bool withVideo, const char * fileName, int nChannel
     compProgInfo.stPVRBasicProgInfo.u32VideoPid   = gChannelList[gChannel].mVideoPID;
     compProgInfo.stPVRBasicProgInfo.u32PCRPid     = gChannelList[gChannel].mPCRPID;
     compProgInfo.stPVRBasicProgInfo.u32PmtPid     = gChannelList[gChannel].mPMTPID;
-    compProgInfo.stPVRBasicProgInfo.u32ACodec     = 1;
-    compProgInfo.stPVRBasicProgInfo.u32VCodec     = 0;
+    compProgInfo.stPVRBasicProgInfo.u32ACodec     = gChannelList[gChannel].audioType;
+    compProgInfo.stPVRBasicProgInfo.u32VCodec     = gChannelList[gChannel].videoType;
     compProgInfo.stPVRBasicProgInfo.u32LCN        = gChannelList[gChannel].mVideoPID; /* Should be checked - for now it is not important */
     compProgInfo.stPVRBasicProgInfo.fileName      = FileName;
     compProgInfo.stPVRBasicProgInfo.nAudioInfoCount   = 2;
@@ -483,7 +483,7 @@ LOCAL void  PVRPlaybackFile(bool otherAudioTrack, const char * fileName, int nCh
     basicProgInfo.u32PCRPid         = complexProgInfo.stPVRBasicProgInfo.u32PCRPid;
     basicProgInfo.u32PmtPid         = complexProgInfo.stPVRBasicProgInfo.u32PmtPid;
     basicProgInfo.u32ACodec         = complexProgInfo.stPVRBasicProgInfo.pAudioInfo[((otherAudioTrack) ? nChannel : 0)].u8AudioType;
-    basicProgInfo.u32VCodec         = 0;
+    basicProgInfo.u32VCodec         = complexProgInfo.stPVRBasicProgInfo.u32VCodec;
     basicProgInfo.u32LCN            = gChannelList[gChannel].mVideoPID; /* Should be checked - for now it is not important */
     basicProgInfo.fileName          = FileName;
     basicProgInfo.nAudioInfoCount   = 1;
@@ -541,6 +541,7 @@ LOCAL void  PVRTimeshiftRecording(bool withVideo, const char * fileName, int nCh
     tTDAL_DISP_Error tdispErr;
     tTDAL_OUTPUT_Error toutErr;
     tTDAL_PVR_ComplexProgInfo compProgInfo;
+    tTDAL_PVR_AudioInfo audioInfo[2] = {{"ven", 1, 132, 1}, {"eng", 1, 137, 1}};
 
     /*      TDAL INIT for PVR       */
     if (!bPVRCommonInitialized)
@@ -554,10 +555,14 @@ LOCAL void  PVRTimeshiftRecording(bool withVideo, const char * fileName, int nCh
     compProgInfo.stPVRBasicProgInfo.u32VideoPid   = gChannelList[gChannel].mVideoPID;
     compProgInfo.stPVRBasicProgInfo.u32PCRPid     = gChannelList[gChannel].mPCRPID;
     compProgInfo.stPVRBasicProgInfo.u32PmtPid     = gChannelList[gChannel].mPMTPID;
-    compProgInfo.stPVRBasicProgInfo.u32ACodec     = 1;
-    compProgInfo.stPVRBasicProgInfo.u32VCodec     = 0;
+    compProgInfo.stPVRBasicProgInfo.u32ACodec     = gChannelList[gChannel].audioType;
+    compProgInfo.stPVRBasicProgInfo.u32VCodec     = gChannelList[gChannel].videoType;
     compProgInfo.stPVRBasicProgInfo.u32LCN        = gChannelList[gChannel].mVideoPID; /* Should be checked - for now it is not important */
     compProgInfo.stPVRBasicProgInfo.fileName      = FileName;
+    //initialize for fixed buffer overflow in TDAL_PVRi_SetProgInfo
+    compProgInfo.stPVRBasicProgInfo.nAudioInfoCount   = 2;
+    memcpy(compProgInfo.stPVRBasicProgInfo.pAudioInfo, audioInfo, sizeof(tTDAL_PVR_AudioInfo)*2);
+    compProgInfo.stPVRBasicProgInfo.nSubsInfoCount    = 0;
 
     if (deviceMounted == false)
     {
