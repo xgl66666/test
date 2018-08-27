@@ -105,7 +105,7 @@
 #include "MsCommon.h"
 #include "string.h"
 
-	#define __IR_DEN_RCMM__	 // byKOR, kaon
+//#define __IR_DEN_RCMM__	 // byKOR, kaon
 
 #if defined(__IR_DEN_RCMM__)
 	#include "IR_RCMM.h"
@@ -191,6 +191,16 @@ static MS_U32 _u32IRCount;
 #endif
 #endif
 
+#if (IR_MODE_SEL==IR_TYPE_FULLDECODE_MODE)
+static MS_U32  _u32_1stDelayTimeMs;
+static MS_U32  _u32_2ndDelayTimeMs;
+static IRKeyProperty _ePrevKeyProperty;
+static MS_U32   _u8PrevKeyCode;
+static unsigned long  _ulPrevKeyTime;
+static unsigned long  _ulPrevKeyRepeatTime;
+static BOOL  _bCheckQuickRepeat;
+static unsigned long  _ulLastKeyPresentTime;
+#endif
 //-------------------------------------------------------------------------------------------------
 //  Debug Functions
 //-------------------------------------------------------------------------------------------------
@@ -412,12 +422,12 @@ done:
     _u32IRCount = 0;
     return bRet;
 }
-#else
-static BOOL _MDrv_IR_GetKey(U8 *pu8Key, U8 *pu8System, U8 *pu8Flag)
+#else  //IR_TYPE_FULLDECODE_MODE
+static BOOL _MDrv_IR_GetKey(U32 *pu32IRkey, /*MS_U8 *pu8Key, MS_U8 *pu8System,*/ U8 *pu8Flag)
 {
     unsigned long i;
     BOOL bRet=FALSE;
-    *pu8System = 0;
+    //*pu8System = 0;
 
     if(REG(REG_IR_SHOT_CNT_H_FIFO_STATUS) & IR_FIFO_EMPTY)
     {
@@ -428,10 +438,10 @@ static BOOL _MDrv_IR_GetKey(U8 *pu8Key, U8 *pu8System, U8 *pu8Flag)
 
     if(((MsOS_GetSystemTime()- _ulPrevKeyTime) >= IR_TIMEOUT_CYC/1000))
     {
-        *pu8Key = REG(REG_IR_CKDIV_NUM_KEY_DATA) >> 8;
+        *pu32IRkey = REG(REG_IR_CKDIV_NUM_KEY_DATA) >> 8;
         REG(REG_IR_FIFO_RD_PULSE) |= 0x0001; //read
         for(i=0;i<5;i++);   // Delay
-        _u8PrevKeyCode = *pu8Key;
+        _u8PrevKeyCode = *pu32IRkey;
         *pu8Flag = 0;
         _ulPrevKeyTime = MsOS_GetSystemTime();
         _ePrevKeyProperty = E_IR_KEY_PROPERTY_INIT;
@@ -448,19 +458,19 @@ static BOOL _MDrv_IR_GetKey(U8 *pu8Key, U8 *pu8System, U8 *pu8Flag)
             _MDrv_IR_ClearFIFO();
             return FALSE;
         }
-        *pu8Key = REG(REG_IR_CKDIV_NUM_KEY_DATA) >> 8;
-        REG(REG_IR_FIFO_RD_PULSE) |= 0x0001; //read
+        *pu32IRkey = REG(REG_IR_CKDIV_NUM_KEY_DATA) >> 8;
         for(i=0;i<5;i++);   // Delay
         *pu8Flag = (REG(REG_IR_SHOT_CNT_H_FIFO_STATUS) & IR_RPT_FLAG)? 1 : 0;
+        REG(REG_IR_FIFO_RD_PULSE) |= 0x0001; //read
         bRet = FALSE;
         _ulPrevKeyTime = MsOS_GetSystemTime();
 
-        if ( (*pu8Flag == 1) && ( *pu8Key == _u8PrevKeyCode ))
+        if ( (*pu8Flag == 1) && ( *pu32IRkey == _u8PrevKeyCode ))
         {
             i = MsOS_GetSystemTime();
             if( _ePrevKeyProperty == E_IR_KEY_PROPERTY_INIT)
             {
-                _u8PrevKeyCode     = *pu8Key;
+                _u8PrevKeyCode     = *pu32IRkey;
                 _ulPrevKeyRepeatTime    = i;
                 _ePrevKeyProperty  = E_IR_KEY_PROPERTY_1st;
             }
@@ -815,6 +825,24 @@ void MDrv_IR_HK_Init(void)
     _u32IRCount = 0;
 #endif
 
+    if(IR_MODE_SEL == IR_TYPE_RAWDATA_MODE)
+    {
+            REG(REG_IR_CTRL) = IR_TIMEOUT_CHK_EN |
+                           IR_INV           |
+                           IR_RPCODE_EN     |
+                           IR_LG01H_CHK_EN  |
+                           IR_LDCCHK_EN     |
+                           IR_EN;
+    }
+    else if(IR_MODE_SEL == IR_TYPE_HWRC_MODE)
+    {
+     REG(REG_IR_CTRL) = IR_INV;
+#if (defined(IR_TYPE_MSTAR_HWRC5) && IR_TYPE_SEL==IR_TYPE_MSTAR_HWRC5)
+     REG(REG_IR_RC_CTRL) = IR_RC_EN | IR_RC5EXT_EN;
+#endif
+    }
+    else
+    {
     REG(REG_IR_CTRL) =  IR_TIMEOUT_CHK_EN |
                         IR_INV            |
                         IR_RPCODE_EN      |
@@ -823,12 +851,17 @@ void MDrv_IR_HK_Init(void)
                         IR_CCODE_CHK_EN   |
                         IR_LDCCHK_EN      |
                         IR_EN;
+     }
 
     _MDrv_IR_Timing();
 
+#if ((IR_MODE_SEL == IR_TYPE_RAWDATA_MODE) ||(IR_MODE_SEL==IR_TYPE_FULLDECODE_MODE))
+    {
     REG(REG_IR_CCODE) = ((MS_U16)IR_HEADER_CODE1<<8) | IR_HEADER_CODE0;
-    REG(REG_IR_SEPR_BIT_FIFO_CTRL) = 0xF00;
     REG(REG_IR_GLHRM_NUM) = 0x804;
+    }
+#endif
+    REG(REG_IR_SEPR_BIT_FIFO_CTRL) = 0xF00;
 
 #if defined(__IR_DEN_RCMM__)
 
@@ -838,20 +871,42 @@ void MDrv_IR_HK_Init(void)
 #elif (IR_MODE_SEL == IR_TYPE_SWDECODE_MODE)
     REG(REG_IR_GLHRM_NUM) |= (0x1 <<12);
     REG(REG_IR_SEPR_BIT_FIFO_CTRL) |= 0x2 <<12;
-#else
+#elif (IR_MODE_SEL==IR_TYPE_FULLDECODE_MODE)
     REG(REG_IR_GLHRM_NUM) |= (0x3 <<12);
-#endif
     REG(REG_IR_FIFO_RD_PULSE) |= 0x0020; //wakeup key sel
+#elif (IR_MODE_SEL==IR_TYPE_RAWDATA_MODE)
+        REG(REG_IR_GLHRM_NUM) |= (0x2 << 12);
+        REG(REG_IR_FIFO_RD_PULSE) |= 0x0020; //wakeup key sel
+#elif (IR_MODE_SEL == IR_TYPE_HWRC_MODE)
+    //wakeup key sel
+    REG(REG_IR_RC_COMP_KEY1_KEY2) = 0xffff;
+    REG(REG_IR_RC_CMP_RCKEY) = IR_RC_POWER_WAKEUP_EN + IR_RC_POWER_WAKEUP_KEY;
+#else
+    REG(REG_IR_GLHRM_NUM) |= (0x1 <<12);//SW mode
+	#ifdef IR_INT_NP_EDGE_TRIG	//for N/P edge trigger
+	    REG(REG_IR_SEPR_BIT_FIFO_CTRL) |= 0x3 <<12;
+    #else
+	    REG(REG_IR_SEPR_BIT_FIFO_CTRL) |= 0x2 <<12;
+	#endif
+#endif
 
+#if((IR_MODE_SEL==IR_TYPE_RAWDATA_MODE) || (IR_MODE_SEL==IR_TYPE_FULLDECODE_MODE) || (IR_MODE_SEL == IR_TYPE_HWRC_MODE))
     _MDrv_IR_ClearFIFO();
+#endif
 
-    _u32_1stDelayTimeMs = 100;
-    _u32_2ndDelayTimeMs = 100;
+#if (IR_MODE_SEL==IR_TYPE_FULLDECODE_MODE)
+    _u32_1stDelayTimeMs = 0;
+    _u32_2ndDelayTimeMs = 0;
     _ePrevKeyProperty = E_IR_KEY_PROPERTY_INIT;
 
     memset(&_KeyReceived, 0 , sizeof(_KeyReceived));
+#endif
 
+#if (IR_MODE_SEL==IR_TYPE_HWRC_MODE)
+    iResult = MsOS_AttachInterrupt(E_INT_FIQ_IR_INT_RC, _MDrv_IR_ISR);
+#else
     iResult = MsOS_AttachInterrupt(E_INT_FIQ_IR, _MDrv_IR_ISR);
+#endif
     if (iResult)
     {
         IR_PRINT("IR IRQ registartion OK\n");
@@ -861,7 +916,11 @@ void MDrv_IR_HK_Init(void)
         IR_PRINT("IR IRQ registartion ERROR\n");
     }
 
+#if (IR_MODE_SEL==IR_TYPE_HWRC_MODE)
+    iResult = MsOS_EnableInterrupt(E_INT_FIQ_IR_INT_RC);
+#else
     iResult = MsOS_EnableInterrupt(E_INT_FIQ_IR);
+#endif
     if (iResult)
     {
         IR_PRINT("IR IRQ registartion OK\n");
@@ -872,13 +931,11 @@ void MDrv_IR_HK_Init(void)
     }
 
 
-    #if (defined(CONFIG_MSTAR_TITANIA)||defined(CONFIG_MSTAR_TITANIA2))
-
-    #else
+    //#if (defined(CONFIG_MSTAR_TITANIA)||defined(CONFIG_MSTAR_TITANIA2))
+    //#else
     // unmask IR IRQ on PM
-    REG(REG_IRQ_MASK_IR) &= IRQ_UNMASK_IR;
-    #endif
-    //enable_irq(E_FIQ_IR);
+    //REG(REG_IRQ_MASK_IR) &= IRQ_UNMASK_IR;
+    //#endif
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -900,7 +957,6 @@ IR_Result MDrv_IR_HK_Enable(MS_BOOL bEnable)
         return E_IR_FAIL;
     }
 }
-
 
 
 

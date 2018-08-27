@@ -338,7 +338,11 @@ GLOBAL   tTDAL_OUTPUT_Error   TDAL_OUTPUT_AudioAnaSpeakerAdjustSet(tTDAL_OUTPUT_
 GLOBAL  tTDAL_OUTPUT_Error TDAL_OUTPUTi_AudioAnaEnable(bool enable)
 {
     MS_BOOL mute;
+    #if 0 // note : it will cause audio mute on first called TDAL_OUTPUTi_AudioAnaEnable
     static MS_BOOL FirstBoot = TRUE;
+    #else
+    static MS_BOOL FirstBoot = FALSE;
+    #endif
 
     mTBOX_FCT_ENTER("TDAL_OUTPUTi_AudioAnaEnable");
 

@@ -591,7 +591,7 @@ tTDAL_AV_Error   p_TDAL_AV_Video_Start( tTDAL_AV_Decoder decoder , tTDAL_AV_Stre
             }
 #endif
     
-    #if FAST_ZAPPER_ENABLE
+    #if (defined(FAST_ZAPPER_ENABLE) && (FAST_ZAPPER_ENABLE==1))
             MApi_VDEC_SetControl(E_VDEC_EX_USER_CMD_AVSYNC_REPEAT_TH, 0xFF);
             MApi_VDEC_SetControl(E_VDEC_EX_USER_CMD_SHOW_FIRST_FRAME_DIRECT, 1);
     #endif
@@ -755,7 +755,7 @@ tTDAL_AV_Error   p_TDAL_AV_Video_Stop( tTDAL_AV_Decoder decoder , bool bIsIntern
     if (!_bVideo_PVRPlay)
     {
 #ifdef PACKAGE_PVR
-        TDAL_PVRi_BackGround_Record_Stop();
+        //TDAL_PVRi_BackGround_Record_Stop();
 #endif
     }
 	mTBOX_RETURN(error);
@@ -1118,7 +1118,7 @@ void p_TDAL_AV_Video_UseEvent(tTDAL_AV_Decoder   decoder, MS_U32 event)
                     if (!_bVideo_PVRPlay)
                     {
                     #ifdef PACKAGE_PVR
-                        TDAL_PVRi_BackGround_Record_Start();
+                        //TDAL_PVRi_BackGround_Record_Start();
                     #endif
                     }
                     TDAL_UnlockMutex(TDAL_AVi_Mutex);

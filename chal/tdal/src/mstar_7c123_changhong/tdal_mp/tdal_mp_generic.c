@@ -159,8 +159,18 @@ LOCAL MS_BOOL _TDAL_MPm_MM_MemInit();
 LOCAL MS_S32     TDAL_MPi_MemPart = -1;
 LOCAL uint32_t   TDAL_MPi_AllocCount = 0;
 
-IMPORT void Get_NonCachePoolID(MS_S32 *s32NonCachePoolID);
-IMPORT void Get_CachePoolID(MS_S32 *s32CachePoolID);
+void Get_NonCachePoolID(MS_S32 *s32NonCachePoolID)
+{
+    extern MS_S32 gs32NonCachedPoolID;
+    *s32NonCachePoolID = gs32NonCachedPoolID;
+}
+
+void Get_CachePoolID(MS_S32 *s32CachePoolID)
+{
+    extern MS_S32 gs32CachedPoolID;
+    *s32CachePoolID = gs32CachedPoolID;
+}
+
 
 static void _PT_SYS_ReadDB(ST_MMSDK_DIVXDRM_INFO *pstDRMInfo)
 {

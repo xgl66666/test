@@ -1004,6 +1004,7 @@ tTDAL_AV_Error   p_TDAL_AV_Audio_Term( void )
     TDAL_AVi_AudioMutex = NULL;
     
     TDAL_AVi_AudioMonitorStop = TRUE;
+    _bAudioInit = FALSE;
     return eTDAL_AV_NO_ERROR;
 }
 

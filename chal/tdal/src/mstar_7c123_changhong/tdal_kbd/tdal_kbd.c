@@ -29,7 +29,7 @@
 #include "drvMMIO.h"
 #include "mdrv_ir.h"
 #include "MsOS.h"
-#if 1 // byKOR, kaon
+#if 0 // byKOR, kaon
  #include "IR_RCMM.h"
 #else
  #include "IR_MSTAR_DTV.h"
@@ -39,7 +39,7 @@
 /********************************************************/
 #define TDAL_KBD_TASK_STACK         (2*4096)
 
-#define HELD_DOWN_INTERVAL (200)
+#define HELD_DOWN_INTERVAL (300)
 
 #define KEY_RELEASED_TIMEOUT ((IR_TIMEOUT_CYC/1000)+20)
 
@@ -48,7 +48,7 @@
 #define KEY_EXIT            0x16
 #endif
 
-#ifdef KBD_DEN_SKYWORTH
+#ifdef KBD_MSTAR
 #define KEY_EXIT            0x1b
 #endif
 
@@ -109,7 +109,7 @@ LOCAL bool gAutoZap = FALSE;
 //LOCAL unsigned   short   NbKeys=64;
 //LOCAL tTDAL_KBD_KeyCode   KeyCode[64];
 
-#ifdef KBD_DEN_SKYWORTH
+#ifdef KBD_MSTAR
 #define KBD_MASK 0x7F80
 #endif
 

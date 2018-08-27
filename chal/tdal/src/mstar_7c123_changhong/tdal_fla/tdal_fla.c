@@ -485,7 +485,8 @@ tTDAL_FLA_ErrorCode   TDAL_FLA_Erase   (   uint32_t   Address, uint32_t   Number
 	}
 
 	/*   check   NumberToErase   parameter   */
-	#if 0//skip here for supporting erase bytes instead of blocks
+    //#if 0//skip here for supporting erase bytes instead of blocks
+    #if 1 // for pass TestFlashEraseBadBlock
 	blockSize = TDAL_FLA_GetBlockSize(blockNumber);
 	if   (blockSize != NumberToErase)
 	{

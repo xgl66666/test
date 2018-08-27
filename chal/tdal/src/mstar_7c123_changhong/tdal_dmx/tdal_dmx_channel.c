@@ -265,7 +265,7 @@ void TDAL_DMXi_SectionTask(void * argv)
 						/*   Unlock   Protection   Table   Semaphore   */
 						/*-----------------------------------*/
 						mUnLockAccess(TDAL_DMXi_pSectionTableAccess);
-						mTBOX_ASSERT(TDAL_DMXi_pstChannel[channelId].Callback != NULL);
+						//mTBOX_ASSERT(TDAL_DMXi_pstChannel[channelId].Callback != NULL);
 						TDAL_DMXi_pstChannel[channelId].Callback(channelId,
 								filterId,
 								TDAL_DMXi_pstFilter[filterId].Tag,

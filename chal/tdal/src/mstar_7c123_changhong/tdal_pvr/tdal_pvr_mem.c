@@ -50,7 +50,7 @@ mTBOX_SET_MODULE(eTDAL_PVR_EM);
 /********************************************************
    *   Local   File   Variables   (LOCAL)            *
 ********************************************************/
-#define ENABLE_STATICMEM_PVR
+//#define ENABLE_STATICMEM_PVR
 #if(defined(ENABLE_STATICMEM_PVR) && (MEMORY_MAP == MMAP_128MB))
 #define PVR_DOWNLOAD_LEN                                0x0000360000*4         /* 3.375 M*/
 #define PVR_UPLOAD_LEN                                  0x0000120000         /* 1.125 M*/

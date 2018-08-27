@@ -1176,7 +1176,7 @@ tTDAL_DMX_Error   TDAL_DMXi_Control_Filter(   tTDAL_DMX_FilterId   FilterId,
 	                      TDAL_DMXi_pstFilter[FilterId].FilterHandle,
 	                      MSErrorCode));
 	            }
-
+#if 0 //unneccessary do MApi_DMX_AVFifo_Reset at here, fixed test case TestVideoAlone
 	            if (errorCode == kTDAL_DMX_NO_ERROR)
 	            {
 
@@ -1188,7 +1188,7 @@ tTDAL_DMX_Error   TDAL_DMXi_Control_Filter(   tTDAL_DMX_FilterId   FilterId,
 	                    MApi_DMX_AVFifo_Reset(filterType, FALSE);
 	                }
 	            }
-
+#endif
 			}
 			else
 			{

@@ -17,13 +17,16 @@
  ****************************************************************************/
 /*   Generic   Headers   */
 
+//#define CUSTOMIZE_LED 1
+
 #include "MsCommon.h"
 
 #include "Board.h"
 #include "drvFrontPnl.h"
 #include "drvSAR.h"
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
 #include "drvGPIO.h"
-
+#endif
 #include "crules.h"
 #include "tbox.h"
 #include "tdal_common.h"
@@ -42,10 +45,10 @@
 #define TDAL_FP_BLINK_INTERVAL 100
 #define TDAL_FP_KBD_QUERY      200 // same as KEYPAD_QUERY_TIME_MS in drvGA1204A.c
 
-//KAON_BR_LED
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
 #define LED_POWER_RED       BALL_E16
 #define LED_POWER_GREEN       BALL_D12
-
+#endif
 /****************************************************************************
  *  MACROS                                                                  *
  ****************************************************************************/
@@ -68,8 +71,9 @@ typedef enum
 /****************************************************************************
  *  GLOBAL VARIABLES (GLOBAL/IMPORT)                                        *
  ****************************************************************************/
-tTDAL_FP_LED_STATUS LED_STATUS = FP_LED_GREEN_ON;//KAON_BR_LED
-
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
+tTDAL_FP_LED_STATUS LED_STATUS = FP_LED_GREEN_ON;
+#endif
 /****************************************************************************
  *  LOCAL MODULE VARIABLES (MODULE/IMPORT)                                  *
  ****************************************************************************/
@@ -84,6 +88,10 @@ tTDAL_FP_LED_STATUS LED_STATUS = FP_LED_GREEN_ON;//KAON_BR_LED
 mTBOX_SET_MODULE(eTDAL_FP);
 
 LOCAL   bool                     TDAL_FP_Initialized = false;
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
+#else
+LOCAL   bool                     TDAL_FP_Terminated = false;
+#endif
 LOCAL uint8_t                 gTDAL_fpNbClientRegistered = 0;
 LOCAL tTDAL_FP_CallbackFct    gTDAL_fpClientFctArray[kTDAL_FP_NB_MAX_CLIENTS];
 
@@ -96,7 +104,7 @@ LOCAL MS_U8  tdalFpStack[16*1024];
  *  FUNCTIONS DEFINITIONS (LOCAL/GLOBAL)                                    *
  ****************************************************************************/
 
-#if 1//KAON_BR_LED
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
 void TP_FPi_LEDGreenOn(void)
 {
 	mdrv_gpio_set_low(LED_POWER_GREEN);
@@ -131,7 +139,9 @@ void TP_FPi_LEDRedOff(void)
    ------------------------------------------------------------------------- */
 LOCAL void TP_FPi_LedCommanOn(void)
 {
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
 	TDAL_FP_LedGreenOn();
+#endif
 }
 
 /* ----------------------------------------------------------------------------
@@ -145,8 +155,10 @@ LOCAL void TP_FPi_LedCommanOn(void)
    ------------------------------------------------------------------------- */
 LOCAL void TP_FPi_LedCommanOff(void)
 {
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
 	TDAL_FP_LedREDOff();
 	TDAL_FP_LedGreenOff();
+#endif
 }
 
 /* ----------------------------------------------------------------------------
@@ -160,8 +172,11 @@ LOCAL void TP_FPi_LedCommanOff(void)
    ------------------------------------------------------------------------- */
 LOCAL void TP_FPi_LedTunerLock(void)
 {
-	//mdrv_gpio_set_high(IO_NUM_LED_GREEN_LOCK);
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
 	TDAL_FP_LedGreenOn();
+#else
+	mdrv_gpio_set_high(IO_NUM_LED_GREEN_LOCK);
+#endif
 }
 
 /* ----------------------------------------------------------------------------
@@ -175,8 +190,11 @@ LOCAL void TP_FPi_LedTunerLock(void)
    ------------------------------------------------------------------------- */
 LOCAL void TP_FPi_LedTunerUnLock(void)
 {
-	//mdrv_gpio_set_low(IO_NUM_LED_GREEN_LOCK);
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
 	TDAL_FP_LedGreenOff();
+#else
+	mdrv_gpio_set_low(IO_NUM_LED_GREEN_LOCK);
+#endif
 }
 
 /* ----------------------------------------------------------------------------
@@ -190,7 +208,10 @@ LOCAL void TP_FPi_LedTunerUnLock(void)
    ------------------------------------------------------------------------- */
 LOCAL void TP_FPi_LedMailOn(void)
 {
-	//mdrv_gpio_set_high(IO_NUM_LED_YELLOW_STANDBY);
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
+#else
+	mdrv_gpio_set_high(IO_NUM_LED_YELLOW_STANDBY);
+#endif
 }
 
 /* ----------------------------------------------------------------------------
@@ -204,7 +225,10 @@ LOCAL void TP_FPi_LedMailOn(void)
    ------------------------------------------------------------------------- */
 LOCAL void TP_FPi_LedMailOff(void)
 {
-	//mdrv_gpio_set_low(IO_NUM_LED_YELLOW_STANDBY);
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
+#else
+	mdrv_gpio_set_low(IO_NUM_LED_YELLOW_STANDBY);
+#endif
 }
 
 /* ----------------------------------------------------------------------------
@@ -218,9 +242,12 @@ LOCAL void TP_FPi_LedMailOff(void)
    ------------------------------------------------------------------------- */
 LOCAL void TP_FPi_LedStandbyOn(void)
 {
-	//mdrv_gpio_set_high(IO_NUM_LED_RED_POWER);
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
 	TDAL_FP_LedREDOn();
 	TDAL_FP_LedGreenOff();
+#else
+	mdrv_gpio_set_high(IO_NUM_LED_RED_POWER);
+#endif
 }
 
 /* ----------------------------------------------------------------------------
@@ -234,9 +261,12 @@ LOCAL void TP_FPi_LedStandbyOn(void)
    ------------------------------------------------------------------------- */
 LOCAL void TP_FPi_LedStandbyOff(void)
 {
-	//mdrv_gpio_set_low(IO_NUM_LED_RED_POWER);
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
 	TDAL_FP_LedREDOff();
 	TDAL_FP_LedGreenOff();
+#else
+	mdrv_gpio_set_low(IO_NUM_LED_RED_POWER);
+#endif
 }
 #endif
 static MS_U32 TDAL_FPi_SmallerTime(MS_U32 time1, MS_U32 time2)
@@ -272,7 +302,7 @@ static MS_U32 TDAL_FPi_CalculateTimeUntilEvent(MS_U32 nextEventTime)
 
 static void TDAL_FPi_Task0(void * p)
 {
-#if 1//gpio_map_porting		
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)	
     TDAL_FPi_LedAction       ledAction;
     bool                     TDAL_FPi_RedOn = false;
     bool                     blinkRequested = false;
@@ -392,8 +422,11 @@ static void TDAL_FPi_Task0(void * p)
     MDrv_SAR_SetCallback(NULL);
 
     MDrv_SAR_SetLevel(E_SAR_33V);
-
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
     while (1)
+#else
+    while (!TDAL_FP_Terminated)
+#endif
     {
 		MDrv_SAR_Kpd_GetKeyCode(&u8Key, &u8Repeat);
 		mTBOX_TRACE((kTBOX_NIV_CRITICAL, "data=0x%x,u8Key=0x%x,u8Repeat=%d\n",MDrv_SAR_Adc_GetValue(SAR_CHANNEL_1),u8Key,u8Repeat));
@@ -415,7 +448,8 @@ static void TDAL_FPi_Task0(void * p)
 	#endif
 }
 
-#if 0//gpio_map_porting		
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
+#else
 static void TDAL_FPi_Task(void * p)
 {
     TDAL_FPi_LedAction       ledAction;
@@ -580,7 +614,7 @@ tTDAL_FP_ErrorCode TDAL_FP_Init()
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "Creating task failed\n"));
     }
 	mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_CreateTask TDAL_FPi_Task success\n"));
-	#if 1//KAON_BR_LED
+	#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
 	TDAL_FP_SetLedSatus(FP_LED_GREEN_ON);
 	err = eTDAL_FP_NO_ERROR;
 	#else
@@ -615,6 +649,7 @@ tTDAL_FP_ErrorCode TDAL_FP_Terminate(void)
 
     err = TDAL_FP_key_Terminate();
 
+#if defined (CUSTOMIZE_LED) && (CUSTOMIZE_LED == 1)
     do
     {
         ledAction = TDAL_FPi_LedAction_Terminate;
@@ -629,7 +664,7 @@ tTDAL_FP_ErrorCode TDAL_FP_Terminate(void)
             mTBOX_TRACE((kTBOX_NIV_CRITICAL, "TDAL_FP_Terminate: MsOS_SendToQueue   failed\n"));
         }
     } while (status == FALSE);
-
+#endif
     TDAL_DeleteTask(tdalFpTask);
     tdalFpTask = NULL;
 

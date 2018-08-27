@@ -262,7 +262,7 @@ tTDAL_FS_Error      pTDAL_FS_VFS_Init(   void   )
       }*/
    }
 
-   return  result;
+   mTBOX_RETURN(result);
 }
 
 /******************************************************************************
@@ -281,7 +281,8 @@ tTDAL_FS_Error      pTDAL_FS_VFS_Term(   void   )
 
    mTBOX_FCT_ENTER("TDAL_VFS_Term");
 
-   TDAL_DeleteTask(&TDAL_FS_VFS_UpdateTaskId);
+   /* TODO: mstar: need to replace task deletion with task self exiting */
+   TDAL_DeleteTask(TDAL_FS_VFS_UpdateTaskId);
 
 #if MSTAR_QUEUE
    MsOS_DeleteQueue(TDAL_FS_VFS_UpdateQueue);

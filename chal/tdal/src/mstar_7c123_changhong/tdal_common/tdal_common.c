@@ -699,6 +699,8 @@ void TDAL_DeleteTask(TDAL_task_id taskId)
         return;
     }
 
+    MsOS_DeleteTask(taskId);
+
     //ret = pthread_cancel(taskId);
     //ret = pthread_join(taskId, NULL); Evan
         

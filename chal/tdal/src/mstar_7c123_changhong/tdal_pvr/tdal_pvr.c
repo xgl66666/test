@@ -448,8 +448,8 @@ tTDAL_PVR_Error TDAL_PVR_Init(void)
         memset(&TDAL_PVR_recprogramInfo[i], 0, sizeof(PVRProgramInfo_t));
     }
 
-    MDrv_DSCMB2_SetDefaultCAVid(0, NARGA_CAVID);
-    MDrv_AESDMA_SetDefaultCAVid(NARGA_CAVID);
+    //MDrv_DSCMB2_SetDefaultCAVid(0, NARGA_CAVID);
+    //MDrv_AESDMA_SetDefaultCAVid(NARGA_CAVID);
     TDAL_PVRm_ResetPVRRecFilters();
 
     gTDAL_PVR_IsInitialized = TRUE;
@@ -735,7 +735,7 @@ tTDAL_PVR_Error TDAL_PVR_Record_Start(tTDAL_PVR_Handle pvrHandle)
 
     if (bIsSeamlessPlayback)
     {
-        TDAL_PVRi_BackGround_Record_Stop();
+        //TDAL_PVRi_BackGround_Record_Stop();
     }
     mTBOX_TRACE((kTBOX_NIV_5, "TDAL_PVR_Record_Start: Record file %s\n", pPVRDesc->pPVRProgInfo->FileName));
     /* Set metadata in order to save settings for playback */
@@ -744,7 +744,7 @@ tTDAL_PVR_Error TDAL_PVR_Record_Start(tTDAL_PVR_Handle pvrHandle)
         error = eTDAL_PVR_ERROR_IN_DRIVER;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_SetMetaData: failure!!!\n"));
         TDAL_UnlockMutex(TDAL_PVRi_Mutex);
-        TDAL_PVRi_BackGround_Record_Start();
+        //TDAL_PVRi_BackGround_Record_Start();
         mTBOX_RETURN(error);
     }
     AVStreamID.vstreamID = (void *)(&_NullVidStreamID);
@@ -755,7 +755,7 @@ tTDAL_PVR_Error TDAL_PVR_Record_Start(tTDAL_PVR_Handle pvrHandle)
         error = eTDAL_PVR_ERROR_IN_DRIVER;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_EX_RecordEngSet: failure!!!\n"));
         TDAL_UnlockMutex(TDAL_PVRi_Mutex);        
-        TDAL_PVRi_BackGround_Record_Start();
+        //TDAL_PVRi_BackGround_Record_Start();
         mTBOX_RETURN(error);
     }
     bRet = MApi_PVR_EX_RecordEngEnable(&pPVRDesc->pvrRecHandle,bRecordAll);
@@ -764,7 +764,7 @@ tTDAL_PVR_Error TDAL_PVR_Record_Start(tTDAL_PVR_Handle pvrHandle)
         error = eTDAL_PVR_ERROR_IN_DRIVER;
         mTBOX_TRACE((kTBOX_NIV_CRITICAL, "MApi_PVR_EX_RecordEngEnable: failure!!!\n"));
         TDAL_UnlockMutex(TDAL_PVRi_Mutex);        
-        TDAL_PVRi_BackGround_Record_Start();
+        //TDAL_PVRi_BackGround_Record_Start();
         mTBOX_RETURN(error);
     }    
     pPVRDesc->FilesCount++;
@@ -848,7 +848,7 @@ tTDAL_PVR_Error TDAL_PVR_Record_Stop(tTDAL_PVR_Handle pvrHandle)
 
     /* TODO -  program info reset?*/
     TDAL_UnlockMutex(TDAL_PVRi_Mutex);
-    TDAL_PVRi_BackGround_Record_Start();
+    //TDAL_PVRi_BackGround_Record_Start();
     mTBOX_RETURN(error);
 }
 
@@ -1344,9 +1344,9 @@ tTDAL_PVR_Error TDAL_PVR_Timeshift_PlaybackStart(tTDAL_PVR_Handle pvrHandle, uin
     {
         for (i = 0 ; i < 128 ; i++)
         {
-            if (PVRRecFilters[i].u8FilterID != INVALID_FILTER_ID && PVRRecFilters[i].u32PID != INVALID_PID)
+            if (PVRRecFilters[i].u8FilterID != INVALID_FILTER_ID && PVRRecFilters[i].u16PID != INVALID_PID)
             {
-                descId = TDAL_DESC_GetDescramblerID((uint16_t)PVRRecFilters[i].u32PID);
+                descId = TDAL_DESC_GetDescramblerID(PVRRecFilters[i].u16PID);
                 if(descId != 0xFFFFFFFF)
                 {
                     MDrv_DSCMB2_FltConnectFltId(0,descId,PVRRecFilters[i].u8FilterID);
@@ -3942,7 +3942,7 @@ bool TDAL_PVRm_ResetPVRRecFilters(void)
     for (i = 0 ; i < 128 ; i++)
     {
         PVRRecFilters[i].u8FilterID = INVALID_FILTER_ID;
-        PVRRecFilters[i].u32PID = INVALID_PID;
+        PVRRecFilters[i].u16PID = INVALID_PID;
     }
     return TRUE;
 }
@@ -3957,12 +3957,12 @@ tTDAL_PVR_Rec_Filters *TDAL_PVRm_GetPVRRecFilters(void)
     for (i = 0 ; i < 128 ; i++)
     {
         if (filters[i].u8FilterID == INVALID_FILTER_ID 
-            && filters[i].u32PID == INVALID_PID)
+            && filters[i].u16PID == INVALID_PID)
         {
             break;
         }
         PVRRecFilters[i].u8FilterID = filters[i].u8FilterID;
-        PVRRecFilters[i].u32PID = filters[i].u32PID;
+        PVRRecFilters[i].u16PID = filters[i].u16PID;
     }
     return PVRRecFilters;
 }
@@ -3995,7 +3995,7 @@ tTDAL_PVR_Error TDAL_PVRi_BackGround_Record_Start(void)
     if (bIsSeamlessPlayback)
     {
         mTBOX_TRACE((kTBOX_NIV_WARNING, "BackGround Recordingl!!\n"));
-        TDAL_PVRi_BackGround_Record_Stop();
+        //TDAL_PVRi_BackGround_Record_Stop();
     }
     
     TDAL_PVRi_SetBGRecProgramInfo();

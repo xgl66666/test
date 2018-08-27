@@ -353,9 +353,9 @@ static MS_BOOL _MM_CheckAdecSupport(EN_MMSDK_AUDIO_CODEC eAdec)
         case E_MMSDK_AUDIO_CODEC_PCM:
         case E_MMSDK_AUDIO_CODEC_PCM_MULAW:
         case E_MMSDK_AUDIO_CODEC_ADPCM:
+        case E_MMSDK_AUDIO_CODEC_AAC:
             bRet = TRUE;
             break;
-        case E_MMSDK_AUDIO_CODEC_AAC:
         case E_MMSDK_AUDIO_CODEC_AC3:
         case E_MMSDK_AUDIO_CODEC_AC3P:
         case E_MMSDK_AUDIO_CODEC_DTS:

@@ -103,7 +103,7 @@ typedef struct tTDAL_PVR_Desc_t
 typedef struct tTDAL_PVR_Rec_Filters_t
 {
     uint8_t u8FilterID;
-    uint32_t u32PID;
+    uint16_t u16PID;
 } tTDAL_PVR_Rec_Filters;
 
 #if(defined(ENABLE_STATICMEM_PVR) && (MEMORY_MAP == MMAP_128MB))
