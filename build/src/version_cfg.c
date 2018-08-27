@@ -15,20 +15,13 @@
 /********************************************************/
 /*              Includes                                */
 /********************************************************/
+#include "stdlib.h"
 #include "crules.h"
 #include "string.h"
 #include "stdio.h"
 #include "version_cfg.h"
 #if !defined(BOOTLOADER) && !defined(TRIG_OFF)
 #include "trigger.h"
-#endif
-
-#if defined(USE_TDAL_SSU)
-#include "tdal_ssu.h"
-#endif
-
-#if defined(USE_TDAL_OTA)
-#include "tdal_common.h"
 #endif
 
 #ifdef __USE_CONFIG_FILE__
@@ -56,69 +49,36 @@
 #define VERSION_SUFFIX_STR(v) " " STR(v)
 #endif
 
-
-/* PRODUCT_VERSION_MW, PRODUCT_VERSION_APP, PRODUCT_VERSION_CUST,
- * PRODUCT_RELEASE_DAY, PRODUCT_RELEASE_MONTH, PRODUCT_RELEASE_YEAR
- * are imported from environment variables defined in make/generic.mak
- */
-#ifndef PRODUCT_VERSION_MW
-/* No build defined defined*/
-#define PRODUCT_MW_VER_STR(v) "0.0.0"
-#else
-/* Build defined */
-#define PRODUCT_MW_VER_STR(v) STR(v)
-#endif
-
-#ifndef PRODUCT_VERSION_APP
-/* No release version defined */
-#define PRODUCT_APP_VER_STR(v) "0.0.0"
-#else
-/* Release version defined */
-#define PRODUCT_APP_VER_STR(v) STR(v)
-#endif
-
-#ifndef PRODUCT_VERSION_CUST
-/* No release version defined */
-#define PRODUCT_CUST_VER_STR(v) "0.0.0"
-#else
-/* Release version defined */
-#define PRODUCT_CUST_VER_STR(v) STR(v)
-#endif
-
-#ifndef PRODUCT_RELEASE_DAY
-/* No release day defined */
-#define PRODUCT_RELEASE_DAY_STR(v) "01"
-#else
-/* Release day defined */
-#define PRODUCT_RELEASE_DAY_STR(v) STR(v)
-#endif
-
-#ifndef PRODUCT_RELEASE_MONTH
-/* No release month defined */
-#define PRODUCT_RELEASE_MONTH_STR(v) "01"
-#else
-/* Release month defined */
-#define PRODUCT_RELEASE_MONTH_STR(v) STR(v)
-#endif
-
-#ifndef PRODUCT_RELEASE_YEAR
-/* No release year defined */
-#define PRODUCT_RELEASE_YEAR_STR(v) "2013"
-#else
-/* Release year defined */
-#define PRODUCT_RELEASE_YEAR_STR(v) STR(v)
-#endif
-
-#define PRODUCT_RELEASE_DATE "(" PRODUCT_RELEASE_DAY_STR(PRODUCT_RELEASE_DAY) " " PRODUCT_RELEASE_MONTH_STR(PRODUCT_RELEASE_MONTH) " " PRODUCT_RELEASE_YEAR_STR(PRODUCT_RELEASE_YEAR) ") "
-#define kSYS_INFO_MW_VERSION "v1.1 b" PRODUCT_MW_VER_STR(PRODUCT_VERSION_MW)
-#define kSYS_INFO_APP_VERSION "v" PRODUCT_APP_VER_STR(PRODUCT_VERSION_APP)
-#define kSYS_INFO_CUST_VERSION "v" PRODUCT_CUST_VER_STR(PRODUCT_VERSION_CUST)
-
-#define VERSION_CFG_NUMBER kSYS_INFO_MW_VERSION VERSION_SUFFIX_STR(VERSION_SUFFIX)
-#define VERSION_CFG_DATE PRODUCT_RELEASE_DATE
-
+#if defined(PRODUCT_NL_CAB_5197G)
+#define VERSION_CFG_NUMBER "v0.1.1" VERSION_SUFFIX_STR(VERSION_SUFFIX)
+#define VERSION_CFG_DATE "(17 October  2013) "
+#define VERSION_CFG_UDATE_ID  0x00040000
+#elif  defined(PRODUCT_CH_CAB_8080CL)
+#define VERSION_CFG_NUMBER "v0.1.3" VERSION_SUFFIX_STR(VERSION_SUFFIX)
+#define VERSION_CFG_DATE "(24 April  2014) "
+#define VERSION_CFG_UDATE_ID  0x00040000
+#elif defined(PRODUCT_NL_CAB_5197D)
+#define VERSION_CFG_NUMBER "v0.1.5" VERSION_SUFFIX_STR(VERSION_SUFFIX)
+#define VERSION_CFG_DATE "(09 May  2014) "
+#define VERSION_CFG_UDATE_ID  0x00040000
+#elif defined(PRODUCT_NL_CAB_DEN5197)
+#define VERSION_CFG_NUMBER "1.1 Build 3.1.9" VERSION_SUFFIX_STR(VERSION_SUFFIX)
+#define VERSION_CFG_DATE "(27 May 2014)"
+#define VERSION_CFG_UDATE_ID 0x00000001
+#elif  defined(PRODUCT_CH_CAB_DEN8080CL)
+#define VERSION_CFG_NUMBER "1.1 Build 3.1.2" VERSION_SUFFIX_STR(VERSION_SUFFIX)
+#define VERSION_CFG_DATE "(16 June  2014) "
+#define VERSION_CFG_UDATE_ID  0x00040000
+#elif defined (PRODUCT_SW_CAB_5197)
+#define VERSION_CFG_NUMBER "1.1 Build 4.1.5a" VERSION_SUFFIX_STR(VERSION_SUFFIX)
+#define VERSION_CFG_DATE "(09 January  2015) "
 #define VERSION_CFG_UDATE_ID  0x0101050A
-
+#else
+#define VERSION_CFG_NUMBER "1.1 Build 4.1.6" VERSION_SUFFIX_STR(VERSION_SUFFIX)
+#define VERSION_CFG_DATE "(09 January  2015) "
+#define VERSION_CFG_UDATE_ID  0x0101050A
+//#error Unknown board
+#endif
 
 #ifdef MEDIUM_SAT
 #define kSYS_INFO_DEVICE_NAME "SAT" VERSION_CFG_DATE
@@ -135,13 +95,8 @@
 
 #define kSYS_INFO_HARDWARE_RELEASE		"IDC3000_7105"
 #define kSYS_INFO_HARDWARE_VERSION		"RefBoard X.X"
-#define kSYS_INFO_PRODUCT_VERSION       "ABC"
-#define kSYS_INFO_PRODUCT_MODEL         "ABC"
 
-#define kSYS_INFO_HARDWARE_DRIVER_VERSION       "XX.YY"
-#define kSYS_INFO_MANUFACTURER_ID               "ABC"
-
-#define kSYS_INFO_OUI                       0x001a9a /* 0x00015A is DVB OUI you need CUSTOM it with your own OUI*/
+#define kSYS_INFO_OUI                        	0x001a9a /* 0x00015A is DVB OUI you need CUSTOM it with your own OUI*/
 
 #define kSYS_INFO_HARDWARE_COMP_MODEL       0x7640
 #define kSYS_INFO_HARDWARE_COMP_VERSION     0x1957
@@ -152,6 +107,9 @@
 
 #define kSYS_INFO_NVMEXCHANGE_VERSION      	0x00040000
 #define kSYS_INFO_BOOTLOADER_VERSION      	0x00040000
+
+#define kSYS_INFO_HARDWARE_DRIVER_VERSION       "XX.YY"
+
 /*
     kSYS_INFO_MHEG_WHOAMI: mmmcccvvv
     mmm: manufacturer 'IWE' for Iwedia
@@ -159,11 +117,6 @@
     vvv: version number '222' for v2.2.2.XX
 */
 #define kSYS_INFO_MHEG_WHOAMI   "IWEI67222"
-
-#define kOTA_STATUS_DIAGNOSTIC_DEFAULT "FF"
-#define kOTA_STATUS_DIAGNOSTIC_DEFAULT_STRLEN 3
-
-#define mSTRLEN_SAFE(str, maxlen, len)  { for(len = 0; (len < maxlen) && (str[len] != '\0'); len++); }
 
 /********************************************************/
 /*			  Local File Variables (LOCAL)			*/
@@ -179,47 +132,20 @@ LOCAL tCFGF_ProductIDs vVCFGi_stProdIDs;
 LOCAL char			   vVCFGi_stBrandName[256];
 #endif
 
-#if defined(USE_TDAL_OTA)
-LOCAL tTDAL_DiagnosticHWParameters hwParameters;
-LOCAL tTDAL_OTA_HWParameters otaParameters;
-#endif
-
-#if defined(USE_TDAL_SSU)
-LOCAL tTDAL_SSU_StatusInfo    ssuStatusInfo = {0};
-LOCAL tTDAL_SSU_PlatformInfo  ssuPltfInfo   = {0};
-#endif
-
 /******************************************************************************
 * Locales Functions Prototypes
 ******************************************************************************/
-void SYS_INFOp_MJDtoYMD( int32_t siMJD, uint8_t * pucYear, uint8_t * pucMonth, uint8_t * pucDay );
 
 #ifdef __USE_CONFIG_FILE__
 LOCAL bool VCFGi_GetProdIDsFromConfigFile (void);
 #endif
 
+
 /********************************************************/
 /*			  Functions Definitions (GLOBAL)			*/
 /********************************************************/
 
-void SYS_INFOp_MJDtoYMD( int32_t siMJD, uint8_t * pucYear, uint8_t * pucMonth, uint8_t * pucDay )
-{
-    int32_t     siYear, siMonth , K;
-    uint32_t temp1;
 
-    siYear  = (int32_t)(((siMJD*100) - 1507820) / 36525);
-    temp1 = (uint32_t)(siYear*365.25);
-    siMonth = (int32_t)(((siMJD*10000) - (149561000) - (temp1*10000))/306001);
-
-    if (siMonth == 14 || siMonth == 15)
-        K = 1;
-    else
-        K = 0;
-
-    *pucDay   = (unsigned char)(siMJD - 14956 - (int32_t)(siYear*365.25) - (int32_t)(siMonth*30.6001));
-    *pucYear  = (unsigned char)(siYear + K - 70);   /* UTC notation (i.e. from 1970 on). */
-    *pucMonth = (unsigned char)(siMonth - 1 - K * 12);
-}
 
 /******************************************************************************
  * Function Name : SYS_INFO_GetDeviceName
@@ -233,29 +159,13 @@ void SYS_INFOp_MJDtoYMD( int32_t siMJD, uint8_t * pucYear, uint8_t * pucMonth, u
  *****************************************************************************/
 char * SYS_INFO_GetDeviceName(void)
 {
-    char* pcDeviceName = kSYS_INFO_DEVICE_NAME;
-
-#if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
-
-    ssuError = TDAL_SSU_GetPlatformInfo(&ssuPltfInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        pcDeviceName = ssuPltfInfo.cDeviceBrandName;
-    }
+#ifdef __USE_CONFIG_FILE__
+   if (!VCFGi_GetProdIDsFromConfigFile())
+      vVCFGi_stBrandName[0]=0; /* empty string */
+   return(vVCFGi_stBrandName);
+#else
+   return(kSYS_INFO_DEVICE_NAME);
 #endif
-
-#ifdef USE_TDAL_OTA
-   tTDAL_OTA_ErrorCode error = eTDAL_OTA_STATUS_NO_ERROR;
-
-   error = TDAL_GetHWParameters(eTDAL_HW_PARAMETERS_DIAGNOSTIC, (tTDAL_HW_Handle)&hwParameters);
-   if (error == eTDAL_OTA_STATUS_NO_ERROR)
-   {
-       pcDeviceName = hwParameters.cDeviceBrandName;
-   }
-#endif
-
-   return (pcDeviceName);
 }
 
 /******************************************************************************
@@ -270,19 +180,21 @@ char * SYS_INFO_GetDeviceName(void)
  *****************************************************************************/
 char * SYS_INFO_GetSoftwareVersion(void)
 {
-    static char version[100];
-
-    strcpy(version, kSYS_INFO_SOFTWARE_VERSION);
-
-#if 0
+/*    static char version[100]; */
+/* VSM: remove update ID from SW version*/
+/*
 #if !defined(BOOTLOADER) && !defined(TRIG_OFF)
-    char updateIdString[24];
-    sprintf(updateIdString, " / %X", TRIG_GetCurrentUpdateID());
+    char updateIdString[20];
+#endif
+    strcpy(version, kSYS_INFO_SOFTWARE_VERSION " / ");
+#if !defined(BOOTLOADER) && !defined(TRIG_OFF)
+    sprintf(updateIdString, "%X", TRIG_GetCurrentUpdateID());
     strcat(version, updateIdString);
 #endif
-#endif
-
     return version;
+#endif
+*/
+    return kSYS_INFO_SOFTWARE_VERSION;
 }
 
 /******************************************************************************
@@ -297,20 +209,11 @@ char * SYS_INFO_GetSoftwareVersion(void)
  *****************************************************************************/
 uint32_t SYS_INFO_GetSoftwareVersionId(void)
 {
-    uint32_t uiVersionId = VERSION_CFG_UDATE_ID;
 
-#if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
-
-    ssuError = TDAL_SSU_GetStatusInfo(&ssuStatusInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        uiVersionId = ssuStatusInfo.uiLastUpdateID;
-    }
-#endif
-
-	return uiVersionId;
+	return VERSION_CFG_UDATE_ID;
 }
+
+
 
 #if defined(CM_EMBEDDED)
 /******************************************************************************
@@ -369,29 +272,24 @@ bool SYS_INFO_CheckSoftwareVersion(char* pSoftwareVersion)
  *****************************************************************************/
 char * SYS_INFO_GetHardwareModel(void)
 {
-    char* pcHardwareModel = kSYS_INFO_HARDWARE_MODEL;
+/* VSM: HW model is string, not uint as on previous projects,
+        so it cannot be read from config file due to constaints of configmake.exe tool
+*/
+/*
+#ifdef __USE_CONFIG_FILE__
+   static char __hardware_model__[10];
 
-#if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
+   if (VCFGi_GetProdIDsFromConfigFile())
+      sprintf(__hardware_model__,"%04X",vVCFGi_stProdIDs.ui16PltfModel);
+   else
+      strcpy(__hardware_model__,"XXXX");
 
-    ssuError = TDAL_SSU_GetPlatformInfo(&ssuPltfInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        pcHardwareModel = ssuPltfInfo.cHardwareModel;
-    }
+   return(__hardware_model__);
+#else
+	return(kSYS_INFO_HARDWARE_MODEL);
 #endif
-
-#ifdef USE_TDAL_OTA
-   tTDAL_OTA_ErrorCode error = eTDAL_OTA_STATUS_NO_ERROR;
-
-   error = TDAL_GetHWParameters(eTDAL_HW_PARAMETERS_DIAGNOSTIC, (tTDAL_HW_Handle)&hwParameters);
-   if (error == eTDAL_OTA_STATUS_NO_ERROR)
-   {
-       pcHardwareModel = hwParameters.cHardwareModel;
-   }
-#endif
-
-    return(pcHardwareModel);
+*/
+	return(kSYS_INFO_HARDWARE_MODEL);
 }
 
 /******************************************************************************
@@ -421,103 +319,16 @@ char * SYS_INFO_GetHardwareRelease(void)
  *****************************************************************************/
 char * SYS_INFO_GetHardwareVersion(void)
 {
-    char* pcHardwareVersion = kSYS_INFO_HARDWARE_MODEL;
+#ifdef __USE_CONFIG_FILE__
+   static char __hardware_version__[30];
 
-#if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
-
-    ssuError = TDAL_SSU_GetPlatformInfo(&ssuPltfInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        pcHardwareVersion = ssuPltfInfo.cHardwareVersion;
-    }
+   if (!VCFGi_GetProdIDsFromConfigFile())
+      vVCFGi_stProdIDs.ui16PltfVersion=0;
+   sprintf(__hardware_version__,"%x",vVCFGi_stProdIDs.ui16PltfVersion);
+   return(__hardware_version__);
+#else
+	return(kSYS_INFO_HARDWARE_VERSION);
 #endif
-
-#ifdef USE_TDAL_OTA
-    tTDAL_OTA_ErrorCode error = eTDAL_OTA_STATUS_NO_ERROR;
-
-    error = TDAL_GetHWParameters(eTDAL_HW_PARAMETERS_DIAGNOSTIC, (tTDAL_HW_Handle)&hwParameters);
-    if (error == eTDAL_OTA_STATUS_NO_ERROR)
-    {
-       pcHardwareVersion = hwParameters.cHardwareVersion;
-    }
-#endif
-
-    return (pcHardwareVersion);
-}
-
-/******************************************************************************
- * Function Name : SYS_INFO_GetProductVersion
- *
- * Description   : This function give the Product version
- *
- * Side effects  : none
- *
- * Comment	     : none
- *
- *****************************************************************************/
-char * SYS_INFO_GetProductVersion(void)
-{
-    char* pcProductVersion = kSYS_INFO_PRODUCT_VERSION;
-
- #if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
-
-    ssuError = TDAL_SSU_GetPlatformInfo(&ssuPltfInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        pcProductVersion = ssuPltfInfo.cProductVersion;
-    }
-#endif
-
-#ifdef USE_TDAL_OTA
-    tTDAL_OTA_ErrorCode error = eTDAL_OTA_STATUS_NO_ERROR;
-
-    error = TDAL_GetHWParameters(eTDAL_HW_PARAMETERS_DIAGNOSTIC, (tTDAL_HW_Handle)&hwParameters);
-    if (error == eTDAL_OTA_STATUS_NO_ERROR)
-    {
-        pcProductVersion = hwParameters.cProductVersion;
-    }
-#endif
-
-	return (pcProductVersion);
-}
-
-/******************************************************************************
- * Function Name : SYS_INFO_GetProductModel
- *
- * Description   : This function give the Product model
- *
- * Side effects  : none
- *
- * Comment	     : none
- *
- *****************************************************************************/
-char * SYS_INFO_GetProductModel(void)
-{
-    char* pcProductModel = kSYS_INFO_PRODUCT_MODEL;
-
-#if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
-
-    ssuError = TDAL_SSU_GetPlatformInfo(&ssuPltfInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        pcProductModel = ssuPltfInfo.cProductModel;
-    }
-#endif
-
-#ifdef USE_TDAL_OTA
-    tTDAL_OTA_ErrorCode error = eTDAL_OTA_STATUS_NO_ERROR;
-
-    error = TDAL_GetHWParameters(eTDAL_HW_PARAMETERS_DIAGNOSTIC, (tTDAL_HW_Handle)&hwParameters);
-    if (error == eTDAL_OTA_STATUS_NO_ERROR)
-    {
-        pcProductModel = hwParameters.cProductModel;
-    }
-#endif
-
-    return (pcProductModel);
 }
 
 /******************************************************************************
@@ -532,274 +343,7 @@ char * SYS_INFO_GetProductModel(void)
  *****************************************************************************/
 char* SYS_INFO_GetHardwareDriverVersion(void)
 {
-    char* pcDriverVersion = kSYS_INFO_HARDWARE_DRIVER_VERSION;
-
-#if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
-
-    ssuError = TDAL_SSU_GetPlatformInfo(&ssuPltfInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        pcDriverVersion = ssuPltfInfo.cHardwareDriverVersion;
-    }
-#endif
-
-#ifdef USE_TDAL_OTA
-    tTDAL_OTA_ErrorCode error = eTDAL_OTA_STATUS_NO_ERROR;
-
-    error = TDAL_GetHWParameters(eTDAL_HW_PARAMETERS_DIAGNOSTIC, (tTDAL_HW_Handle)&hwParameters);
-    if (error == eTDAL_OTA_STATUS_NO_ERROR)
-    {
-        pcDriverVersion = hwParameters.cHardwareDriverVersion;
-    }
-#endif
-
-    return (pcDriverVersion);
-}
-
-/******************************************************************************
- * Function Name : SYS_INFO_GetLoadVersion
- *
- * Description   : This function give the Hardware driver version
- *
- * Side effects  : none
- *
- * Comment	     : none
- *
- *****************************************************************************/
-char* SYS_INFO_GetLoadVersion(void)
-{
-   static char LoadVersion[16]="";
-
-#if defined(USE_TDAL_SSU)
-   uint32_t version = 0;
-
-   version = SYS_INFO_GetSoftwareVersionId();
-   snprintf(LoadVersion, 16, "%d.%d.%d",
-            (version>>24) & 0xFF,
-            (version>>16) & 0xFF,
-            (version>>8)  & 0xFF);
-#endif
-
-#ifdef USE_TDAL_OTA
-   TDAL_GetLoadVersion(LoadVersion);
-#endif
-
-   return(LoadVersion);
-}
-
-/******************************************************************************
- * Function Name : SYS_INFO_GetOTAStatus_Status
- *
- * Description   : 
- *
- * Side effects  : none
- *
- * Comment	     : Caller must allocate memory for cStatus
- *
- *****************************************************************************/
-bool SYS_INFO_GetOTAStatus_Status(char *pcStatus)
-{
-    bool status = FALSE;
-    uint8_t stringSize = 0;
-
-#if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
-
-    ssuError = TDAL_SSU_GetStatusInfo(&ssuStatusInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        mSTRLEN_SAFE(ssuStatusInfo.cStatus, sizeof(ssuStatusInfo.cStatus), stringSize);
-        if(stringSize < sizeof(ssuStatusInfo.cStatus))
-        {
-            memcpy(pcStatus, ssuStatusInfo.cStatus, stringSize+1);
-        }
-        else
-        {
-            memcpy(pcStatus, kOTA_STATUS_DIAGNOSTIC_DEFAULT, kOTA_STATUS_DIAGNOSTIC_DEFAULT_STRLEN);
-        }
-        status = TRUE;
-    }
-#endif
-
-#ifdef USE_TDAL_OTA
-    tTDAL_DiagnosticOTAStatus stOTAStatus;
-    if(TDAL_OTA_GetDiagnosticStatus(&stOTAStatus) == eTDAL_OTA_STATUS_NO_ERROR)
-    {
-        /* check whether the string is available*/
-        mSTRLEN_SAFE(stOTAStatus.cStatus, sizeof(stOTAStatus.cStatus), stringSize);
-
-        if(stringSize < sizeof(stOTAStatus.cStatus))
-        {
-            memcpy(pcStatus, stOTAStatus.cStatus, stringSize+1);
-        }
-        else
-        {
-            memcpy(pcStatus, kOTA_STATUS_DIAGNOSTIC_DEFAULT, kOTA_STATUS_DIAGNOSTIC_DEFAULT_STRLEN);
-        }
-        status = TRUE;
-    }
-#endif
-
-    return status;
-}
-
-/******************************************************************************
- * Function Name : SYS_INFO_GetOTAStatus_Error
- *
- * Description   : 
- *
- * Side effects  : none
- *
- * Comment	     : Caller must allocate memory for cError
- *
- *****************************************************************************/
-bool SYS_INFO_GetOTAStatus_Error(char *pcError)
-{
-    bool    status = FALSE;
-    uint8_t stringSize = 0;
-
-#if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
-
-    ssuError = TDAL_SSU_GetStatusInfo(&ssuStatusInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        mSTRLEN_SAFE(ssuStatusInfo.cErrorCode, sizeof(ssuStatusInfo.cErrorCode), stringSize);
-        if(stringSize < sizeof(ssuStatusInfo.cErrorCode))
-        {
-            memcpy(pcError, ssuStatusInfo.cErrorCode, stringSize+1);
-        }
-        else
-        {
-            memcpy(pcError, kOTA_STATUS_DIAGNOSTIC_DEFAULT, kOTA_STATUS_DIAGNOSTIC_DEFAULT_STRLEN);
-        }
-        status = TRUE;
-    }
-#endif
-
-#ifdef USE_TDAL_OTA
-    tTDAL_DiagnosticOTAStatus stOTAStatus;
-    if(TDAL_OTA_GetDiagnosticStatus(&stOTAStatus) == eTDAL_OTA_STATUS_NO_ERROR)
-    {
-        /* check whether the string is available*/
-        mSTRLEN_SAFE(stOTAStatus.cErrorCode, sizeof(stOTAStatus.cErrorCode), stringSize);
-
-        if(stringSize < sizeof(stOTAStatus.cErrorCode))
-        {
-            memcpy(pcError, stOTAStatus.cErrorCode, stringSize+1);
-        }
-        else
-        {
-            memcpy(pcError, kOTA_STATUS_DIAGNOSTIC_DEFAULT, kOTA_STATUS_DIAGNOSTIC_DEFAULT_STRLEN);
-        }
-        status = TRUE;
-    }
-#endif
-
-    return status;
-}
-
-/******************************************************************************
- * Function Name : SYS_INFO_GetOTAStatus_TimeAndDate
- *
- * Description   : 
- *
- * Side effects  : none
- *
- * Comment	     : Caller must allocate memory for cDate
- *
- *****************************************************************************/
-bool SYS_INFO_GetOTAStatus_TimeAndDate(char *pcDate)
-{
-    bool    status = FALSE;
-
-#if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
-
-    ssuError = TDAL_SSU_GetStatusInfo(&ssuStatusInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        uint16_t mjd = 0;
-        uint8_t y = 0;
-        uint8_t m = 0;
-        uint8_t d = 0;
-        uint8_t hour = 0;
-        uint8_t min = 0;
-        uint8_t sec = 0;
-
-        /* take first 2 bytes for MJD */
-        mjd = (((uint8_t)ssuStatusInfo.cUtcTime[0]) << 8) + ((uint8_t)ssuStatusInfo.cUtcTime[1]);
-        SYS_INFOp_MJDtoYMD(mjd, &y, &m, &d);
-        snprintf (pcDate, 12, "%02d/%02d/%d.", d, m, y+1970);
-
-        hour = 10 * (((uint8_t)ssuStatusInfo.cUtcTime[2] >> 4) & 0x0F) + ((uint8_t)ssuStatusInfo.cUtcTime[2] & 0x0F);
-        min  = 10 * (((uint8_t)ssuStatusInfo.cUtcTime[3] >> 4) & 0x0F) + ((uint8_t)ssuStatusInfo.cUtcTime[3] & 0x0F);
-        sec  = 10 * (((uint8_t)ssuStatusInfo.cUtcTime[4] >> 4) & 0x0F) + ((uint8_t)ssuStatusInfo.cUtcTime[4] & 0x0F);
-
-        status = TRUE;
-    }
-#endif
-
-#ifdef USE_TDAL_OTA
-    tTDAL_DiagnosticOTAStatus stOTAStatus;
-    uint8_t stringSize = 0;
-
-    if(TDAL_OTA_GetDiagnosticStatus(&stOTAStatus) == eTDAL_OTA_STATUS_NO_ERROR)
-    {
-        /* check whether the string is available*/
-        mSTRLEN_SAFE(stOTAStatus.cDateAndTime, sizeof(stOTAStatus.cDateAndTime), stringSize);
-
-        if(stringSize < sizeof(stOTAStatus.cDateAndTime))
-        {
-            memcpy(pcDate, stOTAStatus.cDateAndTime, stringSize+1);
-        }
-        else
-        {
-            memcpy(pcDate, kOTA_STATUS_DIAGNOSTIC_DEFAULT, kOTA_STATUS_DIAGNOSTIC_DEFAULT_STRLEN);
-        }
-        status = TRUE;
-    }
-#endif
-
-    return status;
-}
-
-/******************************************************************************
- * Function Name : SYS_INFO_GetManufacturerID
- *
- * Description   : This function give the manufacturer ID
- *
- * Side effects  : none
- *
- * Comment	     : none
- *
- *****************************************************************************/
-char* SYS_INFO_GetManufacturerID(void)
-{
-    char* pcManufacturerID = kSYS_INFO_MANUFACTURER_ID;
-
-#if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
-
-    ssuError = TDAL_SSU_GetPlatformInfo(&ssuPltfInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        pcManufacturerID = ssuPltfInfo.cManufacturerID;
-    }
-#endif
-
-#ifdef USE_TDAL_OTA
-    tTDAL_OTA_ErrorCode error = eTDAL_OTA_STATUS_NO_ERROR;
-
-    error = TDAL_GetHWParameters(eTDAL_HW_PARAMETERS_DIAGNOSTIC, (tTDAL_HW_Handle)&hwParameters);
-    if (error == eTDAL_OTA_STATUS_NO_ERROR)
-    {
-        pcManufacturerID = hwParameters.cManufacturerID;
-    }
-#endif
-
-    return(pcManufacturerID);
+    return(SYS_MNGR_CFG_GetHardwareDriverVersion());
 }
 
 /******************************************************************************
@@ -814,30 +358,12 @@ char* SYS_INFO_GetManufacturerID(void)
  *****************************************************************************/
 uint32_t SYS_INFO_GetOui(void)
 {
-
-    uint32_t uiOui = kSYS_INFO_OUI;
-
-#if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
-
-    ssuError = TDAL_SSU_GetPlatformInfo(&ssuPltfInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        uiOui = ssuPltfInfo.uiOUI;
-    }
+#ifdef __USE_CONFIG_FILE__
+   if (VCFGi_GetProdIDsFromConfigFile()) return(kSYS_INFO_OUI);
+   return(0xFFFFFFFF);
+#else
+	return(kSYS_INFO_OUI);
 #endif
-
-#ifdef USE_TDAL_OTA
-    tTDAL_OTA_ErrorCode error = eTDAL_OTA_STATUS_NO_ERROR;
-
-    error = TDAL_GetHWParameters(eTDAL_HW_PARAMETERS_OTA, (tTDAL_HW_Handle)&otaParameters);
-    if (error == eTDAL_OTA_STATUS_NO_ERROR)
-    {
-        uiOui = otaParameters.uiOUI;
-    }
-#endif
-
-    return uiOui;
 }
 
 /******************************************************************************
@@ -852,29 +378,12 @@ uint32_t SYS_INFO_GetOui(void)
  *****************************************************************************/
 uint16_t SYS_INFO_GetProductModelId(void)
 {
-    uint16_t uiProductModelId = kSYS_INFO_PRODUCT_COMP_MODEL;
-
-#if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
-
-    ssuError = TDAL_SSU_GetPlatformInfo(&ssuPltfInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        uiProductModelId = ssuPltfInfo.uiProductModel;
-    }
+#ifdef __USE_CONFIG_FILE__
+   if (VCFGi_GetProdIDsFromConfigFile()) return(vVCFGi_stProdIDs.ui16ProdModel);
+   return(0xFFFF);
+#else
+	return(kSYS_INFO_PRODUCT_COMP_MODEL);
 #endif
-
-#ifdef USE_TDAL_OTA
-    tTDAL_OTA_ErrorCode error = eTDAL_OTA_STATUS_NO_ERROR;
-
-    error = TDAL_GetHWParameters(eTDAL_HW_PARAMETERS_OTA, (tTDAL_HW_Handle)&otaParameters);
-    if (error == eTDAL_OTA_STATUS_NO_ERROR)
-    {
-        uiProductModelId = otaParameters.uiProductModel;
-    }
-#endif
-
-   return uiProductModelId;
 }
 
 /******************************************************************************
@@ -889,29 +398,25 @@ uint16_t SYS_INFO_GetProductModelId(void)
  *****************************************************************************/
 uint16_t SYS_INFO_GetProductVersionId(void)
 {
-    uint16_t uiProductVersionId = kSYS_INFO_PRODUCT_COMP_VERSION;
 
-#if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
+   char __driver_version__[6];
+   uint16_t version;
 
-    ssuError = TDAL_SSU_GetPlatformInfo(&ssuPltfInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        uiProductVersionId = ssuPltfInfo.uiProductVersion;
-    }
+   sprintf(__driver_version__,"%s",SYS_MNGR_CFG_GetHardwareDriverVersion());
+   __driver_version__[2] = __driver_version__[3];
+   __driver_version__[3] = __driver_version__[4];
+   __driver_version__[4] = '\0';
+   version = (uint16_t)atoi(__driver_version__);
+
+   return(version);
+#if 0
+#ifdef __USE_CONFIG_FILE__
+   if (VCFGi_GetProdIDsFromConfigFile()) return(vVCFGi_stProdIDs.ui16ProdVersion);
+   return(0xFFFF);
+#else
+	return(kSYS_INFO_PRODUCT_COMP_VERSION);
 #endif
-
-#ifdef USE_TDAL_OTA
-    tTDAL_OTA_ErrorCode error = eTDAL_OTA_STATUS_NO_ERROR;
-
-    error = TDAL_GetHWParameters(eTDAL_HW_PARAMETERS_OTA, (tTDAL_HW_Handle)&otaParameters);
-    if (error == eTDAL_OTA_STATUS_NO_ERROR)
-    {
-        uiProductVersionId = otaParameters.uiProductVersion;
-    }
 #endif
-
-   return uiProductVersionId;
 }
 
 /******************************************************************************
@@ -926,29 +431,12 @@ uint16_t SYS_INFO_GetProductVersionId(void)
  *****************************************************************************/
 uint16_t SYS_INFO_GetHardwareModelId(void)
 {
-    uint16_t uiHardwareModelId = kSYS_INFO_HARDWARE_COMP_MODEL;
-
-#if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
-
-    ssuError = TDAL_SSU_GetPlatformInfo(&ssuPltfInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        uiHardwareModelId = ssuPltfInfo.uiHardwareModel;
-    }
+#ifdef __USE_CONFIG_FILE__
+   if (VCFGi_GetProdIDsFromConfigFile()) return(kSYS_INFO_HARDWARE_COMP_MODEL);
+   return(0xFFFF);
+#else
+	return(kSYS_INFO_HARDWARE_COMP_MODEL);
 #endif
-
-#ifdef USE_TDAL_OTA
-    tTDAL_OTA_ErrorCode error = eTDAL_OTA_STATUS_NO_ERROR;
-
-    error = TDAL_GetHWParameters(eTDAL_HW_PARAMETERS_OTA, (tTDAL_HW_Handle)&otaParameters);
-    if (error == eTDAL_OTA_STATUS_NO_ERROR)
-    {
-        uiHardwareModelId = otaParameters.uiHardwareModel;
-    }
-#endif
-
-    return uiHardwareModelId;
 }
 
 /******************************************************************************
@@ -963,29 +451,12 @@ uint16_t SYS_INFO_GetHardwareModelId(void)
  *****************************************************************************/
 uint16_t SYS_INFO_GetHardwareVersionId(void)
 {
-    uint16_t uiHardwareVersionId = kSYS_INFO_HARDWARE_COMP_VERSION;
-
-#if defined(USE_TDAL_SSU)
-    tTDAL_SSU_Error ssuError = eTDAL_SSU_NO_ERROR;
-
-    ssuError = TDAL_SSU_GetPlatformInfo(&ssuPltfInfo);
-    if (ssuError == eTDAL_SSU_NO_ERROR)
-    {
-        uiHardwareVersionId = ssuPltfInfo.uiHardwareVersion;
-    }
+#ifdef __USE_CONFIG_FILE__
+   if (VCFGi_GetProdIDsFromConfigFile()) return(vVCFGi_stProdIDs.ui16PltfVersion);
+   return(0xFFFF);
+#else
+	return(kSYS_INFO_HARDWARE_COMP_VERSION);
 #endif
-
-#ifdef USE_TDAL_OTA
-    tTDAL_OTA_ErrorCode error = eTDAL_OTA_STATUS_NO_ERROR;
-
-    error = TDAL_GetHWParameters(eTDAL_HW_PARAMETERS_OTA, (tTDAL_HW_Handle)&otaParameters);
-    if (error == eTDAL_OTA_STATUS_NO_ERROR)
-    {
-        uiHardwareVersionId = otaParameters.uiHardwareVersion;
-    }
-#endif
-
-    return uiHardwareVersionId;
 }
 
 
@@ -1017,7 +488,7 @@ uint32_t SYS_INFO_GetBootloaderVersion(void)
 uint32_t SYS_INFO_NvmExVersion(void)
 {
 	return(kSYS_INFO_NVMEXCHANGE_VERSION);
-}
+   }
 
 
 /******************************************************************************
@@ -1031,7 +502,7 @@ uint32_t SYS_INFO_NvmExVersion(void)
  *
  *****************************************************************************/
 uint16_t SYS_INFO_GetVersionIdMsb()
-{
+    {
 	return(kSYS_INFO_VERSIONID_MSBF);
 }
 

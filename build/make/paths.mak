@@ -118,9 +118,6 @@ export TKEL_LIB_ROOT=$(call find_platform_folder, $(TKEL_ROOT)/lib)
 ########################################
 
 export MW_ROOT_DIR=$(ROOT_DIR)/middleware
-export MW_PACKAGES_ROOT=$(MW_ROOT_DIR)/packages
-export MW_CORE_ROOT=$(MW_ROOT_DIR)/core
-export MW_INTERFACE_ROOT=$(MW_ROOT_DIR)/interface
 
 # ------- ZLIB env ----------------
 export ZLIB_ROOT=$(MW_ROOT_DIR)/core/src/zlib
@@ -203,10 +200,6 @@ export PACKAGE_EIM_INCLUDE=$(PACKAGE_EIM_ROOT)/inc
 export PACKAGE_EIT_DVB_INCLUDE=$(PACKAGE_EIM_ROOT)/inc/dvb
 export PACKAGE_EIT_ATSC_INCLUDE=$(PACKAGE_EIM_ROOT)/inc/atsc
 
-#-------- EPG ENGINE env --------------
-export PACKAGE_EPG_ENGINE_ROOT=$(PACKAGES_ROOT)/epg_engine
-export PACKAGE_EPG_ENGINE_INCLUDE=$(PACKAGE_EPG_ENGINE_ROOT)/inc
-
 # ------- File System env --------------
 export FILESYS_ROOT=$(PACKAGES_ROOT)/file_system
 export FILESYS_MAKE=$(BUILD_MAKE)
@@ -270,6 +263,7 @@ export MAESTRO_PLAYER_GLUE_MAKE=$(BUILD_MAKE)
 export MAESTRO_PLAYER_GLUE_INCLUDE=$(MAESTRO_PLAYER_GLUE_ROOT)/inc
 
 # ------- Maestro player plugin env ----------------
+# -------------- will bi moved in aplication folder!!!
 export MAESTRO_PLAYER_PLUGIN_ROOT=$(PRODUCT_APPLICATION_PATH)/source/maestro_player_plugin
 export MAESTRO_PLAYER_PLUGIN_MAKE=$(BUILD_MAKE)
 export MAESTRO_PLAYER_PLUGIN_INCLUDE=$(MAESTRO_PLAYER_PLUGIN_ROOT)/inc
@@ -354,6 +348,11 @@ export PIDB_ROOT=$(PACKAGES_ROOT)/pidb
 export PIDB_MAKE=$(BUILD_MAKE)
 export PIDB_INCLUDE=$(PIDB_ROOT)/inc
 
+# ------- PVR MANAGER env ----------------
+export PVRM_ROOT=$(PACKAGES_ROOT)/pvr_manager
+export PVRM_MAKE=$(BUILD_MAKE)
+export PVRM_INCLUDE=$(PVRM_ROOT)/inc
+
 # ------- SLIST env ----------------
 export SLIST_ROOT=$(PACKAGES_ROOT)/slist
 export SLIST_MAKE=$(BUILD_MAKE)
@@ -363,10 +362,6 @@ export SLIST_INCLUDE=$(SLIST_ROOT)/inc
 export SUBTITLE_ROOT=$(PACKAGES_ROOT)/subtitle
 export SUBTITLE_MAKE=$(BUILD_MAKE)
 export SUBTITLE_INCLUDE=$(SUBTITLE_ROOT)/inc
-
-# ------- EPG ENGINE env -------------------
-export EPG_ENGINE_ROOT=$(PACKAGES_ROOT)/epg_engine
-export EPG_ENGINE_INCLUDE=$(EPG_ENGINE_ROOT)/inc
 
 # ------- SUBTITLE GLUE env ----------------
 export SUBTITLE_GLUE_ROOT=$(PACKAGES_ROOT)/subtitle_glue
@@ -434,7 +429,7 @@ export PACK_TRIGGER_TEST_INCLUDE=$(PACK_TRIGGER_TEST_ROOT)/inc
 export LIB_ROOT=$(ROOT_DIR)/external_libs
 
 # ----------- CAK env -------------
-export CAK_ROOT=$(LIB_ROOT)/CAK_V7_Merlin/$(CAK_LIBDIR)
+export CAK_ROOT=$(LIB_ROOT)/$(CAK_LIBDIR)
 export CAK_INCLUDE=$(CAK_ROOT)/include
 
 # ------- NOTIFY env ----------------
@@ -457,11 +452,6 @@ export MINIZIP_ROOT=$(LIB_ROOT)/minizip
 export MINIZIP_INCLUDE=$(MINIZIP_ROOT)/include
 export MINIZIP_LIB=$(call find_platform_folder, $(MINIZIP_ROOT)/lib)
 
-#------------ LIBXML2 -----------
-export LIBXML2_ROOT=$(LIB_ROOT)/libxml2
-export LIBXML2_INCLUDE=$(LIBXML2_ROOT)/include/libxml2
-export LIBXML2_LIB=$(LIBXML2_ROOT)/lib
-
 #------------- SILLY----------
 export SILLY_ROOT=$(LIB_ROOT)/SILLY-0.1.0
 export SILLY_INCLUDE=$(SILLY_ROOT)/include
@@ -471,11 +461,6 @@ export SILLY_LIB=$(call find_platform_folder, $(SILLY_ROOT)/lib)
 export TiXML_ROOT=$(LIB_ROOT)/tinyxml
 export TiXML_INCLUDE=$(TiXML_ROOT)/include
 export TiXML_LIB=$(call find_platform_folder, $(TiXML_ROOT)/lib)
-
-#------------- Expat-----------
-export EXPAT_ROOT=$(LIB_ROOT)/expat-2.0.1
-export EXPAT_INCLUDE=$(EXPAT_ROOT)/include
-export EXPAT_LIB=$(call find_platform_folder, $(EXPAT_ROOT)/lib)
 
 #------------ Minizip----------
 export MINIZIP_ROOT=$(LIB_ROOT)/minizip

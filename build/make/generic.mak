@@ -18,7 +18,6 @@ CXX_FLAGS += $(SDK_CXX_FLAGS) $(OS_CXX_FLAGS)
 #OS_INCLUDE_PATH=
 #OS_LIBS_PATH=
 #OS_LIBS=
-# Discover HOST OS
 
 PRODUCT_NAME ?= comedia
 PRODUCT_FLASH_TOOL_NAME ?= flash_tool
@@ -31,6 +30,12 @@ PRODUCT_PACK_TEST_NAME ?= pack_test
 PRODUCT_DALTS_NAME ?= dalts
 PRODUCT_APPDEMO_NAME ?= appdemo
 PRODUCT_BOOTLOADER_NAME ?= bootloader
+
+DIST_NAME?=dist
+LIB_NAME?=libraries
+BIN_NAME?=binaries
+RES_NAME?=resources
+SDK_NAME?=sdk
 
 # ------ MAIN Settings -----------------
 export PRODUCT_MAIN ?= main
@@ -47,10 +52,6 @@ export PRODUCT_MAIN_DALTS ?= main_dalts
 
 PRODUCT_HAL_TYPE   ?= release
 PRODUCT_HAL_SUFFIX ?=
-
-PRODUCT_PREBUILT_HAL ?= YES
-PRODUCT_PREBUILT_SDK ?= YES
-PRODUCT_PREBUILT_APPLICATION ?= NO
 
 ifeq "$(PROGTYPE)" "BOOTLOADER"
 
@@ -99,7 +100,7 @@ ifeq "$(PRODUCT_MULTIARCH_COMPATIBILITY)" "YES"
     CFLAGS += -DMULTIARCH_COMPATIBILITY
 endif
 
-ifeq (,$(findstring $(CHAL_VALIDATOR_TARGET_NAME),$(TARGET_NAME)))
+ifneq ($(TARGET_NAME),$(CHAL_VALIDATOR_TARGET_NAME))
 	ifeq ($(COMEDIA_RESOURCES_IN_RAM),YES)
 		CFLAGS += -DCOMEDIA_RESOURCES_IN_RAM
 	endif
@@ -245,10 +246,6 @@ endif
 
 ifeq "$(DISABLE_WSS)" "YES"
 CFLAGS += -DDISABLE_WSS
-endif
-
-ifdef PRODUCT_BOOL_TYPE
-CFLAGS += -DBOOL_TYPE=$(PRODUCT_BOOL_TYPE)
 endif
 
 # ****************************************
@@ -587,52 +584,18 @@ endif
 ifeq "$(PRODUCT_USE_OTA)" "YES"
     CFLAGS += -DUSE_OTA
 endif
-ifeq "$(USE_TDAL_OTA)" "YES"
-    CFLAGS += -DUSE_TDAL_OTA
-endif
 # ****************************************
 
 
 # ****************************************
 # TRACES
-ifneq "$(origin TRACES)" "undefined"
+#ifneq "$(origin TRACES)" "undefined"
   ifeq "$(TRACES)" "UART"
     CFLAGS += -D__DEBUG_TRACE__ -D__TRACE_UART__
   else
     ifeq "$(TRACES)" "TRACES_FOR_INTEGRATION"
       CFLAGS += -DCOMEDIA_TRACES_FOR_INTEGRATION_ENABLE -D__TRACE_DCU__
-    else
-      CFLAGS += -D__DEBUG_TRACE__ -D__TRACE_DCU__
     endif
   endif
-endif
+#endif
 
-
-#------------------------------------------
-# Release versions
-#------------------------------------------
-ifdef PRODUCT_MW_VER
-CFLAGS += -DPRODUCT_VERSION_MW=$(PRODUCT_MW_VER)
-endif
-ifdef PRODUCT_APP_VER
-CFLAGS += -DPRODUCT_VERSION_APP=$(PRODUCT_APP_VER)
-endif
-ifdef PRODUCT_CUST_VER
-CFLAGS += -DPRODUCT_VERSION_CUST=$(PRODUCT_CUST_VER)
-endif
-ifdef PRODUCT_VERSION_DAY
-CFLAGS += -DPRODUCT_RELEASE_DAY=$(PRODUCT_VERSION_DAY)
-endif
-ifdef PRODUCT_VERSION_MONTH
-CFLAGS += -DPRODUCT_RELEASE_MONTH=$(PRODUCT_VERSION_MONTH)
-endif
-ifdef PRODUCT_VERSION_YEAR
-CFLAGS += -DPRODUCT_RELEASE_YEAR=$(PRODUCT_VERSION_YEAR)
-endif
-
-# ****************************************
-# HDMI EDID
-# ****************************************
-ifneq "$(PRODUCT_IGNORE_HDMI_EDID_AUDIO)" "YES"
-  CFLAGS += -DUSE_HDMI_EDID_AUDIO
-endif

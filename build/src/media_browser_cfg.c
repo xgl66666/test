@@ -56,23 +56,15 @@ bool MEDIA_BROWSER_CFG_IsAvTypeSupported
 )
 {
 #ifdef PRODUCT_USE_AVP
-    if (eVideoCodec == eMEDIA_BROWSER_CFG_CODEC_VIDEO_MPEG1 || eVideoCodec == eMEDIA_BROWSER_CFG_CODEC_VIDEO_MPEG2
-#ifdef PRODUCT_PC_SIM
-        || eVideoCodec == eMEDIA_BROWSER_CFG_CODEC_VIDEO_H264
-#endif
-		)
+    if (eVideoCodec == eMEDIA_BROWSER_CFG_CODEC_VIDEO_MPEG1 || eVideoCodec == eMEDIA_BROWSER_CFG_CODEC_VIDEO_MPEG2)
     {
-        //if (uiVideoWidth <= 720 && uiVideoHeight <= 576)
-        //{
-            if (eAudioCodec == eMEDIA_BROWSER_CFG_CODEC_AUDIO_MPEG1 || eAudioCodec == eMEDIA_BROWSER_CFG_CODEC_AUDIO_MPEG2
-#ifdef PRODUCT_PC_SIM
-            		|| eAudioCodec == eMEDIA_BROWSER_CFG_CODEC_AUDIO_AAC
-#endif
-            )
+        if (uiVideoWidth <= 720 && uiVideoHeight <= 576)
+        {
+            if (eAudioCodec == eMEDIA_BROWSER_CFG_CODEC_AUDIO_MPEG1 || eAudioCodec == eMEDIA_BROWSER_CFG_CODEC_AUDIO_MPEG2)
             {
                 return true;
             }
-        //}
+        }
     }
 #endif
 

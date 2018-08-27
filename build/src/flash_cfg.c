@@ -24,12 +24,7 @@
 #include "flipflop_cfg.h"
 #include "flash_cfg.h"
 
-#if !defined(CHAL_VALIDATOR)
 #include "flash_array.h"
-#else
-tFLASH_CFG_Location FLASH_CFG_FLASH_AreaLocationArray[30];
-tFLASH_CFG_Location FLASH_CFG_Pack_AreaLocationArray[4];    
-#endif
 
 #define FLASH_CFG_BASE_ADDRESS   0x00000000
 /*
@@ -99,7 +94,7 @@ typedef struct
 
 const tFLASH_CFG_stMirrorMapping FLASH_CFG_stMirrorMapping[] =
 {
-#if defined(TELESYSTEM_BOOTLOADER) || defined(SKYWORTH_BOOTLOADER) || defined(TELESYSTEM_MAP51_BOOTLOADER) || defined(KAON_MSD5C59_BOOTLOADER)
+#if defined(TELESYSTEM_BOOTLOADER) || defined(SKYWORTH_BOOTLOADER) || defined(TELESYSTEM_MAP51_BOOTLOADER)
 	{ eFLASH_CFG_APPLICATION_PARTITION, 0x150000, eFLASH_CFG_FLASH_AREA_APPLICATION_PARTITION_MIRROR_1, kFLASH_CFG_INVALID_MIRROR_ID },
 #elif defined(TELESYSTEM_MAP34_BOOTLOADER)
     { eFLASH_CFG_APPLICATION_PARTITION, 0x3E0000, eFLASH_CFG_FLASH_AREA_APPLICATION_PARTITION_MIRROR_1, kFLASH_CFG_INVALID_MIRROR_ID },
@@ -971,7 +966,7 @@ unsigned char * FLASH_CFG_GetPartitionName(tFLASH_CFG_FLASH_Area nArea)
 }
 
 
-#if defined(NEWLAND_BOOTLOADER) || defined(CHANGHONG_BOOTLOADER) || defined(SKYWORTH_BOOTLOADER) || defined(TELESYSTEM_BOOTLOADER) || defined(TELESYSTEM_MAP51_BOOTLOADER) || defined(TELESYSTEM_MAP34_BOOTLOADER) || defined(TECHNICOLOR_BOOTLOADER) || defined(KAON_MSD5C59_BOOTLOADER)
+#if defined(NEWLAND_BOOTLOADER) || defined(CHANGHONG_BOOTLOADER) || defined(SKYWORTH_BOOTLOADER) || defined(TELESYSTEM_BOOTLOADER) || defined(TELESYSTEM_MAP51_BOOTLOADER) || defined(TELESYSTEM_MAP34_BOOTLOADER) || defined(TECHNICOLOR_BOOTLOADER)
 /*===========================================================================
  *
  * FLASH_CFG_GePackingAreaLocation

@@ -13,9 +13,6 @@ endif
 ifeq "$(PRODUCT_KBD)" "PC_KBD"
 KBD_PC=1
 else
-ifeq "$(PRODUCT_KBD)" "KBD_SKYWORTH"
-KBD_SKYWORTH=1
-else 
 ifeq "$(PRODUCT_KBD)" "NEWLAND_NEC_RC"
 KBD_NEWLAND=1
 else 
@@ -25,12 +22,15 @@ else
 ifeq "$(PRODUCT_KBD)" "GILHITS"
 KBD_GHITS=1
 else
+ifeq "$(PRODUCT_KBD)" "KBD_SKYWORTH"
+KBD_SKYWORTH=1
+else
 KBD_MSTAR=1
 endif
 endif
 endif
 endif
-endif 
+endif
 
 #KBD_ST_NEC_DTTRC3=1
 #KBD_BLKFORCE_PROT=1
