@@ -24,7 +24,7 @@ static uint8_t UartBuf[64];
 static uint8_t   UartBuffer[UARTBUF_SIZE] ;
 extern void UartCB(int c);
 
-#define TASK_STK_SIZE       0x4000
+#define TASK_STK_SIZE       0x10000
 static uint8_t _u8TaskStartStk[TASK_STK_SIZE];
 static uint8_t _u8CHALStartStk[TASK_STK_SIZE];
 extern int32_t gs32CachedPoolID;
@@ -36,7 +36,7 @@ static MS_U8 UartBuf[64];
 static MS_U8   UartBuffer[UARTBUF_SIZE] ;
 extern void UartCB(int c);
 
-#define TASK_STK_SIZE       0x4000
+#define TASK_STK_SIZE       0x10000
 static MS_U8 _u8TaskStartStk[TASK_STK_SIZE];
 static MS_U8 _u8CHALStartStk[TASK_STK_SIZE];
 extern MS_S32 gs32CachedPoolID;
@@ -52,7 +52,7 @@ MS_BOOL appDemo_Main(void)
     pthread_attr_t task_attr;
     struct sched_param schedparam;
 
-    schedparam.sched_priority = 16;
+    schedparam.sched_priority = 24;
     pthread_attr_init( &task_attr );
     pthread_attr_setinheritsched( &task_attr, PTHREAD_EXPLICIT_SCHED );
     pthread_attr_setstackaddr( &task_attr, &_u8CHALStartStk[sizeof(_u8CHALStartStk)] );

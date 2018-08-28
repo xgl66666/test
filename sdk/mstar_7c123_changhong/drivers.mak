@@ -186,7 +186,7 @@ SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/DDI_Misc/cus_mstar/api/mwlibs_include/inipar
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/DDI_Main/pvrpl/include
 endif
 
-#SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/libnocs3x_csd
+SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/libnocs3x_csd
 
 # -------------- SDK libraries ---------------------
 
@@ -289,4 +289,4 @@ SDK_LIBS_PATH += $(SDK_SRC_ROOT)/DDI_Misc/cus_mstar/api/mm/freetype
 SDK_LIBS_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/tools/mipsisa32-elf/EL_mips32r2_mhard-float
 endif
 
-#SDK_LIBS_PATH += $(SDK_SRC_ROOT)/libnocs3x_csd
+SDK_LIBS_PATH += $(SDK_SRC_ROOT)/libnocs3x_csd

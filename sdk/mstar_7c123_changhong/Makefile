@@ -154,5 +154,5 @@ $(BUILD_FOLDER)/obj/porting_mmap.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/porting_os.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/porting_subtitle.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/porting_sysinfo.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/porting_thread.$(OBJ_SUFFIX)
-#$(SDK_ROOT)/src/libnocs3x_csd/emi.$(OBJ_SUFFIX)
+$(BUILD_FOLDER)/obj/porting_thread.$(OBJ_SUFFIX) \
+$(SDK_ROOT)/src/libnocs3x_csd/emi.$(OBJ_SUFFIX)
