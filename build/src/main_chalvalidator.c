@@ -8,38 +8,35 @@
 #include "MsOS.h"
 #include "drvUART.h"
 #include "cyg/posix/types.h"
-#include "apiDMX.h"
 
 #include <cyg/hal/hal_cache.h>
-
-extern UART_Result MDrv_UART_SetRxMode
-       (MS_BOOL bEnable, void *rx_buf, MS_U16 buf_len, ms_uart_rx_callback rx_cb);
-
 #endif
-#include "SysInit.h"
 #include "tdal_dmx.h"
-#include <pthread.h>
 
 #define UARTBUF_SIZE        512
 #ifdef PRODUCT_PC_SIM
+#include <pthread.h>
+
+static uint32_t  UartDisableCounter = 0 ;
 static bool UartStop = FALSE ;
 static uint32_t  u32Read = 0 , u32Write = 0 , CharNum = 0;
 static uint8_t UartBuf[64];
 static uint8_t   UartBuffer[UARTBUF_SIZE] ;
 extern void UartCB(int c);
 
-#define TASK_STK_SIZE       0x10000
+#define TASK_STK_SIZE       0x4000
 static uint8_t _u8TaskStartStk[TASK_STK_SIZE];
 static uint8_t _u8CHALStartStk[TASK_STK_SIZE];
 extern int32_t gs32CachedPoolID;
 #else
+static MS_U32  UartDisableCounter = 0 ;
 static MS_BOOL UartStop = FALSE ;
 static MS_U32  u32Read = 0 , u32Write = 0 , CharNum = 0;
 static MS_U8 UartBuf[64];
 static MS_U8   UartBuffer[UARTBUF_SIZE] ;
 extern void UartCB(int c);
 
-#define TASK_STK_SIZE       0x10000
+#define TASK_STK_SIZE       0x4000
 static MS_U8 _u8TaskStartStk[TASK_STK_SIZE];
 static MS_U8 _u8CHALStartStk[TASK_STK_SIZE];
 extern MS_S32 gs32CachedPoolID;
@@ -52,11 +49,10 @@ static pthread_t taskID;
 MS_BOOL appDemo_Main(void)
 
 {
-
     pthread_attr_t task_attr;
     struct sched_param schedparam;
 
-    schedparam.sched_priority = 24;
+    schedparam.sched_priority = 16;
     pthread_attr_init( &task_attr );
     pthread_attr_setinheritsched( &task_attr, PTHREAD_EXPLICIT_SCHED );
     pthread_attr_setstackaddr( &task_attr, &_u8CHALStartStk[sizeof(_u8CHALStartStk)] );
@@ -65,6 +61,7 @@ MS_BOOL appDemo_Main(void)
     pthread_attr_setschedparam( &task_attr, &schedparam );
 
     pthread_create( &taskID, &task_attr, chalvalidator_main, NULL );
+
     return TRUE;
 }
 #endif

@@ -17,8 +17,11 @@ TDAL_LIST = \
      $(LIB_PREFFIX)tdal_output.$(LIB_SUFFIX) \
      $(LIB_PREFFIX)tdal_vbi.$(LIB_SUFFIX) \
      $(LIB_PREFFIX)tdal_hdmi.$(LIB_SUFFIX) \
-     $(LIB_PREFFIX)tdal_ts.$(LIB_SUFFIX) \
-     $(LIB_PREFFIX)tdal_ssu.$(LIB_SUFFIX)
+     $(LIB_PREFFIX)tdal_ts.$(LIB_SUFFIX)
+     
+ifeq "$(PRODUCT_USE_SSU)" "TDAL_SSU"
+     TDAL_LIST += $(LIB_PREFFIX)tdal_ssu.$(LIB_SUFFIX)
+endif
 
 ifeq "$(PRODUCT_USE_TDAL_PVR)" "YES"
 TDAL_LIST += $(LIB_PREFFIX)tdal_pvr.$(LIB_SUFFIX)
@@ -76,8 +79,11 @@ TDAL_LIST_LIBOBJS = \
 			$(BUILD_EXPORTS)/$(LIB_PREFFIX)tdal_ptsm.$(LIB_SUFFIX) \
 			$(BUILD_EXPORTS)/$(LIB_PREFFIX)tdal_vbi.$(LIB_SUFFIX) \
             $(BUILD_EXPORTS)/$(LIB_PREFFIX)tdal_hdmi.$(LIB_SUFFIX) \
-			$(BUILD_EXPORTS)/$(LIB_PREFFIX)tdal_ts.$(LIB_SUFFIX) \
-            $(BUILD_EXPORTS)/$(LIB_PREFFIX)tdal_ssu.$(LIB_SUFFIX)
+			$(BUILD_EXPORTS)/$(LIB_PREFFIX)tdal_ts.$(LIB_SUFFIX)
+			
+ifeq "$(PRODUCT_USE_SSU)" "TDAL_SSU"
+			TDAL_LIST_LIBOBJS += $(BUILD_EXPORTS)/$(LIB_PREFFIX)tdal_ssu.$(LIB_SUFFIX)
+endif
 
 
 ifeq "$(PRODUCT_USE_CA)" "YES"			

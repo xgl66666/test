@@ -74,7 +74,13 @@ extern "C" {
 
 #ifndef __cplusplus
 #ifndef __bool_true_false_are_defined
+
+#ifdef BOOL_TYPE
+#define _Bool BOOL_TYPE
+#else
 #define _Bool char
+#endif
+
 #define bool  _Bool
 
 #ifndef true
