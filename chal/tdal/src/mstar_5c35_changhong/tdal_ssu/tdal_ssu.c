@@ -149,7 +149,7 @@ GLOBAL tTDAL_SSU_Error TDAL_SSU_SetParameters(tTDAL_SSU_ControlParameters *pstSs
     gsstru_OTAUpdateInfo.enm_AntType			= CH_DEMOD_DVB_C;
     gsstru_OTAUpdateInfo.uc_UpdaeFlag			= 0x47;
 
-    gsstru_OTAUpdateInfo.un_FreqInfo.stru_CableFreqInfo.ui_FreqKHZ	= pstSsuParams->uiFreqency;
+    gsstru_OTAUpdateInfo.un_FreqInfo.stru_CableFreqInfo.ui_FreqKHZ	= pstSsuParams->uiFreqency / 1000;
     gsstru_OTAUpdateInfo.un_FreqInfo.stru_CableFreqInfo.ui_SymbKbps	= pstSsuParams->uiSymbolRate;
     gsstru_OTAUpdateInfo.un_FreqInfo.stru_CableFreqInfo.uc_QAMMode	= pstSsuParams->uiModulation -  CHMID_TUNER_QAM_QAM8;
 
