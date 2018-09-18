@@ -25,11 +25,12 @@
 #define HARDWARE_MODEL             	"8108"
 #define HARDWARE_MODEL_ID          	0x8108
 
-#define HARDWARE_DEVICE_NAME       	"CA80"   //CA90
+#define HARDWARE_DEVICE_NAME       	"CH8500MUM"   //CA90
 #define HARDWARE_DEVICE_NAME_ID    	0xCA80   //1125
 
 #define HARDWARE_MANUFACTURER      	"CHANGHONG"
 #define HARDWARE_MANUFACTURER_ID   	0x1449
+
 
 #define UPDATE_INFO_MAGIC			"Update Info"
 #define SYSTEM_INFO_MAGIC			"System Info"
