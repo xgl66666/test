@@ -39,7 +39,10 @@
 /****************************************************************************
  *  MACROS                                              *
  ****************************************************************************/
-
+#define FP_KEY_STANDBY          0xDC//0x02
+#define FP_KEY_DOWN             0xD2//0x01
+#define FP_KEY_UP               0xCA//0x00
+#define FP_KEY_FACTORY_RESET    0xA5//when fp key down last 10s,report factory reset key to middleware
 /****************************************************************************
  *  TYPEDEFS                                           *
  ****************************************************************************/
@@ -147,9 +150,9 @@ typedef enum
 
 typedef enum
 {
-	CHDRV_FP_KEY_POWER = 0xc0, 			///< 绿色指示灯
-	CHDRV_FP_KEY_UP = kTDAL_FP_PROGRAM_NEXT_KEY, 			///< 绿色指示灯
-	CHDRV_FP_KEY_DOWN = kTDAL_FP_PROGRAM_PREV_KEY, 			///< 绿色指示灯
+	CHDRV_FP_KEY_POWER = FP_KEY_STANDBY, 			///< 绿色指示灯
+	CHDRV_FP_KEY_UP = FP_KEY_UP, 			///< 绿色指示灯
+	CHDRV_FP_KEY_DOWN = FP_KEY_DOWN, 			///< 绿色指示灯
 
 };
 
@@ -566,7 +569,8 @@ static MS_U8 do_io_key(MS_U32* key, MS_U8* Flag)
 			mFP_DEBUG("%s %d do_io_key\n",__FUNCTION__,__LINE__);
 		}
 		else
-		{
+		{
+
 			
 			if(last_key_code == CHDRV_FP_KEY_POWER)
 			{
