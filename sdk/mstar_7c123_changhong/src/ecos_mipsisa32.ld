@@ -18,8 +18,8 @@ KERNEL_POOL_SIZE = 0x400000; /* 4096KB */
 
 MEMORY
 {
-    /*ram : ORIGIN = 0x80000180, LENGTH = 0x03fffe80*/ /* 64MB */
-    ram : ORIGIN = 0x80000180, LENGTH = 0x01fffe80 /* 32MB */
+    ram : ORIGIN = 0x80000180, LENGTH = 0x03fffe80 /* 64MB */
+    /*ram : ORIGIN = 0x80000180, LENGTH = 0x01fffe80*/ /* 32MB */
 }
 
 SECTIONS
