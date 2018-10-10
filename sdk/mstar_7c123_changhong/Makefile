@@ -133,6 +133,26 @@ $(BUILD_FOLDER)/obj/System_Manage_HPMTO.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/tmddTDA18250.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/tmddTDA18250Instance.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/apiDigiTuner.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/PVRPL_FileIn.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/PVRPL_Audio.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/PVRPL_CA.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/PVRPL_Record.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/PVRPL_ResourcePool.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/PVRPL_Sys.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/PVRPL_Video.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/drvFrontPnl.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/drvDemodNull.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/mm_cfg_ini.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_audio.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_controlflag.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_cusinfo.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_database.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_display.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_graphic.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_misc.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_mmap.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_os.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_subtitle.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_sysinfo.$(OBJ_SUFFIX) \
+$(BUILD_FOLDER)/obj/porting_thread.$(OBJ_SUFFIX) \
 $(SDK_ROOT)/src/libnocs3x_csd/emi.$(OBJ_SUFFIX)

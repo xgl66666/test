@@ -121,8 +121,7 @@
 #else //#if (MI_ENABLE == 1)
 #if(MEMORY_MAP == MMAP_128MB)
     //#include "MMAP_DDI_128.h"
-    //#include "MMAP_DDI_128_chal.h"
-    #include "MMAP_DDI_64_yifan_1002ver_ARGB4444_noncache1.h"
+    #include "MMAP_DDI_128_chal.h"
 #elif(MEMORY_MAP == MMAP_64MB)
     #include "MMAP_DDI_64_SD.h"
 #elif(MEMORY_MAP == MMAP_32MB)
