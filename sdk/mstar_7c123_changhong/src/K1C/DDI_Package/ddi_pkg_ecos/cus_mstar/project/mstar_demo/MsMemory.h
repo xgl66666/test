@@ -121,7 +121,11 @@
 #else //#if (MI_ENABLE == 1)
 #if(MEMORY_MAP == MMAP_128MB)
     //#include "MMAP_DDI_128.h"
-    #include "MMAP_DDI_128_chal.h"
+#if defined (FLAG_ENABLE_MM)
+        #include "MMAP_DDI_128_chal.h"
+#else
+        #include "MMAP_DDI_128_chal_noPVRMM.h"
+#endif
 #elif(MEMORY_MAP == MMAP_64MB)
     #include "MMAP_DDI_64_SD.h"
 #elif(MEMORY_MAP == MMAP_32MB)

@@ -84,8 +84,6 @@ SDK_C_FLAGS +=-DQC_cahdiver
 SDK_C_FLAGS +=-DSOCKET_GLUE_SERVER
 SDK_C_FLAGS +=-D'MSOS_TYPE_ECOS'
 SDK_C_FLAGS +=-D'ENABLE_PVR_PACKAGE'
-SDK_C_FLAGS +=-D'ENABLE_MM_PACKAGE'
-SDK_C_FLAGS +=-D'MM_MPEG2SD_PROFILE'
 SDK_C_FLAGS +=-D'DEMO_SMC_IO_POLLING=0'
 SDK_C_FLAGS +=-D'DEMO_SMC_USE_51=1'
 SDK_C_FLAGS +=-D'TVfunc_Normal=0'
@@ -124,6 +122,11 @@ SDK_C_FLAGS +=-DQC_cahdiver
 SDK_C_FLAGS +=-DSOCKET_GLUE_SERVER
 SDK_C_FLAGS +=-DLAN_EN=0
 
+ifeq "$(PRODUCT_USE_TDAL_MP)" "YES"
+SDK_C_FLAGS +=-D'ENABLE_MM_PACKAGE'
+SDK_C_FLAGS +=-D'MM_MPEG2SD_PROFILE'
+endif
+
 ifeq "$(PRODUCT_USE_USB)" "YES"
 SDK_C_FLAGS += -DCFG_USB_ENABLE=1
 SDK_C_FLAGS += -DUSBHOST_INIT
@@ -131,9 +134,6 @@ endif
 
 SDK_C_FLAGS +=-DENABLE_CAPVR
 
-ifeq "$(PRODUCT_USE_TDAL_MP)" "YES"
-SDK_C_FLAGS +=-DENABLE_MM_PACKAGE
-endif
 SDK_C_FLAGS +=-DMUTE_SCREEN=1
 
 ifeq "$(PRODUCT_PREBUILT_SDK)" "NO"
@@ -166,24 +166,25 @@ SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/DDI_Misc/cus_mstar/project/mstar_demo
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/project/mstar_demo/include
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/project/mstar_demo
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/bsp/lib/fw
-
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/platform/driver
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/gpio
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/lan
-SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/mm
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/pvr
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/sc
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/vdec
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/xc
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/xml
+SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/DDI_Main/pvrpl/include
+endif
 
+ifeq "$(PRODUCT_USE_TDAL_MP)" "YES"
+SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/mm
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/mm/mmsdk/interface
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/mm/fuchsia/mm
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/DDI_Main/mmsdk/include
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/DDI_Main/mmsdk/source
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/DDI_Misc/cus_mstar/api/mwlibs_include/iniparser
-SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/DDI_Main/pvrpl/include
 endif
 
 SDK_INCLUDE_PATH += $(SDK_SRC_ROOT)/libnocs3x_csd
@@ -242,16 +243,18 @@ SDK_LIBS += $(LIB_PREFFIX)mwPVR.$(LIB_SUFFIX)
 
 SDK_LIBS += $(LIB_PREFFIX)sdk_deps.$(LIB_SUFFIX)
 
+endif
+
+ifeq "$(PRODUCT_USE_TDAL_MP)" "YES"
 SDK_LIBS += $(LIB_PREFFIX)mmsdk.$(LIB_SUFFIX)
 SDK_LIBS += $(LIB_PREFFIX)vdplayer2.$(LIB_SUFFIX)
 SDK_LIBS += $(LIB_PREFFIX)vdplayer.$(LIB_SUFFIX)
 SDK_LIBS += $(LIB_PREFFIX)mwMM_ecos.$(LIB_SUFFIX)
 SDK_LIBS += $(LIB_PREFFIX)mwSubtitle.$(LIB_SUFFIX)
 SDK_LIBS += $(LIB_PREFFIX)mwmpl.$(LIB_SUFFIX)
-#SDK_LIBS += $(LIB_PREFFIX)freetype.$(LIB_SUFFIX)
+SDK_LIBS += $(LIB_PREFFIX)freetype.$(LIB_SUFFIX)
 SDK_LIBS += $(LIB_PREFFIX)iniparser.$(LIB_SUFFIX)
 endif
-
 # NAGRA On CHIP SECURITY libraries
 ifeq "$(PRODUCT_USE_CA)" "YES"
 SDK_LIBS += $(LIB_PREFFIX)AKL.$(LIB_SUFFIX)
@@ -275,18 +278,20 @@ SDK_LIBS_PATH += $(SDK_SRC_ROOT)/DDI_Misc/cus_mstar/platform/driver/frontpnl
 SDK_LIBS_PATH += $(SDK_SRC_ROOT)/DDI_Misc/cus_mstar/platform/driver/dish/
 SDK_LIBS_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/gpio
 SDK_LIBS_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/lan
-SDK_LIBS_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/mm
 SDK_LIBS_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/pvr
 SDK_LIBS_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/sc
 SDK_LIBS_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/vdec
 SDK_LIBS_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/xc
 SDK_LIBS_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/xml
+SDK_LIBS_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/tools/mipsisa32-elf/EL_mips32r2_mhard-float
+endif
+
+ifeq "$(PRODUCT_USE_TDAL_MP)" "YES"
+SDK_LIBS_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/mm
 SDK_LIBS_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/mm/mmsdk
 SDK_LIBS_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/mm/fuchsia
 SDK_LIBS_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/cus_mstar/api/mm/vdplayer
 SDK_LIBS_PATH += $(SDK_SRC_ROOT)/DDI_Misc/cus_mstar/api/mm/iniparser
 SDK_LIBS_PATH += $(SDK_SRC_ROOT)/DDI_Misc/cus_mstar/api/mm/freetype
-SDK_LIBS_PATH += $(SDK_SRC_ROOT)/K1C/DDI_Package/ddi_pkg_ecos/tools/mipsisa32-elf/EL_mips32r2_mhard-float
 endif
-
 SDK_LIBS_PATH += $(SDK_SRC_ROOT)/libnocs3x_csd

@@ -124,7 +124,12 @@ DDI_DEMO_ZAPPING = enable
 DDI_DEMO_ZAPPING_FQ = enable
 
 #MM
+
+ifeq "$(PRODUCT_USE_TDAL_MP)" "NO"
+DDI_DEMO_MM = disable
+else
 DDI_DEMO_MM = enable
+endif
 DDI_DEMO_MM_DUAL = disable
 DDI_DEMO_MM_MVC = disable
 DDI_DEMO_MM_MPO = disable

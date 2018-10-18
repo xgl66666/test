@@ -13,7 +13,7 @@ GROUP(libtarget.a libgcc.a libsupc++.a)
 
 /* kernel memory pool reserved for the use of malloc by kernel ONLY */
 /*KERNEL_POOL_SIZE = 0x100000;*/ /* 1024KB */
-KERNEL_POOL_SIZE = 0x400000; /* 4096KB */
+KERNEL_POOL_SIZE = 0x200000; /* 4096KB */
 
 
 MEMORY

@@ -143,6 +143,10 @@ $(BUILD_FOLDER)/obj/PVRPL_Video.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/drvFrontPnl.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/drvDemodNull.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/mm_cfg_ini.$(OBJ_SUFFIX) \
+$(SDK_ROOT)/src/libnocs3x_csd/emi.$(OBJ_SUFFIX)
+
+ifeq "$(PRODUCT_USE_TDAL_MP)" "YES"
+SDK_OBJS += \
 $(BUILD_FOLDER)/obj/porting_audio.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/porting_controlflag.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/porting_cusinfo.$(OBJ_SUFFIX) \
@@ -154,5 +158,6 @@ $(BUILD_FOLDER)/obj/porting_mmap.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/porting_os.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/porting_subtitle.$(OBJ_SUFFIX) \
 $(BUILD_FOLDER)/obj/porting_sysinfo.$(OBJ_SUFFIX) \
-$(BUILD_FOLDER)/obj/porting_thread.$(OBJ_SUFFIX) \
-$(SDK_ROOT)/src/libnocs3x_csd/emi.$(OBJ_SUFFIX)
+$(BUILD_FOLDER)/obj/porting_thread.$(OBJ_SUFFIX)
+
+endif

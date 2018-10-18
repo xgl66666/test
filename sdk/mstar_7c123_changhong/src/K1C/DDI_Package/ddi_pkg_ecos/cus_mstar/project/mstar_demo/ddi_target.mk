@@ -41,6 +41,7 @@ DDI_MAIN_DEMO_DIR = $(PRJ_DIR)/../../../../../../DDI_Main/demo
 include  $(DDI_MAIN_DEMO_DIR)/Makefile.demo
 
 ifeq ($(DDI_DEMO_MM),enable)
+CFG_CC_DEFS += -D'FLAG_ENABLE_MM'
 DDI_MAIN_MMSDK_DIR = $(PRJ_DIR)/../../../../../../DDI_Main/mmsdk
 include  $(DDI_MAIN_MMSDK_DIR)/Makefile.mmsdk
 endif
