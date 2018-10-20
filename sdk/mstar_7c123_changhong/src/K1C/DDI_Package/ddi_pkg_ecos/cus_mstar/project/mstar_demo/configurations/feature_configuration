@@ -125,10 +125,10 @@ DDI_DEMO_ZAPPING_FQ = enable
 
 #MM
 
-ifeq "$(PRODUCT_USE_TDAL_MP)" "NO"
-DDI_DEMO_MM = disable
-else
+ifeq "$(PRODUCT_USE_TDAL_MP)" "YES"
 DDI_DEMO_MM = enable
+else
+DDI_DEMO_MM = disable
 endif
 DDI_DEMO_MM_DUAL = disable
 DDI_DEMO_MM_MVC = disable

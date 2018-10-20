@@ -71,6 +71,7 @@ GCC_CFG_CC_OPTS = $(filter-out $(GCC_FILTER), $(CFG_CC_OPTS))
 INCLUDE     = -I$(PRJ_DIR)
 INCLUDE    += -I$(DDI_MISC_DIR)/cus_mstar/project/mstar_demo
 INCLUDE    += -I$(PRJ_DIR)/include
+
 # **********************************************
 # Rules
 # **********************************************
@@ -303,6 +304,9 @@ endif
 	@echo App_Reset_Vector_Dram_Address=$(App_Reset_Vector_Dram_Address) >> $(VAR_LIST)
 	@echo LZMA_BUF_Address=$(LZMA_BUF_Address) >> $(VAR_LIST)
 	@echo USB_UPDATE_CMD=$(USB_UPDATE_CMD) >> $(VAR_LIST)
+ifeq ($(DDI_DEMO_MM),enable)
+	$(eval CFG_CC_DEFS += -D'FLAG_ENABLE_MM')
+endif
 	@gcc $(INCLUDE) $(CFG_CC_DEFS) $(GCC_CFG_CC_OPTS) $(CC_DEFS) $(AUTO_GEN_PATH)/parse_MsMemory.c -o ./parse_MsMemory
 	@chmod 777 ./parse_MsMemory
 	@./parse_MsMemory ecos
