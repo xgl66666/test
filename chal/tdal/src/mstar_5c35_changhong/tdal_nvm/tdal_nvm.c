@@ -451,6 +451,7 @@ bool TDALi_NVM_InitValidArea()
 {
     uint8_t     ucCntArea;
     uint8_t     *pucBuffer = NULL;
+    uint8_t     *pucValidBuffer = NULL;
     uint32_t    uiCRCOffset = 0;
     uint32_t    uiCRC32 = 0;
     uint32_t    uiVersionOffset = 0;
@@ -490,6 +491,13 @@ bool TDALi_NVM_InitValidArea()
             {
                 ucMaxVersion = stAreaArray[ucCntArea].ucVersion;
             }
+            if (pucValidBuffer != NULL)
+            {
+                TKEL_Free(pucValidBuffer);
+            }
+
+            pucValidBuffer = pucBuffer;
+            pucBuffer = NULL;
         }
     }
 
@@ -498,36 +506,45 @@ bool TDALi_NVM_InitValidArea()
     {
         if (!stCheckArray[ucCntArea].bValid)
         {
-            memset(pucBuffer, 0, stAreaArray[ucCntArea].uiByteSize);
-            if (ucMaxVersion == TDAL_NVM_VERSION_MAXIMAL)
+            if (ucMaxVersion == TDAL_NVM_VERSION_MINIMAL)
             {
-                pucBuffer[uiVersionOffset] = TDAL_NVM_VERSION_MINIMAL;
-            }
-            else if (ucMaxVersion == TDAL_NVM_VERSION_MINIMAL)
-            {
+                pucBuffer = pucValidBuffer;
                 pucBuffer[uiVersionOffset] = TDAL_NVM_VERSION_MAXIMAL;
+                pucValidBuffer = NULL;
+            }
+            else if (ucMaxVersion == 0)
+            {
+            memset(pucBuffer, 0, stAreaArray[ucCntArea].uiByteSize);
+                pucBuffer[uiVersionOffset] = ucMaxVersion + 1;
             }
             else
             {
+                pucBuffer = pucValidBuffer;
                 pucBuffer[uiVersionOffset] = ucMaxVersion - 1;
+                pucValidBuffer = NULL;
             }
             uiCRC32 = TDALm_CRC32_Calculate(pucBuffer, stAreaArray[ucCntArea].uiByteSize - TDAL_NVM_CRC32_SIZE);
             memcpy(&pucBuffer[uiCRCOffset], &uiCRC32, sizeof(uiCRC32));
 
-            mTBOX_TRACE((kTBOX_NIV_1, "%s ucVersion=%03d\n", __FUNCTION__, ucCntArea, pucBuffer[uiVersionOffset]));
-            mTBOX_TRACE((kTBOX_NIV_1, "%s uiCRC32=0x%02X\n", __FUNCTION__, pucBuffer[uiCRCOffset]));
-            mTBOX_TRACE((kTBOX_NIV_1, "%s uiCRC32=0x%02X\n", __FUNCTION__, pucBuffer[uiCRCOffset + 1]));
-            mTBOX_TRACE((kTBOX_NIV_1, "%s uiCRC32=0x%02X\n", __FUNCTION__, pucBuffer[uiCRCOffset + 2]));
-            mTBOX_TRACE((kTBOX_NIV_1, "%s uiCRC32=0x%02X\n", __FUNCTION__, pucBuffer[uiCRCOffset + 3]));
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "%s ucVersion=%03d\n", __FUNCTION__, pucBuffer[uiVersionOffset]));
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "%s uiCRC32=0x%02X\n", __FUNCTION__, pucBuffer[uiCRCOffset]));
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "%s uiCRC32=0x%02X\n", __FUNCTION__, pucBuffer[uiCRCOffset + 1]));
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "%s uiCRC32=0x%02X\n", __FUNCTION__, pucBuffer[uiCRCOffset + 2]));
+            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "%s uiCRC32=0x%02X\n", __FUNCTION__, pucBuffer[uiCRCOffset + 3]));
 
             TDAL_FLA_Erase(stAreaArray[ucCntArea].uiFlashOffset, stAreaArray[ucCntArea].uiByteSize);
             TDAL_FLA_Write(stAreaArray[ucCntArea].uiFlashOffset, pucBuffer, stAreaArray[ucCntArea].uiByteSize);
+            stAreaArray[ucCntArea].ucVersion = pucBuffer[uiVersionOffset];
         }
     }
 
     if (pucBuffer)
     {
         TDAL_Free(pucBuffer);
+    }
+    if (pucValidBuffer)
+    {
+        TKEL_Free(pucValidBuffer);
     }
     mTBOX_RETURN(true);
 }
@@ -732,7 +749,7 @@ void TDALi_NVM_ValidateWriteBuffer(
     pucBuffer[uiVersionOffset] = ucVersion;
     /* Calculate CRC on data buffer */
     uiCRC32 = TDALm_CRC32_Calculate(pucBuffer, uiSize - TDAL_NVM_CRC32_SIZE);
-    if (uiCRC32 == 0xFFFFFFFF || 0x0)
+    if (uiCRC32 == 0xFFFFFFFF || uiCRC32 == 0x0)
     {
         if (++ucVersion == TDAL_NVM_VERSION_MAXIMAL)
         {
@@ -766,11 +783,11 @@ void TDALi_NVM_UpdateValidWriteProp(uint8_t *pucBuffer)
     uint32_t    uiCRC32Offset = 0;
     uint32_t    uiVersionOffset = 0;
     uint8_t     ucIdx = 0;
-    bool        bOld = false;
+    bool        bRead = false;
 
     mTBOX_FCT_ENTER("TDALi_NVM_UpdateValidWriteProp");
 
-    ucIdx = TDALi_NVM_GetAreaIdx(bOld);
+    ucIdx = TDALi_NVM_GetAreaIdx(bRead);
 
     /* Check validity of current area */
     if (stAreaArray[ucIdx].uiCRC32 > 0)
@@ -821,22 +838,6 @@ uint8_t TDALi_NVM_GetAreaIdx(const bool bRead)
 
     for(ucCntArea = 0; ucCntArea < TDAL_NVM_REDUNDANCY_LEVEL; ucCntArea++)
     {
-        if (stAreaArray[ucCntArea].ucVersion == 0xFF ||
-            stAreaArray[ucCntArea].ucVersion == 0x00)
-        {
-            if (bRead)
-            {
-                continue;
-            }
-            else
-            {
-                ucOldestIdx = ucCntArea;
-                ucVersionMin = 0xFF;
-                ucVersionMax = 0x00;
-                break;
-            }
-        }
-
         if (stAreaArray[ucCntArea].ucVersion > ucVersionMax)
         {
             ucVersionMax = stAreaArray[ucCntArea].ucVersion;
@@ -849,29 +850,18 @@ uint8_t TDALi_NVM_GetAreaIdx(const bool bRead)
             ucOldestIdx = ucCntArea;
         }
     }
+    
     ucVersionDiff = TDAL_ABS(ucVersionMax,ucVersionMin);
-
-    if (ucVersionDiff == TDAL_NVM_VERSION_MAXIMAL)
+    if (ucVersionDiff > TDAL_NVM_REDUNDANCY_LEVEL - 1)
     {
         if (bRead)
         {
-            mTBOX_TRACE((kTBOX_NIV_CRITICAL, "No valid area to read\n"));
-        }
-        else
-        {
-            ucIdx = ucOldestIdx;
-        }
-    }
-    else if (ucVersionDiff > TDAL_NVM_REDUNDANCY_LEVEL + 1)
-    {
-        if (bRead)
-        {
-            mTBOX_TRACE((kTBOX_NIV_1, "Version cycle reached choose minimal valid version for read\n"));
+            mTBOX_TRACE((kTBOX_NIV_1, "Version cycle reached choose minimal valid version for read IDx=%d\n", ucIdx));
             ucIdx = ucOldestIdx;
         }
         else
         {
-            mTBOX_TRACE((kTBOX_NIV_1, "Version cycle reached choose maximal valid version for write\n"));
+            mTBOX_TRACE((kTBOX_NIV_1, "Version cycle reached choose maximal valid version for write IDx=%d\n", ucIdx));
             ucIdx = ucYoungestIdx;
         }
     }
@@ -879,10 +869,12 @@ uint8_t TDALi_NVM_GetAreaIdx(const bool bRead)
     {
         if (bRead)
         {
+            mTBOX_TRACE((kTBOX_NIV_1, "Common choose maximum valid version for read IDx=%d\n", ucIdx));
             ucIdx = ucYoungestIdx;
         }
         else
         {
+            mTBOX_TRACE((kTBOX_NIV_1, "Common choose minimum valid version for write IDx=%d\n", ucIdx));
             ucIdx = ucOldestIdx;
         }
     }
