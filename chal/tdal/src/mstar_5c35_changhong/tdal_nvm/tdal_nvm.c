@@ -493,7 +493,7 @@ bool TDALi_NVM_InitValidArea()
             }
             if (pucValidBuffer != NULL)
             {
-                TKEL_Free(pucValidBuffer);
+                TDAL_Free(pucValidBuffer);
             }
 
             pucValidBuffer = pucBuffer;
@@ -544,7 +544,7 @@ bool TDALi_NVM_InitValidArea()
     }
     if (pucValidBuffer)
     {
-        TKEL_Free(pucValidBuffer);
+        TDAL_Free(pucValidBuffer);
     }
     mTBOX_RETURN(true);
 }
