@@ -43,6 +43,7 @@
 #define FP_KEY_DOWN             0xD2//0x01
 #define FP_KEY_UP               0xCA//0x00
 #define FP_KEY_FACTORY_RESET    0xA5//when fp key down last 10s,report factory reset key to middleware
+#define FP_KEY_STANDBY_TIMEOUT  50
 /****************************************************************************
  *  TYPEDEFS                                           *
  ****************************************************************************/
@@ -546,130 +547,128 @@ LOCAL   void   TDAL_FP_key_Send (tTDALm_WorkerThreadsDescriptor * p)
 static MS_U8 do_io_key(MS_U32* key, MS_U8* Flag)
 {
 
-	static U32 last_key_code;
-	static CHDRV_FP_IOMap_t const * plast_io = NULL;
-	CHDRV_FP_IOMap_t const * pmap = gstr_CHDRV_FP_Params.pstru_IOMap;
-	static KEY_STATE_t g_key_state = {0};
-	static  MS_U8 keyTimes=0;
+    static U32 last_key_code;
+    static CHDRV_FP_IOMap_t * plast_io = NULL;
+    CHDRV_FP_IOMap_t const * pmap = gstr_CHDRV_FP_Params.pstru_IOMap;
+    static KEY_STATE_t g_key_state = {0};
+    static  MS_U8 keyTimes=0;
 	mFP_DEBUG("%s %d do_io_key\n",__FUNCTION__,__LINE__);
-	g_key_state.new_key_act = 0;
+    g_key_state.new_key_act = 0;
 
-	if(plast_io)
-	{
-		g_key_state.new_key_act_code =
-		chdrv_fp_get_io_data(plast_io->str_IONum) == plast_io->str_IONum.uc_Polar ? eTDAL_FP_KEY_HELD_DOWN : eTDAL_FP_KEY_RELEASED;
-		keyTimes++;
-		mFP_DEBUG("%s %d do_io_key\n",__FUNCTION__,__LINE__);
+    if(plast_io)
+    {
+        g_key_state.new_key_act_code =
+                chdrv_fp_get_io_data(plast_io->str_IONum) == plast_io->str_IONum.uc_Polar ? eTDAL_FP_KEY_HELD_DOWN : eTDAL_FP_KEY_RELEASED;
+        keyTimes++;
+        mFP_DEBUG("%s %d do_io_key\n",__FUNCTION__,__LINE__);
 
-		if(g_key_state.new_key_act_code == eTDAL_FP_KEY_RELEASED)
-		{
-			keyTimes = 0;
-			plast_io = 0;
-			
-			mFP_DEBUG("%s %d do_io_key\n",__FUNCTION__,__LINE__);
-		}
-		else
-		{
+        if(g_key_state.new_key_act_code == eTDAL_FP_KEY_RELEASED)
+        {
+            if (last_key_code == CHDRV_FP_KEY_POWER)
+            {
+                if (keyTimes < FP_KEY_STANDBY_TIMEOUT)
+                {
+                    *key = FP_KEY_STANDBY;
+                    *Flag = eTDAL_FP_KEY_PRESSED;
+                    keyTimes = 0;
+                    plast_io = 0;
+                }
+                return 1;
+            }
+            keyTimes = 0;
+            plast_io = 0;
+            
+            mFP_DEBUG("%s %d do_io_key\n",__FUNCTION__,__LINE__);
+        }
+        else
+        {
+            if(last_key_code == CHDRV_FP_KEY_POWER)
+            {
+                if(keyTimes == FP_KEY_STANDBY_TIMEOUT)
+                {
+                    *key = FP_KEY_FACTORY_RESET;
+                    *Flag = eTDAL_FP_KEY_PRESSED;
 
-			
-			if(last_key_code == CHDRV_FP_KEY_POWER)
-			{
-				if(keyTimes>50)
-				{
-					*key = 0xA5;
-					*Flag = g_key_state.new_key_act_code;
-					keyTimes = 0;
-					
-					mFP_DEBUG("%s %d do_io_key\n",__FUNCTION__,__LINE__);
-					 return 1;
-				}
-				if(keyTimes>0)
-				{
-					*key = 0xDC;
-					*Flag = g_key_state.new_key_act_code;
-					
-					keyTimes = 0;
-					
-					mFP_DEBUG("%s %d do_io_key\n",__FUNCTION__,__LINE__);
-					return 1;
-				}
-			
-			}
-		}
-		mFP_DEBUG("%s %d do_io_key\n",__FUNCTION__,__LINE__);
+                    mFP_DEBUG("%s %d do_io_key\n",__FUNCTION__,__LINE__);
+                }
+                return 1;
+            }
+        }
+        mFP_DEBUG("%s %d do_io_key\n",__FUNCTION__,__LINE__);
 
-		g_key_state.new_key_act = 1;
-		g_key_state.new_key_code = last_key_code;
-		*key = last_key_code;
-		*Flag = g_key_state.new_key_act_code;
-		return 1;
-	}
+        g_key_state.new_key_act = 1;
+        g_key_state.new_key_code = last_key_code;
+        *key = last_key_code;
+        *Flag = g_key_state.new_key_act_code;
+        
+        return 1;
+    }
 
+    while(pmap->ui_MapedCode != ~(0L))
+    {
+        if(pmap->str_IONum.uc_IsKey &&
+          (chdrv_fp_get_io_data(pmap->str_IONum) == pmap->str_IONum.uc_Polar)
+        )
+        {
+            g_key_state.new_key_act_code= eTDAL_FP_KEY_PRESSED;
+            g_key_state.new_key_code = pmap->ui_MapedCode;
+            last_key_code = pmap->ui_MapedCode;
+            if(last_key_code != CHDRV_FP_KEY_POWER)
+                g_key_state.new_key_act = 1;    
+            mFP_DEBUG("%s %d do_io_key\n",__FUNCTION__,__LINE__);
+            plast_io = pmap;
+            break;
+        }
+        ++pmap;
+    }
+    if(g_key_state.new_key_act  == 1)
+    {
+        *key = last_key_code;
+        *Flag = g_key_state.new_key_act_code;
 
-	while(pmap->ui_MapedCode != ~(0L))
-	{
-		if(pmap->str_IONum.uc_IsKey &&
-			(chdrv_fp_get_io_data(pmap->str_IONum) == pmap->str_IONum.uc_Polar)
-			)
-		{
-			g_key_state.new_key_act_code= eTDAL_FP_KEY_PRESSED;
-			g_key_state.new_key_act = 1;
-			g_key_state.new_key_code = pmap->ui_MapedCode;
-			last_key_code = pmap->ui_MapedCode;
-
-			plast_io = pmap;
-			break;
-		}
-		++pmap;
-	}
-	if(g_key_state.new_key_act  == 1)
-	{
-		*key = last_key_code;
-		*Flag = g_key_state.new_key_act_code;
-		
-		mFP_DEBUG("%s %d do_io_key\n",__FUNCTION__,__LINE__);
-		return 1;
-	}
-	else
-	{
-		return 0;	
-	}
+        mFP_DEBUG("%s %d do_io_key\n",__FUNCTION__,__LINE__);
+        return 1;
+    }
+    else
+    {
+        return 0;	
+    }
 }
 
 MS_U8  _Keypad_GetKey(MS_U32* key, MS_U8* Flag)
 {
 
-	static  MS_U8 keyTimes=0;
-	
-	if(mdrv_gpio_get_level(CHDRV_FP_KEY_POWER) == 0)  //high
-	{
-		keyTimes++;
-	       //mFP_DEBUG("%s %d keyTimes[%d]  key[%d]\n",__FUNCTION__,__LINE__,keyTimes,mdrv_gpio_get_level(POWER_NUM));		
-	}
-	else
-	{
-		//mFP_DEBUG("%s %d keyTimes[%d]\n",__FUNCTION__,__LINE__,keyTimes);
-		if(keyTimes>50)
-		{
-		*key = 0xA5;
-		keyTimes = 0;
-		 return 1;
-		}
-		if(keyTimes>0)
-		{
-		*key = 0xDC;
-		keyTimes = 0;
-		 return 1;
-		}
-		else
-		{
-		*key = 0;
-		keyTimes = 0;
-		 return 0;
-		}
-		
-	}
-	  return 0;		
+    static  MS_U8 keyTimes=0;
+
+    if(mdrv_gpio_get_level(CHDRV_FP_KEY_POWER) == 0)  //high
+    {
+        keyTimes++;
+        //mFP_DEBUG("%s %d keyTimes[%d]  key[%d]\n",__FUNCTION__,__LINE__,keyTimes,mdrv_gpio_get_level(POWER_NUM));		
+    }
+    else
+    {
+        //mFP_DEBUG("%s %d keyTimes[%d]\n",__FUNCTION__,__LINE__,keyTimes);
+        if(keyTimes>50)
+        {
+            *key = 0xA5;
+            keyTimes = 0;
+            return 1;
+        }
+        if(keyTimes>0)
+        {
+            *key = 0xDC;
+            keyTimes = 0;
+            return 1;
+        }
+        else
+        {
+            *key = 0;
+            keyTimes = 0;
+            return 0;
+        }
+
+    }
+    return 0;		
 }
 
 /******************************************************************************
