@@ -70,7 +70,7 @@
  *    provided at file open time and is used for all other calls referencing
  *    this file.
  */
-typedef TUnsignedInt32      TVfsFileHandle;
+typedef void*      TVfsFileHandle;
 
 
 /**
@@ -79,7 +79,7 @@ typedef TUnsignedInt32      TVfsFileHandle;
  *    provided at vfsOpenDirectory call time and is used for all subsequent 
  *    calls to vfsReadDirectory and vfsCloseDirectory.
  */
-typedef TUnsignedInt32      TVfsDirectoryHandle;
+typedef void*      TVfsDirectoryHandle;
 
 
 /**

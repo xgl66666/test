@@ -310,7 +310,7 @@ void ResquestFilter( tTDAL_DMX_ChannelId channelId,
             "DMX control filter" );
 
 
-#if 1
+#if 0
 	mTBOX_PRINT((kTBOX_LF,"Wait 50s...\r\n"));
 	TestManager_AssertEqual( TKEL_WaitSemaphoreTimeout( dmxTestStressSectionSem, ms2tick(50000) ),
 							TKEL_NO_ERR,

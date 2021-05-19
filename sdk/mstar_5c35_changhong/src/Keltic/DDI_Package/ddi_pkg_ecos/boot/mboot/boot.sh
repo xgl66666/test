@@ -13,8 +13,8 @@ APP_TEMP_BIN=./out/tempA.bin
 FLASH_BIN=./out/flash.bin
 PARAFILE=../../bsp/ecos/usb_update/Target/script/parameters.txt
 
-MBOOT_BIN=./bin/mboot_"$CFG_BOARD"_$CFG_CHIP_SELECTION.bin
-
+##MBOOT_BIN=./bin/mboot_"$CFG_BOARD"_$CFG_CHIP_SELECTION.bin
+MBOOT_BIN=./bin/mboot_BD_MST183B_D01A_S_MSD5XX5_Nagra_K5L.bin
 
 
 echo "MBOOT_BIN PATH=" $MBOOT_BIN

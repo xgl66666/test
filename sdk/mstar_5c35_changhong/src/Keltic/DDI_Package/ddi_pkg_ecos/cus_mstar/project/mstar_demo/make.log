@@ -1,0 +1,4 @@
+make[4]: Entering directory `/home/xiongguanglong/opentv/opentv1-chal/sdk/mstar_5c35_changhong/src/Keltic/DDI_Package/ddi_pkg_ecos/cus_mstar/project/mstar_demo'
+Make keltic MSTAR project...
+  [LD] bin/keltic_ecos.elf
+make[4]: Leaving directory `/home/xiongguanglong/opentv/opentv1-chal/sdk/mstar_5c35_changhong/src/Keltic/DDI_Package/ddi_pkg_ecos/cus_mstar/project/mstar_demo'

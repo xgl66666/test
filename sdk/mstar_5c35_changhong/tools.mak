@@ -48,7 +48,7 @@ AS = mipsisa32-elf-as
 AR = mipsisa32-elf-ar
 STRIP = mipsisa32-elf-strip
 OBJ_COPY = mipsisa32-elf-objcopy
-TOOLCHAIN_PATH:=/tools/mstar/mipsisa32-elf-3.4.4/bin/
+TOOLCHAIN_PATH:=/opt/mstar/gnutools/mipsisa32-elf-3.4.4/bin/
 export PATH:=$(TOOLCHAIN_PATH):$(PATH)
 endif
 

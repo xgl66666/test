@@ -10,11 +10,11 @@
 **    General Public License.
 **
 ** COPYRIGHT:
-**   2001-2013 Nagravision S.A.
+**   2001-2020 Nagravision S.A.
 **
 ** CONFIGURATION MANAGEMENT:
-**   $Id: //CAK/components/cakapi/TAGS/CAKAPI_1_24_0/src/com/ca_cak.h#1 $
-**   $Change: 96600 $
+**   $Id: //CAK/components/cakapi/TAGS/CAKAPI_1_34_1/src/com/ca_cak.h#1 $
+**   $Change: 291592 $
 **
 ** CLASSIFICATION:
 **   CONFIDENTIAL
@@ -30,11 +30,86 @@ extern "C" {
 
 /** @{ */
 #define CAKAPI_VERSION_MAJOR  6
-#define CAKAPI_VERSION_MEDIUM 2
-#define CAKAPI_VERSION_MINOR  0
+#define CAKAPI_VERSION_MEDIUM 10
+#define CAKAPI_VERSION_MINOR  1
 /** @} */
 
 /** @page p_history Changes history
+ *  - <b> 6.10.1 - 30-Sep-2020 </b>
+ *    - Added caPullEmmContextGetPpid
+ *    - Updated the format returned by caPullEmmContextGetSerialNumber
+ *    - caResume can return CA_ERROR_CA_NOT_RUNNING when an issue is detected in operator data
+ *
+ *  - <b> 6.10.0 - 24-Apr-2020 </b>
+ *    - Added CA_REQUEST_TYPE_PULL_EMM_GET_CONTEXT
+ *    - Added object caPullEmmContex
+ *    - Added caPullEmmContextGetToken
+ *    - Added caPullEmmContextGetSignature
+ *    - Added caPullEmmContextGetSerialNumber
+ *    - Added caPullEmmContextGetPrivateData
+ *    - Added CA_REQUEST_TYPE_PULL_EMM_PROCESSING
+ *    - Added caRequestSetPullEmmContext
+ *    - Added CA_LISTENER_TYPE_PULL_EMM
+ *
+ *  - <b> 6.9.2 - 30-Mar-2020 </b>
+ *    - caStartUp can return CA_ERROR_CA_NOT_RUNNING when an issue is detected in operator data
+ *    - Updated description of caStartUp regarding functions to be called before.
+ *
+ *  - <b> 6.9.1 - 11-Jul-2019 </b>
+ *    - caSetPersoDataPath does not require a read only path.
+ *    - Doxygen document: added nagravision watermark software interface specification.
+ *
+ *  - <b> 6.9.0 - 11-Jul-2019 </b>
+ *    - Added caSetWmkSwInterface
+ *    - caSystemGetUpgradeWarningDelay is deprecated
+ *    - CA_SYSTEM_SOFTWARE_UPGRADE_RECOMMENDED is deprecated
+ *
+ *  - <b> 6.8.0 - 15-Nov-2018 </b>
+ *    - Added caSetTrustedStoragePath
+ *    - Added CA_ACCESS_DENIED_DEVICE_ACTIVATION_REQUIRED
+ *    - Added CA_ACCESS_CORRUPTED_ECM
+ *    - Added CA_REQUEST_TYPE_FILTERED_EMM_PROCESSING
+ *    - caRequestSetBuffer can be used with a program descrambling request
+ *    - Added TCaMpegFilterCfg object
+ *    - Added caSystemGetEcmMpegFilterCfgs
+ *    - Added caSystemGetEmmMpegFilterCfgs
+ *    - Added caMpegFilterCfgGetCaSystemId
+ *    - Added caMpegFilterCfgGetPattern
+ *    - Added caRequestSetMpegFilterCfg
+ *    - Typo corrections
+ *
+ *  - <b> 6.7.0 - 09-May-2018 </b>
+ *    - Added caSetPersoDataPath
+ *    - Added caSetStoragePath
+ *    - Added caRequestSetUserIntent
+ *    - Added caRequestSetUsageRulesStatus
+ *    - Added caRequestSetSecureMediaPath
+ *    - Added caProgramGetKeySlotId
+ *    - Added CA_ACCESS_USAGE_RULES_VALIDATION_REQUIRED and CA_ACCESS_DENIED_USAGE_RULES_VIOLATION
+ *
+ *  - <b> 6.6.0 - 24-May-2017 </b>
+ *    - Add flag CA_SMARTCARD_TSIO_CAPABLE
+ *
+ *  - <b> 6.5.0 - 09-Jan-2017 </b>
+ *    - Updated description of caRequestSetEmi() which is compatible with request 
+ *      #CA_REQUEST_TYPE_PROGRAM_DESCRAMBLING
+ *
+ *  - <b> 6.4.1 - 20-Jul-2016 </b>
+ *    - Ensure compatibility with 64-bit version of Windows.
+ *    - Added CA_PRODUCT_FREE_PERIOD and CA_PRODUCT_VOUCHER
+ *    - Add precision to comment of caSmartcardGetDate()
+ *
+ *  - <b> 6.4.0 - 26-Jan-2016 </b>
+ *    - Added caSmartcardGetDate()
+ *
+ *  - <b> 6.3.0 - 22-Jan-2014 </b>
+ *    - Added caPurchaseGetUid()
+ *    - Added caRequestSetPurchaseUid()
+ *    - Updated description of caRequestSetTransportSessionId() which is compatible with request 
+ *      #CA_REQUEST_TYPE_EMM_FILTERING
+ *    - Updated description of caRequestSetRefurbishmentData since returned values were not of 
+ *      the valid kind.
+ * 
  *  - <b> 6.2.0 - 19-Mar-2014 </b>
  *    - Added #CA_LISTENER_TYPE_CHIPSET_HARDWARE_RESET.
  *
@@ -71,9 +146,9 @@ extern "C" {
  *  - @subpage p_history
  *  - @subpage p_preface
  *
- *  <hr>Copyright &copy; 2011-2013 Nagravision. All rights reserved.\n
+ *  <hr>Copyright &copy; 2011-2020 Nagravision. All rights reserved.\n
  *  CH-1033 Cheseaux, Switzerland\n
- *  Tel: +41 21 7320311  Fax: +41 21 7320100\n
+ *  Tel: +41 21 732 03 11  Fax: +41 21 732 01 00\n
  *  http://www.nagra.com
  *
  *  All trademarks and registered trademarks are the property of their respective
@@ -131,6 +206,7 @@ extern "C" {
 /** @defgroup g_content caContent */
 /** @defgroup g_credit caCredit */
 /** @defgroup g_event caEvent */
+/** @defgroup g_mpeg_filter_configuration caMpegFilterCfg */
 /** @defgroup g_irdcmd caIrdCommand */
 /** @defgroup g_key caKey */
 /** @defgroup g_unique_key caUniqueKey */
@@ -164,15 +240,8 @@ extern "C" {
 #include "ca_defsx.h"
 #include "ca_mpeg.h"
 #include "ca_dvb.h"
-
-/*
- * This inclusion is mandatory for the CAO V2 used in the A5C6 glue context:
- * the CAO must map the CAK API V6 calls to the renamed objects
- * -otherwise it would call the glue functions.
-*/
-#ifdef APP_5_CAK_6
-#include "cakha5c6.h"
-#endif /* APP_5_CAK_6 */
+#include "nv_acd.h"
+#include "nv_wmk_sw.h"
 
 /******************************************************************************/
 /*                                                                            */
@@ -431,11 +500,25 @@ typedef enum
     /**<  The access to the program is not authorized, because TSIO mode is enforced
      *    on this program and the card does not support it.
     */
-
+  CA_ACCESS_USAGE_RULES_VALIDATION_REQUIRED,
+    /**<  The access to the program is granted but usages rules must be validated by
+     *    the middleware before potentially setting keys in the descrambler.
+    */
+  CA_ACCESS_DENIED_USAGE_RULES_VIOLATION,
+    /**<  The access to the program is not authorized due to usage rules
+     *    violation
+    */
+  CA_ACCESS_DENIED_DEVICE_ACTIVATION_REQUIRED,
+    /**<  The access to the program is not authorized since current device
+     *    has to be activated.
+    */
+  CA_ACCESS_CORRUPTED_ECM,
+    /**<  Last ECM received by CAK is corrupted, access is unknown.
+     *    No keys have been set into the descrambler.
+    */
   CA_ACCESS_GRANTED_PPT = 1000,
     /**<  Deprecated.
-     *    The access is not authorized, because parental rating settings
-     *    prevent it.
+     *    The access is granted by the smartcard for a PPT service.
     */
   CA_ACCESS_DENIED_FOR_PARENTAL_RATING,
     /**<  Deprecated.
@@ -494,6 +577,11 @@ typedef TUnsignedInt32 TSmartcardFlags;
    *    corresponds to a physical card that can be removed from the card
    *    reader.
    *    @see TSmartcardFlags
+  */
+#define CA_SMARTCARD_TSIO_CAPABLE        BIT5
+  /**<  When set to 1, this flag indicates that the smart card is able to
+   *    descramble the stream.
+   *    @see TSmartcardFlags, CA_STREAM_PROCESSING_MODE_TSIO
   */
 
 /**
@@ -580,6 +668,24 @@ typedef struct SCaSmartcard TCaSmartcard;
 
 /** @} g_card */
 
+
+
+/** @addtogroup g_mpeg_filter_configuration
+*  @{
+*/
+
+/**
+ *  @brief
+ *    MPEG filter configuration object.
+ *
+ * The structure itself is private to the CAK to prevent external access to its
+ * fields.
+*/
+typedef struct SCaMpegFilterCfg TCaMpegFilterCfg;
+
+/** @} g_mpeg_filter_configuration */
+
+
 /** @addtogroup g_content
  *  @{
 */
@@ -630,6 +736,18 @@ typedef TUnsignedInt32 TCaCreditId;
 
 /** @} g_credit */
 
+/** @addtogroup g_pullEmmContext
+ *  @{
+*/
+
+/**
+ *  @brief
+ *    Type used the represent the CaPullEmmContext class. The structure itself is
+ *    private to the CAK to prevent external access to its fields.
+*/
+typedef struct SCaPullEmmContext TCaPullEmmContext;
+
+/** @} g_pullEmmContext */
 
 /**
  *  @ingroup g_listener
@@ -777,6 +895,10 @@ typedef enum
      *    chipset. It is recommended to make these operations (caPause + reset)  
      *    as soon as possible, although the middleware is free to choose the
      *    most suitable time.
+    */
+  CA_LISTENER_TYPE_PULL_EMM,
+    /**<  Notifies the middleware that a connection to the backend is required
+     *    to verify if out-of-band EMM needs to be processed by CAK.
     */
   CA_LISTENER_NUM_TYPES
     /**<  Number of elements in the enumeration; not used.
@@ -930,7 +1052,7 @@ typedef enum
   CA_REQUEST_TYPE_OPERATORS,
     /**< Information about Operators*/
   CA_REQUEST_TYPE_EMM_PROCESSING,
-    /**< Process an EMM */
+    /**< Process an EMM (Out of band format) */
   CA_REQUEST_TYPE_PIN_CODES_INFO,
     /**< Information about pin codes*/
   CA_REQUEST_TYPE_PIN_CODE_CHANGE,
@@ -951,6 +1073,12 @@ typedef enum
     /**< Descramble a content being played back */
   CA_REQUEST_TYPE_PVP_KEY,
     /**< Compute a key for protecting A/V content stored on PVP */
+  CA_REQUEST_TYPE_FILTERED_EMM_PROCESSING,
+  /**< Process a filtered EMM (MPEG Section format) */
+  CA_REQUEST_TYPE_PULL_EMM_GET_CONTEXT,
+  /**< Get context information in order to retrieve pull EMM from the backend */
+  CA_REQUEST_TYPE_PULL_EMM_PROCESSING,
+  /**< Process pull EMM response provided by the backend */
   CA_REQUEST_NUM_TYPES
     /**< number of supported request types */
 } TCaRequestType;
@@ -1328,6 +1456,12 @@ typedef enum
   CA_PRODUCT_A_LA_CARTE = 22,
     /**<  'A la carte' products.
     */
+  CA_PRODUCT_FREE_PERIOD = 23,
+    /**<  Free period product granting access to all or subset of operator channels in anonymous mode
+    */
+  CA_PRODUCT_VOUCHER = 24,
+    /**<  Product used to extend access for a given period in an anonymous mode
+    */
   CA_PRODUCT_MAX_NUM
     /**<  Number of enum values.
     */
@@ -1552,6 +1686,7 @@ typedef TUnsignedInt32  TSystemFlags;
 
 #define CA_SYSTEM_SOFTWARE_UPGRADE_RECOMMENDED  BIT0
   /**<  software upgrade is recommended
+   *    @deprecated
   */
 #define CA_SYSTEM_SOFTWARE_UPGRADE_REQUIRED     BIT1
   /**<  software upgrade is required.
@@ -1809,6 +1944,103 @@ NAGRA_CA_API TCaStatus caInitialization
 
 /**
  *  @brief
+ *    Set the file system path where the CAK can find the personalization data.
+ *
+ *  @pre
+ *    caInitialization must have been called.
+ *
+ *  @post
+ *    The CAK ready to start.
+ *
+ *  @param   pxPersoDataPath
+ *             Null-terminated string describing a path to a directory. It must
+ *             end with a directory separator suitable for the underlying OS.
+ *
+ *  @retval  CA_NO_ERROR
+ *             Success.
+ *  @retval  CA_ERROR
+ *             Failure.
+*/
+NAGRA_CA_API TCaStatus caSetPersoDataPath
+(
+  const TChar* pxPersoDataPath
+);
+
+/**
+ *  @brief
+ *    Set the file system path where the CAK can store its private data.
+ *
+ *  @pre
+ *    caInitialization must have been called.
+ *
+ *  @post
+ *    The CAK ready to start.
+ *
+ *  @param   pxStoragePath
+ *             Null-terminated string describing a path to a directory. It must
+ *             end with a directory separator suitable for the underlying OS.
+ *             The specified path must be read/write.
+ *
+ *  @retval  CA_NO_ERROR
+ *             Success.
+ *  @retval  CA_ERROR
+ *             Failure.
+*/
+NAGRA_CA_API TCaStatus caSetStoragePath
+(
+  const TChar* pxStoragePath
+);
+
+/**
+ *  @brief
+ *    Set the trusted file system path where the CAK can store its sensitive private data.
+ *
+ *  @pre
+ *    caInitialization must have been called.
+ *
+ *  @post
+ *    The CAK ready to start.
+ *
+ *  @param   pxTrustedStoragePath
+ *             Null-terminated string describing a path to a directory. It must
+ *             end with a directory separator suitable for the underlying OS.
+ *             The specified path must be read/write.
+ *
+ *  @retval  CA_NO_ERROR
+ *             Success.
+ *  @retval  CA_ERROR
+ *             Failure.
+*/
+NAGRA_CA_API TCaStatus caSetTrustedStoragePath
+(
+  const TChar* pxTrustedStoragePath
+);
+
+/**
+ *  @brief
+ *    Set the implementation of the watermark software interface
+ *
+ *  @pre
+ *    caInitialization must have been called.
+ *
+ *  @post
+ *    The CAK ready to start.
+ *
+ *  @param   pxNvWmkSwInterface
+ *             Implementation of the Watermark software interface.
+ *
+ *  @retval  CA_NO_ERROR
+ *             Success.
+ *  @retval  CA_ERROR
+ *             Failure.
+*/
+NAGRA_CA_API TCaStatus caSetWmkSwInterface
+(
+  const INvWmkSw* pxNvWmkSwInterface
+);
+
+/**
+ *  @brief
  *    Start up all CA threads
  *
  *    After the call to caInitialization, all CAK threads are waiting for a
@@ -1816,13 +2048,21 @@ NAGRA_CA_API TCaStatus caInitialization
  *    this signal in order to have all CAK threads in the running state.
  *
  *  @pre
- *    caInitialization must has been called.
+ *    caInitialization must have been called.
+ *    caSetPersoDataPath must have been called when POSIX is used.
+ *    caSetStoragePath must have been called when POSIX is used and Enable/Protect is supported.
+ *    caSetTrustedStoragePath must have been called when CAK Single posix flavor is used.
  *
  *  @post
  *    The CAK is up and running
  *
  *  @retval  CA_NO_ERROR
  *             Success.
+ *
+ *  @retval  CA_ERROR_CA_NOT_RUNNING
+ *             An internal issue occured while starting up. 
+ *             Only a system request can be created.
+ *
  *  @retval  CA_ERROR
  *             Failure.
 */
@@ -1841,11 +2081,15 @@ NAGRA_CA_API TCaStatus caStartUp
  *    in pause state. Call caResume() to resume the execution of CAK threads.
  *
  *  @retval  CA_NO_ERROR
- *    Success
+ *             Success
+ *
+ *  @retval  CA_ERROR_CA_NOT_RUNNING
+ *             The CA is currently not running so it cannot be paused
  *
  *  @retval  CA_ERROR
- *    Failure
-*/
+ *             Failure
+ *
+ */
 NAGRA_CA_API TCaStatus caPause
 (
   void
@@ -1858,10 +2102,14 @@ NAGRA_CA_API TCaStatus caPause
  *    counterpart of caPause().
  *
  *  @retval  CA_NO_ERROR
- *    Success
+ *             Success
  *
+ *  @retval  CA_ERROR_CA_NOT_RUNNING
+ *             An internal issue occured while resuming. 
+ *             Only a system request can be created.
+ *  
  *  @retval  CA_ERROR
- *    Failure
+ *             Failure
 */
 NAGRA_CA_API TCaStatus caResume
 (
@@ -1878,10 +2126,10 @@ NAGRA_CA_API TCaStatus caResume
  *   their related resources (semaphores, memory, etc.).
  *
  *  @retval  CA_NO_ERROR
- *    Success
+ *             Success
  *
  *  @retval  CA_ERROR
- *    Failure
+ *             Failure
  *
  *  @remark
  *    -# This function is synchronous. It means that the caller will be
@@ -2299,7 +2547,7 @@ NAGRA_CA_API TCaObjectStatus caSmartcardGetEcmCaSystemId
 */
 NAGRA_CA_API TCaObjectStatus caSmartcardGetEmmCaSystemId
 (
-  const TCaSmartcard*     pxSmartcard,
+  const TCaSmartcard*   pxSmartcard,
         TCaSystemId*    pxEmmCaSystemId
 );
 
@@ -2570,6 +2818,45 @@ NAGRA_CA_API TCaObjectStatus caSmartcardGetRenewalDate
 
 /**
  * @brief
+ *   This function gets the current date of the smartcard.
+ *
+ *  The current date is potentially updated when the smart card receives an
+ *  encrypted message from the head-end.
+ *
+ *  @param   pxSmartcard
+ *             Smartcard object to use.
+ *  @param   pxDate
+ *             Pointer to fill with the information. Cannot be NULL
+ *             OUT: Current date of the smartcard.
+ *
+ *  @retval  CA_OBJECT_NO_ERROR
+ *             Success.
+ *  @retval  CA_OBJECT_INVALID
+ *             The object is invalid for this getter.
+ *  @retval  CA_OBJECT_PARAMETER_INVALID
+ *             A parameter is invalid (probably set to NULL)
+ *  @retval  CA_OBJECT_NOT_AVAILABLE
+ *             This information is not available in the CAK
+ *  @retval  CA_OBJECT_ERROR
+ *             An unspecified error occurred
+ *
+ * @remarks
+ *    -# This getter is a dynamic function, which recalculates the smartcard
+ *       date each time it is called, until a smartcards change listener
+ *       CA_LISTENER_TYPE_SMARTCARDS is triggered; in this case, a new
+ *       smartcard request must be issued.
+ *    -# The smartcards change listener CA_LISTENER_TYPE_SMARTCARDS is not
+ *       triggered when the date changes.
+*/
+NAGRA_CA_API TCaObjectStatus caSmartcardGetDate
+(
+  const TCaSmartcard*   pxSmartcard,
+        TCalendarTime*  pxDate
+);
+
+
+/**
+ * @brief
  *   This function gets the smartcard provider ID.
  *
  *  @param   pxSmartcard
@@ -2816,7 +3103,7 @@ NAGRA_CA_API TCaObjectStatus caSmartcardGetParentalControl
  *             Pointer to a smartcard object.
  *  @param   pxNumberOfSystems
  *             Pointer to fill with the information. Cannot be NULL.
- *             OUT: Number of paired systems in the the system array.
+ *             OUT: Number of paired systems in the system array.
  *  @param   pppxSystemArray
  *             Pointer to fill with the information. Cannot be NULL.
  *             OUT: array of pointers on caSystem objects.
@@ -3939,15 +4226,18 @@ NAGRA_CA_API TCaRequestStatus caRequestSetPid
  *  @brief
  *    This function associates a buffer to a request. Depending of the request
  *    type, data provided may differ.
- *      -# #CA_REQUEST_TYPE_HASH_SIGN       Hash block to be signed by the CAK.
- *      -# #CA_REQUEST_TYPE_EMM_PROCESSING  EMM to process.
+ *     -# #CA_REQUEST_TYPE_HASH_SIGN            Hash block to be signed by the CAK.
+ *     -# #CA_REQUEST_TYPE_EMM_PROCESSING       EMM to process.
+ *     -# #CA_REQUEST_TYPE_FILTERED_EMM_PROCESSING   EMM to process.
+ *     -# #CA_REQUEST_TYPE_PROGRAM_DESCRAMBLING ECM to process.
  *
  *  @pre
  *    The request must be created by a call to caRequestCreate().
  *
  *  @param   pxRequest
- *            Request to use. It must be of type #CA_REQUEST_TYPE_HASH_SIGN or
- *            #CA_REQUEST_TYPE_EMM_PROCESSING
+ *            Request to use. It must be of type #CA_REQUEST_TYPE_HASH_SIGN,
+ *            #CA_REQUEST_TYPE_EMM_PROCESSING, #CA_REQUEST_TYPE_FILTERED_EMM_PROCESSING,
+ *            #CA_REQUEST_TYPE_PROGRAM_DESCRAMBLING or #CA_REQUEST_TYPE_PULL_EMM_PROCESSING
  *  @param    xSizeOfBuffer
  *            Size of the provided buffer.
  *  @param    pxBuffer
@@ -3973,7 +4263,7 @@ NAGRA_CA_API TCaRequestStatus caRequestSetPid
  *            An unspecified error occurred
  *  @remark
  *    -#  Multiple call to this function may be done on a given request.
- *        Limitiation on whether the multiple buffers are taken into account or
+ *        Limitation on whether the multiple buffers are taken into account or
  *        not is specific to the request type.
  *
 */
@@ -3989,6 +4279,7 @@ NAGRA_CA_API TCaRequestStatus caRequestSetBuffer
  *  @brief
  *    This function associates a transport session identifier to a request
  *    of type #CA_REQUEST_TYPE_PDT_START or #CA_REQUEST_TYPE_PROGRAM_DESCRAMBLING
+ *    or #CA_REQUEST_TYPE_EMM_FILTERING
  *
  *  @pre
  *    The request must be created by a call to caRequestCreate().
@@ -3996,7 +4287,8 @@ NAGRA_CA_API TCaRequestStatus caRequestSetBuffer
  *  @param   pxRequest
  *            Request to use.
  *            It must be of type #CA_REQUEST_TYPE_PDT_START or
- *            #CA_REQUEST_TYPE_PROGRAM_DESCRAMBLING
+ *            #CA_REQUEST_TYPE_PROGRAM_DESCRAMBLING or 
+ *            #CA_REQUEST_TYPE_EMM_FILTERING
  *  @param    xTransportSessionId
  *            Transport session id to associate with the request.
  *
@@ -4201,6 +4493,7 @@ NAGRA_CA_API TCaRequestStatus caRequestSetKeyType
  *      -# #CA_REQUEST_TYPE_WATCH_PPT  Watch Pay-Per-Time product.
  *      -# #CA_REQUEST_TYPE_ENABLE_CONSUMPTION Pay-Per-Time product.
  *      -# #CA_REQUEST_TYPE_DISABLE_CONSUMPTION Pay-Per-Time product.
+ *      -# #CA_REQUEST_TYPE_PROGRAM_DESCRAMBLING Any product.
  *
  *  @pre
  *    The request must be created by a call to caRequestCreate().
@@ -4209,7 +4502,8 @@ NAGRA_CA_API TCaRequestStatus caRequestSetKeyType
  *            Request to use.
  *            It must be of type #CA_REQUEST_TYPE_WATCH_PPT,
  *            #CA_REQUEST_TYPE_ENABLE_CONSUMPTION or
- *            #CA_REQUEST_TYPE_DISABLE_CONSUMPTION
+ *            #CA_REQUEST_TYPE_DISABLE_CONSUMPTION or
+ *            #CA_REQUEST_TYPE_PROGRAM_DESCRAMBLING
  *  @param   pxProgram
  *            Program to associate with the request.
  *
@@ -4231,7 +4525,7 @@ NAGRA_CA_API TCaRequestStatus caRequestSetKeyType
  *            An unspecified error occurred
  *  @remark
  *    -#  Multiple call to this function may be done on a given request.
- *        Limitiation on whether the multiple buffers are taken into account or
+ *        Limitation on whether the multiple calls are taken into account or
  *        not is specific to the request type.
  *
 */
@@ -4686,6 +4980,8 @@ NAGRA_CA_API TCaRequestStatus caRequestSetPmtSection
  *            The parameter is invalid
  *  @retval CA_REQUEST_INVALID_TYPE
  *            This setter does not apply to the passed request type.
+ *  @retval CA_REQUEST_PARAMETER_OUT_OF_RANGE
+ *            The value of the number of PIDs is out of range
  *  @retval CA_REQUEST_ERROR
  *            An unspecified error occurred
  *  @remark
@@ -4746,7 +5042,7 @@ NAGRA_CA_API TCaRequestStatus caRequestSetOperatorIds
 (
         TCaRequest*          pxRequest,
         TUnsignedInt32        xNumberOfPpids,
-  const TPpid*                pxPpidArray
+  const TPpid*               pxPpidArray
 );
 
 /**
@@ -4956,16 +5252,22 @@ NAGRA_CA_API TCaRequestStatus caRequestSetConnectionMetadata
  *  @param[in] pxRefurbishmentData
  *               Refurbishment data to be sent to the server
  *
- *  @retval  CA_OBJECT_NO_ERROR
- *             Success.
- *  @retval  CA_OBJECT_INVALID
- *             The object is invalid for this getter.
- *  @retval  CA_OBJECT_PARAMETER_INVALID
- *             A parameter is invalid (probably set to NULL)
- *  @retval  CA_OBJECT_NOT_AVAILABLE
- *             This information is not available in the CAK
- *  @retval  CA_OBJECT_ERROR
- *             An unspecified error occurred
+ *  @retval CA_REQUEST_NO_ERROR
+ *            The parameter could be set successfully
+ *  @retval CA_REQUEST_PROCESSING
+ *            The request has been sent to the CAK and is being processed.
+ *            The setter cannot be used any more.
+ *  @retval CA_REQUEST_PROCESSED
+ *            The request has been processed.
+ *            The setter cannot be used any more.
+ *  @retval CA_REQUEST_INVALID
+ *            The pointer does not correspond to a valid request
+ *  @retval CA_REQUEST_PARAMETER_INVALID
+ *            The parameter is invalid
+ *  @retval CA_REQUEST_INVALID_TYPE
+ *            This setter does not apply to the passed request type.
+ *  @retval CA_REQUEST_ERROR
+ *            An unspecified error occurred
  *
 */
 NAGRA_CA_API TCaRequestStatus caRequestSetRefurbishmentData
@@ -5136,8 +5438,8 @@ NAGRA_CA_API TCaRequestStatus caRequestSetStreamProcMode
 
 /**
  *  @brief
- *    This function associates an EMI (Encryption Method Identifier) to a request
- *    of type #CA_REQUEST_TYPE_CONTENT_PLAYBACK.
+ *    This function associates an EMI (Encryption Method Identifier) to a request of
+ *    type #CA_REQUEST_TYPE_PROGRAM_DESCRAMBLING or #CA_REQUEST_TYPE_CONTENT_PLAYBACK.
  *
  *  @pre
  *    The request must be created by a call to caRequestCreate().
@@ -5207,6 +5509,268 @@ NAGRA_CA_API TCaRequestStatus caRequestSetPriority
 (
   TCaRequest*    pxRequest,
   TUnsignedInt8   xPriority
+);
+
+/**
+ *  @brief
+ *    This function associates a purchase unique ID to a request of type
+ *    #CA_REQUEST_TYPE_PROGRAM_DESCRAMBLING.
+ *
+ *    Purchase unique ID can be retrieved using a request of type
+ *    #CA_REQUEST_TYPE_EVENT
+ *
+ *  @pre
+ *    The request must be created by a call to caRequestCreate().
+ *
+ *  @param[in]  pxRequest
+ *                Request handle
+ *  @param[in]  xPurchaseUid
+ *                Purchase unique ID to assign.
+ *                Cannot be higher than 0xFFFFFF.
+ *
+ *  @retval CA_REQUEST_NO_ERROR
+ *            Successful operation
+ *  @retval CA_REQUEST_PROCESSING
+ *            The request has been sent to the CAK and is being processed.
+ *            The setter cannot be used any more.
+ *  @retval CA_REQUEST_PROCESSED
+ *            The request has been processed.
+ *            The setter cannot be used any more.
+ *  @retval CA_REQUEST_INVALID
+ *            pxRequest does not correspond to a valid request
+ *  @retval CA_REQUEST_PARAMETER_INVALID
+ *            A parameter is invalid
+ *  @retval CA_REQUEST_INVALID_TYPE
+ *            This setter does not apply to the passed request type.
+ *  @retval CA_REQUEST_PARAMETER_OUT_OF_RANGE
+ *            The value of the UID is out of range
+ *  @retval CA_REQUEST_ERROR
+ *            An unspecified error occurred
+*/
+NAGRA_CA_API TCaRequestStatus caRequestSetPurchaseUid
+(
+  TCaRequest*    pxRequest,
+  TUnsignedInt32  xPurchaseUid
+);
+
+/**
+ *  @brief
+ *    This function associates a user intent to a request of type
+ *    #CA_REQUEST_TYPE_PROGRAM_DESCRAMBLING.
+ *
+ *  @pre
+ *    The request must be created by a call to caRequestCreate().
+ *
+ *  @param[in]  pxRequest
+ *                Request handle
+ *  @param[in]  xUserIntent
+ *                User intent to assign.
+ *
+ *  @retval CA_REQUEST_NO_ERROR
+ *            Successful operation
+ *  @retval CA_REQUEST_PROCESSING
+ *            The request has been sent to the CAK and is being processed.
+ *            The setter cannot be used any more.
+ *  @retval CA_REQUEST_PROCESSED
+ *            The request has been processed.
+ *            The setter cannot be used any more.
+ *  @retval CA_REQUEST_INVALID
+ *            pxRequest does not correspond to a valid request
+ *  @retval CA_REQUEST_PARAMETER_INVALID
+ *            A parameter is invalid
+ *  @retval CA_REQUEST_INVALID_TYPE
+ *            This setter does not apply to the passed request type.
+ *  @retval CA_REQUEST_PARAMETER_OUT_OF_RANGE
+ *            The value of the user intent is out of range
+ *  @retval CA_REQUEST_ERROR
+ *            An unspecified error occurred
+*/
+NAGRA_CA_API TCaRequestStatus caRequestSetUserIntent
+(
+  TCaRequest*    pxRequest,
+  TNvUserIntent   xUserIntent
+);
+
+/**
+ *  @brief
+ *    This function sets the status of current usage rules to a request of type
+ *    #CA_REQUEST_TYPE_PROGRAM_DESCRAMBLING.
+ *
+ *  @pre
+ *    The request must be created by a call to caRequestCreate().
+ *
+ *  @param[in]  pxRequest
+ *                Request handle
+ *  @param[in]  xUsageRulesCompliant
+ *                Informs if usage rules are considered as compliant or
+ *                or not by the middleware
+ *
+ *  @retval CA_REQUEST_NO_ERROR
+ *            Successful operation
+ *  @retval CA_REQUEST_PROCESSING
+ *            The request has been sent to the CAK and is being processed.
+ *            The setter cannot be used any more.
+ *  @retval CA_REQUEST_INVALID
+ *            pxRequest does not correspond to a valid request
+ *  @retval CA_REQUEST_PARAMETER_INVALID
+ *            A parameter is invalid
+ *  @retval CA_REQUEST_INVALID_TYPE
+ *            This setter does not apply to the passed request type.
+ *  @retval CA_REQUEST_PARAMETER_OUT_OF_RANGE
+ *            The value of the user intent is out of range
+ *  @retval CA_REQUEST_ERROR
+ *            An unspecified error occurred
+*/
+NAGRA_CA_API TCaRequestStatus caRequestSetUsageRulesStatus
+(
+  TCaRequest*    pxRequest,
+  TBoolean        xUsageRulesCompliant
+);
+
+/**
+ *  @brief
+ *    This function sets the secure media path configuration associated 
+ *    to a request of type #CA_REQUEST_TYPE_PROGRAM_DESCRAMBLING.
+ *
+ *  @pre
+ *    The request must be created by a call to caRequestCreate().
+ *
+ *  @param[in]  pxRequest
+ *                Request handle
+ *
+ *  @param[in]  xSecureMediaPathEnabled
+ *                Informs if the secure media path has to be enabled or not.
+ *
+ *  @retval CA_REQUEST_NO_ERROR
+ *            Successful operation
+ *  @retval CA_REQUEST_PROCESSING
+ *            The request has been sent to the CAK and is being processed.
+ *            The setter cannot be used any more.
+ *  @retval CA_REQUEST_INVALID
+ *            pxRequest does not correspond to a valid request
+ *  @retval  CA_REQUEST_PARAMETER_INVALID
+ *             The parameter is invalid (probably pxRequest set to NULL)
+ *  @retval CA_REQUEST_INVALID_TYPE
+ *            This setter does not apply to the passed request type.
+ *  @retval CA_REQUEST_ERROR
+ *            An unspecified error occurred
+*/
+NAGRA_CA_API TCaRequestStatus caRequestSetSecureMediaPath
+(
+  TCaRequest*    pxRequest,
+  TBoolean        xSecureMediaPathEnabled
+);
+
+/**
+ *  @brief
+ *    This function associates an Mpeg filter configuration to a request.
+ *
+ *  @pre
+ *    The request must be created by a call to caRequestCreate().
+ *
+ *  @param   pxRequest
+ *            Request to use.
+ *            It must be of type #CA_REQUEST_TYPE_PROGRAM_DESCRAMBLING or
+ *            #CA_REQUEST_TYPE_FILTERED_EMM_PROCESSING.
+ *  @param   pxFilterCfg
+ *            Mpeg filter configuration to associate with the request.<br>
+ *            Must correspond to the Mpeg filter configuration used to filter the
+ *            section provided using the caRequestSetBuffer method.
+ *
+ *  @retval CA_REQUEST_NO_ERROR
+ *            The parameter could be set successfully
+ *  @retval CA_REQUEST_PROCESSING
+ *            The request has been sent to the CAK and is being processed.
+ *            The setter cannot be used any more.
+ *  @retval CA_REQUEST_INVALID
+ *            The pointer does not correspond to a valid request
+ *  @retval CA_REQUEST_PARAMETER_INVALID
+ *            The parameter is invalid
+ *  @retval CA_REQUEST_INVALID_TYPE
+ *            This setter does not apply to the passed request type.
+ *  @retval CA_REQUEST_ERROR
+ *            An unspecified error occurred
+ *  @remark
+ *    -#  Multiple call to this function may be done on a given request.
+ *        Limitation on whether the multiple calls are taken into account or
+ *        not is specific to the request type.
+ *
+*/
+NAGRA_CA_API TCaRequestStatus caRequestSetMpegFilterCfg
+(
+        TCaRequest*       pxRequest,
+  const TCaMpegFilterCfg* pxFilterCfg
+);
+
+/**
+ *  @brief
+ *    This function activate the force mode to a request.
+ *
+ *  @pre
+ *    The request must be created by a call to caRequestCreate().
+ *
+ *  @param   pxRequest
+ *            Request to use.
+ *            It must be of type #CA_REQUEST_TYPE_PULL_EMM_GET_CONTEXT
+ *  @retval CA_REQUEST_NO_ERROR
+ *            The parameter could be set successfully
+ *  @retval CA_REQUEST_PROCESSING
+ *            The request has been sent to the CAK and is being processed.
+ *            The setter cannot be used any more.
+ *  @retval CA_REQUEST_INVALID
+ *            The pointer does not correspond to a valid request
+ *  @retval CA_REQUEST_INVALID_TYPE
+ *            This setter does not apply to the passed request type.
+ *  @retval CA_REQUEST_ERROR
+ *            An unspecified error occurred
+ *  @remark
+ *    -#  Multiple call to this function may be done on a given request.
+ *        Limitation on whether the multiple calls are taken into account or
+ *        not is specific to the request type.
+ *
+*/
+NAGRA_CA_API TCaRequestStatus caRequestSetForceMode
+(
+  TCaRequest*    pxRequest
+);
+
+
+/**
+ *  @brief
+ *    This function associates an pull EMM context to a request.
+ *
+ *  @pre
+ *    The request must be created by a call to caRequestCreate().
+ *
+ *  @param   pxRequest
+ *            Request to use.
+ *            It must be of type #CA_REQUEST_TYPE_PULL_EMM_PROCESSING
+ *  @param   pxPullEmmContext
+ *             Pointer on the context object associated to the server response.
+ *
+ *  @retval CA_REQUEST_NO_ERROR
+ *            The parameter could be set successfully
+ *  @retval CA_REQUEST_PROCESSING
+ *            The request has been sent to the CAK and is being processed.
+ *            The setter cannot be used any more.
+ *  @retval CA_REQUEST_INVALID
+ *            The pointer does not correspond to a valid request
+ *  @retval CA_REQUEST_PARAMETER_INVALID
+ *            The parameter is invalid
+ *  @retval CA_REQUEST_INVALID_TYPE
+ *            This setter does not apply to the passed request type.
+ *  @retval CA_REQUEST_ERROR
+ *            An unspecified error occurred
+ *  @remark
+ *    -#  Multiple call to this function may be done on a given request.
+ *        Limitation on whether the multiple calls are taken into account or
+ *        not is specific to the request type.
+ *
+*/
+NAGRA_CA_API TCaRequestStatus caRequestSetPullEmmContext
+(
+        TCaRequest*          pxRequest,
+  const TCaPullEmmContext*   pxPullEmmContext
 );
 
 /** @} g_request_setter */
@@ -5694,6 +6258,35 @@ NAGRA_CA_API TCaObjectStatus caPurchaseGetMetadata
         TUnsignedInt8**      ppxMetadata
 );
 
+
+
+/**
+ *  @brief
+ *    This function provides the purchase unique ID.
+ *
+ *  @param[in]   pxPurchase
+ *             Pointer to a purchase object.
+ *  @param[out]  pxUid
+ *             Pointer to fill with the information. Cannot be NULL.
+ *             OUT: Uid of the purchase object.
+ *
+ *  @retval  CA_OBJECT_NO_ERROR
+ *             Successful.
+ *  @retval  CA_OBJECT_INVALID
+ *             The object is invalid for this getter.
+ *  @retval  CA_OBJECT_PARAMETER_INVALID
+ *             A parameter is invalid (probably set to NULL).
+ *  @retval  CA_OBJECT_NOT_AVAILABLE
+ *             This information is not available in the CAK.
+ *  @retval  CA_OBJECT_ERROR
+ *             An unspecified error occurred.
+*/
+NAGRA_CA_API TCaObjectStatus caPurchaseGetUid
+(
+  const TCaPurchase*          pxPurchase,
+        TUnsignedInt32*       pxUid
+);
+
 /** @} g_purchase */
 
 /** @addtogroup g_product
@@ -6097,7 +6690,7 @@ NAGRA_CA_API TCaObjectStatus caProductGetFlagsMask
  *             the product are returned.
  *  @param   pxNumberOfEvents
  *             Pointer to fill with the information. Cannot be NULL.
- *             OUT: Number of events in the the event array.
+ *             OUT: Number of events in the event array.
  *  @param   pppxEventArray
  *             Pointer to fill with the information. Cannot be NULL.
  *             OUT: an array of event pointers.
@@ -6128,7 +6721,7 @@ NAGRA_CA_API TCaObjectStatus caProductGetEvents
  *             Pointer to a product object.
  *  @param   pxNumberOfServices
  *             Pointer to fill with the information. Cannot be NULL.
- *             OUT: Number of elements in the the service array.
+ *             OUT: Number of elements in the service array.
  *  @param   pppxServiceArray
  *             Pointer to fill with the information. Cannot be NULL.
  *             OUT: array of pointers on caService objects.
@@ -6158,7 +6751,7 @@ NAGRA_CA_API TCaObjectStatus caProductGetServices
  *             Pointer to a product object.
  *  @param   pxNumberOfPurchases
  *             Pointer to fill with the information. Cannot be NULL.
- *             OUT: Number of elements in the the purchase array.
+ *             OUT: Number of elements in the purchase array.
  *  @param   pppxPurchaseArray
  *             Pointer to fill with the information. Cannot be NULL.
  *             OUT: array of pointers on caPurchase objects.
@@ -6188,7 +6781,7 @@ NAGRA_CA_API TCaObjectStatus caProductGetPurchases
  *             Pointer to a product object.
  *  @param   pxNumberOfPrices
  *             Pointer to fill with the information. Cannot be NULL.
- *             OUT: Number of prices in the the price array.
+ *             OUT: Number of prices in the price array.
  *  @param   pppxPriceArray
  *             Pointer to fill with the information. Cannot be NULL.
  *             OUT: array of pointers on caPrice objects.
@@ -6485,6 +7078,33 @@ NAGRA_CA_API TCaObjectStatus caProgramGetMetadata
   const TCaProgram*         pxProgram,
         TUnsignedInt8**    ppxMetadataBuffer,
         TSize*              pxSize
+);
+
+/**
+ * @brief
+ *   This function gets the key slot ID associated to the caProgram object.
+ *
+ *  @param   pxProgram
+ *             Pointer on a program object.
+ *  @param   pxKeySlotId
+ *             Pointer to fill with the information. Cannot be NULL
+ *             OUT: Identifier of the key slot returned
+ *  @retval  CA_OBJECT_NO_ERROR
+ *             Success.
+ *  @retval  CA_OBJECT_INVALID
+ *             The object is invalid for this getter.
+ *  @retval  CA_OBJECT_PARAMETER_INVALID
+ *             A parameter is invalid (probably set to NULL)
+ *  @retval  CA_OBJECT_NOT_AVAILABLE
+ *             This information is not available in the CAK
+ *  @retval  CA_OBJECT_ERROR
+ *             An unspecified error occurred
+ *
+*/
+NAGRA_CA_API TCaObjectStatus caProgramGetKeySlotId
+(
+  const TCaProgram*        pxProgram,
+        TUnsignedInt16*    pxKeySlotId
 );
 
 /**
@@ -7206,6 +7826,7 @@ NAGRA_CA_API TCaObjectStatus caSystemGetNuid
  *  @retval  CA_OBJECT_ERROR
  *             An unspecified error occurred
  *
+ *  @deprecated
 */
 NAGRA_CA_API TCaObjectStatus caSystemGetUpgradeWarningDelay
 (
@@ -7370,7 +7991,7 @@ NAGRA_CA_API TCaObjectStatus caSystemGetChipsetPairingSaId
  *    manufacturing and CSC data received over the air.
  *
  *  @param[in]  pxSystem
- *                System object handle.
+ *                System object to use.
  *  @param[out] pxCscMaxIndex
  *                CSC maximum index currently stored in flash
  *
@@ -7390,6 +8011,72 @@ NAGRA_CA_API TCaObjectStatus caSystemGetCscMaxIndex
 (
   const TCaSystem*      pxSystem,
         TUnsignedInt8*  pxCscMaxIndex
+);
+
+/**
+ *  @brief
+ *    This function gets the list of ECM Mpeg filter configurations of this
+ *    system.
+ *
+ *  @param[in]  pxSystem
+ *               System object to use. Should not be NULL.
+ *  @param[out] pxNumberOfFilterCfgs
+ *               Pointer to fill with the information. Should not be NULL.
+ *               OUT: Number of Mpeg filter configurations in the array.
+ *  @param[out] pppxFilterCfgsArray
+ *               Pointer to fill with the information. Should not be NULL.
+ *               OUT: array of pointers to Mpeg filter configuration objects.
+ *                    Objects remain valid as long as the pxSystem is valid.
+ *
+ *  @retval  CA_OBJECT_NO_ERROR
+ *             Successful.
+ *  @retval  CA_OBJECT_INVALID
+ *             The object is invalid for this getter.
+ *  @retval  CA_OBJECT_PARAMETER_INVALID
+ *             A parameter is invalid (probably set to NULL).
+ *  @retval  CA_OBJECT_NOT_AVAILABLE
+ *             This information is not available in the CAK.
+ *  @retval  CA_OBJECT_ERROR
+ *             An unspecified error occurred.
+*/
+NAGRA_CA_API TCaObjectStatus caSystemGetEcmMpegFilterCfgs
+(
+  const TCaSystem*           pxSystem,
+        TUnsignedInt32*      pxNumberOfFilterCfgs,
+  const TCaMpegFilterCfg***  pppxFilterCfgsArray
+);
+
+/**
+ *  @brief
+ *    This function gets the list of EMM Mpeg filter configurations of this
+ *    system.
+ *
+ *  @param[in]  pxSystem
+ *               System object to use. Should not be NULL.
+ *  @param[out] pxNumberOfFilterCfgs
+ *               Pointer to fill with the information. Should not be NULL.
+ *               OUT: Number of Mpeg filter configurations in the array.
+ *  @param[out] pppxFilterCfgsArray
+ *               Pointer to fill with the information. Should not be NULL.
+ *               OUT: array of pointers to Mpeg filter configuration objects.
+ *                    Objects remain valid as long as the pxSystem is valid.
+ *
+ *  @retval  CA_OBJECT_NO_ERROR
+ *             Successful.
+ *  @retval  CA_OBJECT_INVALID
+ *             The object is invalid for this getter.
+ *  @retval  CA_OBJECT_PARAMETER_INVALID
+ *             A parameter is invalid (probably set to NULL).
+ *  @retval  CA_OBJECT_NOT_AVAILABLE
+ *             This information is not available in the CAK.
+ *  @retval  CA_OBJECT_ERROR
+ *             An unspecified error occurred.
+*/
+NAGRA_CA_API TCaObjectStatus caSystemGetEmmMpegFilterCfgs
+(
+  const TCaSystem*           pxSystem,
+        TUnsignedInt32*      pxNumberOfFilterCfgs,
+  const TCaMpegFilterCfg***  pppxFilterCfgsArray
 );
 
 /** @} g_system */
@@ -7521,7 +8208,7 @@ NAGRA_CA_API TCaObjectStatus caOperatorGetExpirationDate
  *             Operator object to use.
  *  @param   pxEcmCaSystemId
  *             Pointer to fill with the information. Cannot be NULL.
- *             OUT: expiration date for the operator.
+ *             OUT: ECM CA system ID for the operator.
  *
  *  @retval  CA_OBJECT_NO_ERROR
  *             Success.
@@ -7549,7 +8236,7 @@ NAGRA_CA_API TCaObjectStatus caOperatorGetEcmCaSystemId
  *             Operator object to use.
  *  @param   pxEmmCaSystemId
  *             Pointer to fill with the information. Cannot be NULL.
- *             OUT: expiration date for the operator.
+ *             OUT: EMM CA system ID for the operator.
  *
  *  @retval  CA_OBJECT_NO_ERROR
  *             Success.
@@ -8009,6 +8696,249 @@ NAGRA_CA_API TCaObjectStatus caStbLockGetFlagsMask
 /** @} g_stblock */
 
 
+/** @addtogroup g_mpeg_filter_configuration
+ * @{
+*/
+
+/**
+ *  @brief
+ *    This function gets the Ca System Identifier to be used to parse the CAT
+ *    or PMT tables during the lookup of the EMM or ECM PID.
+ *
+ *  @param[in]   pxThis
+ *    Pointer to a Mpeg filter configuration object. Should not be NULL.
+ *
+ *  @param[out]  pxCaSystemId
+ *    Pointer to fill with the information. Should not be NULL.
+ *    OUT: Ca System Identifier of the filter.
+ *
+ *  @retval  CA_OBJECT_NO_ERROR
+ *             Successful.
+ *  @retval  CA_OBJECT_INVALID
+ *             The object is invalid for this getter.
+ *  @retval  CA_OBJECT_PARAMETER_INVALID
+ *             A parameter is invalid (probably set to NULL).
+ *  @retval  CA_OBJECT_NOT_AVAILABLE
+ *             This information is not available in the CAK.
+ *  @retval  CA_OBJECT_ERROR
+ *             An unspecified error occurred.
+*/
+NAGRA_CA_API TCaObjectStatus caMpegFilterCfgGetCaSystemId
+(
+  const TCaMpegFilterCfg*  pxThis,
+        TCaSystemId*       pxCaSystemId
+);
+
+/**
+ *  @brief
+ *    This function gets the pattern to be used to filter MPEG sections.
+ *
+ *  Pattern applies to the MPEG section starting from the table identifier byte.
+ *
+ *  @param[in]   pxThis
+ *    Pointer to a Mpeg filter configuration object. Should not be NULL.
+ *
+ *  @param[out]  pxSize
+ *    Size in bytes of the pattern. Should not be NULL.
+ *
+ *  @param[out]   ppxPattern
+ *    Buffer, allocated by the CAK, containing the filter pattern
+ *    (pxSize bytes). Returned pointer will be valid as long as pxThis
+ *    is valid.<br>
+ *    Should not be NULL.
+ *
+ *  @param[out]   ppxPatternMask
+ *    Buffer, allocated by the CAK, containing the filter pattern mask
+ *    (pxSize bytes). Returned pointer will be valid as long as pxThis
+ *    is valid.<br>
+ *    Should not be NULL.
+ *
+ *  @retval  CA_OBJECT_NO_ERROR
+ *             Successful.
+ *  @retval  CA_OBJECT_INVALID
+ *             The object is invalid for this getter.
+ *  @retval  CA_OBJECT_PARAMETER_INVALID
+ *             A parameter is invalid (probably set to NULL).
+ *  @retval  CA_OBJECT_NOT_AVAILABLE
+ *             This information is not available in the CAK.
+ *  @retval  CA_OBJECT_ERROR
+ *             An unspecified error occurred.
+*/
+NAGRA_CA_API TCaObjectStatus caMpegFilterCfgGetPattern
+(
+  const TCaMpegFilterCfg*  pxThis,
+        TSize*             pxSize,
+  const TUnsignedInt8**    ppxPattern,
+  const TUnsignedInt8**    ppxPatternMask
+);
+
+/** @} g_mpeg_filter_configuration */
+
+
+/** @addtogroup g_pullEmmContext
+ * @{
+*/
+
+/**
+ * @brief
+ *   This function gets the token of a context object.
+ *
+ *  @param   pxPullEmmContext
+ *             Pointer on a context object.
+ *  @param   pxSize
+ *             Pointer to fill with the information. Cannot be NULL
+ *             OUT: token size.
+ *  @param   ppxToken
+ *             Pointer to fill with the information. Cannot be NULL
+ *             OUT: pointer to the token buffer.
+ *
+ *  @retval  CA_OBJECT_NO_ERROR
+ *             Success.
+ *  @retval  CA_OBJECT_INVALID
+ *             The object is invalid for this getter.
+ *  @retval  CA_OBJECT_PARAMETER_INVALID
+ *             A parameter is invalid (probably set to NULL)
+ *  @retval  CA_OBJECT_NOT_AVAILABLE
+ *             This information is not available in the CAK
+ *  @retval  CA_OBJECT_ERROR
+ *             An unspecified error occurred
+ *
+*/
+NAGRA_CA_API TCaObjectStatus caPullEmmContextGetToken
+(
+  const TCaPullEmmContext*    pxPullEmmContext,
+        TSize*                pxSize,
+        TUnsignedInt8**      ppxToken
+);
+
+/**
+ * @brief
+ *   This function gets the signature of a context object.
+ *
+ *  @param   pxPullEmmContext
+ *             Pointer on a context object.
+ *  @param   pxSize
+ *             Pointer to fill with the information. Cannot be NULL
+ *             OUT: signature size.
+ *  @param   ppxSignature
+ *             Pointer to fill with the information. Cannot be NULL
+ *             OUT: pointer to the signature buffer.
+ *
+ *  @retval  CA_OBJECT_NO_ERROR
+ *             Success.
+ *  @retval  CA_OBJECT_INVALID
+ *             The object is invalid for this getter.
+ *  @retval  CA_OBJECT_PARAMETER_INVALID
+ *             A parameter is invalid (probably set to NULL)
+ *  @retval  CA_OBJECT_NOT_AVAILABLE
+ *             This information is not available in the CAK
+ *  @retval  CA_OBJECT_ERROR
+ *             An unspecified error occurred
+ *
+*/
+NAGRA_CA_API TCaObjectStatus caPullEmmContextGetSignature
+(
+  const TCaPullEmmContext*    pxPullEmmContext,
+        TSize*                pxSize,
+        TUnsignedInt8**      ppxSignature
+);
+
+/**
+ * @brief
+ *   This function gets the serial number of a context object.
+ *
+ *  @param   pxPullEmmContext
+ *             Pointer on a context object.
+ *  @param   ppxSerialNumber
+ *             Pointer to fill with the information. Cannot be NULL
+ *             OUT: pointer to the serial number buffer defined as a
+ *             NULL-terminated string with the following format:
+ *             "xxxxxxxxxx"
+ *
+ *  @retval  CA_OBJECT_NO_ERROR
+ *             Success.
+ *  @retval  CA_OBJECT_INVALID
+ *             The object is invalid for this getter.
+ *  @retval  CA_OBJECT_PARAMETER_INVALID
+ *             A parameter is invalid (probably set to NULL)
+ *  @retval  CA_OBJECT_NOT_AVAILABLE
+ *             This information is not available in the CAK
+ *  @retval  CA_OBJECT_ERROR
+ *             An unspecified error occurred
+ *
+*/
+NAGRA_CA_API TCaObjectStatus caPullEmmContextGetSerialNumber
+(
+  const TCaPullEmmContext*    pxPullEmmContext,
+  const TChar**              ppxSerialNumber
+);
+
+/**
+ * @brief
+ *   This function gets the private data of a context object.
+ *
+ *  @param   pxPullEmmContext
+ *             Pointer on a context object.
+ *  @param   pxSize
+ *             Pointer to fill with the information. Cannot be NULL
+ *             OUT: private data size.
+ *  @param   ppxPrivateData
+ *             Pointer to fill with the information. Cannot be NULL
+ *             OUT: pointer to the private buffer.
+ *
+ *  @retval  CA_OBJECT_NO_ERROR
+ *             Success.
+ *  @retval  CA_OBJECT_INVALID
+ *             The object is invalid for this getter.
+ *  @retval  CA_OBJECT_PARAMETER_INVALID
+ *             A parameter is invalid (probably set to NULL)
+ *  @retval  CA_OBJECT_NOT_AVAILABLE
+ *             This information is not available in the CAK
+ *  @retval  CA_OBJECT_ERROR
+ *             An unspecified error occurred
+ *
+*/
+NAGRA_CA_API TCaObjectStatus caPullEmmContextGetPrivateData
+(
+  const TCaPullEmmContext*    pxPullEmmContext,
+        TSize*                pxSize,
+        TUnsignedInt8**      ppxPrivateData
+);
+
+/**
+ * @brief
+ *   This function gets the PPID of a context object.
+ *
+ *  @param   pxPullEmmContext
+ *             Pointer on a context object.
+ *  @param   pxSize
+ *             Pointer to fill with the information. Cannot be NULL
+ *             OUT: private data size.
+ *  @param   ppxPpid
+ *             Pointer to fill with the information. Cannot be NULL
+ *             OUT: pointer to the private buffer.
+ *
+ *  @retval  CA_OBJECT_NO_ERROR
+ *             Success.
+ *  @retval  CA_OBJECT_INVALID
+ *             The object is invalid for this getter.
+ *  @retval  CA_OBJECT_PARAMETER_INVALID
+ *             A parameter is invalid (probably set to NULL)
+ *  @retval  CA_OBJECT_NOT_AVAILABLE
+ *             This information is not available in the CAK
+ *  @retval  CA_OBJECT_ERROR
+ *             An unspecified error occurred
+ *
+*/
+NAGRA_CA_API TCaObjectStatus caPullEmmContextGetPpid
+(
+  const TCaPullEmmContext*    pxPullEmmContext,
+        TSize*                pxSize,
+        TUnsignedInt8**      ppxPpid
+);
+
+/** @} g_pullEmmContext */
+
 /** @addtogroup g_log
  * @{
 */
@@ -8299,9 +9229,9 @@ typedef enum
  * @brief
  *   Prevent a conflict with Windows switch
 */
-#ifdef WIN32
+#ifdef _WIN32
 #define CAI NAGRA_CAI
-#endif /* WIN32 */
+#endif /* _WIN32 */
 
 /**
  *  @brief
@@ -8364,9 +9294,9 @@ typedef enum
   DEBUG_NUM_MODULE_IDS /**< 48: Number of module       */
 } TDebugModuleId;
 
-#ifdef WIN32
+#ifdef _WIN32
 #undef CAI /* prevent a conflict with Windows switch */
-#endif /* WIN32 */
+#endif /* _WIN32 */
 
 /**
  * @brief

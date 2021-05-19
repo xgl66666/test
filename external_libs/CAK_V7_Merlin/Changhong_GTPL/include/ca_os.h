@@ -6,8 +6,8 @@
 **
 **  @ingroup  OSY
 **
-**  $Id: //CAK/components/dalapi/TAGS/DALAPI_7_3_1/src/com/osy/ca_os.h#1 $
-**  $Change: 134348 $
+**  $Id: //CAK/components/dalapi/TAGS/DALAPI_7_17_0/src/com/osy/ca_os.h#1 $
+**  $Change: 254767 $
 **
 **  COPYRIGHT:
 **   2001-2008 Nagravision S.A.

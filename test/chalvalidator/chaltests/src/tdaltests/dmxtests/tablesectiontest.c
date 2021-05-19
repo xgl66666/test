@@ -124,6 +124,11 @@ void DMX_TablesSectionsTest( void )
             kTDAL_DMX_NO_ERROR,
             "DMX control filter" );
 
+	//mz
+	//TestManager_AssertEqual( TKEL_SignalSemaphore(dmxTestTableSectionSem),
+	//						TKEL_NO_ERR,
+	//						"TKEL Signal Semaphore" );
+	//end
 
     TestManager_AssertEqual( TKEL_WaitSemaphore( dmxTestTableSectionSem ),
                              TKEL_NO_ERR,

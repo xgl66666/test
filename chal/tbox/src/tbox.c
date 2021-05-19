@@ -571,9 +571,8 @@ void TBOX_GetCharNonBlocking(char *c)
 {
 #ifdef TKEL_os20
    long int ctemp;
-   long int flag;
-   
-   #if defined(__TRACE_UART__)
+   long int flag; 
+   #if defined(__TRACE_UART__) 
    /* not blocking for uart */
    TBOX_GetChar(c);
    #else
@@ -784,8 +783,8 @@ LOCAL void RT_Print(char *text)
 				
 				if(pc_pos1 != NULL)
 				{
-#if (NAGRA_CAK_VERSION == NVCA_DALTESTVERSION)/*¨¨?1?¨º?DAL2a¨º?¡ã?¡À?*/
-					//¨®D¨º¡ÀD¨¨¨°a¨º?¨¨???????¨º¡À?¨¢¨®D\n
+#if (NAGRA_CAK_VERSION == NVCA_DALTESTVERSION)/*ï¿½ï¿½?1?ï¿½ï¿½?DAL2aï¿½ï¿½?ï¿½ï¿½?ï¿½ï¿½?*/
+					//ï¿½ï¿½Dï¿½ï¿½ï¿½ï¿½Dï¿½ï¿½ï¿½ï¿½aï¿½ï¿½?ï¿½ï¿½???????ï¿½ï¿½ï¿½ï¿½?ï¿½ï¿½ï¿½ï¿½D\n
 					if(memcmp(pc_pos,"Enter Selection >>",18)!=0)
 #endif
 						TBOXi_HardPrint("\r\n");
@@ -798,7 +797,7 @@ LOCAL void RT_Print(char *text)
 			}
 			else 
 			{
-				//string?¡À?¨®?a\n			
+				//string?ï¿½ï¿½?ï¿½ï¿½?a\n			
 				if(pc_pos1 == pc_pos)
 				{
 					TBOXi_HardPrint("\r\n");		
@@ -879,7 +878,7 @@ void TBOX_GetCurrentTime( tTBOX_Time* TboxCurrentTime )
 void TBOX_EnableExtern()
 {
 #ifdef CAK_DLK
-        caLogSetRole("API", "INT" );
+        //caLogSetRole("API", "INT" );
        //caLogSetRole("IRD_COMMAND", "DEV" );
 		//caLogSetRole("PMT","DEV");
 #endif

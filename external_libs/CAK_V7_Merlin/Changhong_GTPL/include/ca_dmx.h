@@ -7,8 +7,8 @@
 **
 **  @ingroup DMX
 **
-**  $Id: //CAK/components/dalapi/TAGS/DALAPI_7_3_1/src/com/dmx/ca_dmx.h#1 $
-**  $Change: 134348 $
+**  $Id: //CAK/components/dalapi/TAGS/DALAPI_7_17_0/src/com/dmx/ca_dmx.h#1 $
+**  $Change: 254767 $
 **
 ** COPYRIGHT:
 **   1998-2009 NagraVision S.A.

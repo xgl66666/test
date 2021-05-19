@@ -5,7 +5,7 @@
 **    This file defines the general types and constants used by the
 **    NagraVision CA software.
 **
-**  $Id: //CAK/components/glbapi/TAGS/GLBAPI_1_1_1/src/ca_defs.h#1 $
+**  $Id: //CAK/components/glbapi/TAGS/GLBAPI_1_2_1/src/ca_defs.h#1 $
 **
 **  COPYRIGHT:
 **    1998-2014 Nagravision S.A.
