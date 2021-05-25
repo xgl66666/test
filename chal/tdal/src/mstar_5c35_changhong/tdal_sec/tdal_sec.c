@@ -176,6 +176,33 @@ tTDAL_SEC_ErrorCode TDAL_SEC_GetChipRevision (char *pxChipRevision, size_t * pxC
     }
     return eTDAL_SEC_NOT_DONE;
 }
+/*===========================================================================
+ *
+ * TDAL_SEC_GetChipExtension
+ *
+ * Parameters:
+ *
+ * Description:
+ *      get pxChipExtension
+ *
+ * Returns:
+ *      eTDAL_SEC_NO_ERROR       no error
+ *      eTDAL_SEC_NOT_DONE       command not done
+ *
+ *===========================================================================*/
+
+tTDAL_SEC_ErrorCode TDAL_SEC_GetChipExtension (char *pxChipExtension, size_t * pxChipExtensionLength)
+
+{
+    if(NULL!=pxChipExtension && NULL!=pxChipExtensionLength)
+    {
+        if(csdGetChipExtension(pxChipExtension)==CSD_NO_ERROR)
+        {
+            return eTDAL_SEC_NO_ERROR;
+        }
+    }
+    return eTDAL_SEC_NOT_DONE;
+}
 
 /*===========================================================================
  *
