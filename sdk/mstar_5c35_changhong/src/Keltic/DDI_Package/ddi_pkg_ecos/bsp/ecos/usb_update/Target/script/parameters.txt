@@ -1,7 +1,0 @@
-# This file was auto generated
-setenv SIZE_APP 0x311dc2
-setenv App_Dram_Address 0x80000180
-setenv App_Reset_Vector_Dram_Address 0x80000224
-setenv LZMA_BUF_Address 0x80b00000
-setenv LZMA_Dec_BUF_Address 0x81000000
-% <- this is end of file symbol
