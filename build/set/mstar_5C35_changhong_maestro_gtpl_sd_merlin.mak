@@ -59,7 +59,7 @@ export PRODUCT_USE_DMJFS=YES
 export PRODUCT_DMJFS_IN_RAM=YES
 export PRODUCT_DMJFS_ON_NAND=NO
 export PRODUCT_DMJFS_NAND_WRITE_PAGE=YES
-export CAK_LIBDIR=Changhong_GTPL
+export CAK_LIBDIR=gtpl_mstar_5c35_changhong_sm1000mg
 export USE_DLK_1_1=YES
 export CAK_DAL_TRACE=OFF
 
