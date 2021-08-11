@@ -338,9 +338,9 @@ $(OBJ_S) : $(OBJ_PATH)/%.o : %.s
 	@echo "  [AS] $@"
 	@$(AS) $(AS_OPTS) -o $@ $<
 
-$(OBJ_BIG_S) : $(OBJ_PATH)/%.o : %.S
-	@echo "  [CC] $@"
-	@$(CC) $(CC_OPTS) -o $@ -c $<
+#$(OBJ_BIG_S) : $(OBJ_PATH)/%.o : %.S
+#	@echo "  [CC] $@"
+#	@$(CC) $(CC_OPTS) -o $@ -c $<
 
 $(OBJ_C) : $(OBJ_PATH)/%.o : %.c
 	@echo "  [CC] $@"

@@ -1280,6 +1280,7 @@ tTDAL_OTAStandbyState TDAL_OTA_GetStandbyState(void)
 }
 /*************************globle variable define*************************/
 #ifdef USE_TDAL_OTA
+//#if 1
 const CH_COM_Params_t gstru_fact_SaveParams[CH_COM_INFOTYPE_MAX] =
 {
 	/*0:CH_COM_INFOTYPE_LOADER*/
@@ -1558,7 +1559,7 @@ tTDAL_OTA_ErrorCode CH_COM_SetSystemInfo(CH_SystemInfo_t *rpstru_SystemInfo)
 	S32 i_ActualBackupWriteSize = 0;
 	U32 ui_Crc = 0;
 
-	/*ï¿½Ð¶ï¿½ï¿½Ç·ï¿½ï¿½Ñ¾ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½*/
+	/*ÅÐ¶ÏÊÇ·ñÒÑ¾­³õÊ¼»¯*/
 
 	if( rpstru_SystemInfo == NULL )
 	{
@@ -1643,7 +1644,7 @@ tTDAL_OTA_ErrorCode CH_COM_GetSystemInfo(CH_SystemInfo_t *rpstru_SystemInfo)
 	bool b_MainSaveOK = false;
 	bool b_BackSaveOK = false;
 
-	/*ï¿½Ð¶ï¿½ï¿½Ç·ï¿½ï¿½Ñ¾ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½*/
+	/*ÅÐ¶ÏÊÇ·ñÒÑ¾­³õÊ¼»¯*/
 	if( rpstru_SystemInfo == NULL )
 	{
 		mTBOX_TRACE((kTBOX_NIV_CRITICAL,"CH_COM_GetSystemInfo-->02-->rpstru_SystemInfo[0x%x]\r\n",rpstru_SystemInfo));
@@ -1689,17 +1690,17 @@ tTDAL_OTA_ErrorCode CH_COM_GetSystemInfo(CH_SystemInfo_t *rpstru_SystemInfo)
 		goto FAIL0;
 	}
 
-	/*ï¿½Ð¶Ï¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½Ð³ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢*/
+	/*ÅÐ¶Ï¶Á³öÀ´µÄÊý¾ÝÊÇ·ñÓÐ³¤¶ÈÐÅÏ¢*/
 	if( rpstru_SystemInfo->i_length < 4 ||rpstru_SystemInfo->i_length > ( i_ActualReadSize -16 ) )
 	{
 		
 		mTBOX_TRACE((kTBOX_NIV_CRITICAL,"CH_COM_GetSystemInfo-->3-->i_length[%d],i_ActualReadSize[%d]\r\n",
 			rpstru_SystemInfo->i_length,i_ActualReadSize));
-		b_MainSaveOK = false;/*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½*/
+		b_MainSaveOK = false;/*¶Á³öÀ´µÄÊý¾ÝÓÐÎÊÌâ*/
 	}
 	else
 	{
-		/*Ð£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½*/
+		/*Ð£ÑéÖ÷Êý¾Ý*/
 		ui_CrcValue = CRC_MPEG32_((U8 *)&(rpstru_SystemInfo->uc_STBSN[0]), rpstru_SystemInfo->i_length -4);
 		if(ui_CrcValue == rpstru_SystemInfo->ui_CRC)
 		{
@@ -1714,11 +1715,11 @@ tTDAL_OTA_ErrorCode CH_COM_GetSystemInfo(CH_SystemInfo_t *rpstru_SystemInfo)
 	{
 		if(stru_BackupSystemInfo.i_length < 4 ||stru_BackupSystemInfo.i_length > ( i_ActualBackupReadSize -16 ) )
 		{
-			b_BackSaveOK = false;  /*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½*/
+			b_BackSaveOK = false;  /*¶Á³öÀ´µÄÊý¾ÝÓÐÎÊÌâ*/
 		}
 		else
 		{
-			/*Ð£ï¿½é±¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½*/
+			/*Ð£Ñé±¸·ÝÊý¾Ý*/
 			ui_CrcValue = CRC_MPEG32_((U8 *)&(stru_BackupSystemInfo.uc_STBSN[0]), stru_BackupSystemInfo.i_length - 4);
 			if(ui_CrcValue == stru_BackupSystemInfo.ui_CRC)
 			{
@@ -1728,7 +1729,7 @@ tTDAL_OTA_ErrorCode CH_COM_GetSystemInfo(CH_SystemInfo_t *rpstru_SystemInfo)
 				}
 			}
 		}
-		/*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ò·µ»Ø´ï¿½ï¿½ï¿½*/
+		/*Èç¹ûÊý¾Ý¶¼³ö´í£¬Ôò·µ»Ø´íÎó*/
 		if(!(b_BackSaveOK || b_MainSaveOK))
 		{
 			mTBOX_TRACE((kTBOX_NIV_CRITICAL,"CH_COM_GetSystemInfo-->13-->b_BackSaveOK[%d],b_MainSaveOK[%d]\r\n",
@@ -1737,7 +1738,7 @@ tTDAL_OTA_ErrorCode CH_COM_GetSystemInfo(CH_SystemInfo_t *rpstru_SystemInfo)
 			goto FAIL0;
 		}
 
-		/*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô£ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½Â£ï¿½ï¿½ï¿½ï¿½Þ¸ï¿½ï¿½ï¿½ï¿½ï¿½*/
+		/*Èç¹û±¸·Ý³ö´í»òÁ½¸ö¶¼¶Ô£¬µ«²»Ò»ÖÂ£¬ÔòÐÞ¸´±¸·Ý*/
 		if((b_BackSaveOK== false) ||
 			(memcmp((U8*)rpstru_SystemInfo, (U8*)&stru_BackupSystemInfo, sizeof(CH_SystemInfo_t)) && b_MainSaveOK))
 		{
@@ -1754,7 +1755,7 @@ tTDAL_OTA_ErrorCode CH_COM_GetSystemInfo(CH_SystemInfo_t *rpstru_SystemInfo)
 			}
 		}
 
-		/*ï¿½ï¿½ï¿½ï¿½ï¿½Ý³ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½Ã±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý£ï¿½ï¿½ï¿½ï¿½Þ¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½*/
+		/*Ö÷Êý¾Ý³ö´í£¬Ê¹ÓÃ±¸·ÝÊý¾Ý£¬²¢ÐÞ¸´Ö÷Êý¾Ý*/
 		if(b_MainSaveOK == false)
 		{
 			memcpy((U8*)rpstru_SystemInfo, (U8*)&stru_BackupSystemInfo, sizeof(CH_SystemInfo_t));
@@ -1790,19 +1791,19 @@ FAIL0:
 }
 
 /*******************************************************************************
-*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½:  CH_COM_SetLoaderInfo
-*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü¡ï¿½ï¿½ï¿½ï¿½ï¿½:  ï¿½æ´¢LOADERï¿½ï¿½Ï¢
-*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½:  ï¿½ï¿½
-*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½:
-*		*rpstru_LoaderInfo:LOADERï¿½ï¿½Ï¢
-*ï¿½ï¿½ï¿½ï¿½ÖµËµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½:
-*ï¿½ï¿½ï¿½ï¿½	CH_COM_NOT_INIT:Î´ï¿½ï¿½Ê¼ï¿½ï¿½
-*	    	eTDAL_OTA_STATUS_ERROR:ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½
-*		eTDAL_OTA_STATUS_ERROR:ï¿½ï¿½ï¿½ï¿½Ê§ï¿½ï¿½
-*ï¿½ï¿½ï¿½ï¿½	eTDAL_OTA_STATUS_NO_ERROR:ï¿½ï¿½ï¿½ï¿½ï¿½É¹ï¿½
-*È«ï¿½Ö±ï¿½ï¿½ï¿½ï¿½Í½á¹¹:
-*ï¿½ã·¨Ëµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½:  ï¿½ï¿½
-*ï¿½ï¿½ï¿½ï¿½×¢ï¿½ï¿½ï¿½ï¿½ï¿½î¡¡:  ï¿½ï¿½
+*º¯ÊýÃû¡¡¡¡¡¡¡¡:  CH_COM_SetLoaderInfo
+*º¯Êý¹¦ÄÜ¡¡¡¡¡¡:  ´æ´¢LOADERÐÅÏ¢
+*ÊäÈë²ÎÊý¡¡¡¡¡¡:  ÎÞ
+*Êä³ö²ÎÊý¡¡¡¡¡¡:
+*		*rpstru_LoaderInfo:LOADERÐÅÏ¢
+*·µ»ØÖµËµÃ÷¡¡¡¡:
+*¡¡¡¡	CH_COM_NOT_INIT:Î´³õÊ¼»¯
+*	    	eTDAL_OTA_STATUS_ERROR:·Ç·¨²ÎÊý
+*		eTDAL_OTA_STATUS_ERROR:²Ù×÷Ê§°Ü
+*¡¡¡¡	eTDAL_OTA_STATUS_NO_ERROR:²Ù×÷³É¹¦
+*È«¾Ö±äÁ¿ºÍ½á¹¹:
+*Ëã·¨ËµÃ÷¡¡¡¡¡¡:  ÎÞ
+*µ÷ÓÃ×¢ÒâÊÂÏî¡¡:  ÎÞ
 *******************************************************************************/
 tTDAL_OTA_ErrorCode CH_COM_SetLoaderInfo(CH_LoaderInfo_t *rpstru_LoaderInfo)
 {
@@ -1945,14 +1946,14 @@ tTDAL_OTA_ErrorCode CH_COM_GetLoaderInfo(CH_LoaderInfo_t *rpstru_LoaderInfo)
 			goto FAIL0;
 		}
 
-		/*ï¿½Ð¶Ï¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½Ð³ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢*/
+		/*ÅÐ¶Ï¶Á³öÀ´µÄÊý¾ÝÊÇ·ñÓÐ³¤¶ÈÐÅÏ¢*/
 		if( rpstru_LoaderInfo->i_length < 4 ||rpstru_LoaderInfo->i_length > ( i_ActualReadSize -16 ) )
 		{
-			b_MainSaveOK = false;/*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½*/
+			b_MainSaveOK = false;/*¶Á³öÀ´µÄÊý¾ÝÓÐÎÊÌâ*/
 		}
 		else
 		{
-			/*Ð£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½*/
+			/*Ð£ÑéÖ÷Êý¾Ý*/
 			ui_CrcValue = CRC_MPEG32_((U8 *)&(rpstru_LoaderInfo->ui_OperatorNumber), rpstru_LoaderInfo->i_length -4);
 			if(ui_CrcValue == rpstru_LoaderInfo->ui_crc)
 			{
@@ -1963,16 +1964,16 @@ tTDAL_OTA_ErrorCode CH_COM_GetLoaderInfo(CH_LoaderInfo_t *rpstru_LoaderInfo)
 			}
 			
 		}
-		/*ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½ï¿½Ë±ï¿½ï¿½Ý·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð£ï¿½ï¿½*/
+		/*Èç¹ûÊ¹ÓÃÁË±¸·Ý·ÖÇø£¬Ôò½øÐÐ±¸·ÝÊý¾ÝÐ£Ñé*/
 		if(b_UseBackup == true)
 		{
 			if(stru_BackupLoaderInfo.i_length < 4 ||stru_BackupLoaderInfo.i_length > ( i_ActualBackupReadSize -16 ) )
 			{
-				b_BackSaveOK = false;  /*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½*/
+				b_BackSaveOK = false;  /*¶Á³öÀ´µÄÊý¾ÝÓÐÎÊÌâ*/
 			}
 			else
 			{
-				/*Ð£ï¿½é±¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½*/
+				/*Ð£Ñé±¸·ÝÊý¾Ý*/
 				ui_CrcValue = CRC_MPEG32_((U8 *)&(stru_BackupLoaderInfo.ui_OperatorNumber), stru_BackupLoaderInfo.i_length - 4);
 				if(ui_CrcValue == stru_BackupLoaderInfo.ui_crc)
 				{
@@ -1983,7 +1984,7 @@ tTDAL_OTA_ErrorCode CH_COM_GetLoaderInfo(CH_LoaderInfo_t *rpstru_LoaderInfo)
 				}
 				
 			}
-			/*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ò·µ»Ø´ï¿½ï¿½ï¿½*/
+			/*Èç¹ûÊý¾Ý¶¼³ö´í£¬Ôò·µ»Ø´íÎó*/
 			if(!(b_BackSaveOK || b_MainSaveOK))
 			{
 				mTBOX_TRACE((kTBOX_NIV_CRITICAL,"CH_COM_GetLoaderInfo-->13-->b_BackSaveOK=%d,b_MainSaveOK=%d\r\n",b_BackSaveOK,b_MainSaveOK));
@@ -1991,7 +1992,7 @@ tTDAL_OTA_ErrorCode CH_COM_GetLoaderInfo(CH_LoaderInfo_t *rpstru_LoaderInfo)
 				goto FAIL0;
 			}
 
-			/*ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô£ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½Â£ï¿½ï¿½ï¿½ï¿½Þ¸ï¿½ï¿½ï¿½ï¿½ï¿½*/
+			/*Èç¹û±¸·Ý³ö´í»òÁ½¸ö¶¼¶Ô£¬µ«²»Ò»ÖÂ£¬ÔòÐÞ¸´±¸·Ý*/
 			if((b_BackSaveOK== false) ||
 				(memcmp((U8*)rpstru_LoaderInfo, (U8*)&stru_BackupLoaderInfo, sizeof(CH_LoaderInfo_t)) && b_MainSaveOK))
 			{
@@ -2008,7 +2009,7 @@ tTDAL_OTA_ErrorCode CH_COM_GetLoaderInfo(CH_LoaderInfo_t *rpstru_LoaderInfo)
 				}
 			}
 
-			/*ï¿½ï¿½ï¿½ï¿½ï¿½Ý³ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½Ã±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý£ï¿½ï¿½ï¿½ï¿½Þ¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½*/
+			/*Ö÷Êý¾Ý³ö´í£¬Ê¹ÓÃ±¸·ÝÊý¾Ý£¬²¢ÐÞ¸´Ö÷Êý¾Ý*/
 			if(b_MainSaveOK == false)
 			{
 				memcpy((U8*)rpstru_LoaderInfo, (U8*)&stru_BackupLoaderInfo, sizeof(CH_LoaderInfo_t));
@@ -2204,6 +2205,7 @@ bool TDALm_CRC32_Check(uint8_t *pcBuffer, uint32_t uiSize, uint32_t uiCRC32Saved
 
     mTBOX_RETURN(true);
 }
+
 void SEC_DIG_4200_Worker(void)
 {
 	return;

@@ -1,0 +1,4 @@
+make[4]: 正在进入目录 `/mnt/hgfs/share-2/opentv1-0726/opentv1-chal/sdk/mstar_5c35_changhong/src/Keltic/DDI_Package/ddi_pkg_ecos/cus_mstar/project/mstar_demo'
+Make keltic MSTAR project...
+  [LD] bin/keltic_ecos.elf
+make[4]:正在离开目录 `/mnt/hgfs/share-2/opentv1-0726/opentv1-chal/sdk/mstar_5c35_changhong/src/Keltic/DDI_Package/ddi_pkg_ecos/cus_mstar/project/mstar_demo'

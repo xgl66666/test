@@ -1,5 +1,5 @@
 
-out/unzip.elf:     file format elf32-littlemips
+out/unzip.elf：     文件格式 elf32-littlemips
 
 Disassembly of section .text:
 

@@ -58,7 +58,7 @@ typedef   struct{
 tTDAL_FLA_BlockInfo lastReadAddressBlock = {0};
 
 
-#define CH_FLASH_MAP		(1)
+#define CH_FLASH_MAP		(0)
 #define FLASH_DMA_READ_MIN_SIZE 0x400
 /****************************************************************************
  *  GLOBAL VARIABLES (GLOBAL/IMPORT)                            *

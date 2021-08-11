@@ -46,6 +46,9 @@ const TCsdUnsignedInt8 CipheredContentKey[] = {0xe4, 0x21, 0x13, 0xa7, 0x99, 0xc
 
 LOCAL TDAL_mutex_id TdalSecMutexID = NULL;
 
+static int gSecTrngFd;
+#define O_RDONLY     (1<<0)   /* Open for reading only */
+
 /*===========================================================================
  *
  * TDAL_SEC_Init
@@ -193,16 +196,22 @@ tTDAL_SEC_ErrorCode TDAL_SEC_GetChipRevision (char *pxChipRevision, size_t * pxC
 
 tTDAL_SEC_ErrorCode TDAL_SEC_GetChipExtension (char *pxChipExtension, size_t * pxChipExtensionLength)
 
-{
+{   
+    
     if(NULL!=pxChipExtension && NULL!=pxChipExtensionLength)
     {
+       TDAL_LockMutex(TdalSecMutexID);
         if(csdGetChipExtension(pxChipExtension)==CSD_NO_ERROR)
         {
+		    TDAL_UnlockMutex(TdalSecMutexID);
             return eTDAL_SEC_NO_ERROR;
         }
+		TDAL_UnlockMutex(TdalSecMutexID);
     }
-    return eTDAL_SEC_NOT_DONE;
+	
+	return eTDAL_SEC_NOT_DONE;
 }
+
 
 /*===========================================================================
  *
@@ -361,5 +370,49 @@ tTDAL_SEC_ErrorCode TDAL_SEC_Decryptdata( uint8_t *pBufferSrc,uint8_t *pBufferDs
     mTBOX_TRACE(( kTBOX_NIV_1,"TDAL_SEC_Decryptdata csdDecryptData %s\n",DBG_TCsdStatus(csdStatus)));
     return eTDAL_SEC_NO_ERROR;
 }
+
+tTDAL_SEC_ErrorCode TDAL_SEC_GenerateRandomBytes(uint8_t *pxOutput, size_t xInitVectorSize)
+{    
+ 	int i=0;
+	
+    srand(rand());
+	for(i=0;i<xInitVectorSize;i++)
+	{
+		pxOutput[i]=rand()%(0xFF+1);
+	}
+	return eTDAL_SEC_NO_ERROR;
+}
+
+tTDAL_SEC_ErrorCode TDAL_SEC_CloseSession(uint32_t session)
+{
+	return eTDAL_SEC_NO_ERROR;
+
+}
+
+tTDAL_SEC_ErrorCode TDAL_SEC_OpenSession(uint32_t *session)
+{
+	return eTDAL_SEC_NO_ERROR;
+}
+
+
+tTDAL_SEC_ErrorCode TDAL_SEC_EncryptWithIV(uint32_t sessionId, uint8_t *pxInput, uint8_t *pxOutput,size_t xMessageSize, uint8_t *pxInitVector,size_t xInitVectorSize)
+{
+	return eTDAL_SEC_NO_ERROR;
+}
+
+tTDAL_SEC_ErrorCode TDAL_SEC_DecryptWithIV(uint32_t sessionId, uint8_t *pxInput, uint8_t *pxOutput,size_t xMessageSize, uint8_t *pxInitVector,size_t xInitVectorSize)
+{
+	return eTDAL_SEC_NO_ERROR;
+}
+
+tTDAL_SEC_ErrorCode TDAL_SEC_SetEncryptClearTextKey(uint8_t *pxClearTextKey, size_t length)
+{
+	return eTDAL_SEC_NO_ERROR;
+}
+tTDAL_SEC_ErrorCode TDAL_SEC_SetDecryptClearTextKey(uint8_t *pxClearTextKey, size_t length)
+{
+	return eTDAL_SEC_NO_ERROR;
+}
+
 
 

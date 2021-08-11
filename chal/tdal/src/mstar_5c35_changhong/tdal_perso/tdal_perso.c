@@ -177,7 +177,9 @@ uint8_t gp_Pkbuffer[CHMID_NVCA_PKDATA_MAX_LEN] = {0};
 uint16_t g_pk_len = 0;
 uint16_t g_pk_handle = 0;
 
-#define PK_ADDRESS  (0x200)
+//#define PK_ADDRESS  (0x200)
+#define PK_ADDRESS  (0x510000)
+
 
 
 
@@ -222,7 +224,7 @@ bool TDAL_PERSO_PK_Handle(void )
 	if(puc_tempBUF!= NULL)
 	{
 		
-		printf("ERR:[nagra-cak] TDAL_PERSO_PK_Handle puc_tempBUF is null \r\n");
+		printf("[nagra-cak] TDAL_PERSO_PK_Handle puc_tempBUF is not null \r\n");
 		i_Result = TDAL_FLA_Read_OTA( PK_ADDRESS, puc_tempBUF,i_ReadLen);
 
 	}
@@ -244,14 +246,14 @@ bool TDAL_PERSO_PK_Handle(void )
 	}
 	else
 	{
-		printf("111111111 [%d][%d][%d][%d][%d][%d]============== OK",
+		printf("111111111 [%d][%d][%d][%d][%d][%d]============== OK\n",
 		puc_tempBUF[0],puc_tempBUF[1],puc_tempBUF[2],puc_tempBUF[3],puc_tempBUF[4],puc_tempBUF[5]
 		);
 	
 		/* √‹ŒƒPK */
 		secDecryptData(gp_Pkbuffer, puc_tempBUF, CHMID_NVCA_PKDATA_MAX_LEN);
 		
-		printf("CHMID_NVCA_FactWritePairKey [%d][%d][%d][%d][%d][%d]============== OK",
+		printf("CHMID_NVCA_FactWritePairKey [%d][%d][%d][%d][%d][%d]============== OK\n",
 		gp_Pkbuffer[0],gp_Pkbuffer[1],gp_Pkbuffer[2],gp_Pkbuffer[3],gp_Pkbuffer[4],gp_Pkbuffer[5]
 		);
 	}
@@ -273,7 +275,7 @@ bool TDAL_PERSO_PK_Handle(void )
 	}
 	
 	g_pk_len = ui_PkDatalen = (gp_Pkbuffer[0] << 24 & 0xFF000000)|(gp_Pkbuffer[1] <<16 & 0xFF0000)| (gp_Pkbuffer[2] << 8 & 0xFF00)|(gp_Pkbuffer[3] & 0xFF);
-
+    printf("ui_PkDatalen=%d\n",ui_PkDatalen);
 	if(ui_PkDatalen <= 0 || ui_PkDatalen > (CHMID_NVCA_PKDATA_MAX_LEN-130))
 	{
 		printf("ERR:[nagra-cak] CHMID_NVCA_ReadPairKey pkdata len 0 \r\n");
@@ -313,7 +315,8 @@ bool TDAL_PERSO_PK_Handle(void )
  * @return eTDAL_PERSO_NOT_INITIALIZED if the module was not initialized beforehand.
  *
  */
-
+ 
+uint8_t g_pkData[494] = {0};
 uint8_t g_cscData[256] = {0};
 eTDAL_PERSO_ErrorCode   TDAL_PERSO_ReadTag(   tTDAL_PERSO_Tag   const   tag, uint16_t*   tag_length,  uint8_t* const tag_content)
 {
@@ -336,7 +339,8 @@ eTDAL_PERSO_ErrorCode   TDAL_PERSO_ReadTag(   tTDAL_PERSO_Tag   const   tag, uin
 	PairingDataAddress = g_pkData;
 #endif
 
-	uint32_t PairingDataLocation = PERSO_LOCATION_MEMORY;
+	//uint32_t PairingDataLocation = PERSO_LOCATION_MEMORY;
+	uint32_t PairingDataLocation = PERSO_LOCATION_FLASH;
 
     #ifdef CAK_MERLIN
     #ifdef NASC
@@ -366,8 +370,6 @@ eTDAL_PERSO_ErrorCode   TDAL_PERSO_ReadTag(   tTDAL_PERSO_Tag   const   tag, uin
 		TmpData = TmpData_PK_Test;
 
 printf("@@@@@@@@@@@@ TmpData_PK_Test: [%x][%x][%x][%x]\n\n",TmpData_PK_Test[0],TmpData_PK_Test[1],TmpData_PK_Test[2],TmpData_PK_Test[3]
-,TmpData_PK_Test[4],TmpData_PK_Test[5],TmpData_PK_Test[6],TmpData_PK_Test[7]
-
 );
 
 #else
