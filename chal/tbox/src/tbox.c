@@ -25,11 +25,6 @@
 #include "tbox.h"
 #include "tbox_hard_p.h"
 #include "crules.h"
-#define CAK_DLK
-
-#ifdef CAK_DLK
-#include "ca_cak.h"
-#endif
 
 #if defined TKEL_os21
 extern int _SH_posix_PollKey(long int *);
@@ -100,6 +95,8 @@ LOCAL uint16_t RT_debugWrite = 0;
 LOCAL uint16_t RT_debugOverrunErrors = 0;
 
 LOCAL bool TBOXi_bTraceSynchrone = FALSE;
+
+LOCAL bool TBOXi_accessBlocked = FALSE;
 /********************************************************/
 /*        Local Functions Declarations (LOCAL)   */
 /********************************************************/
@@ -110,6 +107,14 @@ LOCAL   void RT_Print(char *text);
 /********************************************************/
 /*        Functions Definitions (LOCAL/GLOBAL)   */
 /********************************************************/
+
+void TBOX_BlockAccess(){
+    TBOXi_accessBlocked = TRUE;
+}
+
+void TBOX_UnblockAccess(){
+    TBOXi_accessBlocked = FALSE;
+}
 
 /*=============================================================================
 *
@@ -282,6 +287,11 @@ void TBOX_Trace(int line,const char *file,tTBOX_TraceId mod_id, const char *modN
      RTinitDone = TBOXi_HardInitialize();
    }
 
+   if(TBOXi_accessBlocked)
+   {
+       return;
+   }
+
    /*------------------------------------------*/
    /* Check if the traces have been enabled   */
    /*------------------------------------------*/
@@ -389,7 +399,7 @@ void TBOX_Trace(int line,const char *file,tTBOX_TraceId mod_id, const char *modN
      "%s [line truncated by TBOX]\n", RT_vbuffer);
      }
    }
- 
+
    if(strlen(Buff))
    {
      TBOXi_HardLock( TBOXi_HardSema_PRINTF );
@@ -436,6 +446,11 @@ void TBOX_Print(int line,const char *file,const char *fmt, ...)
    if(RTinitDone == FALSE)
    {
      RTinitDone = TBOXi_HardInitialize();
+   }
+
+   if(TBOXi_accessBlocked)
+   {
+      return;
    }
 
    /*------------------------------------------*/
@@ -522,6 +537,25 @@ void TBOX_Puts (char *pString)
 }
 
 /******************************************************************************
+ * Function Name   : TBOX_PutChar
+ * Description     : Put a character
+ * Side effects    :
+ * Comment       :
+ * Inputs      :
+ * Outputs       :
+ *****************************************************************************/
+void TBOX_PutChar(char c)
+{
+   while (RT_debugWrite != RT_debugRead)
+   {
+     TBOXi_HardPause( 100 );
+   }
+
+   TBOXi_HardPutChar(c);
+   return;
+}
+
+/******************************************************************************
  * Function Name   : TBOX_GetChar
  * Description     : Get a character
  * Side effects    :
@@ -571,8 +605,9 @@ void TBOX_GetCharNonBlocking(char *c)
 {
 #ifdef TKEL_os20
    long int ctemp;
-   long int flag; 
-   #if defined(__TRACE_UART__) 
+   long int flag;
+   
+   #if defined(__TRACE_UART__)
    /* not blocking for uart */
    TBOX_GetChar(c);
    #else
@@ -602,12 +637,15 @@ void TBOX_GetCharNonBlocking(char *c)
 #elif defined TKEL_OSAL_YODA
    scanf("%s", c);
 #elif defined TKEL_ecos
-#if defined(__TRACE_UART__)
    /* not blocking for uart */
-   TBOX_GetChar(c);
-#else
-   #warning "NOT IMPLEMENTED"
-#endif
+   if(!TBOXi_accessBlocked)
+   {
+       TBOX_GetChar(c);
+   }
+   else
+   {
+       *c = '\0';
+   }
 #else
    int ctemp;
    ctemp = getchar();
@@ -681,41 +719,21 @@ void TBOX_GetStringNonBlocking( char * string )
  * Inputs      :
  * Outputs       :
  *****************************************************************************/
-  char c_PrintStr0[1024+1];
 LOCAL void RT_Print(char *text)
 {
    uint16_t i=0;
    uint16_t len=0;
- 
-   int	  i_len0 = 0;
-   int	  i_len1  = 0;
-   int	  i_len2 = 0;
-   
-   char* pc_pos = NULL, *pc_pos1 = NULL,*pc_pos2 = NULL;
-   
-   int	  i_templen;
-
 
    if(RTinitDone != TRUE)
-	 return;
+     return;
 
-
-   if(text == NULL)
-   {
-	   return;
-   }
-		
-   i_len0 = strlen(text);
-   
-   if(i_len0 > 1024)
-   {
-	   printf("@@too long print \r\n");    
-	   return;
-   }
-   
-   pc_pos = text;
-   
-
+   len = strlen(text);
+	if ((text[len-1] == '\n') && ((len == 1) || (text[len-2] != '\r')))
+	{
+		text[len-1] = '\r';
+		text[len] = '\n';
+		text[len+1] = 0;
+	}
 
    TBOXi_HardLock( TBOXi_HardSema_RT );
 
@@ -725,94 +743,38 @@ LOCAL void RT_Print(char *text)
    /* Trace ASYNCHRONE _ displayed by the RT Task */
    /* ------------------------------------------- */
 
-	 i = RT_debugWrite++;
-	 if (RT_debugWrite >= DEBUG_ROWS_MAX)
-	  RT_debugWrite = 0;
-	  if (RT_debugWrite == RT_debugRead)
-	  {
-	  RT_debugWrite = i;	 /* Miss this entry! */
-	  RT_debugOverrunErrors++;
-	  }
-	  else
-	  {
-	  /*debugRowBuffer[i].timestamp = time_now();*/
-	  len = strlen(text);
-	  if (len > DEBUG_ROW_LEN)
-	  len = DEBUG_ROW_LEN;
-	  if (len)
-	  memcpy(debugRowBuffer[i].text, text, len);
-	  debugRowBuffer[i].text [len] = (char) 0;
-	  }
+     i = RT_debugWrite++;
+     if (RT_debugWrite >= DEBUG_ROWS_MAX)
+      RT_debugWrite = 0;
+      if (RT_debugWrite == RT_debugRead)
+      {
+      RT_debugWrite = i;     /* Miss this entry! */
+      RT_debugOverrunErrors++;
+      }
+      else
+      {
+      /*debugRowBuffer[i].timestamp = time_now();*/
+      len = strlen(text);
+      if (len > DEBUG_ROW_LEN)
+      len = DEBUG_ROW_LEN;
+      if (len)
+      memcpy(debugRowBuffer[i].text, text, len);
+      debugRowBuffer[i].text [len] = (char) 0;
+      }
    }
    else
    {
-	 /* -------------------------------------------- */
-	 /* Trace SYNCHRONE _ displayed by this function */
-	 /* -------------------------------------------- */
+     /* -------------------------------------------- */
+     /* Trace SYNCHRONE _ displayed by this function */
+     /* -------------------------------------------- */
 
-		do
-		{
-			pc_pos1 = strstr(pc_pos,"\r\n");
-			
-			if(pc_pos1 != NULL)
-			{
-				i_templen = pc_pos1 - pc_pos;
-				i_len2 = 2;
-			}
-			else
-			{
-				pc_pos1 = strstr(pc_pos,"\n");
-	 
-				if(pc_pos1 != NULL)
-				{
-					i_templen = pc_pos1 - pc_pos;
-					i_len2 = 1;
-				}
-				else
-				{
-					i_templen = strlen(pc_pos);
-				}
-			}
-			
-			if(i_templen > 0)
-			{
-				memset(c_PrintStr0,'\0',1024+1);
-				memcpy(c_PrintStr0,pc_pos,i_templen);
-			
-				TBOXi_HardPrint(c_PrintStr0);
-				
-				if(pc_pos1 != NULL)
-				{
-#if (NAGRA_CAK_VERSION == NVCA_DALTESTVERSION)/*��?1?��?DAL2a��?��?��?*/
-					//��D����D����a��?��???????����?����D\n
-					if(memcmp(pc_pos,"Enter Selection >>",18)!=0)
-#endif
-						TBOXi_HardPrint("\r\n");
-					
-					pc_pos = pc_pos1+i_len2;
-					i_len0 -=i_len2;
-					i_len2 = 0;
-				}
-				i_len0 -= i_templen;				
-			}
-			else 
-			{
-				//string?��?��?a\n			
-				if(pc_pos1 == pc_pos)
-				{
-					TBOXi_HardPrint("\r\n");		
-					pc_pos = pc_pos1+1;
-					i_len0 -=1;
-				}
-			}	
-		}while(i_len0 > 0);
+     TBOXi_HardPrint(text);
    }
 
    TBOXi_HardUnlock( TBOXi_HardSema_RT );
 
    return;
 }
-
 
 /******************************************************************************
  * Function Name   : RT_Task
@@ -872,16 +834,6 @@ void TBOX_GetCurrentTime( tTBOX_Time* TboxCurrentTime )
 
 {
    TBOXi_GetCurrentTime(TboxCurrentTime);
-}
-
-
-void TBOX_EnableExtern()
-{
-#ifdef CAK_DLK
-        //caLogSetRole("API", "INT" );
-       //caLogSetRole("IRD_COMMAND", "DEV" );
-		//caLogSetRole("PMT","DEV");
-#endif
 }
 
 #if TBOX_DEVHOST_FILE_ACCESS

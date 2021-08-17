@@ -106,11 +106,30 @@ GLOBAL void TBOXi_HardPrint(const char * string )
 #if defined(__TRACE_DCU__)
      printf( "%s", string);
 
-#elif defined(__TRACE_UART__)
+#else //#elif defined(__TRACE_UART__)
    char* tmp = string;
    MDrv_UART_PutString(tmp);
 #endif
 }
+
+/******************************************************************************
+ * Function Name   : TBOXi_HardPutChar
+ * Description     : Put a character to the output defined at compilation
+ * Side effects    :
+ * Comment       :
+ * Inputs      :
+ * Outputs       :
+ *****************************************************************************/
+GLOBAL void TBOXi_HardPutChar(const char c )
+{
+#if defined(__TRACE_DCU__)
+     putchar(c);
+
+#else //#elif defined(__TRACE_UART__)
+   MDrv_UART_PutChar(c);
+#endif
+}
+
 unsigned char cyg_uart_getchar(void);
 
 /******************************************************************************
@@ -129,8 +148,7 @@ GLOBAL void TBOXi_HardGetChar( char * c )
    fgets(string,8,stdin);
    *c = string[0];
 
-#elif defined (__TRACE_UART__)
-   
+#else //#elif defined (__TRACE_UART__)
    *c = (char)cyg_uart_getchar();
 
 #endif
