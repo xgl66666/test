@@ -10,6 +10,9 @@
 #include "tkel_dlmalloc.h"
 #endif
 
+#include <cyg/kernel/kapi.h>
+#include <cyg/hal/hal_intr.h>
+
  /*
  #define TKEL_DEBUG_MEM 
  #define TKEL_DEBUG_MEMORY_LEAK 
@@ -904,6 +907,149 @@ void TKEL_Abort(TKEL_cause cause)
     MsOS_DelayTask(2000);
 
 
+}
+
+/******************************************************************************
+ * Function Name : __wrap_cyg_hal_exception_handler
+ *
+ * Description   : This is a wrapper around cyg_hal_exception_handler() made to
+ *                 avoid occasional crashes in backtrace_mips32() in eCos (a
+ *                 function called by stack_dump() which is called by
+ *                 cyg_hal_exception_handler()). This function is enabled with
+ *                 flag "--wrap cyg_hal_exception_handler" sent to linker. This
+ *                 function calls cyg_hal_deliver_exception() directly.
+ *
+ *                 If it becomes possible to use cyg_hal_exception_handler()
+ *                 normally, remove this function.
+ *
+ * Side effects  : none
+ *
+ * Comment       :
+ *
+ * Parameters    : regs - as per definition found on Internet
+ *
+ * Returns       : 0 - as per definition found on Internet
+ *
+ /*****************************************************************************/
+cyg_uint32 __wrap_cyg_hal_exception_handler(HAL_SavedRegisters *regs){
+    int vec = regs->vector>>2;
+    cyg_hal_deliver_exception( vec, (CYG_ADDRWORD)regs );
+    return 0;
+}
+
+IMPORT void TDAL_Reset(void);
+
+/* Function given in TKEL_SetExceptionHandler to be called during exception handling */
+LOCAL void (*TKELi_exceptionFunction)(void) = NULL;
+
+LOCAL tTKEL_ExceptionInfo TKELi_exceptionInfo;
+LOCAL CYG_HAL_MIPS_REG TKELi_breakAddress;
+
+/******************************************************************************
+ * Function Name : _TKEL_EcosCustomExceptionHandler
+ *
+ * Description   : This function is used as the exception handler in eCos. This
+ *                 function is set to be called by cyg_hal_deliver_exception()
+ *                 after an exception happens if the user desires to analyze
+ *                 the exception by sending the string, otherwise resets the
+ *                 system.
+ *
+ * Side effects  : After this function ends, exception handling will finish and
+ *                 _DBGDIAG_AfterException() will be executed. R31 (register
+ *                 used for return address on MIPS) is set to start of
+ *                 TDAL_Reset().
+ *
+ * Comment       :
+ *
+ * Parameters    : data - pointer to address where exception info address needs
+ *                 to be saved
+ *                 exception_number - exception number sent by
+ *                 cyg_hal_deliver_exception()
+ *                 info - pointer to HAL_SavedRegisters
+ *
+ * Returns       : nothing
+ *
+ /*****************************************************************************/
+LOCAL void TKELi_EcosCustomExceptionHandler(
+    cyg_addrword_t data,
+    cyg_code_t   exception_number,
+    cyg_addrword_t info
+){
+    // Enable output from TBOX_Print for this message in case exception is encountered during handling
+    TBOX_UnblockAccess();
+    mTBOX_PRINT((kTBOX_LF, "*** System crashed, error code %d ***\n", exception_number));
+    HAL_SavedRegisters *regs = (HAL_SavedRegisters*)info;
+
+    TKELi_exceptionInfo.savedRegsCount = 34;
+    int i;
+    for(i = 0; i < 32; i++)
+    {
+        snprintf(TKELi_exceptionInfo.savedRegs[i].name, 6, "%sR%d", i<=9?" ":"", i);
+        TKELi_exceptionInfo.savedRegs[i].value = regs->d[i];
+    }
+    sprintf(TKELi_exceptionInfo.savedRegs[32].name, " HI");
+    TKELi_exceptionInfo.savedRegs[32].value = regs->hi;
+    sprintf(TKELi_exceptionInfo.savedRegs[33].name, " LO");
+    TKELi_exceptionInfo.savedRegs[33].value = regs->lo;
+
+    TKELi_breakAddress = regs->pc;
+    // If a function is set, call it afterwards, otherwise go to reset immediately
+    if(TKELi_exceptionFunction != NULL)
+    {
+        regs->pc = (int)TKELi_exceptionFunction;
+        regs->d[31] = (int)&TDAL_Reset;
+    }
+    else
+    {
+        regs->pc = (int)&TDAL_Reset;
+    }
+    // data is pointer to address where exception info address needs to be saved
+    if(data != NULL)
+    {
+        *((tTKEL_ExceptionInfo**)data) = &TKELi_exceptionInfo;
+    }
+}
+
+/*=============================================================================
+ *
+ * TKEL_SetExceptionHandler
+ *
+ * Parameters:
+ *   function               function to be called
+ *   exceptionInfoLocation  location where address of saved exception info
+ *                          will be saved after exception handling or NULL
+ *
+ * Description:
+ *      Sets the given function to be called during exception handling. After
+ *      exception handler finishes, caller will get address of location where
+ *      exception info is stored in exceptionInfoPointer. If the function is
+ *      NULL, default handling will be set instead. If exceptionInfoPointer is
+ *      NULL, exception info location will not be given to caller.
+ *
+ * Returns:
+ *   TKEL_NO_ERR   no error
+ *   TKEL_NOT_DONE   command not done
+ *
+ *===========================================================================*/
+TKEL_err TKEL_SetExceptionHandler(void (*function)(void), tTKEL_ExceptionInfo** exceptionInfoLocation)
+{
+    int i;
+    TKELi_exceptionFunction = function;
+    if(function == NULL)
+    {
+        for(i = CYGNUM_HAL_VSR_MIN; i <= CYGNUM_HAL_VSR_MAX; i++)
+        {
+            cyg_exception_clear_handler(i);
+        }
+    }
+    else
+    {
+        for(i = CYGNUM_HAL_VSR_MIN; i <= CYGNUM_HAL_VSR_MAX; i++)
+        {
+            cyg_exception_set_handler(i, TKELi_EcosCustomExceptionHandler, (cyg_addrword_t)exceptionInfoLocation, NULL, NULL);
+        }
+    }
+    return TKEL_NO_ERR;
 }
 
 #ifndef USE_TKEL_MEMORY_PARTITIONS

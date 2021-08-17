@@ -23,10 +23,6 @@ extern "C" {
 #error "TKEL-ERROR: This file shall be included from tkel.h only!"
 #endif
 
-//#ifndef TKEL_PTHREADS
-//#error "TKEL-ERROR: This file shall be included for PTHREADS only!"
-//#endif
-
 
 /*******************************************************/
 /*         Includes                   */
@@ -188,22 +184,6 @@ extern TKEL_uint32 TKEL_ticksPerSecond;
 extern TKEL_uint32 TKEL_uSecondsPerTick;
 extern TKEL_uint32 TKEL_CPUFrequency;
 
-#if 0 //NOT_SO_OPTIMIZED_FOR_PC
-/* Note: there is no need for ticks calculation on PC version */
-#ifndef ms2tick
-#define ms2tick(milliseconds) \
-      (TKEL_tck)((((milliseconds) / 1000) * TKEL_ticksPerSecond) + \
-      ((((milliseconds)%1000) * TKEL_ticksPerSecond) / 1000))
-#endif
-
-#ifndef tick2ms
-#define tick2ms(ticks) \
-      (((ticks) / TKEL_ticksPerSecond) * 1000 + \
-       (((ticks) % TKEL_ticksPerSecond) * 1000 )/ TKEL_ticksPerSecond)
-#endif
-
-#else
-
 #ifndef ms2tick
 #define ms2tick(milliseconds)   ((TKEL_tck)(milliseconds))
 #endif
@@ -211,8 +191,6 @@ extern TKEL_uint32 TKEL_CPUFrequency;
 #ifndef tick2ms
 #define tick2ms(ticks)       (ticks)
 #endif
-
-#endif /* NOT_SO_OPTIMIZED_FOR_PC */
 
 int TKEL_init(void);
 

@@ -240,7 +240,6 @@ TKEL_err TKEL_WaitSemaphore(TKEL_sema_id semaphoreID)
 TKEL_err TKEL_WaitSemaphoreTimeout(TKEL_sema_id semaphoreID, TKEL_tck ticks)
 {
 #if !defined(_XOPEN_SOURCE) || (_XOPEN_SOURCE < 600)
-//printf("->[m] TKEL_WaitSemaphoreTimeout run 1 \r\n");//mz
     unsigned int timeout = 0;
     unsigned int timestart = 0;
     unsigned int timeend = 0;

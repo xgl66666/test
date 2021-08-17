@@ -66,6 +66,18 @@ typedef enum
 }TKEL_status;
 
 
+typedef struct _TKEL_ExceptionReg
+{
+    char name[6]; // string which can be used alongside value
+    int value;
+}tTKEL_ExceptionReg;
+
+typedef struct _TKEL_ExceptionInfo
+{
+    char savedRegsCount;
+    tTKEL_ExceptionReg savedRegs[40];
+}tTKEL_ExceptionInfo;
+
 /*============================= Public functions =============================*/
 
 /* === Task management === */
@@ -74,7 +86,7 @@ TKEL_err TKEL_Term(void);
 
 TKEL_err TKEL_CreateTask(   TKEL_prio priority,      /* Creates and starts a task. */
         char *taskName,
-        TKEL_int16 stackSize,
+        TKEL_uint16 stackSize,
         void (*entry) (void*),
         void *arg,
         TKEL_task_id *taskID);
@@ -250,6 +262,8 @@ TKEL_frame TKEL_ExitIT(TKEL_frame frame);        /* Exit an Interrupt Service Ro
 /* === Miscellaneous === */
 
 void TKEL_Abort(TKEL_cause cause);       /* Aborts and enters fatal error handling mode. */
+
+TKEL_err TKEL_SetExceptionHandler(void (*function)(void), tTKEL_ExceptionInfo** exceptionInfoLocation); /* Sets function to be called in exception handling, used by some OS */
 
 TKEL_err TKEL_GetTick(TKEL_tck *pTick);
 

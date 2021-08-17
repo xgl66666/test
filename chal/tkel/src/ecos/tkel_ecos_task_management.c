@@ -193,7 +193,7 @@ void RemoveTaskFromList(TKEL_task_id tk_task)
 /********************************************************/
 TKEL_err TKEL_CreateTask(TKEL_prio priority,
         char *taskName,
-        TKEL_int16 stackSize,
+        TKEL_uint16 stackSize,
         void (*entry) (void*),
         void *arg,
         TKEL_task_id *taskID)
