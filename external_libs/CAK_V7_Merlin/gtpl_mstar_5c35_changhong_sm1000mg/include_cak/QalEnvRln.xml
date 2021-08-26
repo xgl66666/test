@@ -1,0 +1,286 @@
+<?xml version="1.0" ?>
+<release_notes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="release.notes.xsd">
+	<project id="$Id: QalEnvRln.xml,v 1.2 2010/02/11 14:12:07 sbsuser Exp $" name="icme_changhong_XXX">
+		<contact_person comment="tel +41 21 732 04 45" email="dtesen.support@nagra.com" name="DTESEN support"/>
+	</project>
+	<release version="1_0_2">
+		<components>
+			<component name="ngwm_ta.h"/>
+			<component name="ca_os.h"/>
+			<component name="ca_mpeg.h"/>
+			<component name="nv_types.h"/>
+			<component name="ca_types.h"/>
+			<component name="ca_dmx.h"/>
+			<component name="ca_defs.h"/>
+			<component name="nv_defs.h"/>
+			<component name="dalapivr.h"/>
+			<component name="ca_icc.h"/>
+			<component name="ca_cak.h"/>
+			<component name="cakapivr.h"/>
+			<component name="ngwm_hal.h"/>
+			<component name="ca_vfs.h"/>
+			<component name="ca_defsx.h"/>
+			<component name="nv_wmk_sw.h"/>
+			<component name="ngwm_types.h"/>
+			<component name="ngwm_ree.h"/>
+			<component name="ca_dsc.h"/>
+			<component name="nv_acd.h"/>
+			<component name="ngwm_defs.h"/>
+			<component name="ca_pconv.h"/>
+			<component name="ca_rph.h"/>
+			<component name="ca_sec.h"/>
+			<component name="ca_dvb.h"/>
+		</components>
+		<compatibility>
+			<product name="cak_icme" version="2.16.1"/>
+			<product name="cakapi" version="1.34.1"/>
+			<product name="dalapi" version="7.17.0"/>
+			<product name="makefiles" version="3.4.9"/>
+			<product name="ngwmhwapi" version="1.3.1"/>
+			<product name="talapi" version="1.4.4"/>
+			<toolchain name="mipsisa32-elf-gcc" version="3.4.4">
+				<compiler_flags>
+					<flag>-EL</flag>
+					<flag>-mips32</flag>
+					<flag>-mhard-float</flag>
+					<flag>-Wall</flag>
+					<flag>-Wpointer-arith</flag>
+					<flag>-Wstrict-prototypes</flag>
+					<flag>-Winline</flag>
+					<flag>-Wundef</flag>
+					<flag>-fno-strict-aliasing</flag>
+					<flag>-fno-optimize-sibling-calls</flag>
+					<flag>-fno-exceptions</flag>
+					<flag>-fno-builtin</flag>
+					<flag>-c</flag>
+					<flag>-G0</flag>
+					<flag>-O0</flag>
+				</compiler_flags>
+			</toolchain>
+		</compatibility>
+		<bug_fixes/>
+		<changes/>
+		<new_features/>
+		<comments/>
+		<keysets>
+			<keyset name="DG2">
+				<features>
+					<fingerprint_profileV1 presence="false"/>
+					<fingerprint_profileV2 presence="true"/>
+					<watermark_profile presence="false"/>
+					<stbMinVersion_version presence="true"/>
+					<cohabitationTables_ecmTable_casId presence="false"/>
+				</features>
+				<key name="DLKLibOP_D020_DLK_DLK-vSC1-38-040_P_DG2_NA_SC_00143_v1.xml"/>
+				<key name="libopparamsicme_std_nocert_DG2_D020_C2-374203_result.xml">
+					<fingerprint_profileV2>000312051000003C0003E810000044000000000000</fingerprint_profileV2>
+					<stbMinVersion_version>01</stbMinVersion_version>
+				</key>
+			</keyset>
+			<keyset name="NAK">
+				<features>
+					<fingerprint_profileV1 presence="false"/>
+					<fingerprint_profileV2 presence="true"/>
+					<watermark_profile presence="false"/>
+					<stbMinVersion_version presence="true"/>
+					<cohabitationTables_ecmTable_casId presence="false"/>
+				</features>
+				<key name="DLKLibOP_0211_DLK_vSC1-3C-000_B_NAK_NA_SC_01739_v4.xml"/>
+				<key name="libopparamsicme_std_nocert_NAK_0211_C2-374203_result.xml">
+					<fingerprint_profileV2>000312051000003C0003E810000044000000000000</fingerprint_profileV2>
+					<stbMinVersion_version>01</stbMinVersion_version>
+				</key>
+			</keyset>
+			<keyset>
+				<features/>
+			</keyset>
+		</keysets>
+		<libraries>
+			<library name="cak_icme.std_nocert.debug.mipsisa32-elf-gcc.a" version="D-CDOAD-AMQCA">
+				<operators>
+					<operator name="cak_icme.std_nocert.debug.mipsisa32-elf-gcc-DG2.a" version="DG2ZZ"/>
+					<operator name="cak_icme.std_nocert.debug.mipsisa32-elf-gcc-NAK.a" version="NAKZZ"/>
+				</operators>
+			</library>
+			<library name="cak_icme.std_nocert.release.mipsisa32-elf-gcc.a" version="R-CDOAD-AMQCA">
+				<operators>
+					<operator name="cak_icme.std_nocert.release.mipsisa32-elf-gcc-DG2.a" version="DG2ZZ"/>
+					<operator name="cak_icme.std_nocert.release.mipsisa32-elf-gcc-NAK.a" version="NAKZZ"/>
+				</operators>
+			</library>
+		</libraries>
+	</release>
+	<release version="1_0_1">
+		<components>
+			<component name="ngwm_ta.h"/>
+			<component name="ca_os.h"/>
+			<component name="ca_mpeg.h"/>
+			<component name="nv_types.h"/>
+			<component name="ca_types.h"/>
+			<component name="ca_dmx.h"/>
+			<component name="ca_defs.h"/>
+			<component name="nv_defs.h"/>
+			<component name="dalapivr.h"/>
+			<component name="ca_icc.h"/>
+			<component name="ca_cak.h"/>
+			<component name="cakapivr.h"/>
+			<component name="ngwm_hal.h"/>
+			<component name="ca_vfs.h"/>
+			<component name="ca_defsx.h"/>
+			<component name="nv_wmk_sw.h"/>
+			<component name="ngwm_types.h"/>
+			<component name="ngwm_ree.h"/>
+			<component name="ca_dsc.h"/>
+			<component name="nv_acd.h"/>
+			<component name="ngwm_defs.h"/>
+			<component name="ca_pconv.h"/>
+			<component name="ca_rph.h"/>
+			<component name="ca_sec.h"/>
+			<component name="ca_dvb.h"/>
+		</components>
+		<compatibility>
+			<product name="cak_icme" version="2.15.1"/>
+			<product name="cakapi" version="1.34.1"/>
+			<product name="dalapi" version="7.17.0"/>
+			<product name="makefiles" version="3.4.4"/>
+			<product name="ngwmhwapi" version="1.3.1"/>
+			<product name="talapi" version="1.4.0"/>
+			<toolchain name="mipsisa32-elf-gcc" version="3.4.4">
+				<compiler_flags>
+					<flag>-EL</flag>
+					<flag>-mips32</flag>
+					<flag>-mhard-float</flag>
+					<flag>-Wall</flag>
+					<flag>-Wpointer-arith</flag>
+					<flag>-Wstrict-prototypes</flag>
+					<flag>-Winline</flag>
+					<flag>-Wundef</flag>
+					<flag>-fno-strict-aliasing</flag>
+					<flag>-fno-optimize-sibling-calls</flag>
+					<flag>-fno-exceptions</flag>
+					<flag>-fno-builtin</flag>
+					<flag>-c</flag>
+					<flag>-G0</flag>
+					<flag>-O0</flag>
+				</compiler_flags>
+			</toolchain>
+		</compatibility>
+		<bug_fixes/>
+		<changes/>
+		<new_features/>
+		<comments/>
+		<keysets>
+			<keyset name="DG2">
+				<features>
+					<fingerprint_profileV1 presence="false"/>
+					<fingerprint_profileV2 presence="true"/>
+					<watermark_profile presence="false"/>
+					<stbMinVersion_version presence="true"/>
+					<cohabitationTables_ecmTable_casId presence="false"/>
+				</features>
+				<key name="DLKLibOP_D020_DLK_DLK-vSC1-38-040_P_DG2_NA_SC_00143_v1.xml"/>
+				<key name="libopparamsicme_std_nocert_DG2_D020_C2-361443_result.xml">
+					<fingerprint_profileV2>000312051000003C0003E810000044000000000000</fingerprint_profileV2>
+					<stbMinVersion_version>01</stbMinVersion_version>
+				</key>
+			</keyset>
+			<keyset name="NAK">
+				<features>
+					<fingerprint_profileV1 presence="false"/>
+					<fingerprint_profileV2 presence="true"/>
+					<watermark_profile presence="false"/>
+					<stbMinVersion_version presence="true"/>
+					<cohabitationTables_ecmTable_casId presence="false"/>
+				</features>
+				<key name="DLKLibOP_0211_DLK_vSC1-3C-000_B_NAK_NA_SC_01739_v4.xml"/>
+				<key name="libopparamsicme_std_nocert_NAK_0211_C2-361443_result.xml">
+					<fingerprint_profileV2>000312051000003C0003E810000044000000000000</fingerprint_profileV2>
+					<stbMinVersion_version>01</stbMinVersion_version>
+				</key>
+			</keyset>
+			<keyset>
+				<features/>
+			</keyset>
+		</keysets>
+	</release>
+	<release version="1_0_0">
+		<components>
+			<component name="ca_os.h"/>
+			<component name="ca_mpeg.h"/>
+			<component name="ca_types.h"/>
+			<component name="ca_dmx.h"/>
+			<component name="ca_defs.h"/>
+			<component name="dalapivr.h"/>
+			<component name="ca_icc.h"/>
+			<component name="ca_cak.h"/>
+			<component name="cakapivr.h"/>
+			<component name="ca_vfs.h"/>
+			<component name="ca_defsx.h"/>
+			<component name="ca_dsc.h"/>
+			<component name="ca_pconv.h"/>
+			<component name="ca_rph.h"/>
+			<component name="ca_sec.h"/>
+			<component name="ca_dvb.h"/>
+			<component comment="This CA_SN 0x10000 pairing is used when the CSO Operator library is linked.  For CAK V6, this key can also be used when the actual Customer Operator library is linked.  This pairing key is provided for use in a development environment only.  Production STB shall never be manufactured with this key and deployed.  This key shall be exchanged security.  For details on obtaining and using actual production pairing keys, please reference the Nagravision Pairing Key Handling Procedures document." name="CSO_TEST_PK_2005_10000.D33"/>
+			<component comment="This CA_SN 0x10000 pairing is used when the Customer Operator library is linked with the CAK V7.  This pairing key is provided for use in a development environment only.  Production STB shall never be manufactured with this key and deployed.  This key shall be exchanged security and destroyed when it's no longer needed.  For details on obtaining and using actual production pairing keys, please reference the Nagravision Pairing Key Handling Procedures document." name="Gujarat_000K0256.D33"/>
+		</components>
+		<compatibility>
+			<product name="cak_icme" version="2.9.0"/>
+			<product name="cakapi" version="1.30.0"/>
+			<product name="dalapi" version="7.3.2"/>
+			<product name="makefiles" version="3.1.58"/>
+			<toolchain name="mipsisa32-elf-gcc" version="3.4.4">
+				<compiler_flags>
+					<flag>-EL</flag>
+					<flag>-mips32</flag>
+					<flag>-mhard-float</flag>
+					<flag>-Wall</flag>
+					<flag>-Wpointer-arith</flag>
+					<flag>-Wstrict-prototypes</flag>
+					<flag>-Winline</flag>
+					<flag>-Wundef</flag>
+					<flag>-fno-strict-aliasing</flag>
+					<flag>-fno-optimize-sibling-calls</flag>
+					<flag>-fno-exceptions</flag>
+					<flag>-fno-builtin</flag>
+					<flag>-c</flag>
+					<flag>-G0</flag>
+					<flag>-O0</flag>
+				</compiler_flags>
+				<compiler_defines/>
+			</toolchain>
+		</compatibility>
+		<bug_fixes/>
+		<changes/>
+		<new_features/>
+		<comments/>
+		<keysets>
+			<keyset name="DG2">
+				<features>
+					<fingerprint_profileV1 presence="false"/>
+					<fingerprint_profileV2 presence="false"/>
+					<watermark_profile presence="false"/>
+					<stbMinVersion_version presence="true"/>
+					<security_level presence="false"/>
+				</features>
+				<key name="DLKLibOP_DG2_D020_PROD_00143_1_DLK1-0_X.xml"/>
+				<key name="libopparamsicme_std_nocert_DG2_D020_C2-289752_result.xml">
+					<stbMinVersion_version>01</stbMinVersion_version>
+				</key>
+			</keyset>
+			<keyset name="NAK">
+				<features>
+					<fingerprint_profileV1 presence="false"/>
+					<fingerprint_profileV2 presence="false"/>
+					<watermark_profile presence="false"/>
+					<stbMinVersion_version presence="true"/>
+					<security_level presence="false"/>
+				</features>
+				<key name="DLKLibOP_NAK_0211_BETA_00643_1_DLK2-NOCERT-vSC1_23042015.xml"/>
+				<key name="libopparamsicme_std_nocert_NAK_0211_C2-289752_result.xml">
+					<stbMinVersion_version>01</stbMinVersion_version>
+				</key>
+			</keyset>
+		</keysets>
+	</release>
+</release_notes>
