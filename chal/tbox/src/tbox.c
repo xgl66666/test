@@ -719,14 +719,38 @@ void TBOX_GetStringNonBlocking( char * string )
  * Inputs      :
  * Outputs       :
  *****************************************************************************/
+  char c_PrintStr0[1024+1];
 LOCAL void RT_Print(char *text)
 {
    uint16_t i=0;
    uint16_t len=0;
+ 
+   int	  i_len0 = 0;
+   int	  i_len1  = 0;
+   int	  i_len2 = 0;
+   
+   char* pc_pos = NULL, *pc_pos1 = NULL,*pc_pos2 = NULL;
+   
+   int	  i_templen;
+
 
    if(RTinitDone != TRUE)
      return;
 
+
+   if(text == NULL)
+   {
+	   return;
+   }
+		
+   i_len0 = strlen(text);
+   
+   if(i_len0 > 1024)
+    {
+	   printf("@@too long print \r\n");    
+	   return;
+    }
+   /*Maybe a text contains /r/n prime in many places
    len = strlen(text);
 	if ((text[len-1] == '\n') && ((len == 1) || (text[len-2] != '\r')))
 	{
@@ -734,6 +758,10 @@ LOCAL void RT_Print(char *text)
 		text[len] = '\n';
 		text[len+1] = 0;
 	}
+*/   
+   pc_pos = text;
+   
+
 
    TBOXi_HardLock( TBOXi_HardSema_RT );
 
@@ -768,7 +796,61 @@ LOCAL void RT_Print(char *text)
      /* Trace SYNCHRONE _ displayed by this function */
      /* -------------------------------------------- */
 
-     TBOXi_HardPrint(text);
+		do
+		{
+			pc_pos1 = strstr(pc_pos,"\r\n");
+			
+			if(pc_pos1 != NULL)
+			{
+				i_templen = pc_pos1 - pc_pos;
+				i_len2 = 2;
+			}
+			else
+			{
+				pc_pos1 = strstr(pc_pos,"\n");
+	 
+				if(pc_pos1 != NULL)
+				{
+					i_templen = pc_pos1 - pc_pos;
+					i_len2 = 1;
+				}
+				else
+				{
+					i_templen = strlen(pc_pos);
+				}
+			}
+			
+			if(i_templen > 0)
+			{
+				memset(c_PrintStr0,'\0',1024+1);
+				memcpy(c_PrintStr0,pc_pos,i_templen);
+			
+				TBOXi_HardPrint(c_PrintStr0);
+				
+				if(pc_pos1 != NULL)
+				{
+                 #if (NAGRA_CAK_VERSION == NVCA_DALTESTVERSION)
+					if(memcmp(pc_pos,"Enter Selection >>",18)!=0)
+                 #endif
+						TBOXi_HardPrint("\r\n");
+					
+					pc_pos = pc_pos1+i_len2;
+					i_len0 -=i_len2;
+					i_len2 = 0;
+				}
+				i_len0 -= i_templen;				
+			}
+			else 
+			{
+				//stringa\n			
+				if(pc_pos1 == pc_pos)
+				{
+					TBOXi_HardPrint("\r\n");		
+					pc_pos = pc_pos1+1;
+					i_len0 -=1;
+				}
+			}	
+		}while(i_len0 > 0);
    }
 
    TBOXi_HardUnlock( TBOXi_HardSema_RT );

@@ -23,6 +23,7 @@
 #include "tdal_sec.h"
 #include "MsTypes.h"
 #include "drvNGA.h"
+#include "pthread.h"
 //#include "nocs1x_csd_impl.h"
 //#include "nocs1x_csd.h"
 #include "MsOS.h"
@@ -47,6 +48,7 @@ const TCsdUnsignedInt8 CipheredContentKey[] = {0xe4, 0x21, 0x13, 0xa7, 0x99, 0xc
 LOCAL TDAL_mutex_id TdalSecMutexID = NULL;
 
 static int gSecTrngFd;
+static int gRandom=1;
 #define O_RDONLY     (1<<0)   /* Open for reading only */
 
 /*===========================================================================
@@ -373,13 +375,16 @@ tTDAL_SEC_ErrorCode TDAL_SEC_Decryptdata( uint8_t *pBufferSrc,uint8_t *pBufferDs
 
 tTDAL_SEC_ErrorCode TDAL_SEC_GenerateRandomBytes(uint8_t *pxOutput, size_t xInitVectorSize)
 {    
+    pthread_t threadId = pthread_self();
+	TDAL_LockMutex(TdalSecMutexID);
  	int i=0;
-	
-    srand(rand());
+    srand(rand()+gRandom+threadId);
 	for(i=0;i<xInitVectorSize;i++)
 	{
 		pxOutput[i]=rand()%(0xFF+1);
 	}
+	gRandom++;
+	TDAL_UnlockMutex(TdalSecMutexID);
 	return eTDAL_SEC_NO_ERROR;
 }
 

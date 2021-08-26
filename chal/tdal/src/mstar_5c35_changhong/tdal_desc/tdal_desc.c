@@ -248,7 +248,6 @@ tTDAL_DESC_Error   TDAL_DESC_Terminate(void)
    *==================================================================*/
 tTDAL_DESC_descrambler   TDAL_DESC_Open_Descrambler(TDAL_DESC_stream_type_e   stream_type)
 {
-    printf("<xgl test>enter tdal_desc_open\n");
     tTDAL_DESC_descrambler     descId = kTDAL_DESC_ILLEGAL_DESCRAMBLER;
     uint8_t   i;
 	mDesc_DEBUG("=====[%s][%d] \n", __FUNCTION__,__LINE__);
@@ -424,10 +423,6 @@ tTDAL_DESC_Error   TDAL_DESC_Set_Descrambler_Pid(tTDAL_DESC_descrambler descId, 
 
     MsOS_ObtainSemaphore(TDAL_DESC_table_sync, MSOS_WAIT_FOREVER);
     TDAL_DESC_table[i].Pid = 0;
-	for (k=0 ; (k < kTDAL_DESC_MAX_CHANNELS) ; k++)
-    {
-        printf("TDAL_DESC_channels[%d].ChannelPid=%d\n",k,TDAL_DESC_channels[k].ChannelPid);
-    }
     for (k=0 ; (k < kTDAL_DESC_MAX_CHANNELS) ; k++)
     {
         if ((TDAL_DESC_channels[k].ChannelPid == pid) &&
@@ -463,7 +458,6 @@ tTDAL_DESC_Error   TDAL_DESC_Set_Descrambler_Pid(tTDAL_DESC_descrambler descId, 
         return(eTDAL_DESC_ERROR);
     }
 	
-    printf("<xgl test> set type is success\n");
     MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
     return eTDAL_DESC_NO_ERROR;
 
@@ -542,8 +536,6 @@ tTDAL_DESC_Error   TDAL_DESC_Set_Descrambler_Keys(tTDAL_DESC_descrambler   descI
                    int16_t   even_key_length,
                    const   int8_t   *even_key)
 {
-	printf("<xgl test>enter TDAL_DESC_Set_Descrambler_Keys\n");
-
 	uint8_t   i;
 	TCsdStatus csdStatus;
 	tTDAL_DESC_descrambler tempDescId = kTDAL_DESC_ILLEGAL_DESCRAMBLER;
