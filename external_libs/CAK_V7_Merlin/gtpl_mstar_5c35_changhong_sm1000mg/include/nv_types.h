@@ -67,7 +67,7 @@ typedef ptrdiff_t       intptr_t;
 
 #ifndef __cplusplus     /* Boolean is a basic C++ type */
 #ifndef bool
-typedef uint8_t         bool;
+//typedef uint8_t         bool;
 #endif
 #ifndef false
 # define false          0

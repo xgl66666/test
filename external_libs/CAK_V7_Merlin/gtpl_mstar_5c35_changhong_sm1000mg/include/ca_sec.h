@@ -518,6 +518,10 @@ typedef TSecStatus (*TSecGetChipsetExtension)
   const TChar** ppxChipsetExtension
 );
 
+TSecStatus secGetChipsetExtension	
+(
+  const TChar** ppxChipsetExtension	
+);
 
 /**
   @ingroup g_sec_chip_id
@@ -2033,6 +2037,10 @@ typedef TUnsignedInt8* (*TSecAllocateBuffer)
   size_t  xBufferSize
 );
 
+TUnsignedInt8* secAllocateBuffer		
+(
+  size_t  xBufferSize	
+);
 
 /**
  *  @ingroup g_sec_r2r
@@ -2058,6 +2066,11 @@ typedef TSecStatus (*TSecFreeBuffer)
   TUnsignedInt8*     pxBuffer
 );
 
+
+TSecStatus secFreeBuffer	
+(
+  TUnsignedInt8*     pxBuffer	
+);
 
 /**
   @ingroup g_sec_r2r
