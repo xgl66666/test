@@ -22,6 +22,6 @@ CAK_NAK_DEBUG_LIBS   =  libcak_icme.std_nocert.debug.mipsisa32-elf-gcc-NAK.a \
                         
 # Driver Abstraction Layer Test Suite libraries
 
-CAK_DALTS_LIBS        = libdalts.cak7-dlk.release.mipsisa32-elf.a
+CAK_DALTS_LIBS        = libdalts.cak7-dlk-hybrid.release.mipsisa32-elf-gcc.a
 
 CFLAGS += -D_NV_REMAP_DEFS_
