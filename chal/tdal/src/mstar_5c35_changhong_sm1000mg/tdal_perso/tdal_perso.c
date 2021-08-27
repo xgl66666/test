@@ -332,7 +332,7 @@ eTDAL_PERSO_ErrorCode   TDAL_PERSO_ReadTag(   tTDAL_PERSO_Tag   const   tag, uin
     uint32_t PairingDataSize = 494;
     uint32_t PairingDataLocation = PERSO_LOCATION_MEMORY;
 #else
-    uint32_t PairingDataAddress = 0x510000; //used for u-boot only
+    uint32_t PairingDataAddress = 0x50000; //used for u-boot only
     uint32_t PairingDataSize = 494;
     uint32_t PairingDataLocation = PERSO_LOCATION_FLASH;
 #endif //PK_IN_RAM
@@ -350,7 +350,6 @@ eTDAL_PERSO_ErrorCode   TDAL_PERSO_ReadTag(   tTDAL_PERSO_Tag   const   tag, uin
     uint32_t SerialSize = 256;  
 
     mTBOX_FCT_ENTER(TDAL_PERSO_ReadTag);
-    TDAL_PERSO_PK_Handle();
 
     switch(tag)
     {
