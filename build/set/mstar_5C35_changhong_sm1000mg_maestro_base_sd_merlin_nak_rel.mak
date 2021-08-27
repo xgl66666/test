@@ -14,8 +14,8 @@ export PLATFORM_BOARD_VENDOR=changhong
 export PLATFORM_BOARD_MODEL=sm1000mg
 
 # ------ HAL settings -----------
-export PRODUCT_PREBUILT_SDK=YES
-export PRODUCT_PREBUILT_HAL=YES
+export PRODUCT_PREBUILT_SDK=NO
+export PRODUCT_PREBUILT_HAL=NO
 export PRODUCT_HAL_SUFFIX=_6Mb
 export PRODUCT_OS=ecos
 
