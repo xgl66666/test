@@ -80,7 +80,7 @@ export PRODUCT_USE_SDEC=YES
 export PRODUCT_AUX_VIDEO_DISPLAY_SD=NO
 export PRODUCT_PERMANENT_SI_MONITORING=NO
 export SUPPRESS_FTA=YES
-
+export PRODUCT_BOOL_TYPE=int
 
 # ------- versions ----------
 export PRODUCT_MW_VER?=0.0.0

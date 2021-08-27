@@ -84,6 +84,8 @@ ifeq "$(PRODUCT_PERMANENT_SI_MONITORING)" "YES"
 export PERMANENT_SI_MONITORING_ON_COMPLETE_NETWORK=YES
 endif
 export SUPPRESS_FTA=YES
+export PRODUCT_BOOL_TYPE=int
+
 
 # ------- versions ----------
 export PRODUCT_MW_VER?=2.0.9B
