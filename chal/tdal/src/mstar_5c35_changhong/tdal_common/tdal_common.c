@@ -1094,140 +1094,17 @@ LOCAL void TDALi_StartWatchdog(void)
 
 GLOBAL tTDAL_OTA_ErrorCode TDAL_Diag_GetInfo(tTDAL_Diag_InfoType diagInfoType, tTDAL_Diag_Handle pProperStructure)
 {
-    tTDAL_Diag_HWInfo *pHardwareInfo = NULL;
-    tTDAL_Diag_SWInfo *pSoftwareInfo = NULL;
-    unsigned char hwconfigData[1024+4] = {0};
-    unsigned int stbSerialNumber = 0;
-    unsigned char SerialNumber[4] = {0};
-    int ret = 0;
-	CH_LoaderInfo_t rpstru_LoaderInfo={0};
-	tTDAL_OTA_ErrorCode	enm_ChComRet;
-	CH_SystemInfo_t gstru_SystemInfo={0};
+    return eTDAL_OTA_STATUS_NO_ERROR;
 
-    printf("[%s %d]enter diagInfoType=%d \n",__FUNCTION__,__LINE__,diagInfoType);
-
-    if ((diagInfoType < eTDAL_DIAG_HW_INFO) || (diagInfoType > eTDAL_DIAG_SW_INFO))
-    {
-        return eTDAL_OTA_STATUS_ERROR;
-    }
-
-    if (pProperStructure == NULL)
-    {
-        return eTDAL_OTA_STATUS_ERROR;
-    }
-	enm_ChComRet = CH_COM_GetLoaderInfo(&rpstru_LoaderInfo);
-	enm_ChComRet |= CH_COM_GetSystemInfo( &gstru_SystemInfo );
-	if(enm_ChComRet != eTDAL_OTA_STATUS_NO_ERROR)
-	{
-		U8 TempBuf[20] = {"0"};
-
-		memset(&gstru_SystemInfo,0,sizeof(gstru_SystemInfo));
-
-		strcpy((char*)gstru_SystemInfo.uc_name,"System Info");
-		gstru_SystemInfo.i_length = sizeof(gstru_SystemInfo) - 16;
-
-
-		memcpy(gstru_SystemInfo.uc_STBSN,TempBuf,15 );
-		printf("\n ================CH_COM_GetSystemInfo fail\n");
-
-		//CH_COM_SetSystemInfo(&gstru_SystemInfo);
-	}
-	gstru_SystemInfo.uc_STBSN[16] = 0;
-
-    memset(&hwconfigData,0,sizeof(hwconfigData));
-    memset(hwconfigData,0,sizeof(hwconfigData));
-    memset(SerialNumber,0,sizeof(SerialNumber));
-
-    if (diagInfoType == eTDAL_DIAG_HW_INFO)
-    {
-        pHardwareInfo = (tTDAL_Diag_HWInfo *)pProperStructure;
-
-        sprintf(pHardwareInfo->cHardwareVersion,"%x",(unsigned char*)rpstru_LoaderInfo.ui_Hardware);
-        pHardwareInfo->uiHardwareVersionId = (uint16_t)HARDWARE_VERSION_ID;
-
-        strcpy(pHardwareInfo->cHardwareModel,(unsigned char*)HARDWARE_MODEL);
-        pHardwareInfo->uiHardwareModelId = (uint16_t)HARDWARE_MODEL_ID;
-
-        strcpy(pHardwareInfo->cHardwareDeviceName,(unsigned char*)HARDWARE_DEVICE_NAME);
-        pHardwareInfo->uiHardwareDeviceNameId = HARDWARE_DEVICE_NAME_ID;
-
-        strcpy(pHardwareInfo->cHardwareManufacturer,(unsigned char*)HARDWARE_MANUFACTURER);
-        pHardwareInfo->uiHardwareManufacturerId = HARDWARE_MANUFACTURER_ID;
-
-        strcpy(pHardwareInfo->cOUI,(unsigned char*)HARDWARE_MANUFACTURER);
-        pHardwareInfo->uiOUIId = HARDWARE_MANUFACTURER_ID;
-
-        /*read the stb serial number info from flash 0x80070*/
-//        ret = MDrv_SERFLASH_Read(HWCONFIG_FALG_PARTITION_ADDR+HWCONFIG_AREA_STB_SERIAL_NUMBER,4,SerialNumber);
-//        if ( ret != TRUE)
-//        {
-//            return eTDAL_OTA_STATUS_ERROR;
-//        }
-
-        stbSerialNumber = 76667;//(SerialNumber[0]|(SerialNumber[1]<<8)|(SerialNumber[2]<<16)|(SerialNumber[3]<<24));
-        sprintf(pHardwareInfo->cHardwareSTBSerialNumber,"%s",gstru_SystemInfo.uc_STBSN);//020236150000400
-        printf("[%s %d]stb sn=[%s][%s] \n",__FUNCTION__,__LINE__,pHardwareInfo->cHardwareSTBSerialNumber,pHardwareInfo->cHardwareVersion);
-
-        return eTDAL_OTA_STATUS_NO_ERROR;
-
-    }
-    else //eTDAL_DIAG_SW_INFO
-    {
-        pSoftwareInfo = (tTDAL_Diag_SWInfo *)pProperStructure;
-        sprintf(pSoftwareInfo->cDriverVersion,"%02d.%02d.%02d.%02d",(rpstru_LoaderInfo.ui_Software & 0xff000000) >>24,
-		((rpstru_LoaderInfo.ui_Software & 0x00ff0000) >>16),
-		((rpstru_LoaderInfo.ui_Software & 0x0000ff00) >>8),
-		(rpstru_LoaderInfo.ui_Software & 0x000000ff)
-		);
-        pSoftwareInfo->uiDriverVersionId = rpstru_LoaderInfo.ui_Software;
-
-        strcpy(pSoftwareInfo->cLoaderVersion,(unsigned char*)LOADER_VERSION);
-        pSoftwareInfo->uiLoaderVersionId = LOADER_VERSION_ID;
-
-        strcpy(pSoftwareInfo->cLauncherVersion,(unsigned char*)LAUNCHER_VERSION);
-        pSoftwareInfo->uiLauncherVersionId = LAUNCHER_VERSION_ID;
-        printf("[%s %d]stb sn=[%s] \n",__FUNCTION__,__LINE__,pSoftwareInfo->cDriverVersion);
-
-        return eTDAL_OTA_STATUS_NO_ERROR;
-    }
 }
 GLOBAL tTDAL_OTA_ErrorCode TDAL_OTA_GetParameters(tTDAL_OTA_StatusParameters *otaParam)
 {
-	CH_LoaderInfo_t rpstru_LoaderInfo={0};
-	tTDAL_OTA_ErrorCode	enm_ChComRet;
-	
-    char                    cStatus[10]={0};   /* Success, Failed, Suspended */
-    char                    cErrorCode[5] = {0}; /* Error code format: EXXX */
-    if (otaParam == NULL)
-    {
-        return eTDAL_OTA_STATUS_ERROR;
-    }
-	enm_ChComRet = CH_COM_GetLoaderInfo(&rpstru_LoaderInfo);
-
-	if(enm_ChComRet != eTDAL_OTA_STATUS_NO_ERROR)
-	{
-		printf("\n ============CH_COM_GetLoaderInfo fail\n");
-	}
-	otaParam->bInStandBy  = !rpstru_LoaderInfo.ui_TimeCode;
-	if(rpstru_LoaderInfo.ui_DateCode > 0xFFF)
-	{
-		rpstru_LoaderInfo.ui_DateCode = rpstru_LoaderInfo.ui_DateCode%0xfff;
-	}
-	if(rpstru_LoaderInfo.ui_DateCode == 0 )
-	{
-		otaParam->eErrorStatus = eTDAL_OTA_STATUS_NO_ERROR;
-		sprintf(otaParam->cStatus,"%s","Success");
-		sprintf(otaParam->cErrorCode,"%d",0);
-	}
-	else
-	{
-		otaParam->eErrorStatus = eTDAL_OTA_STATUS_ERROR;
-		sprintf(otaParam->cStatus,"%s","Failed");
-		sprintf(otaParam->cErrorCode,"E%03X",rpstru_LoaderInfo.ui_DateCode);
-	}
-	return eTDAL_OTA_STATUS_NO_ERROR;
+		return eTDAL_OTA_STATUS_NO_ERROR;
 }
 
+GLOBAL tTDAL_OTA_ErrorCode TDAL_OTA_SetParameters(tTDAL_OTA_ControlParameters *otaParam){
+    return eTDAL_OTA_STATUS_NO_ERROR;
+}
 /*
 * \depricated function is going to be removed from the API, as it belongs to older API version.
 */
