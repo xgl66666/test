@@ -3,7 +3,7 @@
 UNAME=$(shell uname)
 
 UNZIP_RAM_BASE ?= 0x82F70044
-IMAGE_BIN_SIZE ?= 3452928
+IMAGE_BIN_SIZE ?= 3387392
 IMAGE_BIN      ?= $(BUILD_ROOT)/bin/comedia.bin
 IMAGE_ZIP      ?= out/comedia.lzma
 IMAGE_OUT      ?= $(BUILD_ROOT)/bin/comedia_lzma
