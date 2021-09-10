@@ -123,6 +123,7 @@ tTDAL_DESC_Error TDAL_DESC_Set_Descrambler_Keys_L1 (tTDAL_DESC_descrambler descr
                   int16_t L1_key_length, const int8_t *L1_key,
                   int16_t odd_key_length, const int8_t *odd_key,
                   int16_t even_key_length, const int8_t *even_key);
+
 tTDAL_DESC_Error TDAL_DESC_Set_Descrambler_Keys_ETSI_L2(tTDAL_DESC_descrambler descIdx,
                              int16_t L1L2_key_length,
                              const int8_t * L1Key,

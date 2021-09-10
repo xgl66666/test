@@ -557,6 +557,7 @@ typedef TSecStatus (*TSecGetChipId)
   TUnsignedInt8     pxOwnerId[2],
   TUnsignedInt8     pxChipId[8]
 );
+
 TSecStatus secGetChipId
 (
   TUnsignedInt8     pxOwnerId[2],
@@ -1498,7 +1499,7 @@ typedef TSecStatus (*TSecSetEtsi2LevelProtectedKey)
 );
 
 
-/**
+/**F
   @ingroup g_sec_r2r
   
   @brief
