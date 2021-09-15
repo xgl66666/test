@@ -113,8 +113,10 @@ tTDAL_NVM_ErrorCode   TDAL_NVM_Init   (void)
    }
    /* Get spare NVRAM area from flash configuration in this case it will be one block before
     * application read only resources start address */
-   FLASH_CFG_GetFlashAreaLocation(eFLASH_CFG_FLASH_AREA_RESOURCES_PARTITION_MIRROR_1, &TDAL_FLASH_Location);
-   stAreaArray[1].uiFlashOffset = TDAL_FLASH_Location.addressOffset - TDAL_NVM_MAX_SIZE_INBYTES;
+   //FLASH_CFG_GetFlashAreaLocation(eFLASH_CFG_FLASH_AREA_RESOURCES_PARTITION_MIRROR_1, &TDAL_FLASH_Location);
+
+   stAreaArray[1].uiFlashOffset = TDAL_FLASH_Location.addressOffset + TDAL_NVM_MAX_SIZE_INBYTES;
+   
    if (TDAL_NVM_MAX_SIZE_INBYTES < TDAL_FLASH_Location.size)
    {
        stAreaArray[1].uiByteSize    = TDAL_NVM_MAX_SIZE_INBYTES;
