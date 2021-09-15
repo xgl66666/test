@@ -812,6 +812,135 @@ tTDAL_DESC_Error TDAL_DESC_Set_Descrambler_Keys_ETSI_L2(tTDAL_DESC_descrambler d
                              int16_t xEvenProtectedKeyLength,
                              const int8_t *pxEvenProtectedKey)
 {
+	uint8_t   i;
+	TCsdStatus csdStatus;
+	TCsdDscCipheredProtectingKeys dsc2CipheredProtectingKeysTable;
+	tTDAL_DESC_descrambler tempDescId = kTDAL_DESC_ILLEGAL_DESCRAMBLER;
+	TCsdDscKeyPathHandle DscKeyPathHandle;
+	TCsdDscKeyPathHandle *pDscKeyPathHandle=NULL;
+	TCsdUnsignedInt16         xEmi = 0;
+	int16_t OddKeyLen, EvenKeyLen;
+	const int8_t *OddKey, *EvenKey;
+	
+	mDesc_DEBUG("=====[%s][%d] \n", __FUNCTION__,__LINE__);
+
+	if (TDAL_DESC_isInit == FALSE)
+	{
+		return(eTDAL_DESC_NOT_DONE);
+	}
+
+	MsOS_ObtainSemaphore (TDAL_DESC_table_lock, MSOS_WAIT_FOREVER);
+	/*     Check     if   descrambler    used   */
+	for (i=0; i < kTDAL_DESC_MAX_DESCRAMBLERS; i++)
+	{
+		if (TDAL_DESC_table[i].descId == descIdx)
+		{
+			tempDescId = descIdx;
+			break;
+		}
+	}
+
+	if (tempDescId == kTDAL_DESC_ILLEGAL_DESCRAMBLER)
+	{
+		MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+		return (eTDAL_DESC_ERROR_UNKNOW_ID);
+	}
+
+	if (TDAL_DESC_table[i].used != TRUE)
+	{
+		MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+		return (eTDAL_DESC_ERROR_UNKNOW_ID);
+	}
+
+	xEmi = TDAL_DESCi_GetEMI(TDAL_DESC_table[i].descrambler_type);
+
+	OddKeyLen = 0;
+	OddKey = NULL;
+	if ((pxOddProtectedKey != NULL) && (xOddProtectedKeyLength != 0))
+	{
+		if (0 != memcmp(TDAL_DESC_table[i].dataDescOdd, pxOddProtectedKey, xOddProtectedKeyLength))
+		{
+			OddKeyLen = xOddProtectedKeyLength;
+			OddKey = pxOddProtectedKey;
+			memcpy(TDAL_DESC_table[i].dataDescOdd, pxOddProtectedKey, xOddProtectedKeyLength > kTDAL_DESC_KEY_SIZE ? kTDAL_DESC_KEY_SIZE : xOddProtectedKeyLength);
+		}
+	}
+
+	EvenKeyLen = 0;
+	EvenKey = NULL;
+	if ((pxEvenProtectedKey != NULL) && (xEvenProtectedKeyLength != 0))
+	{
+		if (0 != memcmp(TDAL_DESC_table[i].dataDescEven, pxEvenProtectedKey, xEvenProtectedKeyLength))
+		{
+			EvenKeyLen = xEvenProtectedKeyLength;
+			EvenKey = pxEvenProtectedKey;
+			memcpy(TDAL_DESC_table[i].dataDescEven, pxEvenProtectedKey, xEvenProtectedKeyLength > kTDAL_DESC_KEY_SIZE ? kTDAL_DESC_KEY_SIZE : xEvenProtectedKeyLength);
+		}
+	}
+
+	if (OddKey != NULL)
+	{
+		if(MDrv_DSCMB_FltKeySet(descIdx, E_DSCMB_KEY_ODD, (MS_U8 *)OddKey) == FALSE)
+		{
+			MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+			return(eTDAL_DESC_ERROR);
+		}
+	}
+	if (EvenKey != NULL)
+	{
+		if(MDrv_DSCMB_FltKeySet(descIdx, E_DSCMB_KEY_EVEN, (MS_U8 *)EvenKey) == FALSE)
+		{
+			MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+			return(eTDAL_DESC_ERROR);
+		}
+	}
+	if ((OddKey == NULL) && (EvenKey == NULL))
+	{
+		MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+		return eTDAL_DESC_NO_ERROR;
+	}
+	
+
+	if((L1Key != NULL) && (L1L2_key_length != 0))
+	{
+		memcpy (&dsc2CipheredProtectingKeysTable[KEY_LADDER_LEVEL-2], L1Key, L1L2_key_length);
+	}
+	else
+	{
+		memset (&dsc2CipheredProtectingKeysTable[KEY_LADDER_LEVEL-2], 0x0, kTDAL_DESC_OFFSET_LENGTH);
+	}
+
+	if((L2Key != NULL) && (L1L2_key_length != 0))
+	{
+		memcpy (&dsc2CipheredProtectingKeysTable[KEY_LADDER_LEVEL-1], L2Key, L1L2_key_length);
+	}
+	else
+	{
+		memset (&dsc2CipheredProtectingKeysTable[KEY_LADDER_LEVEL-1], 0x0, kTDAL_DESC_OFFSET_LENGTH);
+	}
+
+	if(TDAL_DESC_table[i].Pid != 0)
+	{
+		/*if channel is found*/
+		DscKeyPathHandle.u32DscmbId = descIdx;
+		pDscKeyPathHandle = &DscKeyPathHandle;
+	}
+    _SetDscFilterType(descIdx, xEmi, TRUE);
+
+	MDrv_AESDMA_Lock();
+	csdStatus = csdSetProtectedDscContentKeys(xEmi,dsc2CipheredProtectingKeysTable, OddKey, OddKeyLen, EvenKey, EvenKeyLen, pDscKeyPathHandle );
+	if(csdStatus != CSD_NO_ERROR)
+	{
+		mTBOX_TRACE((kTBOX_NIV_CRITICAL,"[%s %d]csdSetProtectedDscContentKeys(%d) descrambler=%d %s\n",__FUNCTION__,__LINE__,descIdx,csdStatus,DBG_TCsdStatus(csdStatus)));
+		MDrv_AESDMA_Unlock();
+		MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+		return(eTDAL_DESC_ERROR);
+	}
+
+	MDrv_AESDMA_Unlock();
+	MsOS_ReleaseSemaphore(TDAL_DESC_table_lock);
+
+	return   eTDAL_DESC_NO_ERROR;
 }
 
 /*===================================================================
