@@ -686,7 +686,7 @@ void TDAL_FPi_ReadKeys(void)
     MS_U32 u32Key = 0;
     MS_U8 u8Flag = 0;
 
-    if( do_io_key(&u32Key, &u8Flag))//77
+   // if( do_io_key(&u32Key, &u8Flag))//77
     {
         if(TDAL_FPi_FPKeypadCallback)
         {
