@@ -19,8 +19,8 @@
 #define LAUNCHER_VERSION           	"1.0.4"  //No use
 #define LAUNCHER_VERSION_ID        	0x10004  //No use
 
-#define HARDWARE_VERSION           	"2208"  //61001
-#define HARDWARE_VERSION_ID        	0x2208
+#define HARDWARE_VERSION           	"2223"  //61001
+#define HARDWARE_VERSION_ID        	0x2223
 
 #define HARDWARE_MODEL             	"8108"
 #define HARDWARE_MODEL_ID          	0x8108
