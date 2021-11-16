@@ -3,7 +3,7 @@
 	<project id="$Id: QalEnvRln.xml,v 1.2 2010/02/11 14:12:07 sbsuser Exp $" name="dalts_changhong_XLVII">
 		<contact_person comment="tel +41 21 732 04 45" email="dtesen.support@nagra.com" name="DTESEN support"/>
 	</project>
-	<release version="1_0_2">
+	<release version="1_0_3">
 		<components>
 			<component name="ca_dvb.h"/>
 			<component name="dalapivr.h"/>
@@ -60,6 +60,59 @@
 				<operators/>
 			</library>
 		</libraries>
+	</release>
+	<release version="1_0_2">
+		<components>
+			<component name="ca_dvb.h"/>
+			<component name="dalapivr.h"/>
+			<component name="nv_types.h"/>
+			<component name="ca_cak.h"/>
+			<component name="ca_os.h"/>
+			<component name="ca_defsx.h"/>
+			<component name="nv_defs.h"/>
+			<component name="ca_mpeg.h"/>
+			<component name="ca_types.h"/>
+			<component name="ca_dmx.h"/>
+			<component name="ca_sec.h"/>
+			<component name="nv_wmk_sw.h"/>
+			<component name="cakapivr.h"/>
+			<component name="ca_defs.h"/>
+			<component name="ca_icc.h"/>
+			<component name="nv_acd.h"/>
+			<component name="ca_vfs.h"/>
+			<component name="ca_dsc.h"/>
+		</components>
+		<compatibility>
+			<product name="cakapi" version="1.34.1"/>
+			<product name="caoapi" version="1.12.1"/>
+			<product name="dalapi" version="7.17.0"/>
+			<product name="lw_testsuite" version="3.33.1"/>
+			<product name="makefiles" version="3.4.9"/>
+			<product name="prmapi" version="3.6.0"/>
+			<toolchain name="mipsisa32-elf-gcc" version="3.4.4">
+				<compiler_flags>
+					<flag>-EL</flag>
+					<flag>-mips32</flag>
+					<flag>-mhard-float</flag>
+					<flag>-Wall</flag>
+					<flag>-Wpointer-arith</flag>
+					<flag>-Wstrict-prototypes</flag>
+					<flag>-Winline</flag>
+					<flag>-Wundef</flag>
+					<flag>-fno-strict-aliasing</flag>
+					<flag>-fno-optimize-sibling-calls</flag>
+					<flag>-fno-exceptions</flag>
+					<flag>-fno-builtin</flag>
+					<flag>-c</flag>
+					<flag>-G0</flag>
+					<flag>-O0</flag>
+				</compiler_flags>
+			</toolchain>
+		</compatibility>
+		<bug_fixes/>
+		<changes/>
+		<new_features/>
+		<comments/>
 	</release>
 	<release version="1_0_1">
 		<components>
